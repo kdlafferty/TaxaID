@@ -92,6 +92,14 @@
 #'   measured against the TOTAL named posterior mass, and the whole block joins
 #'   the plausible set when the hypotheses above the floor fall short. See
 #'   \emph{Details}. `tail_mass` is reported either way.
+#' @param unnamed_in_threshold Logical (default `TRUE`). Posterior on rows
+#'   with no `taxon_name` (a catch-all whose position has no name, e.g. an
+#'   unsequenced genus of a family recorded only as a placeholder) cannot join
+#'   the LCA but is mass the call does not hold. `TRUE` counts it in the
+#'   denominator of `cumulative_threshold`, and an observation whose named
+#'   hypotheses cannot reach the threshold of the total is reported
+#'   unresolved (`consensus_reason = "unnamed_mass"`). `FALSE` measures the
+#'   threshold against named mass only. `unnamed_mass` is reported either way.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -286,6 +294,8 @@
 #'       named hypothesis).}
 #'     \item{`tail_mass`}{Summed posterior of the hypotheses below
 #'       `min_posterior`: how much mass sat in the tail block.}
+#'     \item{`unnamed_mass`}{Posterior on rows with no `taxon_name`. Not part
+#'       of `tail_mass`, which covers named hypotheses only.}
 #'     \item{`tail_pooled`}{`TRUE` when the tail block joined the plausible
 #'       set because the hypotheses above `min_posterior` held less than
 #'       `cumulative_threshold` of the total mass.}
@@ -513,9 +523,14 @@ posterior_consensus <- function(posterior_df,
                                 group_priors = NULL,
                                 min_effective_records = 0,
                                 taxonomy_cache_dir = NULL,
-                                pool_tail = FALSE) {
+                                pool_tail = FALSE,
+                                unnamed_in_threshold = TRUE) {
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
+  }
+  if (!is.logical(unnamed_in_threshold) || length(unnamed_in_threshold) != 1L ||
+    is.na(unnamed_in_threshold)) {
+    cli::cli_abort("{.arg unnamed_in_threshold} must be TRUE or FALSE.")
   }
   if (!is.numeric(min_effective_records) ||
     length(min_effective_records) != 1L ||
@@ -718,7 +733,7 @@ posterior_consensus <- function(posterior_df,
     .consensus_one_observation(
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
-      group_priors, min_effective_records, pool_tail
+      group_priors, min_effective_records, pool_tail, unnamed_in_threshold
     )
   })
 
@@ -778,11 +793,16 @@ posterior_consensus <- function(posterior_df,
                                        cumulative_threshold, min_posterior,
                                        posterior_col, group_priors = NULL,
                                        min_effective_records = 0,
-                                       pool_tail = FALSE) {
+                                       pool_tail = FALSE,
+                                       unnamed_in_threshold = TRUE) {
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
   named_all <- chunk[!is.na(chunk$taxon_name), ]
+  # Posterior on unnamed rows: a hypothesis with no name cannot join an LCA, but
+  # its mass is still mass the call does not hold.
+  unnamed_mass <- sum(chunk[[posterior_col]][is.na(chunk$taxon_name)], na.rm = TRUE)
+  extra_denom <- if (unnamed_in_threshold) unnamed_mass else 0
 
   prior_updated_flag <- if ("prior_updated" %in% names(chunk)) {
     any(chunk$prior_updated, na.rm = TRUE)
@@ -849,9 +869,11 @@ posterior_consensus <- function(posterior_df,
       return(out_empty)
     }
     surv_total <- sum(named[[posterior_col]], na.rm = TRUE)
-    cum_prop <- cumsum(named[[posterior_col]]) / surv_total
+    denom <- surv_total + extra_denom
+    cum_prop <- cumsum(named[[posterior_col]]) / denom
   } else {
-    cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / named_total else numeric(0)
+    denom <- named_total + extra_denom
+    cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / denom else numeric(0)
   }
   n_include <- which(cum_prop >= cumulative_threshold)[1L]
   tail_pooled <- pool_tail && is.na(n_include) && nrow(tail_rows) > 0L
@@ -914,6 +936,16 @@ posterior_consensus <- function(posterior_df,
 
   # LCA among plausible hypotheses
   lca <- .find_lca(plausible, rank_system)
+  # When the named hypotheses cannot reach cumulative_threshold of the total
+  # because posterior sits on unnamed rows, no named taxon holds the call:
+  # report it unresolved rather than the LCA of a set that falls short.
+  unnamed_blocked <- unnamed_in_threshold && unnamed_mass > 0 &&
+    sum(plausible[[posterior_col]], na.rm = TRUE) / denom < cumulative_threshold
+  if (unnamed_blocked) {
+    lca$taxon <- NA_character_
+    lca$rank <- NA_character_
+    lca$consensus_reason <- "unnamed_mass"
+  }
 
   # --- Discrimination diagnostics ------------------------------------------
   # Two questions the winner_*_confusion_risk columns above cannot answer on
@@ -1154,6 +1186,7 @@ posterior_consensus <- function(posterior_df,
     n_plausible = n_include,
     tail_mass = tail_mass,
     tail_pooled = tail_pooled,
+    unnamed_mass = unnamed_mass,
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
     winner_likelihood = winner_likelihood,
@@ -1321,6 +1354,7 @@ posterior_consensus <- function(posterior_df,
     n_plausible = 0L,
     tail_mass = NA_real_,
     tail_pooled = NA,
+    unnamed_mass = NA_real_,
     winner_prior = NA_real_,
     winner_theta_mean = NA_real_,
     winner_likelihood = NA_real_,

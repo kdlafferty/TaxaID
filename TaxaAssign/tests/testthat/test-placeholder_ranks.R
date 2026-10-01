@@ -101,3 +101,37 @@ test_that("taxonomy lookup fills only empty rank cells, never overwrites", {
   expect_equal(out$consensus_taxon, "Oligocottus")
   expect_gt(out$consensus_posterior, 0.99)
 })
+
+# ---- unnamed mass counts against the call ------------------------------------
+.un_df <- function(post_unnamed) {
+  named <- (1 - post_unnamed) * c(0.68, 0.32)
+  data.frame(
+    observation_id = "E1",
+    taxon_name = c(NA, "Neocolponema", "Neocolponema saponarium"),
+    taxon_name_rank = c(NA, "genus", "species"),
+    hypothesis_type = c("unreferenced_genus", "unreferenced_species", "specific_candidate"),
+    genus = c(NA, "Neocolponema", "Neocolponema"),
+    posterior_point_est = c(post_unnamed, named), stringsAsFactors = FALSE
+  )
+}
+
+test_that("a call held by less than the threshold of TOTAL mass is unresolved", {
+  out <- suppressWarnings(suppressMessages(posterior_consensus(.un_df(0.468),
+    rank_system = c("genus", "species"))))
+  expect_true(is.na(out$consensus_taxon))
+  expect_equal(out$consensus_reason, "unnamed_mass")
+  expect_equal(out$unnamed_mass, 0.468)
+})
+
+test_that("unnamed_in_threshold = FALSE restores the named-only threshold", {
+  out <- suppressWarnings(suppressMessages(posterior_consensus(.un_df(0.468),
+    rank_system = c("genus", "species"), unnamed_in_threshold = FALSE)))
+  expect_equal(out$consensus_taxon, "Neocolponema")
+  expect_equal(out$unnamed_mass, 0.468)
+})
+
+test_that("a small unnamed share does not block a call that still clears the threshold", {
+  out <- suppressWarnings(suppressMessages(posterior_consensus(.un_df(0.02),
+    rank_system = c("genus", "species"))))
+  expect_equal(out$consensus_taxon, "Neocolponema")
+})

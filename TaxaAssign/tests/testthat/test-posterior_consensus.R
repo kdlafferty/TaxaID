@@ -273,11 +273,18 @@ test_that("unreferenced_family rows are excluded from LCA", {
       "unreferenced_family", 0.4
     )
   )
+  # The catch-all cannot join the LCA, but its 0.4 is mass the call does not
+  # hold: with unnamed_in_threshold = TRUE (default) 0.6 < 0.9 of the total,
+  # so the observation is unresolved.
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  # Only Fundulus parvipinnis contributes -> single species resolved
-  expect_equal(out$n_plausible, 1L)
-  expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
-  expect_true(out$is_resolved)
+  expect_true(is.na(out$consensus_taxon))
+  expect_equal(out$consensus_reason, "unnamed_mass")
+  expect_equal(out$unnamed_mass, 0.4)
+  # named-only threshold: only Fundulus parvipinnis contributes -> resolved
+  old <- posterior_consensus(df, rank_system = c("genus", "species"), unnamed_in_threshold = FALSE)
+  expect_equal(old$n_plausible, 1L)
+  expect_equal(old$consensus_taxon, "Fundulus parvipinnis")
+  expect_true(old$is_resolved)
 })
 
 test_that("unreferenced_genus named species are included in LCA", {
