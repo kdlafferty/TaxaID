@@ -19,7 +19,8 @@ posterior_consensus(
   taxonomy_cache_dir = NULL,
   pool_tail = FALSE,
   unnamed_in_threshold = TRUE,
-  consensus_method = c("lca", "credible_node")
+  consensus_method = c("lca", "credible_node"),
+  likelihood_consensus = TRUE
 )
 }
 \arguments{
@@ -182,6 +183,17 @@ finest, and reports the finest taxon holding at least
 unsequenced genus of a family, say) counts toward that taxon and its
 ancestors. Unresolved (\code{consensus_reason = "no_credible_node"}) when no
 taxon at any rank in \code{rank_system} holds the threshold.}
+
+\item{likelihood_consensus}{Logical (default \code{TRUE}). Also compute the
+consensus the likelihoods support when the prior is flattened among the
+named candidates (each gets the mean of their priors; generic
+unsequenced-relative rows keep their own; uniform when there is no
+\code{prior_mean}), same consensus method and
+\code{cumulative_threshold}, \code{min_posterior} and \code{pool_tail}, no downranking)
+and compare it with the reported call. Adds \code{likelihood_consensus_taxon},
+\code{likelihood_consensus_rank}, \code{prior_role} and \code{prior_decided}; changes no
+other column. Skipped (columns \code{NA}) when \code{posterior_df} has no
+\code{score_likelihood} column. See \emph{Prior-decided calls}.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -239,6 +251,19 @@ of \code{tail_mass}, which covers named hypotheses only.}
 \item{\code{tail_pooled}}{\code{TRUE} when the tail block joined the plausible
 set because the hypotheses above \code{min_posterior} held less than
 \code{cumulative_threshold} of the total mass.}
+\item{\code{likelihood_consensus_taxon}, \code{likelihood_consensus_rank}}{The
+call the likelihoods alone support (uniform priors). \code{NA} when
+\code{likelihood_consensus = FALSE} or there is no \code{score_likelihood}.}
+\item{\code{prior_role}}{How the prior moved the call relative to the
+likelihood-only call: \code{"agrees"} (same taxon), \code{"narrowed"} (a finer
+taxon inside the likelihood-only call, or a call where the
+likelihoods alone made none), \code{"broadened"} (a coarser taxon
+containing it, or no call where the likelihoods made one) or
+\code{"changed"} (a taxon outside it, or nesting that could not be
+verified). \code{NA} when neither pass made a call.}
+\item{\code{prior_decided}}{\code{TRUE} when \code{prior_role} is \code{"narrowed"} or
+\code{"changed"}: the reported taxon is one the sequence evidence alone
+does not single out.}
 \item{\code{plausible_taxa}}{List column: character vector of plausible taxon
 names, sorted by descending posterior. Computed BEFORE downranking, so
 for a downranked row it reflects the original coarser-rank plausible
@@ -491,6 +516,30 @@ that confidence has to be caught post hoc, by
 \code{TaxaFlag::review_assignments()}'s \code{plausibility == "unprecedented"} check,
 not by prior competition inside this function.
 }
+\section{Prior-decided calls}{
+
+The posterior multiplies the likelihood by an occurrence prior, so a
+reported taxon can be one the sequence evidence alone does not single
+out: when several candidates match equally well, the prior picks among
+them. That is the intended use of a prior, but the reader of a species
+list needs to know which calls rest on the sequence and which on where the
+species is known to occur. With \code{likelihood_consensus = TRUE}, the same
+consensus rule is run a second time on the likelihoods alone (uniform
+priors), and \code{prior_role} records how the prior moved the call:
+\code{"agrees"}, \code{"narrowed"} (a finer taxon inside the likelihood-only call),
+\code{"broadened"} (a coarser one) or \code{"changed"} (a different lineage).
+\code{prior_decided} is \code{TRUE} for \code{"narrowed"} and \code{"changed"}. A
+coarse-rank expansion (\code{winner_rank_expanded}) and a downranked call are
+prior-decided by construction, and are reported as such.
+
+The baseline is a uniform prior over the observation's own candidate set,
+not the absence of a prior. Its weights therefore depend on how many
+candidates the observation has, and generic complement rows (an
+unsequenced congener or genus) get the same weight as named species, so an
+observation with many near-equal candidates reads as prior-decided more
+readily than one with few.
+}
+
 \examples{
 posterior_df <- data.frame(
   observation_id = c("S1", "S1", "S1"),

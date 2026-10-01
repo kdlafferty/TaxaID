@@ -1480,3 +1480,92 @@ test_that("a genus-rank row carrying its anchor's species value is not counted a
   lc <- suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs, pool_tail = TRUE)))
   expect_equal(lc$consensus_taxon, "Garveia")
 })
+
+# ---- likelihood-only consensus and prior_role ------------------------------
+.pd_df <- function(lik, prior, taxa = c("Littorina keenae", "Littorina scutulata"),
+                   rank = "species") {
+  pt <- lik * prior / sum(lik * prior)
+  data.frame(
+    observation_id = "E1", taxon_name = taxa, taxon_name_rank = rank,
+    hypothesis_type = "specific_candidate", family = "Littorinidae",
+    genus = "Littorina", score_likelihood = lik, prior_mean = prior,
+    posterior_point_est = pt, stringsAsFactors = FALSE
+  )
+}
+.pd_run <- function(df, ...) {
+  suppressMessages(posterior_consensus(df,
+    rank_system = c("family", "genus", "species"), ...
+  ))
+}
+
+test_that("equal likelihoods split by the prior are prior-decided (narrowed)", {
+  out <- .pd_run(.pd_df(lik = c(1, 1), prior = c(0.2, 0.001)))
+  expect_equal(out$consensus_taxon, "Littorina keenae")
+  expect_equal(out$likelihood_consensus_taxon, "Littorina")
+  expect_equal(out$likelihood_consensus_rank, "genus")
+  expect_equal(out$prior_role, "narrowed")
+  expect_true(out$prior_decided)
+})
+
+test_that("a call the likelihoods already make is not prior-decided", {
+  out <- .pd_run(.pd_df(lik = c(1, 0.001), prior = c(0.01, 0.01)))
+  expect_equal(out$consensus_taxon, "Littorina keenae")
+  expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
+  expect_equal(out$prior_role, "agrees")
+  expect_false(out$prior_decided)
+})
+
+test_that("a prior that overturns the likelihood winner is 'changed'", {
+  out <- .pd_run(.pd_df(lik = c(1, 0.01), prior = c(1e-6, 0.5)))
+  expect_equal(out$consensus_taxon, "Littorina scutulata")
+  expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
+  expect_equal(out$prior_role, "changed")
+  expect_true(out$prior_decided)
+})
+
+test_that("a prior that spreads mass to a coarser call is 'broadened', not decided", {
+  out <- .pd_run(.pd_df(lik = c(1, 0.02), prior = c(0.01, 0.6)))
+  expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
+  expect_equal(out$consensus_taxon, "Littorina")
+  expect_equal(out$prior_role, "broadened")
+  expect_false(out$prior_decided)
+})
+
+test_that("likelihood_consensus = FALSE, or no score_likelihood, leaves NA columns", {
+  off <- .pd_run(.pd_df(lik = c(1, 1), prior = c(0.2, 0.001)), likelihood_consensus = FALSE)
+  expect_true(is.na(off$prior_role))
+  df <- .pd_df(lik = c(1, 1), prior = c(0.2, 0.001))
+  df$score_likelihood <- NULL
+  nolik <- .pd_run(df)
+  expect_true(all(c("likelihood_consensus_taxon", "prior_decided") %in% names(nolik)))
+  expect_true(is.na(nolik$prior_decided))
+})
+
+test_that("the likelihood pass leaves every other column unchanged", {
+  df <- .pd_df(lik = c(1, 1), prior = c(0.2, 0.001))
+  on <- .pd_run(df)
+  off <- .pd_run(df, likelihood_consensus = FALSE)
+  new_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank", "prior_role", "prior_decided")
+  expect_identical(on[, setdiff(names(on), new_cols)], off[, setdiff(names(off), new_cols)])
+})
+
+test_that("prior_decided is not triggered by a complement row the prior already discounts", {
+  lik <- c(1, 0.05, 0.9)
+  prior <- c(0.01, 0.01, 1e-6)
+  pt <- lik * prior / sum(lik * prior)
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Littorina keenae", "Littorina scutulata", "Littorina"),
+    taxon_name_rank = c("species", "species", "genus"),
+    hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species"),
+    family = "Littorinidae", genus = "Littorina",
+    score_likelihood = lik, prior_mean = prior, posterior_point_est = pt,
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_taxon, "Littorina keenae")
+  # under a uniform baseline the genus row (lik 0.9) would win and every call
+  # would read prior-decided; flattening only the named candidates does not
+  expect_equal(out$prior_role, "agrees")
+  expect_false(out$prior_decided)
+})
