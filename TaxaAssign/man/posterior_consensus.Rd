@@ -20,8 +20,7 @@ posterior_consensus(
   pool_tail = FALSE,
   unnamed_in_threshold = TRUE,
   consensus_method = c("lca", "credible_node"),
-  likelihood_consensus = TRUE,
-  min_likelihood_support = 0
+  likelihood_consensus = TRUE
 )
 }
 \arguments{
@@ -195,14 +194,6 @@ and compare it with the reported call. Adds \code{likelihood_consensus_taxon},
 \code{likelihood_consensus_rank}, \code{prior_role} and \code{likelihood_support};
 changes no other column. Skipped (columns \code{NA}) when \code{posterior_df} has
 no \code{score_likelihood} column. See \emph{Sequence support}.}
-
-\item{min_likelihood_support}{Numeric in [0, 1] (default \code{0}, off). A
-call stands at its rank only when \code{likelihood_support} (the share the
-sequence evidence alone gives it) is at least this; otherwise it moves
-up its own lineage to the first ancestor that clears it
-(\code{consensus_reason = "support_upranked"}), or is unresolved when none
-does (\code{"support_unresolved"}). One rule for every marker: how coarse a
-marker's calls end up follows from its data, not from the marker.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -551,21 +542,17 @@ keep their own priors. \code{likelihood_support} is the share of that baseline
 in the reported taxon: 0.84 means the sequence nearly makes the call
 itself and the prior nudged it over \code{cumulative_threshold}; 0.10 means
 the prior chose it. \code{prior_role} records the direction (\code{"agrees"},
-\code{"narrowed"}, \code{"broadened"}, \code{"changed"}). \code{min_likelihood_support} turns
-the measure into a reporting rule.
+\code{"narrowed"}, \code{"broadened"}, \code{"changed"}). Neither changes the call: in a
+clade with one local species the prior legitimately concentrates the
+posterior on it, which is correct inference, so sequence support is
+reported, not used to move calls.
 
-A value of 0.5 is the principled one, not a tuning knob: the reported
-taxon is then more probable on the sequence evidence than every
-alternative combined (named priors flattened). Unnamed and generic mass
-that no named taxon contains counts against every taxon at every rank, so
-when most of the likelihood says "something not in the references" no
-named taxon reaches 0.5 and the call is unresolved.
-
-\code{cumulative_threshold} and \code{min_likelihood_support} are complementary and
-should not be merged: the first acts on the posterior, the second on the
-sequence's share of the baseline. A call can clear the first because the
-prior helps while failing the second because the sequence does not; that
-gap is the quantity of interest.
+A support above 0.5 means the reported taxon is more probable on the
+sequence evidence than every alternative combined (named priors
+flattened); unnamed and generic mass that no named taxon contains counts
+against every taxon. The gap between the posterior (which clears
+\code{cumulative_threshold}) and \code{likelihood_support} is the part of the call
+that rests on the prior.
 }
 
 \examples{

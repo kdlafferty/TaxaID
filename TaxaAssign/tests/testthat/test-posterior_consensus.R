@@ -1578,31 +1578,3 @@ test_that("likelihood_support is the reported taxon's share under the flattened-
   expect_equal(out$prior_role, "narrowed")
 })
 
-# ---- min_likelihood_support: one support rule for every marker -------------
-.sr_df <- function(lik, prior) {
-  data.frame(observation_id = "E1",
-    taxon_name = c("Rhacochilus vacca", "Rhacochilus toxotes"), taxon_name_rank = "species",
-    hypothesis_type = "specific_candidate", family = "Embiotocidae", genus = "Rhacochilus",
-    score_likelihood = lik, prior_mean = prior,
-    posterior_point_est = lik * prior / sum(lik * prior), stringsAsFactors = FALSE)
-}
-.sr <- function(df, ...) suppressMessages(posterior_consensus(df,
-  rank_system = c("family", "genus", "species"), ...))
-
-test_that("a call the sequence supports stands; one it does not moves up its lineage", {
-  strong <- .sr(.sr_df(c(1, 0.19), c(4.6e-3, 2.2e-3)), min_likelihood_support = 0.5)
-  expect_equal(strong$consensus_taxon, "Rhacochilus vacca") # support 0.84
-  weak <- .sr(.sr_df(c(1, 1), c(0.5, 0.001)), min_likelihood_support = 0.6)
-  # equal likelihoods: the species gets 0.5 of the baseline, the genus 1.0
-  expect_equal(weak$consensus_taxon, "Rhacochilus")
-  expect_equal(weak$consensus_rank, "genus")
-  expect_equal(weak$consensus_reason, "support_upranked")
-  expect_equal(weak$likelihood_support, 1)
-  expect_false(weak$is_resolved)
-})
-
-test_that("min_likelihood_support = 0 (default) changes no call", {
-  df <- .sr_df(c(1, 1), c(0.5, 0.001))
-  expect_identical(.sr(df), .sr(df, min_likelihood_support = 0))
-  expect_equal(.sr(df)$consensus_taxon, "Rhacochilus vacca")
-})
