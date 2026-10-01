@@ -18,7 +18,8 @@ posterior_consensus(
   min_effective_records = 0,
   taxonomy_cache_dir = NULL,
   pool_tail = FALSE,
-  unnamed_in_threshold = TRUE
+  unnamed_in_threshold = TRUE,
+  consensus_method = c("lca", "credible_node")
 )
 }
 \arguments{
@@ -169,6 +170,18 @@ denominator of \code{cumulative_threshold}, and an observation whose named
 hypotheses cannot reach the threshold of the total is reported
 unresolved (\code{consensus_reason = "unnamed_mass"}). \code{FALSE} measures the
 threshold against named mass only. \code{unnamed_mass} is reported either way.}
+
+\item{consensus_method}{\code{"lca"} (default) or \code{"credible_node"}. \code{"lca"}
+takes the smallest top set of hypotheses reaching \code{cumulative_threshold}
+and reports their lowest common taxon. \code{"credible_node"} sums the
+posterior of every hypothesis under each taxon, rank by rank from the
+finest, and reports the finest taxon holding at least
+\code{cumulative_threshold} of the total (unnamed mass included when
+\code{unnamed_in_threshold = TRUE}); no hypothesis is dropped below
+\code{min_posterior}, and a hypothesis named at a coarser rank (an
+unsequenced genus of a family, say) counts toward that taxon and its
+ancestors. Unresolved (\code{consensus_reason = "no_credible_node"}) when no
+taxon at any rank in \code{rank_system} holds the threshold.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:

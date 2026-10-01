@@ -1409,3 +1409,56 @@ test_that("pool_tail must be TRUE or FALSE", {
   df <- .tail_df(0.95, c(0.03, 0.02))
   expect_error(posterior_consensus(df, pool_tail = NA), "pool_tail")
 })
+
+# ---- consensus_method = "credible_node" ------------------------------------
+.cn_df <- function() {
+  data.frame(
+    observation_id = "E1",
+    taxon_name = c("Oligocottus snyderi", paste("Oligocottus", c("a", "b", "c", "d", "e")), "Clinocottus analis"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    order = "Perciformes",
+    family = c(rep("Cottidae", 6), "Psychrolutidae"),
+    genus = c(rep("Oligocottus", 6), "Clinocottus"),
+    posterior_point_est = c(0.80, rep(0.03, 5), 0.05), stringsAsFactors = FALSE
+  )
+}
+.cn <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("order", "family", "genus", "species"), ...)))
+
+test_that("credible_node reports the finest taxon holding the threshold", {
+  out <- .cn(.cn_df(), consensus_method = "credible_node")
+  expect_equal(out$consensus_taxon, "Oligocottus")
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_reason, "credible_node")
+  expect_equal(out$consensus_posterior, 0.95, tolerance = 1e-9)
+})
+
+test_that("credible_node counts rows named at coarser ranks toward their own taxon", {
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Balticina finmarchica", "Balticina", "Balticinidae", "Scleralcyonacea"),
+    taxon_name_rank = c("species", "genus", "family", "order"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus", "unreferenced_family"),
+    order = "Scleralcyonacea", family = c(rep("Balticinidae", 3), NA),
+    genus = c("Balticina", "Balticina", NA, NA),
+    posterior_point_est = c(0.05, 0.10, 0.30, 0.55), stringsAsFactors = FALSE
+  )
+  out <- .cn(df, consensus_method = "credible_node")
+  # family holds 0.45; only the order holds >= 0.9
+  expect_equal(out$consensus_taxon, "Scleralcyonacea")
+  expect_equal(out$consensus_rank, "order")
+})
+
+test_that("credible_node is unresolved when unnamed mass keeps every taxon below the threshold", {
+  df <- .cn_df()
+  df <- rbind(df, transform(df[1, ], taxon_name = NA, taxon_name_rank = NA,
+    hypothesis_type = "unreferenced_genus", order = NA, family = NA, genus = NA,
+    posterior_point_est = 0.2))
+  out <- .cn(df, consensus_method = "credible_node")
+  expect_true(is.na(out$consensus_taxon))
+  expect_equal(out$consensus_reason, "no_credible_node")
+})
+
+test_that("the default consensus_method is lca and unchanged", {
+  expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
+})

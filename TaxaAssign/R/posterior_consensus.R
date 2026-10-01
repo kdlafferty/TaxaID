@@ -100,6 +100,17 @@
 #'   hypotheses cannot reach the threshold of the total is reported
 #'   unresolved (`consensus_reason = "unnamed_mass"`). `FALSE` measures the
 #'   threshold against named mass only. `unnamed_mass` is reported either way.
+#' @param consensus_method `"lca"` (default) or `"credible_node"`. `"lca"`
+#'   takes the smallest top set of hypotheses reaching `cumulative_threshold`
+#'   and reports their lowest common taxon. `"credible_node"` sums the
+#'   posterior of every hypothesis under each taxon, rank by rank from the
+#'   finest, and reports the finest taxon holding at least
+#'   `cumulative_threshold` of the total (unnamed mass included when
+#'   `unnamed_in_threshold = TRUE`); no hypothesis is dropped below
+#'   `min_posterior`, and a hypothesis named at a coarser rank (an
+#'   unsequenced genus of a family, say) counts toward that taxon and its
+#'   ancestors. Unresolved (`consensus_reason = "no_credible_node"`) when no
+#'   taxon at any rank in `rank_system` holds the threshold.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -524,7 +535,9 @@ posterior_consensus <- function(posterior_df,
                                 min_effective_records = 0,
                                 taxonomy_cache_dir = NULL,
                                 pool_tail = FALSE,
-                                unnamed_in_threshold = TRUE) {
+                                unnamed_in_threshold = TRUE,
+                                consensus_method = c("lca", "credible_node")) {
+  consensus_method <- match.arg(consensus_method)
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
   }
@@ -733,7 +746,8 @@ posterior_consensus <- function(posterior_df,
     .consensus_one_observation(
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
-      group_priors, min_effective_records, pool_tail, unnamed_in_threshold
+      group_priors, min_effective_records, pool_tail, unnamed_in_threshold,
+      consensus_method
     )
   })
 
@@ -783,6 +797,29 @@ posterior_consensus <- function(posterior_df,
 #' compute_posterior()). Consolidates a pattern repeated ~8 times below for
 #' the winner_* pass-through columns.
 #' @noRd
+# Deepest credible node: for each rank from finest to coarsest, sum the
+# posterior of every hypothesis under each taxon at that rank (a hypothesis
+# named at a coarser rank, e.g. an unsequenced genus of family X, counts
+# toward X and its ancestors only) and return the first taxon holding at least
+# `threshold` of `total`. NA when no taxon at any rank does.
+.credible_node <- function(named_all, posterior_col, rank_system, total, threshold) {
+  post <- named_all[[posterior_col]]
+  post[is.na(post)] <- 0
+  if (!is.finite(total) || total <= 0) {
+    return(list(taxon = NA_character_, rank = NA_character_))
+  }
+  for (r in rev(rank_system)) {
+    vals <- .extract_rank_values(named_all, r)
+    if (is.null(vals) || all(is.na(vals))) next
+    mass <- tapply(post[!is.na(vals)], vals[!is.na(vals)], sum)
+    best <- which.max(mass)
+    if (length(best) && mass[best] / total >= threshold) {
+      return(list(taxon = names(mass)[best], rank = r))
+    }
+  }
+  list(taxon = NA_character_, rank = NA_character_)
+}
+
 .row_col_or <- function(row, col, default = NA_real_) {
   if (col %in% names(row)) row[[col]][[1L]] else default
 }
@@ -794,7 +831,11 @@ posterior_consensus <- function(posterior_df,
                                        posterior_col, group_priors = NULL,
                                        min_effective_records = 0,
                                        pool_tail = FALSE,
-                                       unnamed_in_threshold = TRUE) {
+                                       unnamed_in_threshold = TRUE,
+                                       consensus_method = "lca") {
+  # credible_node sums every hypothesis, so no hypothesis is dropped below
+  # min_posterior: the tail is always part of the plausible set.
+  if (consensus_method == "credible_node") pool_tail <- TRUE
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
@@ -945,6 +986,13 @@ posterior_consensus <- function(posterior_df,
     lca$taxon <- NA_character_
     lca$rank <- NA_character_
     lca$consensus_reason <- "unnamed_mass"
+  }
+  if (consensus_method == "credible_node") {
+    total <- named_total + extra_denom
+    node <- .credible_node(named_all, posterior_col, rank_system, total, cumulative_threshold)
+    lca$taxon <- node$taxon
+    lca$rank <- node$rank
+    lca$consensus_reason <- if (is.na(node$taxon)) "no_credible_node" else "credible_node"
   }
 
   # --- Discrimination diagnostics ------------------------------------------
