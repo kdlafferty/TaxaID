@@ -1333,6 +1333,20 @@ posterior_consensus <- function(posterior_df,
 #' for why this derivation matters). All other missing columns return NA.
 #' @noRd
 .extract_rank_values <- function(input_df, rank) {
+  vals <- .extract_rank_values_raw(input_df, rank)
+  # A row never reports a value at a rank finer than its own: an unsequenced-
+  # congener row named at genus can still carry its anchor species in a
+  # `species` column, which would otherwise count it as that species.
+  if ("taxon_name_rank" %in% names(input_df)) {
+    std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+    r_d <- match(rank, std)
+    row_d <- match(input_df$taxon_name_rank, std)
+    if (!is.na(r_d)) vals[!is.na(row_d) & row_d < r_d] <- NA_character_
+  }
+  vals
+}
+
+.extract_rank_values_raw <- function(input_df, rank) {
   if (rank == "genus") {
     # Derive genus from binomial as fallback for any NA values
     derived <- ifelse(

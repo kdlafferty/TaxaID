@@ -1462,3 +1462,21 @@ test_that("credible_node is unresolved when unnamed mass keeps every taxon below
 test_that("the default consensus_method is lca and unchanged", {
   expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
 })
+
+test_that("a genus-rank row carrying its anchor's species value is not counted as that species", {
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Garveia", "Garveia grisea", "Garveia sp. CC-2005"),
+    taxon_name_rank = c("genus", "species", "species"),
+    hypothesis_type = c("unreferenced_species", "specific_candidate", "specific_candidate"),
+    family = "Bougainvilliidae", genus = "Garveia",
+    species = c("Garveia sp. CC-2005", "Garveia grisea", "Garveia sp. CC-2005"),
+    posterior_point_est = c(0.934, 0.022, 0.044), stringsAsFactors = FALSE
+  )
+  rs <- c("family", "genus", "species")
+  cn <- suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs, consensus_method = "credible_node")))
+  expect_equal(cn$consensus_taxon, "Garveia")
+  expect_equal(cn$consensus_rank, "genus")
+  lc <- suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs, pool_tail = TRUE)))
+  expect_equal(lc$consensus_taxon, "Garveia")
+})
