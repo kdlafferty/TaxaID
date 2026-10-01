@@ -653,3 +653,54 @@ test_that("shrinkage = 'empirical_bayes' falls back to 'fixed' with fewer than 3
   )
   expect_equal(out$Stats$shrinkage, "fixed")
 })
+
+# ---- Measured H3 (confamilial) ---------------------------------------------
+# n_fam families, each with two genera of two species, two sequences each.
+# Within species 0.97, congeners 0.92, confamilials (other genus, same family)
+# 0.85, everything else 0.70.
+.make_family_raw_df <- function(n_fam = 4L) {
+  tax <- expand.grid(f = seq_len(n_fam), g = 1:2, s = 1:2, q = 1:2)
+  tax$id <- with(tax, sprintf("F%dG%dS%dQ%d", f, g, s, q))
+  tax$family <- paste0("Fam", LETTERS[tax$f])
+  tax$genus <- paste0(tax$family, "gen", tax$g)
+  tax$species <- paste(tax$genus, paste0("sp", tax$s))
+  grid <- expand.grid(id_x = tax$id, id_y = tax$id, stringsAsFactors = FALSE)
+  grid <- grid[grid$id_x != grid$id_y, ]
+  i <- match(grid$id_x, tax$id)
+  j <- match(grid$id_y, tax$id)
+  for (r in c("family", "genus", "species")) {
+    grid[[paste0(r, ".x")]] <- tax[[r]][i]
+    grid[[paste0(r, ".y")]] <- tax[[r]][j]
+  }
+  grid$p_match <- ifelse(grid$species.x == grid$species.y, 0.97,
+    ifelse(grid$genus.x == grid$genus.y, 0.92,
+      ifelse(grid$family.x == grid$family.y, 0.85, 0.70)
+    )
+  )
+  grid
+}
+
+test_that("train_likelihood_model: H3 is measured from confamilial pairs when enough families exist", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_family_raw_df(4L),
+    rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$h3_source, "measured")
+  expect_equal(m$Stats$n_h3_families, 4L)
+  # the measured H3 mean sits at the confamilial score (0.85), not at the
+  # heuristic H2 shift + 2 transform units
+  expected_h3_mean <- TaxaLikely:::.transform_p(0.85, m$Score_Transform)
+  expect_equal(unname(m$H1_Global_Mu[1] - m$H3$delta), expected_h3_mean, tolerance = 0.05)
+  expect_lt(m$H3$delta, m$H2$delta + 2.0 * TaxaLikely:::.transform_unit_ratio(m$Score_Transform))
+  # rings stay nested
+  expect_gte(m$H3$delta, m$H2$delta)
+})
+
+test_that("train_likelihood_model: H3 falls back to the H2-plus-two-units rule with too few families", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_family_raw_df(2L),
+    rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$h3_source, "heuristic")
+  expect_equal(m$H3$delta, m$H2$delta + 2.0 * TaxaLikely:::.transform_unit_ratio(m$Score_Transform))
+})

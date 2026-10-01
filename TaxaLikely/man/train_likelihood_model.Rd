@@ -310,6 +310,37 @@ all) -- see \code{inst/TaxaLikely_supplemental_methods.md} for a fuller
 discussion of that limitation.
 }
 
+\section{Unsequenced-genus likelihood (H3)}{
+
+\code{H3} is the hypothesis that the query comes from a genus of the anchor's
+family that has no reference sequence. Its score distribution is measured
+the way \code{H2}'s is: for each reference, its best match to a species of
+another genus in the same family (rank_code_c, conventionally family). The
+mean is family-equal-weighted (mean of family means), so one heavily
+sequenced family cannot set it, and the shift is kept at least as large as
+the pooled \code{H2} shift so an unsequenced genus is never assumed to match
+better than an unsequenced congener. With fewer than 3 families supplying
+such matches, the shift falls back to the \code{H2} shift plus 2.0 transform
+units; \code{Stats$h3_source} records which was used.
+
+Two sampling effects bear on the measured value, in opposite directions.
+Pairs below \code{build_sequence_matrix()}'s identity floor (\code{max_dist}) are
+never stored, so a very poor confamilial match cannot be observed, which
+would push the estimate up; \code{Stats$h3_share_near_floor} reports how much
+of the pool sits in the lowest 5 percent of its observed range (3 to 8
+percent on real 12S, 18S and COI data, so this effect is small). And
+under \code{build_sequence_matrix(by_genus = TRUE)} each genus is aligned
+against a random sample of other genera's single representatives, so most
+confamilial pairs are never computed (79 to 95 percent of eligible
+references had none on the same data) and the stored best is the best
+against one sampled genus rather than against every referenced genus of
+the family. That pushes the estimate down. The measured \code{H3} is therefore,
+if anything, a conservative (too distant) estimate of how closely an
+unsequenced genus matches. On real data it sits far closer than the
+earlier fixed rule: an implied mean identity of 91.8 against 83.3 percent
+(12S), 95.5 against 85.8 (18S) and 86.8 against 74.6 (COI).
+}
+
 \section{Pseudo-data anchoring}{
 
 When \code{anchor_perfect = TRUE}, synthetic "perfect match" observations are

@@ -8,7 +8,7 @@ utils::globalVariables(c(
   "mu_score", "mu_gap", "sigma_score", "lookup_key", "rank",
   "score_logit_mean", "gap_logit_mean", "score_logit_var",
   "n_obs_species", "shrunk_mu_score", "shrunk_mu_gap", "shrunk_sigma",
-  "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk",
+  "w", "species", "max_congener_score", "max_confamilial_score", "delta_emp", "n_pairs", "delta_shrunk",
   "mean_cong", "var_cong", "var_shrunk",
   "median_foreign_match", "n_foreign_pairs", "n_foreign_taxa", "species_x",
   "coverage", "foreign_match_coverage", "median_self_coverage",
@@ -287,6 +287,40 @@ utils::globalVariables(c(
     NULL
   }
 
+  # ---- STEP 3C: CONFAMILIAL STATS (best same-family, different-genus match) --
+  # The H3 analogue of max_congener_score: the closest match to a species of
+  # ANOTHER genus in the SAME family (rank_code_c is the third-finest rank,
+  # conventionally family). Measures how well an unsequenced genus of the
+  # family would score, which the H3 likelihood needs. NA when the sequence's
+  # family has no other referenced genus.
+  has_family_code <- has_genus_code &&
+    all(c("rank_code_c.x", "rank_code_c.y") %in% names(df_logit))
+  confamilial_stats <- if (has_family_code) {
+    df_logit |>
+      dplyr::filter(
+        !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]]),
+        !is.na(.data[["rank_code_c.x"]]), !is.na(.data[["rank_code_c.y"]])
+      ) |>
+      dplyr::group_by(id_x) |>
+      dplyr::summarise(
+        max_confamilial_score = suppressWarnings(
+          max(score_logit[
+            .data[["rank_code_c.x"]] == .data[["rank_code_c.y"]] &
+              .data[["rank_code_b.x"]] != .data[["rank_code_b.y"]] &
+              pair_ok
+          ], -Inf)
+        ),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        max_confamilial_score = ifelse(is.infinite(max_confamilial_score),
+          NA_real_, max_confamilial_score
+        )
+      )
+  } else {
+    NULL
+  }
+
   # ---- STEP 4: H1 PAIRS (same taxon, different sequence IDs) ----------------
   h1_pairs <- df_logit |>
     dplyr::filter(
@@ -301,6 +335,11 @@ utils::globalVariables(c(
     dplyr::left_join(h1_pairs, congener_stats, by = "id_x")
   } else {
     dplyr::mutate(h1_pairs, max_congener_score = NA_real_)
+  }
+  h1_pairs <- if (!is.null(confamilial_stats)) {
+    dplyr::left_join(h1_pairs, confamilial_stats, by = "id_x")
+  } else {
+    dplyr::mutate(h1_pairs, max_confamilial_score = NA_real_)
   }
 
   h1_pairs <- h1_pairs |>
@@ -349,6 +388,7 @@ utils::globalVariables(c(
     dplyr::mutate(
       max_foreign_score  = noise_floor_transformed,
       max_congener_score = NA_real_,
+      max_confamilial_score = NA_real_,
       gap_logit          = max_gap_ceiling,
       rank_category      = "Singleton",
       N_Obs              = 1L,
@@ -424,6 +464,35 @@ utils::globalVariables(c(
 #' and image pathways, where evidence similarity need not track phylogeny at
 #' all) -- see `inst/TaxaLikely_supplemental_methods.md` for a fuller
 #' discussion of that limitation.
+#'
+#' @section Unsequenced-genus likelihood (H3):
+#' `H3` is the hypothesis that the query comes from a genus of the anchor's
+#' family that has no reference sequence. Its score distribution is measured
+#' the way `H2`'s is: for each reference, its best match to a species of
+#' another genus in the same family (rank_code_c, conventionally family). The
+#' mean is family-equal-weighted (mean of family means), so one heavily
+#' sequenced family cannot set it, and the shift is kept at least as large as
+#' the pooled `H2` shift so an unsequenced genus is never assumed to match
+#' better than an unsequenced congener. With fewer than 3 families supplying
+#' such matches, the shift falls back to the `H2` shift plus 2.0 transform
+#' units; `Stats$h3_source` records which was used.
+#'
+#' Two sampling effects bear on the measured value, in opposite directions.
+#' Pairs below `build_sequence_matrix()`'s identity floor (`max_dist`) are
+#' never stored, so a very poor confamilial match cannot be observed, which
+#' would push the estimate up; `Stats$h3_share_near_floor` reports how much
+#' of the pool sits in the lowest 5 percent of its observed range (3 to 8
+#' percent on real 12S, 18S and COI data, so this effect is small). And
+#' under `build_sequence_matrix(by_genus = TRUE)` each genus is aligned
+#' against a random sample of other genera's single representatives, so most
+#' confamilial pairs are never computed (79 to 95 percent of eligible
+#' references had none on the same data) and the stored best is the best
+#' against one sampled genus rather than against every referenced genus of
+#' the family. That pushes the estimate down. The measured `H3` is therefore,
+#' if anything, a conservative (too distant) estimate of how closely an
+#' unsequenced genus matches. On real data it sits far closer than the
+#' earlier fixed rule: an implied mean identity of 91.8 against 83.3 percent
+#' (12S), 95.5 against 85.8 (18S) and 86.8 against 74.6 (COI).
 #'
 #' @section Pseudo-data anchoring:
 #' When `anchor_perfect = TRUE`, synthetic "perfect match" observations are
@@ -1429,18 +1498,53 @@ train_likelihood_model <- function(raw_df,
 
   h2_sigma_mat <- matrix(c(h2_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
   rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
-  h3_sigma_mat <- diag(2) * unit_ratio^2
-  rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
-
   H2 <- list(delta = h2_delta_val, sigma = h2_sigma_mat)
-  # H3 delta = H2 delta + 2.0 (logit units) / rescaled equivalent: heuristic
-  # representing one additional taxonomic rank step (genus-level mismatch vs
-  # species-level mismatch). Applied on top of whichever H2 delta -- pooled
-  # global or genus-specific via H2_Lookup -- is selected at inference time;
-  # see .evaluate_one_query(). H3 itself has no genus-specific estimate
-  # (would need family-level congener data); low priority, noted as a
-  # possible future extension.
-  H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio, sigma = h3_sigma_mat)
+
+  # ---- H3: MEASURED FROM CONFAMILIAL PAIRS -----------------------------------
+  # H3 is "the source is an unsequenced genus of the anchor's family". Its
+  # score distribution is measured the way H2's is: from each reference's best
+  # match to a species of ANOTHER genus in the SAME family
+  # (max_confamilial_score). The mean is family-equal-weighted (mean of family
+  # means) so one heavily sequenced family cannot set it. The H3 shift is kept
+  # at least as large as the pooled H2 shift, so the rings stay nested (an
+  # unsequenced genus is never assumed to match better than an unsequenced
+  # congener). When fewer than 3 families supply confamilial matches, the
+  # earlier rule (H2 shift + 2.0 transform units, unit variance) is used and
+  # Stats$h3_source says so. As at inference, the shift is applied on top of
+  # whichever H2 shift is selected for the anchor's genus.
+  h3_delta_val <- h2_delta_val + 2.0 * unit_ratio
+  h3_var <- 1.0 * unit_ratio^2
+  h3_source <- "heuristic"
+  n_h3_pooled <- NA_integer_
+  n_h3_families <- NA_integer_
+  h3_share_near_floor <- NA_real_
+  if ("max_confamilial_score" %in% names(train_df)) {
+    fam_col <- if ("rank_code_c" %in% names(train_df)) "rank_code_c" else NULL
+    h3_src <- train_df[train_df$rank_category == "1_Known_Species" &
+      !is.na(train_df$max_confamilial_score) &
+      train_df$max_confamilial_score > noise_floor_congener, , drop = FALSE]
+    fam_ids <- if (!is.null(fam_col)) h3_src[[fam_col]] else rep("all", nrow(h3_src))
+    n_fam <- length(unique(fam_ids[!is.na(fam_ids)]))
+    if (nrow(h3_src) > 2L && n_fam >= 3L) {
+      fam_means <- tapply(h3_src$max_confamilial_score, fam_ids, mean, na.rm = TRUE)
+      confam_mean <- mean(fam_means, na.rm = TRUE)
+      h3_delta_val <- max(h2_delta_val, mu_score_global - confam_mean)
+      h3_var <- max(stats::var(h3_src$max_confamilial_score, na.rm = TRUE), 0.1 * unit_ratio^2)
+      h3_source <- "measured"
+      n_h3_pooled <- nrow(h3_src)
+      n_h3_families <- n_fam
+      # Reference pairs below the matrix builder's identity floor are never
+      # stored, so a confamilial match that poor cannot be observed. Report how
+      # much of the pool sits near the lowest observed value as a check on that
+      # censoring.
+      lo <- min(h3_src$max_confamilial_score, na.rm = TRUE)
+      span <- diff(range(h3_src$max_confamilial_score, na.rm = TRUE))
+      h3_share_near_floor <- mean(h3_src$max_confamilial_score <= lo + 0.05 * span)
+    }
+  }
+  h3_sigma_mat <- matrix(c(h3_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
+  rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
+  H3 <- list(delta = h3_delta_val, sigma = h3_sigma_mat)
 
   # ---- NON-MONOTONICITY / MONOTONE-LIKELIHOOD-RATIO DIAGNOSTIC --------------
   # This check exists because the fitted score->likelihood relationship can
@@ -1517,6 +1621,10 @@ train_likelihood_model <- function(raw_df,
         n_anchors = n_anchors,
         n_h1_pooled = sum(species_params$n_obs_species),
         n_h2_pooled = n_h2_pooled,
+        h3_source = h3_source,
+        n_h3_pooled = n_h3_pooled,
+        n_h3_families = n_h3_families,
+        h3_share_near_floor = h3_share_near_floor,
         prior_weight = prior_weight,
         shrinkage = shrinkage,
         tau2_score = tau2_score,
