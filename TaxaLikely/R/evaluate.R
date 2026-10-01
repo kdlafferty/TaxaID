@@ -584,8 +584,11 @@ utils::globalVariables(c(
     # specific entry at all (used_mu1[best_i] is then already global_mu,
     # since that is what use_mu starts as before any lookup).
     h2_anchor_mu <- if (!is.na(used_mu1[best_i])) used_mu1[best_i] else global_mu[1L]
-    h2_mu <- c(h2_anchor_mu - use_h2_delta, 0)
-    h3_mu <- c(h2_anchor_mu - use_h3_delta, 0)
+    # gap means: measured in training (0 for models trained before that)
+    h2_gap_mu <- model_params$H2$gap_mean %||% 0
+    h3_gap_mu <- model_params$H3$gap_mean %||% 0
+    h2_mu <- c(h2_anchor_mu - use_h2_delta, h2_gap_mu)
+    h3_mu <- c(h2_anchor_mu - use_h3_delta, h3_gap_mu)
     if (use_1d) {
       h2_val <- stats::dnorm(best_pt[1L],
         mean = h2_mu[1L],
@@ -599,6 +602,18 @@ utils::globalVariables(c(
       h2_val <- mvtnorm::dmvnorm(best_pt, mean = h2_mu, sigma = use_h2_sigma)
       h3_val <- mvtnorm::dmvnorm(best_pt, mean = h3_mu, sigma = h3_sigma)
     }
+    # An unsequenced congener with an IDENTICAL barcode scores against the
+    # anchor as a conspecific would: H2 is a mixture of the anchor's own H1
+    # density (weight q) and the shifted Gaussian (1 - q).
+    q_id <- model_params$H2$q_identical %||% 0
+    if (!is.null(model_params$H2_Lookup) && "q_identical" %in% names(model_params$H2_Lookup) &&
+      !is.null(genus_vec) && !is.na(genus_vec[best_i])) {
+      gq <- match(genus_vec[best_i], model_params$H2_Lookup$genus)
+      if (!is.na(gq) && !is.na(model_params$H2_Lookup$q_identical[gq])) {
+        q_id <- model_params$H2_Lookup$q_identical[gq]
+      }
+    }
+    if (isTRUE(q_id > 0)) h2_val <- q_id * h1_vals[best_i] + (1 - q_id) * h2_val
 
     list(
       h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source,

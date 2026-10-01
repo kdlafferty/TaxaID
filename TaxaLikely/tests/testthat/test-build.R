@@ -988,7 +988,16 @@ for (policy in c("best_per_partner", "best_per_class")) test_that(sprintf("build
   expect_equal(mod_thin$H1_Lookup, mod_full$H1_Lookup)
   expect_equal(mod_thin$H1_Global_Mu, mod_full$H1_Global_Mu)
   expect_equal(mod_thin$H1_Sigma, mod_full$H1_Sigma)
-  expect_equal(mod_thin$H2, mod_full$H2)
+  # The H2 gap needs each reference's runner-up congener SPECIES, which
+  # best_per_class does not keep; that policy falls back to the assumed gap.
+  if (policy == "best_per_partner") {
+    expect_equal(mod_thin$H2, mod_full$H2)
+  } else {
+    keep <- setdiff(names(mod_full$H2), c("sigma", "gap_mean"))
+    expect_equal(mod_thin$H2[keep], mod_full$H2[keep])
+    expect_equal(mod_thin$H2$sigma[1, 1], mod_full$H2$sigma[1, 1])
+    expect_match(mod_thin$Stats$h2_gap_source, "best_per_class")
+  }
   expect_equal(mod_thin$H2_Lookup, mod_full$H2_Lookup)
   expect_equal(mod_thin$Confusion_Risk_Curves, mod_full$Confusion_Risk_Curves)
   expect_equal(mod_thin$Stats$n_h2_pooled, mod_full$Stats$n_h2_pooled)
