@@ -955,3 +955,17 @@ test_that("evaluate_likelihoods: a placeholder family never names the H3 row", {
   expect_equal(h3$taxon_name_rank, "order")
 })
 
+
+test_that("evaluate_likelihoods: a coarse top hit with blank ranks does not anchor the rings", {
+  skip_if_not_installed("TaxaTools")
+  m <- .make_match_df()
+  coarse <- m[1, ]
+  coarse$taxon_name <- "Eukaryota"; coarse$taxon_name_rank <- "kingdom"
+  coarse$family <- ""; coarse$genus <- ""; coarse$species <- ""
+  coarse$score <- 99
+  liks <- suppressWarnings(evaluate_likelihoods(rbind(coarse, m), .make_model_params(),
+    c("family", "genus", "species"), n_sims = 0))$likelihoods
+  h3 <- liks[liks$hypothesis_type == "unreferenced_genus", ]
+  expect_equal(h3$taxon_name, "Leuciscidae")
+  expect_false(any(is.na(liks$taxon_name[liks$hypothesis_type != "specific_candidate"])))
+})
