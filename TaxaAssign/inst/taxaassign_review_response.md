@@ -793,3 +793,18 @@ behavior on functions this document already covers above.
   depended on whether the column existed, which is the shape that did bite
   elsewhere in the ecosystem, where the collapsed vector was indexed per row and
   every row read `NA`.
+
+### posterior_consensus(): likelihood-only consensus and prior_decided (added after the review)
+
+A species call can rest on the occurrence prior rather than on the sequence: when
+several candidates match equally well, the prior picks among them and the posterior
+can still read ~1.0. New `likelihood_consensus = TRUE` re-runs the same consensus rule
+on the likelihoods alone (uniform priors, no downranking) and adds
+`likelihood_consensus_taxon`/`_rank`, `prior_role` ("agrees", "narrowed", "broadened",
+"changed") and `prior_decided` (narrowed or changed). No existing column changes
+(tested: identical output with the pass on or off, apart from the four new columns).
+On real CalIntertidal Round 1 posteriors, prior-decided species calls: 12S 2,144 of
+9,347 (22.9%), COI 1,909 of 5,835 (32.7%), 18S 568 of 1,478 (38.4%) -- many at
+posterior ~1.0, e.g. Oligocottus snyderi where the sequence supports only Oligocottus.
+The second pass roughly doubles consensus time (67 s for 13,735 12S observations).
+Six tests.

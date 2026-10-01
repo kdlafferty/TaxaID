@@ -92,6 +92,14 @@
 #'   measured against the TOTAL named posterior mass, and the whole block joins
 #'   the plausible set when the hypotheses above the floor fall short. See
 #'   \emph{Details}. `tail_mass` is reported either way.
+#' @param likelihood_consensus Logical (default `TRUE`). Also compute the
+#'   consensus the likelihoods alone support (each observation's
+#'   `score_likelihood` normalised to sum to 1, i.e. uniform priors, same
+#'   `cumulative_threshold`, `min_posterior` and `pool_tail`, no downranking)
+#'   and compare it with the reported call. Adds `likelihood_consensus_taxon`,
+#'   `likelihood_consensus_rank`, `prior_role` and `prior_decided`; changes no
+#'   other column. Skipped (columns `NA`) when `posterior_df` has no
+#'   `score_likelihood` column. See \emph{Prior-decided calls}.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -236,6 +244,21 @@
 #' `TaxaFlag::review_assignments()`'s `plausibility == "unprecedented"` check,
 #' not by prior competition inside this function.
 #'
+#' @section Prior-decided calls:
+#' The posterior multiplies the likelihood by an occurrence prior, so a
+#' reported taxon can be one the sequence evidence alone does not single
+#' out: when several candidates match equally well, the prior picks among
+#' them. That is the intended use of a prior, but the reader of a species
+#' list needs to know which calls rest on the sequence and which on where the
+#' species is known to occur. With `likelihood_consensus = TRUE`, the same
+#' consensus rule is run a second time on the likelihoods alone (uniform
+#' priors), and `prior_role` records how the prior moved the call:
+#' `"agrees"`, `"narrowed"` (a finer taxon inside the likelihood-only call),
+#' `"broadened"` (a coarser one) or `"changed"` (a different lineage).
+#' `prior_decided` is `TRUE` for `"narrowed"` and `"changed"`. A
+#' coarse-rank expansion (`winner_rank_expanded`) and a downranked call are
+#' prior-decided by construction, and are reported as such.
+#'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
@@ -289,6 +312,19 @@
 #'     \item{`tail_pooled`}{`TRUE` when the tail block joined the plausible
 #'       set because the hypotheses above `min_posterior` held less than
 #'       `cumulative_threshold` of the total mass.}
+#'     \item{`likelihood_consensus_taxon`, `likelihood_consensus_rank`}{The
+#'       call the likelihoods alone support (uniform priors). `NA` when
+#'       `likelihood_consensus = FALSE` or there is no `score_likelihood`.}
+#'     \item{`prior_role`}{How the prior moved the call relative to the
+#'       likelihood-only call: `"agrees"` (same taxon), `"narrowed"` (a finer
+#'       taxon inside the likelihood-only call, or a call where the
+#'       likelihoods alone made none), `"broadened"` (a coarser taxon
+#'       containing it, or no call where the likelihoods made one) or
+#'       `"changed"` (a taxon outside it, or nesting that could not be
+#'       verified). `NA` when neither pass made a call.}
+#'     \item{`prior_decided`}{`TRUE` when `prior_role` is `"narrowed"` or
+#'       `"changed"`: the reported taxon is one the sequence evidence alone
+#'       does not single out.}
 #'     \item{`plausible_taxa`}{List column: character vector of plausible taxon
 #'       names, sorted by descending posterior. Computed BEFORE downranking, so
 #'       for a downranked row it reflects the original coarser-rank plausible
@@ -513,9 +549,14 @@ posterior_consensus <- function(posterior_df,
                                 group_priors = NULL,
                                 min_effective_records = 0,
                                 taxonomy_cache_dir = NULL,
-                                pool_tail = FALSE) {
+                                pool_tail = FALSE,
+                                likelihood_consensus = TRUE) {
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
+  }
+  if (!is.logical(likelihood_consensus) || length(likelihood_consensus) != 1L ||
+    is.na(likelihood_consensus)) {
+    cli::cli_abort("{.arg likelihood_consensus} must be TRUE or FALSE.")
   }
   if (!is.numeric(min_effective_records) ||
     length(min_effective_records) != 1L ||
@@ -746,6 +787,11 @@ posterior_consensus <- function(posterior_df,
     }
   }
 
+  result <- .add_prior_role(
+    result, posterior_df, rank_system_eff, likelihood_consensus,
+    cumulative_threshold, min_posterior, pool_tail
+  )
+
   attr(result, "report_params") <- list(
     cumulative_threshold = cumulative_threshold,
     min_posterior        = min_posterior,
@@ -765,6 +811,83 @@ posterior_consensus <- function(posterior_df,
 #' compute_posterior()). Consolidates a pattern repeated ~8 times below for
 #' the winner_* pass-through columns.
 #' @noRd
+# Likelihood-only consensus and the prior's role in the reported call.
+# The likelihood pass reuses .consensus_one_observation() on each
+# observation's score_likelihood normalised to sum to 1 (uniform priors),
+# with no group_priors and no downranking, so the two calls differ only by
+# the prior. Its per-observation warnings repeat the main pass's and are
+# muffled.
+.add_prior_role <- function(result, posterior_df, rank_system, enabled,
+                            cumulative_threshold, min_posterior, pool_tail) {
+  result$likelihood_consensus_taxon <- NA_character_
+  result$likelihood_consensus_rank <- NA_character_
+  result$prior_role <- NA_character_
+  result$prior_decided <- NA
+  if (!enabled || !"score_likelihood" %in% names(posterior_df) || nrow(result) == 0L) {
+    return(result)
+  }
+  lik <- posterior_df$score_likelihood
+  lik[is.na(lik) | lik < 0] <- 0
+  tot <- stats::ave(lik, posterior_df$observation_id, FUN = sum)
+  posterior_df$.lik_post <- ifelse(tot > 0, lik / tot, 0)
+  chunks <- split(posterior_df, posterior_df$observation_id)
+  ids <- as.character(result$observation_id)
+  lik_rows <- suppressWarnings(lapply(ids, function(sid) {
+    ch <- chunks[[sid]]
+    if (is.null(ch)) return(.empty_consensus_row(sid))
+    .consensus_one_observation(
+      ch, sid, rank_system, cumulative_threshold, min_posterior,
+      ".lik_post", NULL, 0, pool_tail
+    )
+  }))
+  result$likelihood_consensus_taxon <- vapply(lik_rows, function(r) as.character(r$consensus_taxon[[1L]]), character(1))
+  result$likelihood_consensus_rank <- vapply(lik_rows, function(r) as.character(r$consensus_rank[[1L]]), character(1))
+  result$prior_role <- vapply(seq_along(ids), function(i) {
+    .prior_role_one(
+      chunks[[ids[i]]], rank_system,
+      result$consensus_taxon[i], result$consensus_rank[i],
+      result$likelihood_consensus_taxon[i], result$likelihood_consensus_rank[i]
+    )
+  }, character(1))
+  result$prior_decided <- ifelse(is.na(result$prior_role), NA,
+    result$prior_role %in% c("narrowed", "changed"))
+  result
+}
+
+.rank_depth <- function(rank, rank_system) {
+  std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  d <- match(rank, rank_system)
+  if (is.na(d)) d <- match(rank, std) - length(std) + length(rank_system)
+  d
+}
+
+# The value at target_rank of the observation's rows whose value at
+# taxon_rank is taxon; NA unless exactly one value is found.
+.ancestor_at <- function(chunk, taxon, taxon_rank, target_rank) {
+  if (is.null(chunk) || is.na(taxon_rank) || is.na(target_rank)) return(NA_character_)
+  hit <- chunk[.extract_rank_values(chunk, taxon_rank) %in% taxon, , drop = FALSE]
+  if (nrow(hit) == 0L) return(NA_character_)
+  anc <- unique(stats::na.omit(.extract_rank_values(hit, target_rank)))
+  if (length(anc) == 1L) as.character(anc) else NA_character_
+}
+
+.prior_role_one <- function(chunk, rank_system, t_p, r_p, t_l, r_l) {
+  if (is.na(t_p) && is.na(t_l)) return(NA_character_)
+  if (is.na(t_l)) return("narrowed")
+  if (is.na(t_p)) return("broadened")
+  if (identical(r_p, r_l)) return(if (identical(t_p, t_l)) "agrees" else "changed")
+  d_p <- .rank_depth(r_p, rank_system)
+  d_l <- .rank_depth(r_l, rank_system)
+  if (is.na(d_p) || is.na(d_l)) return("changed")
+  if (d_p > d_l) {
+    anc <- .ancestor_at(chunk, t_p, r_p, r_l)
+    if (!is.na(anc) && anc == t_l) "narrowed" else "changed"
+  } else {
+    anc <- .ancestor_at(chunk, t_l, r_l, r_p)
+    if (!is.na(anc) && anc == t_p) "broadened" else "changed"
+  }
+}
+
 .row_col_or <- function(row, col, default = NA_real_) {
   if (col %in% names(row)) row[[col]][[1L]] else default
 }
