@@ -438,15 +438,50 @@
   if (!is.data.frame(df)) {
     return(df)
   }
+  rank_cols <- setdiff(intersect(cols, names(df)), "taxon_name")
   for (cc in intersect(cols, names(df))) {
     x <- df[[cc]]
     if (is.character(x)) {
-      blank <- !is.na(x) & !nzchar(trimws(x))
+      blank <- !is.na(x) & (!nzchar(trimws(x)) |
+        (cc != "taxon_name" & .is_placeholder_rank(x)))
       if (any(blank)) {
         x[blank] <- NA_character_
         df[[cc]] <- x
       }
     }
   }
+  # A taxon_name that is itself a placeholder ("unk_family") names no taxon:
+  # rename the row to its nearest real ancestor, or NA when there is none.
+  if (all(c("taxon_name", "taxon_name_rank") %in% names(df)) && is.character(df$taxon_name)) {
+    ph <- which(!is.na(df$taxon_name) & .is_placeholder_rank(df$taxon_name))
+    if (length(ph) > 0L) {
+      std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+      for (i in ph) {
+        d <- match(df$taxon_name_rank[i], std)
+        coarser <- rev(intersect(std[seq_len(if (is.na(d)) length(std) else d - 1L)], rank_cols))
+        hit <- NA_character_
+        for (r in coarser) {
+          v <- df[[r]][i]
+          if (!is.na(v)) {
+            hit <- r
+            break
+          }
+        }
+        df$taxon_name[i] <- if (is.na(hit)) NA_character_ else df[[hit]][i]
+        df$taxon_name_rank[i] <- hit
+      }
+    }
+  }
   df
+}
+
+# Placeholder rank labels that name no taxon: "unk_family", "unk_order"
+# (reference-database fillers), "incertae sedis", "unclassified X".
+.is_placeholder_rank <- function(x) {
+  x <- trimws(as.character(x))
+  !is.na(x) & grepl(
+    "^unk_[a-z]+$|^incertae[ _]sedis\\b|^unclassified\\b|^unknown$",
+    x,
+    ignore.case = TRUE, perl = TRUE
+  )
 }

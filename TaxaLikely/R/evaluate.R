@@ -688,6 +688,13 @@ utils::globalVariables(c(
   # Build H2/H3 rows from the best candidate
   best_i <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
   best_row <- cand[best_i, , drop = FALSE]
+  # A placeholder rank value ("unk_family") names no taxon; blank it so the
+  # H2/H3 rows are named by the nearest real rank, not by the placeholder.
+  for (rc in intersect(rank_cols, names(best_row))) {
+    if (is.character(best_row[[rc]]) && .is_placeholder_rank(best_row[[rc]])) {
+      best_row[[rc]] <- NA_character_
+    }
+  }
 
   # Derive H2 taxon_name: finest rank NA -> create_taxon_names picks genus
   # Derive H3 taxon_name: two finest ranks NA -> create_taxon_names picks family
@@ -1992,4 +1999,17 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
     ), call. = FALSE)
   }
   invisible(NULL)
+}
+
+
+# Placeholder rank labels that name no taxon: "unk_family", "unk_order"
+# (reference-database fillers), "incertae sedis", "unclassified X".
+# Mirrors TaxaAssign's helper of the same name.
+.is_placeholder_rank <- function(x) {
+  x <- trimws(as.character(x))
+  !is.na(x) & grepl(
+    "^unk_[a-z]+$|^incertae[ _]sedis\\b|^unclassified\\b|^unknown$",
+    x,
+    ignore.case = TRUE, perl = TRUE
+  )
 }

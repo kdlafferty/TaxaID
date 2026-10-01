@@ -17,7 +17,8 @@ posterior_consensus(
   group_priors = NULL,
   min_effective_records = 0,
   taxonomy_cache_dir = NULL,
-  pool_tail = FALSE
+  pool_tail = FALSE,
+  unnamed_in_threshold = TRUE
 )
 }
 \arguments{
@@ -159,6 +160,15 @@ the remaining mass. \code{TRUE}: they form one tail block, the threshold is
 measured against the TOTAL named posterior mass, and the whole block joins
 the plausible set when the hypotheses above the floor fall short. See
 \emph{Details}. \code{tail_mass} is reported either way.}
+
+\item{unnamed_in_threshold}{Logical (default \code{TRUE}). Posterior on rows
+with no \code{taxon_name} (a catch-all whose position has no name, e.g. an
+unsequenced genus of a family recorded only as a placeholder) cannot join
+the LCA but is mass the call does not hold. \code{TRUE} counts it in the
+denominator of \code{cumulative_threshold}, and an observation whose named
+hypotheses cannot reach the threshold of the total is reported
+unresolved (\code{consensus_reason = "unnamed_mass"}). \code{FALSE} measures the
+threshold against named mass only. \code{unnamed_mass} is reported either way.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -211,6 +221,8 @@ including the members of a pooled tail block (0 when there is no
 named hypothesis).}
 \item{\code{tail_mass}}{Summed posterior of the hypotheses below
 \code{min_posterior}: how much mass sat in the tail block.}
+\item{\code{unnamed_mass}}{Posterior on rows with no \code{taxon_name}. Not part
+of \code{tail_mass}, which covers named hypotheses only.}
 \item{\code{tail_pooled}}{\code{TRUE} when the tail block joined the plausible
 set because the hypotheses above \code{min_posterior} held less than
 \code{cumulative_threshold} of the total mass.}

@@ -130,8 +130,12 @@ test_that("placeholder scopes absent from the taxonomy gain nothing", {
   out <- suppressMessages(add_unreferenced_prior_mass(j, .upm_priors(), .upm_tax(),
     referenced_names = "Littorina littorea"
   ))
-  expect_equal(out$unreferenced_mass[out$taxon_name == "unk_family"], 0)
-  expect_equal(out$prior_mean[out$taxon_name == "unk_family"], 3e-6)
+  # a placeholder names no taxon: with no real ancestor in `joined` the row
+  # is renamed to NA, keeps its floor prior and gains no mass
+  ph <- out[out$hypothesis_type == "unreferenced_genus", ]
+  expect_true(is.na(ph$taxon_name))
+  expect_false(isTRUE(ph$unreferenced_mass > 0))
+  expect_equal(ph$prior_mean, 3e-6)
 })
 
 test_that("other habitats and other sites do not contribute", {
