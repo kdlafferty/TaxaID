@@ -929,3 +929,17 @@ test_that("evaluate_likelihoods warns when the match object admits lower coverag
     evaluate_likelihoods(md, mp_na, rank_system = c("genus", "species"), verbose = FALSE)
   )
 })
+
+test_that("evaluate_likelihoods: a placeholder family never names the H3 row", {
+  skip_if_not_installed("TaxaTools")
+  m <- .make_match_df()
+  m$order <- "Cypriniformes"
+  m$family <- "unk_family"
+  liks <- suppressWarnings(evaluate_likelihoods(
+    m, .make_model_params(), c("order", "family", "genus", "species")
+  ))$likelihoods
+  expect_false(any(liks$taxon_name %in% "unk_family"))
+  h3 <- liks[liks$hypothesis_type == "unreferenced_genus", ]
+  expect_equal(h3$taxon_name, "Cypriniformes")
+  expect_equal(h3$taxon_name_rank, "order")
+})

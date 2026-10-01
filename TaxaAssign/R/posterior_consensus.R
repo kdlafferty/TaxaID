@@ -694,7 +694,10 @@ posterior_consensus <- function(posterior_df,
             )
             idx <- match(posterior_df$taxon_name, verified_flat$taxon_name)
             for (tc in intersect(tax_cols_present, names(verified_flat))) {
-              fill <- needs_tax & !is.na(idx)
+              # fill only cells that are empty: a lookup must never replace
+              # a rank value the row already has (nor blank it with NA)
+              fill <- needs_tax & !is.na(idx) & is.na(posterior_df[[tc]]) &
+                !is.na(verified_flat[[tc]][idx])
               if (!any(fill)) next
               posterior_df[[tc]][fill] <- verified_flat[[tc]][idx[fill]]
             }

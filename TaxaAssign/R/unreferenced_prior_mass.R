@@ -191,9 +191,16 @@ add_unreferenced_prior_mass <- function(joined,
 
   # --- Generic rows and their scopes -------------------------------------------
   rank_order <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
+  # A generic row gains mass only at its own ring's rank: an unsequenced
+  # congener at genus, an unsequenced genus at family. A row renamed to a
+  # coarser real ancestor because its family was a placeholder ("unk_family"
+  # -> its order) keeps its floor: its true scope is unknown.
+  ring_rank <- c(unreferenced_species = "genus", unreferenced_genus = "family")
+  expected_rank <- unname(ring_rank[out$hypothesis_type])
   gen <- which(out$hypothesis_type %in% unreferenced_types &
     !is.na(out$taxon_name) & out$taxon_name_rank %in% setdiff(names(taxonomy), "taxon_name") &
-    out$taxon_name_rank != "species")
+    out$taxon_name_rank != "species" &
+    (is.na(expected_rank) | out$taxon_name_rank == expected_rank))
   out$unreferenced_scope[gen] <- out$taxon_name[gen]
   out$unreferenced_scope_rank[gen] <- out$taxon_name_rank[gen]
   out$unreferenced_mass[gen] <- 0
