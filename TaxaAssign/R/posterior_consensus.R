@@ -352,6 +352,11 @@
 #'       containing it, or no call where the likelihoods made one) or
 #'       `"changed"` (a taxon outside it, or nesting that could not be
 #'       verified). `NA` when neither pass made a call.}
+#'     \item{`likelihood_support`}{Share of the baseline (sequence evidence,
+#'       named candidates' priors flattened) that falls in the reported
+#'       taxon: how close the sequence alone comes to the call. A call at
+#'       posterior 0.92 with support 0.84 was nudged over the threshold by the
+#'       prior; one with support 0.10 was chosen by it.}
 #'     \item{`prior_decided`}{`TRUE` when `prior_role` is `"narrowed"` or
 #'       `"changed"`: the reported taxon is one the sequence evidence alone
 #'       does not single out.}
@@ -889,6 +894,7 @@ posterior_consensus <- function(posterior_df,
   result$likelihood_consensus_rank <- NA_character_
   result$prior_role <- NA_character_
   result$prior_decided <- NA
+  result$likelihood_support <- NA_real_
   if (!enabled || !"score_likelihood" %in% names(posterior_df) || nrow(result) == 0L) {
     return(result)
   }
@@ -930,6 +936,18 @@ posterior_consensus <- function(posterior_df,
       result$likelihood_consensus_taxon[i], result$likelihood_consensus_rank[i]
     )
   }, character(1))
+  # Share of the baseline (sequence, named priors flattened) held by the
+  # reported taxon: the magnitude behind prior_role.
+  result$likelihood_support <- vapply(seq_along(ids), function(i) {
+    ch <- chunks[[ids[i]]]
+    tx <- result$consensus_taxon[i]
+    rk <- result$consensus_rank[i]
+    if (is.null(ch) || is.na(tx) || is.na(rk)) return(NA_real_)
+    v <- .extract_rank_values(ch, rk)
+    tot <- sum(ch$.lik_post, na.rm = TRUE)
+    if (is.null(v) || tot <= 0) return(NA_real_)
+    sum(ch$.lik_post[!is.na(v) & v == tx], na.rm = TRUE) / tot
+  }, numeric(1))
   result$prior_decided <- ifelse(is.na(result$prior_role), NA,
     result$prior_role %in% c("narrowed", "changed"))
   result

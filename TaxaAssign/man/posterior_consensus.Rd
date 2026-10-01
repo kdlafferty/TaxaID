@@ -261,6 +261,11 @@ likelihoods alone made none), \code{"broadened"} (a coarser taxon
 containing it, or no call where the likelihoods made one) or
 \code{"changed"} (a taxon outside it, or nesting that could not be
 verified). \code{NA} when neither pass made a call.}
+\item{\code{likelihood_support}}{Share of the baseline (sequence evidence,
+named candidates' priors flattened) that falls in the reported
+taxon: how close the sequence alone comes to the call. A call at
+posterior 0.92 with support 0.84 was nudged over the threshold by the
+prior; one with support 0.10 was chosen by it.}
 \item{\code{prior_decided}}{\code{TRUE} when \code{prior_role} is \code{"narrowed"} or
 \code{"changed"}: the reported taxon is one the sequence evidence alone
 does not single out.}
