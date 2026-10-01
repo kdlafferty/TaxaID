@@ -810,3 +810,20 @@ Re-running the saved 09-27 Round 1 posteriors on current main reproduces the
 saved calls at 0.995 (COI), 0.997 (12S) and 0.976 (18S): the first real-data
 measure of what the fixes merged since then changed. The second pass roughly doubles consensus time (67 s for 13,735 12S observations).
 Six tests.
+
+### 2026-10-01: posterior_consensus() reports likelihood_support; the support rule was removed
+
+`likelihood_support` is the share the sequence evidence alone gives the reported taxon
+(named candidates' priors flattened, generic unsequenced-relative rows at their own
+priors). A short-lived option, `min_likelihood_support`, moved any call below a support
+threshold up its lineage. It was removed before release, on the maintainer's reasoning:
+in a clade with one local species the prior legitimately concentrates the posterior on
+that species -- whether the species is referenced but the marker cannot separate it from
+non-local congeners, or unreferenced with no local competitors. A rule that moved such
+calls up was suppressing a right answer, not catching a wrong one. On three-arm data it
+would have removed every 18S species call (83 -> 0) for that reason. Prior-chosen calls
+go wrong when the prior itself is wrong (a local relative present but unrecorded); that is
+addressed through the prior for unrecorded relatives, not a reporting threshold.
+`likelihood_support` remains as a column so a reader can see how much of a call rests on
+the prior. The binary `prior_decided` flag was dropped: it read TRUE for nearly every
+species call (83/83 on 18S) and so carried no information.
