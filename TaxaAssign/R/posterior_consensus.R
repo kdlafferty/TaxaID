@@ -265,6 +265,14 @@
 #' `TaxaFlag::review_assignments()`'s `plausibility == "unprecedented"` check,
 #' not by prior competition inside this function.
 #'
+#' @section Defaults:
+#' A setting that corrects a defect defaults on; one that chooses between
+#' defensible rules is opt-in until its trade is measured.
+#' `unnamed_in_threshold = TRUE` is a correction: leaving unnamed mass out of
+#' the denominator makes `cumulative_threshold` mean something other than it
+#' says. `pool_tail` and `consensus_method = "credible_node"` are choices of
+#' rule, so they default off (`FALSE`, `"lca"`).
+#'
 #' @section Prior-decided calls:
 #' The posterior multiplies the likelihood by an occurrence prior, so a
 #' reported taxon can be one the sequence evidence alone does not single

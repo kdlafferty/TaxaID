@@ -521,6 +521,16 @@ that confidence has to be caught post hoc, by
 \code{TaxaFlag::review_assignments()}'s \code{plausibility == "unprecedented"} check,
 not by prior competition inside this function.
 }
+\section{Defaults}{
+
+A setting that corrects a defect defaults on; one that chooses between
+defensible rules is opt-in until its trade is measured.
+\code{unnamed_in_threshold = TRUE} is a correction: leaving unnamed mass out of
+the denominator makes \code{cumulative_threshold} mean something other than it
+says. \code{pool_tail} and \code{consensus_method = "credible_node"} are choices of
+rule, so they default off (\code{FALSE}, \code{"lca"}).
+}
+
 \section{Prior-decided calls}{
 
 The posterior multiplies the likelihood by an occurrence prior, so a
