@@ -1083,3 +1083,17 @@ on functions this document already covers above.
   leaves it almost unchanged. The documentation now says so, and says the cause is not
   established. No change to the model; a bound to [0, 1] was tried and withdrawn because
   it predicted held-out COI species worse.
+- `calibrate_query_noise(offset_form)` defaults to `"constant"` (one additive offset);
+  `"linear"` remains available. Measured as held-out error on real CalIntertidal confident
+  species, leaving out one species at a time: every correction beat none by a factor of
+  2-5; constant matched or beat linear for 12S (where a line cannot be fitted) and 18S
+  (slope interval spanning both 0 and 1); linear was better only for COI, through a
+  negative slope whose cause is not established. The maintainer chose one method for all
+  markers, the simplest to state and the most conventional. That gives up a measured gain:
+  for COI the held-out error is 0.198 (constant) against 0.181 (linear) on Illumina and
+  0.159 against 0.127 on Nanopore, about 9% and 20% worse, on a slope whose 95% interval
+  excludes zero on both platforms (-75 to -25 and -64 to -34). "Constant for every marker"
+  is therefore a choice of one method over a marker-specific gain, not a finding that
+  constant performed best everywhere. Tests:
+  test-calibrate_query_noise.R (the default test now asserts "constant"; the thin-data
+  fallback test passes `offset_form = "linear"` explicitly).

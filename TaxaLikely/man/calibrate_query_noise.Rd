@@ -10,7 +10,7 @@ calibrate_query_noise(
   priors,
   plausibility_threshold = 0.001,
   min_confident_obs = 30L,
-  offset_form = c("linear", "constant"),
+  offset_form = c("constant", "linear"),
   min_calib_species = 8L,
   calibrate_sigma = FALSE,
   evidence_col = NULL,
@@ -38,31 +38,22 @@ confident observations required to compute an offset. Below this, the
 function warns and returns \code{model_params} unchanged (offset = 0, sigma
 ratio = 1).}
 
-\item{offset_form}{Character (default \code{"linear"}). \code{"linear"} remaps each H1
-mean through a robustly-fit line \code{intercept + slope * trained_mean} (fit on
-per-species medians) -- a level-aware calibration that estimates, rather
-than assumes, how much per-species reference-scale structure transfers to
-the inference scale, and reduces to a pure additive offset when it fully
-transfers (slope = 1). It is the default because, across every real dataset
-tested (external-pipeline- and BLAST-scored DNA markers), the fitted slope
-collapsed toward 0 and a single calibrated location fit real query scores
-as well as or better than per-species-mean-plus-offset (see "Level-aware
-recalibration"). \code{"constant"} is the conservative opt-out -- one additive
-offset applied to every H1 mean (the package's original behavior),
-appropriate when you would rather retain per-species locations than collapse
-them on a location-only validation set. \code{"linear"} falls back to
-\code{"constant"} (with a warning) when fewer than \code{min_calib_species} confident
-species, or no spread of trained means, are available -- so a thin-reference
-marker (e.g. one with only a handful of referenced species) is handled
-safely without a caller having to special-case it. In particular, when
-the trained per-species score means have no spread at all -- which
-happens whenever \code{train_likelihood_model()} reports
-\code{Stats$tau2_score = 0} under \code{shrinkage = "empirical_bayes"} (observed on
-every production site to date, per that shrinkage mode's own
-documentation) -- every species' H1 mean IS the global mean by
-construction, \code{"linear"} has no spread of trained means to fit against,
-and it falls back to \code{"constant"} with a warning -- so requesting
-\code{"linear"} there is moot.}
+\item{offset_form}{Character (default \code{"constant"}). \code{"constant"} adds one
+additive offset to every H1 mean: the query scale is shifted to the
+reference scale by the amount the confident observations require, and the
+per-species locations keep their relative positions. \code{"linear"} instead
+remaps each H1 mean through \code{intercept + slope * trained_mean}, fit on
+per-species medians of the confident observations, so how much per-species
+structure transfers is estimated rather than assumed. The default is
+\code{"constant"} because, measured on held-out confident species from real
+12S, 18S and COI data, the constant offset recovered most of the
+improvement over no correction (held-out error falling by a factor of 2 to
+5), matched or beat the linear form for 12S and 18S, and is the simplest
+correction to state; the linear form helped only COI, through a negative
+slope whose cause is not established (see "Level-aware recalibration").
+\code{"linear"} falls back to \code{"constant"} (with a warning) when fewer than
+\code{min_calib_species} confident species, or no spread of trained means, are
+available.}
 
 \item{min_calib_species}{Integer (default \code{8L}). Minimum number of distinct
 confident species (spanning a range of trained means) required to fit the
@@ -210,19 +201,18 @@ congener-divergence deltas (defined relative to the H1 mean) and the gap
 feature -- the structure that actually discriminates between candidate
 species -- are untouched.
 
-One caveat governs why \code{"constant"} is retained as an opt-out rather than
-removed. The confident set is selection-biased toward abundant, well-sampled,
-easy genera, and by construction has exactly one plausible species per genus
+One caveat bears on choosing between the two forms. The confident set is
+selection-biased toward abundant, well-sampled, easy genera, and by construction has exactly one plausible species per genus
 -- so it can measure absolute H1 \emph{location} fit but cannot directly test
 congener \emph{discrimination}. A \code{"linear"} fit whose slope collapses to 0 removes
 per-species location structure that is demonstrably not real on the inference
 scale, but that this validation set cannot independently confirm is safe to
-remove in hard congener-vs-congener cases. For that reason \code{"constant"}
-remains available for an analyst who would rather keep per-species locations
-than collapse them; \code{"linear"} is the default because on every real dataset
-examined the collapse was both indicated (slope near 0) and harmless-to-helpful
-for assignment, and because it reduces to \code{"constant"} automatically wherever
-the per-species means do transfer (slope near 1). \code{"linear"} requires at least
+remove in hard congener-vs-congener cases. For that reason, and on the
+evidence, \code{"constant"} is the default: on held-out confident species from real 12S, 18S and COI data
+it matched or beat \code{"linear"} everywhere except COI, and it is the simplest
+correction to state. \code{"linear"} is available when a marker's own evidence
+supports a slope; it reduces to \code{"constant"} automatically wherever the
+per-species means transfer exactly (slope 1). \code{"linear"} requires at least
 \code{min_calib_species} confident species spanning a range of trained means; it
 falls back to \code{"constant"} with a warning otherwise.
 

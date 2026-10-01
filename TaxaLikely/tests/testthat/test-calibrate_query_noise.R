@@ -148,24 +148,25 @@ test_that("calibrate_query_noise: logit and sqrt_mismatch produce different-scal
   list(params = params, match_df = rows, priors = priors, mu = mu)
 }
 
-test_that("calibrate_query_noise: offset_form default is 'linear'", {
-  # With enough confident species spanning a range of trained means, the default
-  # (no offset_form supplied) must fit the affine form.
+test_that("calibrate_query_noise: offset_form default is 'constant'", {
+  # Even with enough confident species spanning a range of trained means, the
+  # default (no offset_form supplied) applies one additive offset.
   fx <- .make_multi_species_fixture(
     score_fn = function(mu) rep(100 * stats::plogis(mu - 0.8), 4L)
   )
   out <- calibrate_query_noise(fx$params, fx$match_df, fx$priors,
     min_confident_obs = 30L, verbose = FALSE
   )
-  expect_equal(out$Query_Calibration$offset_form, "linear")
+  expect_equal(out$Query_Calibration$offset_form, "constant")
+  expect_equal(out$Query_Calibration$slope, 1)
 })
 
-test_that("calibrate_query_noise: default 'linear' falls back to 'constant' on thin reference data", {
-  # A single-species reference set cannot support the affine fit; the default
+test_that("calibrate_query_noise: 'linear' falls back to 'constant' on thin reference data", {
+  # A single-species reference set cannot support the affine fit; 'linear'
   # must degrade gracefully to the additive offset (with a warning).
   expect_warning(
     out <- calibrate_query_noise(.make_calib_model_params("logit"), .make_calib_match_df(),
-      .make_calib_priors(),
+      .make_calib_priors(), offset_form = "linear",
       min_confident_obs = 30L, verbose = FALSE
     ),
     "Falling back to constant"
