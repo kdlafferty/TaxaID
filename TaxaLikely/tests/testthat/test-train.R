@@ -725,3 +725,66 @@ test_that("train_likelihood_model: identical-barcode congeners set q_identical",
   )))
   expect_equal(m$Stats$q_identical, 1)
 })
+
+# ---- Outer rings (order, class) ---------------------------------------------
+# 3 classes x 2 orders x 2 families x 2 genera, one species each, two
+# sequences per species. Within species 0.99, confamilial 0.90, same order
+# other family 0.85, same class other order 0.80, otherwise 0.70.
+.make_ring_raw_df <- function() {
+  tax <- expand.grid(c = 1:3, o = 1:2, f = 1:2, g = 1:2, q = 1:2)
+  tax$id <- with(tax, sprintf("C%dO%dF%dG%dQ%d", c, o, f, g, q))
+  tax$class <- paste0("Cls", tax$c)
+  tax$order <- paste0(tax$class, "ord", tax$o)
+  tax$family <- paste0(tax$order, "fam", tax$f)
+  tax$genus <- paste0(tax$family, "gen", tax$g)
+  tax$species <- paste(tax$genus, "spa")
+  grid <- expand.grid(id_x = tax$id, id_y = tax$id, stringsAsFactors = FALSE)
+  grid <- grid[grid$id_x != grid$id_y, ]
+  i <- match(grid$id_x, tax$id); j <- match(grid$id_y, tax$id)
+  for (r in c("class", "order", "family", "genus", "species")) {
+    grid[[paste0(r, ".x")]] <- tax[[r]][i]
+    grid[[paste0(r, ".y")]] <- tax[[r]][j]
+  }
+  grid$p_match <- with(grid, ifelse(species.x == species.y, 0.99,
+    ifelse(family.x == family.y, 0.90,
+      ifelse(order.x == order.y, 0.85, ifelse(class.x == class.y, 0.80, 0.70)))))
+  grid
+}
+
+test_that("train_likelihood_model: outer rings are measured, nested and named by rank", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_ring_raw_df(), rank_system = c("class", "order", "family", "genus", "species")
+  )))
+  expect_named(m$Rings, c("order", "class"))
+  expect_equal(m$Rings$order$hypothesis_type, "unreferenced_family")
+  expect_equal(m$Rings$class$hypothesis_type, "unreferenced_order")
+  tf <- function(p) TaxaLikely:::.transform_p(p, m$Score_Transform)
+  mu <- unname(m$H1_Global_Mu[1])
+  expect_equal(mu - m$Rings$order$delta, tf(0.85), tolerance = 0.05)
+  expect_equal(mu - m$Rings$class$delta, tf(0.80), tolerance = 0.05)
+  expect_gte(m$Rings$order$delta, m$H3$delta)
+  expect_gte(m$Rings$class$delta, m$Rings$order$delta)
+})
+
+test_that("evaluate_likelihoods: ring rows are named by the anchor's order and class", {
+  skip_if_not_installed("TaxaTools")
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_ring_raw_df(), rank_system = c("class", "order", "family", "genus", "species")
+  )))
+  q <- data.frame(observation_id = "Q1", score = c(82, 78),
+    taxon_name = c("Cls1ord1fam1gen1 spa", "Cls1ord2fam1gen1 spa"), taxon_name_rank = "species",
+    class = "Cls1", order = c("Cls1ord1", "Cls1ord2"),
+    family = c("Cls1ord1fam1", "Cls1ord2fam1"), genus = c("Cls1ord1fam1gen1", "Cls1ord2fam1gen1"),
+    species = c("Cls1ord1fam1gen1 spa", "Cls1ord2fam1gen1 spa"), stringsAsFactors = FALSE)
+  liks <- suppressWarnings(evaluate_likelihoods(q, m,
+    c("class", "order", "family", "genus", "species"), n_sims = 20))$likelihoods
+  fam <- liks[liks$hypothesis_type == "unreferenced_family", ]
+  ord <- liks[liks$hypothesis_type == "unreferenced_order", ]
+  expect_equal(fam$taxon_name, "Cls1ord1")
+  expect_equal(fam$taxon_name_rank, "order")
+  expect_equal(ord$taxon_name, "Cls1")
+  expect_equal(ord$taxon_name_rank, "class")
+  # an 82% match fits an unsequenced family of the order better than the species
+  sp <- liks$score_likelihood[liks$taxon_name == "Cls1ord1fam1gen1 spa"]
+  expect_gt(fam$score_likelihood, sp)
+})

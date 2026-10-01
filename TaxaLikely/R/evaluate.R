@@ -509,7 +509,8 @@ utils::globalVariables(c(
     best_i <- which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
       return(list(
-        h1 = h1_vals, h2 = 0, h3 = 0, h2_delta_source = "global_fallback",
+        h1 = h1_vals, h2 = 0, h3 = 0, rings = rep(0, length(model_params$Rings)),
+        h2_delta_source = "global_fallback",
         used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
         used_h2_delta = h2_delta, used_h2_tau_sq = NA_real_
       ))
@@ -615,8 +616,19 @@ utils::globalVariables(c(
     }
     if (isTRUE(q_id > 0)) h2_val <- q_id * h1_vals[best_i] + (1 - q_id) * h2_val
 
+    # Outer rings (order, class): same anchor, each ring's shift applied on top
+    # of whichever H2 shift was resolved for the anchor's genus.
+    ring_vals <- vapply(model_params$Rings %||% list(), function(R) {
+      mu_r <- c(h2_anchor_mu - (use_h2_delta + (R$delta - h2_delta)), 0)
+      if (use_1d) {
+        stats::dnorm(best_pt[1L], mean = mu_r[1L], sd = sqrt(R$sigma[1L, 1L]))
+      } else {
+        mvtnorm::dmvnorm(best_pt, mean = mu_r, sigma = R$sigma)
+      }
+    }, numeric(1))
+
     list(
-      h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source,
+      h1 = h1_vals, h2 = h2_val, h3 = h3_val, rings = ring_vals, h2_delta_source = delta_source,
       used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
       used_h2_delta = resolved_h2_delta, used_h2_tau_sq = resolved_h2_tau_sq
     )
@@ -707,7 +719,27 @@ utils::globalVariables(c(
   row_h3$raw_likelihood_evidence <- primary$h3 # H3 sigma is global fixed; no inflation
   row_h3$h2_delta_source <- primary$h2_delta_source
 
-  res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
+  # Outer ring rows: named by the anchor's own order (class); skipped when the
+  # anchor has no real value at that rank.
+  ring_rows <- list()
+  for (ri in seq_along(model_params$Rings %||% list())) {
+    R <- model_params$Rings[[ri]]
+    if (!R$rank %in% rank_cols || !R$rank %in% names(best_row)) next
+    v <- best_row[[R$rank]]
+    if (is.na(v) || .is_placeholder_rank(v)) next
+    row_r <- best_row
+    finer <- rank_cols[seq_along(rank_cols) > match(R$rank, rank_cols)]
+    for (fc in intersect(finer, names(row_r))) row_r[[fc]] <- NA_character_
+    row_r <- TaxaTools::create_taxon_names(row_r, rank_cols)
+    row_r$hypothesis_type <- R$hypothesis_type
+    row_r$raw_likelihood <- primary$rings[ri]
+    row_r$raw_likelihood_cov <- primary$rings[ri]
+    row_r$raw_likelihood_evidence <- primary$rings[ri]
+    row_r$h2_delta_source <- primary$h2_delta_source
+    ring_rows[[length(ring_rows) + 1L]] <- row_r
+  }
+
+  res <- dplyr::bind_rows(c(list(df_h1, row_h2, row_h3), ring_rows))
 
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
@@ -869,12 +901,17 @@ utils::globalVariables(c(
     h1_idx_map <- vector("list", nrow(res_agg))
     h2_rows <- integer(0L)
     h3_rows <- integer(0L)
+    ring_types <- vapply(model_params$Rings %||% list(), function(R) R$hypothesis_type, character(1))
+    ring_rows_mc <- lapply(ring_types, function(x) integer(0L))
     for (r in seq_len(nrow(res_agg))) {
       ht <- res_agg$hypothesis_type[r]
       if (ht == "specific_candidate") {
         h1_idx_map[[r]] <- which(cand$taxon_name == res_agg$taxon_name[r])
       } else if (ht == "unreferenced_species") {
         h2_rows <- c(h2_rows, r)
+      } else if (ht %in% ring_types) {
+        k <- match(ht, ring_types)
+        ring_rows_mc[[k]] <- c(ring_rows_mc[[k]], r)
       } else {
         h3_rows <- c(h3_rows, r)
       }
@@ -909,6 +946,9 @@ utils::globalVariables(c(
         }
         if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2
         if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3
+        for (k in seq_along(ring_rows_mc)) {
+          if (length(ring_rows_mc[[k]]) > 0L) iter_liks[ring_rows_mc[[k]]] <- sim_res$rings[k]
+        }
 
         iter_max <- max(iter_liks, na.rm = TRUE)
         if (iter_max == 0 || is.na(iter_max)) iter_max <- 1
@@ -947,6 +987,9 @@ utils::globalVariables(c(
         }
         if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2
         if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3
+        for (k in seq_along(ring_rows_mc)) {
+          if (length(ring_rows_mc[[k]]) > 0L) iter_liks[ring_rows_mc[[k]]] <- sim_res$rings[k]
+        }
 
         iter_max <- max(iter_liks, na.rm = TRUE)
         if (iter_max == 0 || is.na(iter_max)) iter_max <- 1

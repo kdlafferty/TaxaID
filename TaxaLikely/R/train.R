@@ -9,7 +9,7 @@ utils::globalVariables(c(
   "score_logit_mean", "gap_logit_mean", "score_logit_var",
   "n_obs_species", "shrunk_mu_score", "shrunk_mu_gap", "shrunk_sigma",
   "w", "species", "max_congener_score", "max_confamilial_score",
-  "h2_gap_obs", "h3_gap_obs", "partner_species", "genus", "ident", "n_species_cong", "same_genus", "same_family", "gap", "best_p", "top1", "top2",
+  "h2_gap_obs", "h3_gap_obs", "v", "max_ring_d_score", "max_ring_e_score", "partner_species", "genus", "ident", "n_species_cong", "same_genus", "same_family", "gap", "best_p", "top1", "top2",
   "top1_genus", "top1_family", "own_genus", "own_family", "delta_emp", "n_pairs", "delta_shrunk",
   "mean_cong", "var_cong", "var_shrunk",
   "median_foreign_match", "n_foreign_pairs", "n_foreign_taxa", "species_x",
@@ -323,6 +323,35 @@ utils::globalVariables(c(
     NULL
   }
 
+  # ---- STEP 3E: OUTER RINGS (order, class, ...) -------------------------------
+  # For each rank coarser than the third-finest (rank_code_d = order,
+  # rank_code_e = class under the standard rank_system), the best match to a
+  # partner in the same group at that rank but a different group one rank
+  # finer: e.g. another family of the same order. Measures how an unsequenced
+  # family (order) would score, for the outer rings.
+  ring_stats <- NULL
+  for (L in c("d", "e")) {
+    prevL <- letters[match(L, letters) - 1L]
+    cx <- paste0("rank_code_", L, c(".x", ".y"))
+    px <- paste0("rank_code_", prevL, c(".x", ".y"))
+    if (!all(c(cx, px) %in% names(df_logit))) next
+    rs_L <- df_logit |>
+      dplyr::filter(
+        !is.na(.data[[cx[1]]]), !is.na(.data[[cx[2]]]),
+        !is.na(.data[[px[1]]]), !is.na(.data[[px[2]]])
+      ) |>
+      dplyr::group_by(id_x) |>
+      dplyr::summarise(
+        v = suppressWarnings(max(score_logit[
+          .data[[cx[1]]] == .data[[cx[2]]] & .data[[px[1]]] != .data[[px[2]]] & pair_ok
+        ], -Inf)),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(v = ifelse(is.infinite(v), NA_real_, v))
+    names(rs_L)[2] <- paste0("max_ring_", L, "_score")
+    ring_stats <- if (is.null(ring_stats)) rs_L else dplyr::full_join(ring_stats, rs_L, by = "id_x")
+  }
+
   # ---- STEP 3D: UNSEQUENCED-RELATIVE GAPS -------------------------------------
   # The query feature `gap` is (best match) - (second-best match). If the
   # source were an unsequenced congener (H2), its candidates would be every
@@ -391,6 +420,7 @@ utils::globalVariables(c(
   } else {
     dplyr::mutate(h1_pairs, max_confamilial_score = NA_real_)
   }
+  if (!is.null(ring_stats)) h1_pairs <- dplyr::left_join(h1_pairs, ring_stats, by = "id_x")
   h1_pairs <- if (!is.null(gap_stats)) {
     dplyr::left_join(h1_pairs, gap_stats, by = "id_x")
   } else {
@@ -1682,6 +1712,46 @@ train_likelihood_model <- function(raw_df,
   rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
   H3 <- list(delta = h3_delta_val, sigma = h3_sigma_mat, gap_mean = h3_gap$mean)
 
+  # ---- OUTER RINGS: MEASURED THE SAME WAY AS H3 -----------------------------
+  # One ring per rank coarser than family that the rank_system carries (order
+  # -> "an unsequenced family of this order", class -> "an unsequenced order
+  # of this class"), from each reference's best match to another group one
+  # rank finer inside the same group (max_ring_<code>_score). Group-equal
+  # weighted mean and variance; each ring's shift is at least the previous
+  # ring's, so the rings stay nested. A ring with fewer than 3 groups
+  # supplying matches is not built. Gap: the earlier assumption (mean 0,
+  # unit variance).
+  Rings <- list()
+  ring_type <- c(d = "unreferenced_family", e = "unreferenced_order")
+  prev_delta <- h3_delta_val
+  for (L in c("d", "e")) {
+    vcol <- paste0("max_ring_", L, "_score")
+    gcol <- paste0("rank_code_", L)
+    if (!vcol %in% names(train_df) || !gcol %in% names(train_df)) next
+    src <- train_df[train_df$rank_category == "1_Known_Species" &
+      !is.na(train_df[[vcol]]) & train_df[[vcol]] > noise_floor_congener, , drop = FALSE]
+    grp <- src[[gcol]]
+    n_grp <- length(unique(grp[!is.na(grp)]))
+    if (nrow(src) < 3L || n_grp < 3L) next
+    g_means <- tapply(src[[vcol]], grp, mean, na.rm = TRUE)
+    r_mean <- mean(g_means, na.rm = TRUE)
+    g_within <- tapply(src[[vcol]], grp, function(v) {
+      v <- v[!is.na(v)]
+      if (length(v) > 1L) mean((v - mean(v))^2) else 0
+    })
+    r_var <- max(mean(g_within, na.rm = TRUE) + mean((g_means - r_mean)^2, na.rm = TRUE),
+      0.1 * unit_ratio^2)
+    r_delta <- max(prev_delta, mu_score_global - r_mean)
+    rk <- rank_system[length(rank_system) - match(L, letters) + 1L]
+    r_sigma <- matrix(c(r_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
+    rownames(r_sigma) <- colnames(r_sigma) <- c("score_logit", "gap_logit")
+    Rings[[rk]] <- list(
+      rank = rk, hypothesis_type = unname(ring_type[L]), delta = r_delta,
+      sigma = r_sigma, n = nrow(src), n_groups = n_grp
+    )
+    prev_delta <- r_delta
+  }
+
   # ---- NON-MONOTONICITY / MONOTONE-LIKELIHOOD-RATIO DIAGNOSTIC --------------
   # This check exists because the fitted score->likelihood relationship can
   # peak at an intermediate score rather than at a perfect (100%) match --
@@ -1748,6 +1818,7 @@ train_likelihood_model <- function(raw_df,
       H2 = H2,
       H3 = H3,
       H2_Lookup = H2_Lookup,
+      Rings = Rings,
       Confusion_Risk_Curves = confusion_risk_curves,
       Score_Transform = score_transform,
       Stats = list(
