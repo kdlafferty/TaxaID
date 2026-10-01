@@ -704,3 +704,24 @@ test_that("train_likelihood_model: H3 falls back to the H2-plus-two-units rule w
   expect_equal(m$Stats$h3_source, "heuristic")
   expect_equal(m$H3$delta, m$H2$delta + 2.0 * TaxaLikely:::.transform_unit_ratio(m$Score_Transform))
 })
+
+test_that("train_likelihood_model: H2 gap is measured from references with their own species dropped", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_family_raw_df(4L), rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$h2_gap_source, "measured")
+  # own species dropped: best = congener (0.92), runner-up = confamilial (0.85)
+  tf <- function(p) TaxaLikely:::.transform_p(p, m$Score_Transform)
+  expect_equal(m$H2$gap_mean, tf(0.92) - tf(0.85), tolerance = 1e-6)
+  expect_equal(m$Stats$q_identical, 0)
+})
+
+test_that("train_likelihood_model: identical-barcode congeners set q_identical", {
+  raw <- .make_family_raw_df(4L)
+  same_genus <- raw$genus.x == raw$genus.y & raw$species.x != raw$species.y
+  raw$p_match[same_genus] <- 1.0
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    raw, rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$q_identical, 1)
+})
