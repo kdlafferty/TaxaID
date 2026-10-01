@@ -506,7 +506,15 @@ utils::globalVariables(c(
       }
     }
 
-    best_i <- which.max(s_vec)
+    # Anchor for the unsequenced-relative rings: the best-scoring candidate
+    # that has a genus. A higher-scoring hit identified only at a coarse rank
+    # (e.g. "Eukaryota") would name every ring NA and drop them all.
+    has_tax <- if (!is.null(genus_vec)) {
+      !is.na(genus_vec) & nzchar(trimws(as.character(genus_vec)))
+    } else {
+      rep(TRUE, length(s_vec))
+    }
+    best_i <- if (any(has_tax)) which(has_tax)[which.max(s_vec[has_tax])] else which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
       return(list(
         h1 = h1_vals, h2 = 0, h3 = 0, rings = rep(0, length(model_params$Rings)),
@@ -686,7 +694,22 @@ utils::globalVariables(c(
     )
 
   # Build H2/H3 rows from the best candidate
-  best_i <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
+  cand_has_tax <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(cand)) {
+    g <- as.character(cand[[genus_rank_col]])
+    !is.na(g) & nzchar(trimws(g)) & !.is_placeholder_rank(g)
+  } else {
+    rep(TRUE, nrow(cand))
+  }
+  h1_tax <- primary$h1 * cand_has_tax
+  best_i <- if (any(h1_tax > 0)) {
+    which.max(h1_tax)
+  } else if (any(primary$h1 > 0) && !any(cand_has_tax)) {
+    which.max(primary$h1)
+  } else if (any(cand_has_tax)) {
+    which(cand_has_tax)[which.max(cand$score_logit[cand_has_tax])]
+  } else {
+    which.max(cand$score_logit)
+  }
   best_row <- cand[best_i, , drop = FALSE]
   # A placeholder rank value ("unk_family") names no taxon; blank it so the
   # H2/H3 rows are named by the nearest real rank, not by the placeholder.

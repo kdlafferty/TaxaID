@@ -954,3 +954,4 @@ test_that("evaluate_likelihoods: a placeholder family never names the H3 row", {
   expect_equal(h3$taxon_name, "Cypriniformes")
   expect_equal(h3$taxon_name_rank, "order")
 })
+
