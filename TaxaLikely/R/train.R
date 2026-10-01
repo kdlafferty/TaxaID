@@ -473,7 +473,9 @@ utils::globalVariables(c(
 #' mean is family-equal-weighted (mean of family means), so one heavily
 #' sequenced family cannot set it, and the shift is kept at least as large as
 #' the pooled `H2` shift so an unsequenced genus is never assumed to match
-#' better than an unsequenced congener. With fewer than 3 families supplying
+#' better than an unsequenced congener. The variance uses the same
+#' family-equal weights (mean within-family variance plus the variance of
+#' family means). With fewer than 3 families supplying
 #' such matches, the shift falls back to the `H2` shift plus 2.0 transform
 #' units; `Stats$h3_source` records which was used.
 #'
@@ -1533,7 +1535,16 @@ train_likelihood_model <- function(raw_df,
       fam_means <- tapply(h3_src$max_confamilial_score, fam_ids, mean, na.rm = TRUE)
       confam_mean <- mean(fam_means, na.rm = TRUE)
       h3_delta_val <- max(h2_delta_val, mu_score_global - confam_mean)
-      h3_var <- max(stats::var(h3_src$max_confamilial_score, na.rm = TRUE), 0.1 * unit_ratio^2)
+      # Variance on the same family-equal weights as the mean (law of total
+      # variance: mean within-family variance + variance of family means), so
+      # a heavily sequenced family can set neither the centre nor the spread.
+      fam_within <- tapply(h3_src$max_confamilial_score, fam_ids, function(v) {
+        v <- v[!is.na(v)]
+        if (length(v) > 1L) mean((v - mean(v))^2) else 0
+      })
+      h3_var_fe <- mean(fam_within, na.rm = TRUE) +
+        mean((fam_means - confam_mean)^2, na.rm = TRUE)
+      h3_var <- max(h3_var_fe, 0.1 * unit_ratio^2)
       h3_source <- "measured"
       n_h3_pooled <- nrow(h3_src)
       n_h3_families <- n_fam

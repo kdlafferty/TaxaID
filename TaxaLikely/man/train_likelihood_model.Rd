@@ -319,7 +319,9 @@ another genus in the same family (rank_code_c, conventionally family). The
 mean is family-equal-weighted (mean of family means), so one heavily
 sequenced family cannot set it, and the shift is kept at least as large as
 the pooled \code{H2} shift so an unsequenced genus is never assumed to match
-better than an unsequenced congener. With fewer than 3 families supplying
+better than an unsequenced congener. The variance uses the same
+family-equal weights (mean within-family variance plus the variance of
+family means). With fewer than 3 families supplying
 such matches, the shift falls back to the \code{H2} shift plus 2.0 transform
 units; \code{Stats$h3_source} records which was used.
 
