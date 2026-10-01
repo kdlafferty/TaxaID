@@ -20,7 +20,8 @@ posterior_consensus(
   pool_tail = FALSE,
   unnamed_in_threshold = TRUE,
   consensus_method = c("lca", "credible_node"),
-  likelihood_consensus = TRUE
+  likelihood_consensus = TRUE,
+  min_likelihood_support = 0
 )
 }
 \arguments{
@@ -191,9 +192,17 @@ unsequenced-relative rows keep their own; uniform when there is no
 \code{prior_mean}), same consensus method and
 \code{cumulative_threshold}, \code{min_posterior} and \code{pool_tail}, no downranking)
 and compare it with the reported call. Adds \code{likelihood_consensus_taxon},
-\code{likelihood_consensus_rank}, \code{prior_role} and \code{prior_decided}; changes no
-other column. Skipped (columns \code{NA}) when \code{posterior_df} has no
-\code{score_likelihood} column. See \emph{Prior-decided calls}.}
+\code{likelihood_consensus_rank}, \code{prior_role} and \code{likelihood_support};
+changes no other column. Skipped (columns \code{NA}) when \code{posterior_df} has
+no \code{score_likelihood} column. See \emph{Sequence support}.}
+
+\item{min_likelihood_support}{Numeric in [0, 1] (default \code{0}, off). A
+call stands at its rank only when \code{likelihood_support} (the share the
+sequence evidence alone gives it) is at least this; otherwise it moves
+up its own lineage to the first ancestor that clears it
+(\code{consensus_reason = "support_upranked"}), or is unresolved when none
+does (\code{"support_unresolved"}). One rule for every marker: how coarse a
+marker's calls end up follows from its data, not from the marker.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -266,9 +275,6 @@ named candidates' priors flattened) that falls in the reported
 taxon: how close the sequence alone comes to the call. A call at
 posterior 0.92 with support 0.84 was nudged over the threshold by the
 prior; one with support 0.10 was chosen by it.}
-\item{\code{prior_decided}}{\code{TRUE} when \code{prior_role} is \code{"narrowed"} or
-\code{"changed"}: the reported taxon is one the sequence evidence alone
-does not single out.}
 \item{\code{plausible_taxa}}{List column: character vector of plausible taxon
 names, sorted by descending posterior. Computed BEFORE downranking, so
 for a downranked row it reflects the original coarser-rank plausible
@@ -531,28 +537,22 @@ says. \code{pool_tail} and \code{consensus_method = "credible_node"} are choices
 rule, so they default off (\code{FALSE}, \code{"lca"}).
 }
 
-\section{Prior-decided calls}{
+\section{Sequence support}{
 
 The posterior multiplies the likelihood by an occurrence prior, so a
 reported taxon can be one the sequence evidence alone does not single
 out: when several candidates match equally well, the prior picks among
 them. That is the intended use of a prior, but the reader of a species
 list needs to know which calls rest on the sequence and which on where the
-species is known to occur. With \code{likelihood_consensus = TRUE}, the same
-consensus rule is run a second time on the likelihoods alone (uniform
-priors), and \code{prior_role} records how the prior moved the call:
-\code{"agrees"}, \code{"narrowed"} (a finer taxon inside the likelihood-only call),
-\code{"broadened"} (a coarser one) or \code{"changed"} (a different lineage).
-\code{prior_decided} is \code{TRUE} for \code{"narrowed"} and \code{"changed"}. A
-coarse-rank expansion (\code{winner_rank_expanded}) and a downranked call are
-prior-decided by construction, and are reported as such.
-
-The baseline is a uniform prior over the observation's own candidate set,
-not the absence of a prior. Its weights therefore depend on how many
-candidates the observation has, and generic complement rows (an
-unsequenced congener or genus) get the same weight as named species, so an
-observation with many near-equal candidates reads as prior-decided more
-readily than one with few.
+species is known to occur. With \code{likelihood_consensus = TRUE} the call is
+compared with a baseline in which the named candidates' priors are
+flattened (each gets their mean) while generic unsequenced-relative rows
+keep their own priors. \code{likelihood_support} is the share of that baseline
+in the reported taxon: 0.84 means the sequence nearly makes the call
+itself and the prior nudged it over \code{cumulative_threshold}; 0.10 means
+the prior chose it. \code{prior_role} records the direction (\code{"agrees"},
+\code{"narrowed"}, \code{"broadened"}, \code{"changed"}). \code{min_likelihood_support} turns
+the measure into a reporting rule.
 }
 
 \examples{

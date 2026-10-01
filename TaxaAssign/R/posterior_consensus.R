@@ -118,9 +118,16 @@
 #'   `prior_mean`), same consensus method and
 #'   `cumulative_threshold`, `min_posterior` and `pool_tail`, no downranking)
 #'   and compare it with the reported call. Adds `likelihood_consensus_taxon`,
-#'   `likelihood_consensus_rank`, `prior_role` and `prior_decided`; changes no
-#'   other column. Skipped (columns `NA`) when `posterior_df` has no
-#'   `score_likelihood` column. See \emph{Prior-decided calls}.
+#'   `likelihood_consensus_rank`, `prior_role` and `likelihood_support`;
+#'   changes no other column. Skipped (columns `NA`) when `posterior_df` has
+#'   no `score_likelihood` column. See \emph{Sequence support}.
+#' @param min_likelihood_support Numeric in \[0, 1\] (default `0`, off). A
+#'   call stands at its rank only when `likelihood_support` (the share the
+#'   sequence evidence alone gives it) is at least this; otherwise it moves
+#'   up its own lineage to the first ancestor that clears it
+#'   (`consensus_reason = "support_upranked"`), or is unresolved when none
+#'   does (`"support_unresolved"`). One rule for every marker: how coarse a
+#'   marker's calls end up follows from its data, not from the marker.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -273,27 +280,21 @@
 #' says. `pool_tail` and `consensus_method = "credible_node"` are choices of
 #' rule, so they default off (`FALSE`, `"lca"`).
 #'
-#' @section Prior-decided calls:
+#' @section Sequence support:
 #' The posterior multiplies the likelihood by an occurrence prior, so a
 #' reported taxon can be one the sequence evidence alone does not single
 #' out: when several candidates match equally well, the prior picks among
 #' them. That is the intended use of a prior, but the reader of a species
 #' list needs to know which calls rest on the sequence and which on where the
-#' species is known to occur. With `likelihood_consensus = TRUE`, the same
-#' consensus rule is run a second time on the likelihoods alone (uniform
-#' priors), and `prior_role` records how the prior moved the call:
-#' `"agrees"`, `"narrowed"` (a finer taxon inside the likelihood-only call),
-#' `"broadened"` (a coarser one) or `"changed"` (a different lineage).
-#' `prior_decided` is `TRUE` for `"narrowed"` and `"changed"`. A
-#' coarse-rank expansion (`winner_rank_expanded`) and a downranked call are
-#' prior-decided by construction, and are reported as such.
-#'
-#' The baseline is a uniform prior over the observation's own candidate set,
-#' not the absence of a prior. Its weights therefore depend on how many
-#' candidates the observation has, and generic complement rows (an
-#' unsequenced congener or genus) get the same weight as named species, so an
-#' observation with many near-equal candidates reads as prior-decided more
-#' readily than one with few.
+#' species is known to occur. With `likelihood_consensus = TRUE` the call is
+#' compared with a baseline in which the named candidates' priors are
+#' flattened (each gets their mean) while generic unsequenced-relative rows
+#' keep their own priors. `likelihood_support` is the share of that baseline
+#' in the reported taxon: 0.84 means the sequence nearly makes the call
+#' itself and the prior nudged it over `cumulative_threshold`; 0.10 means
+#' the prior chose it. `prior_role` records the direction (`"agrees"`,
+#' `"narrowed"`, `"broadened"`, `"changed"`). `min_likelihood_support` turns
+#' the measure into a reporting rule.
 #'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
@@ -365,9 +366,6 @@
 #'       taxon: how close the sequence alone comes to the call. A call at
 #'       posterior 0.92 with support 0.84 was nudged over the threshold by the
 #'       prior; one with support 0.10 was chosen by it.}
-#'     \item{`prior_decided`}{`TRUE` when `prior_role` is `"narrowed"` or
-#'       `"changed"`: the reported taxon is one the sequence evidence alone
-#'       does not single out.}
 #'     \item{`plausible_taxa`}{List column: character vector of plausible taxon
 #'       names, sorted by descending posterior. Computed BEFORE downranking, so
 #'       for a downranked row it reflects the original coarser-rank plausible
@@ -595,7 +593,8 @@ posterior_consensus <- function(posterior_df,
                                 pool_tail = FALSE,
                                 unnamed_in_threshold = TRUE,
                                 consensus_method = c("lca", "credible_node"),
-                                likelihood_consensus = TRUE) {
+                                likelihood_consensus = TRUE,
+                                min_likelihood_support = 0) {
   consensus_method <- match.arg(consensus_method)
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
@@ -603,6 +602,10 @@ posterior_consensus <- function(posterior_df,
   if (!is.logical(unnamed_in_threshold) || length(unnamed_in_threshold) != 1L ||
     is.na(unnamed_in_threshold)) {
     cli::cli_abort("{.arg unnamed_in_threshold} must be TRUE or FALSE.")
+  }
+  if (!is.numeric(min_likelihood_support) || length(min_likelihood_support) != 1L ||
+    is.na(min_likelihood_support) || min_likelihood_support < 0 || min_likelihood_support > 1) {
+    cli::cli_abort("{.arg min_likelihood_support} must be a single number in [0, 1].")
   }
   if (!is.logical(likelihood_consensus) || length(likelihood_consensus) != 1L ||
     is.na(likelihood_consensus)) {
@@ -842,9 +845,10 @@ posterior_consensus <- function(posterior_df,
   }
 
   result <- .add_prior_role(
-    result, posterior_df, rank_system_eff, likelihood_consensus,
+    result, posterior_df, rank_system_eff, likelihood_consensus || min_likelihood_support > 0,
     cumulative_threshold, min_posterior, pool_tail,
-    unnamed_in_threshold, consensus_method
+    unnamed_in_threshold, consensus_method,
+    min_likelihood_support, posterior_col
   )
 
   attr(result, "report_params") <- list(
@@ -897,11 +901,11 @@ posterior_consensus <- function(posterior_df,
 # muffled.
 .add_prior_role <- function(result, posterior_df, rank_system, enabled,
                             cumulative_threshold, min_posterior, pool_tail,
-                            unnamed_in_threshold = TRUE, consensus_method = "lca") {
+                            unnamed_in_threshold = TRUE, consensus_method = "lca",
+                            min_likelihood_support = 0, posterior_col = "posterior_point_est") {
   result$likelihood_consensus_taxon <- NA_character_
   result$likelihood_consensus_rank <- NA_character_
   result$prior_role <- NA_character_
-  result$prior_decided <- NA
   result$likelihood_support <- NA_real_
   if (!enabled || !"score_likelihood" %in% names(posterior_df) || nrow(result) == 0L) {
     return(result)
@@ -956,8 +960,48 @@ posterior_consensus <- function(posterior_df,
     if (is.null(v) || tot <= 0) return(NA_real_)
     sum(ch$.lik_post[!is.na(v) & v == tx], na.rm = TRUE) / tot
   }, numeric(1))
-  result$prior_decided <- ifelse(is.na(result$prior_role), NA,
-    result$prior_role %in% c("narrowed", "changed"))
+  # Support rule: a call stands at its rank only when the sequence (the
+  # baseline) gives it at least min_likelihood_support; otherwise it moves up
+  # its own lineage to the first ancestor that clears it, or is unresolved.
+  if (min_likelihood_support > 0) {
+    std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+    for (i in seq_along(ids)) {
+      sup <- result$likelihood_support[i]
+      tx <- result$consensus_taxon[i]
+      rk <- result$consensus_rank[i]
+      if (is.na(tx) || is.na(rk) || is.na(sup) || sup >= min_likelihood_support) next
+      ch <- chunks[[ids[i]]]
+      tot_b <- sum(ch$.lik_post, na.rm = TRUE)
+      tot_p <- sum(ch[[posterior_col]], na.rm = TRUE)
+      coarser <- rev(rank_system[seq_len(match(rk, rank_system) - 1L)])
+      new_tx <- NA_character_
+      new_rk <- NA_character_
+      new_sup <- NA_real_
+      for (rr in coarser) {
+        anc <- .ancestor_at(ch, tx, rk, rr)
+        if (is.na(anc)) next
+        v <- .extract_rank_values(ch, rr)
+        s_rr <- sum(ch$.lik_post[!is.na(v) & v == anc], na.rm = TRUE) / tot_b
+        if (s_rr >= min_likelihood_support) {
+          new_tx <- anc
+          new_rk <- rr
+          new_sup <- s_rr
+          break
+        }
+      }
+      result$consensus_taxon[i] <- new_tx
+      result$consensus_rank[i] <- new_rk
+      result$likelihood_support[i] <- new_sup
+      result$consensus_reason[i] <- if (is.na(new_tx)) "support_unresolved" else "support_upranked"
+      result$is_resolved[i] <- !is.na(new_rk) && new_rk == rank_system[length(rank_system)]
+      result$consensus_posterior[i] <- if (is.na(new_tx)) {
+        NA_real_
+      } else {
+        v <- .extract_rank_values(ch, new_rk)
+        sum(ch[[posterior_col]][!is.na(v) & v == new_tx], na.rm = TRUE)
+      }
+    }
+  }
   result
 }
 

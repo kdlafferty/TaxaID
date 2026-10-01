@@ -1504,7 +1504,6 @@ test_that("equal likelihoods split by the prior are prior-decided (narrowed)", {
   expect_equal(out$likelihood_consensus_taxon, "Littorina")
   expect_equal(out$likelihood_consensus_rank, "genus")
   expect_equal(out$prior_role, "narrowed")
-  expect_true(out$prior_decided)
 })
 
 test_that("a call the likelihoods already make is not prior-decided", {
@@ -1512,7 +1511,6 @@ test_that("a call the likelihoods already make is not prior-decided", {
   expect_equal(out$consensus_taxon, "Littorina keenae")
   expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
   expect_equal(out$prior_role, "agrees")
-  expect_false(out$prior_decided)
 })
 
 test_that("a prior that overturns the likelihood winner is 'changed'", {
@@ -1520,7 +1518,6 @@ test_that("a prior that overturns the likelihood winner is 'changed'", {
   expect_equal(out$consensus_taxon, "Littorina scutulata")
   expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
   expect_equal(out$prior_role, "changed")
-  expect_true(out$prior_decided)
 })
 
 test_that("a prior that spreads mass to a coarser call is 'broadened', not decided", {
@@ -1528,28 +1525,28 @@ test_that("a prior that spreads mass to a coarser call is 'broadened', not decid
   expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
   expect_equal(out$consensus_taxon, "Littorina")
   expect_equal(out$prior_role, "broadened")
-  expect_false(out$prior_decided)
 })
 
 test_that("likelihood_consensus = FALSE, or no score_likelihood, leaves NA columns", {
   off <- .pd_run(.pd_df(lik = c(1, 1), prior = c(0.2, 0.001)), likelihood_consensus = FALSE)
   expect_true(is.na(off$prior_role))
+  expect_false("prior_decided" %in% names(off))
   df <- .pd_df(lik = c(1, 1), prior = c(0.2, 0.001))
   df$score_likelihood <- NULL
   nolik <- .pd_run(df)
-  expect_true(all(c("likelihood_consensus_taxon", "prior_decided") %in% names(nolik)))
-  expect_true(is.na(nolik$prior_decided))
+  expect_true(all(c("likelihood_consensus_taxon", "likelihood_support") %in% names(nolik)))
+  expect_true(is.na(nolik$likelihood_support))
 })
 
 test_that("the likelihood pass leaves every other column unchanged", {
   df <- .pd_df(lik = c(1, 1), prior = c(0.2, 0.001))
   on <- .pd_run(df)
   off <- .pd_run(df, likelihood_consensus = FALSE)
-  new_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank", "prior_role", "prior_decided", "likelihood_support")
+  new_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank", "prior_role", "likelihood_support")
   expect_identical(on[, setdiff(names(on), new_cols)], off[, setdiff(names(off), new_cols)])
 })
 
-test_that("prior_decided is not triggered by a complement row the prior already discounts", {
+test_that("a complement row the prior already discounts does not move prior_role", {
   lik <- c(1, 0.05, 0.9)
   prior <- c(0.01, 0.01, 1e-6)
   pt <- lik * prior / sum(lik * prior)
@@ -1567,7 +1564,6 @@ test_that("prior_decided is not triggered by a complement row the prior already 
   # under a uniform baseline the genus row (lik 0.9) would win and every call
   # would read prior-decided; flattening only the named candidates does not
   expect_equal(out$prior_role, "agrees")
-  expect_false(out$prior_decided)
 })
 
 test_that("likelihood_support is the reported taxon's share under the flattened-prior baseline", {
@@ -1580,4 +1576,33 @@ test_that("likelihood_support is the reported taxon's share under the flattened-
   expect_equal(out$consensus_taxon, "Rhacochilus vacca")
   expect_equal(out$likelihood_support, 1 / 1.19, tolerance = 1e-9)
   expect_equal(out$prior_role, "narrowed")
+})
+
+# ---- min_likelihood_support: one support rule for every marker -------------
+.sr_df <- function(lik, prior) {
+  data.frame(observation_id = "E1",
+    taxon_name = c("Rhacochilus vacca", "Rhacochilus toxotes"), taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate", family = "Embiotocidae", genus = "Rhacochilus",
+    score_likelihood = lik, prior_mean = prior,
+    posterior_point_est = lik * prior / sum(lik * prior), stringsAsFactors = FALSE)
+}
+.sr <- function(df, ...) suppressMessages(posterior_consensus(df,
+  rank_system = c("family", "genus", "species"), ...))
+
+test_that("a call the sequence supports stands; one it does not moves up its lineage", {
+  strong <- .sr(.sr_df(c(1, 0.19), c(4.6e-3, 2.2e-3)), min_likelihood_support = 0.5)
+  expect_equal(strong$consensus_taxon, "Rhacochilus vacca") # support 0.84
+  weak <- .sr(.sr_df(c(1, 1), c(0.5, 0.001)), min_likelihood_support = 0.6)
+  # equal likelihoods: the species gets 0.5 of the baseline, the genus 1.0
+  expect_equal(weak$consensus_taxon, "Rhacochilus")
+  expect_equal(weak$consensus_rank, "genus")
+  expect_equal(weak$consensus_reason, "support_upranked")
+  expect_equal(weak$likelihood_support, 1)
+  expect_false(weak$is_resolved)
+})
+
+test_that("min_likelihood_support = 0 (default) changes no call", {
+  df <- .sr_df(c(1, 1), c(0.5, 0.001))
+  expect_identical(.sr(df), .sr(df, min_likelihood_support = 0))
+  expect_equal(.sr(df)$consensus_taxon, "Rhacochilus vacca")
 })
