@@ -28,13 +28,18 @@ utils::globalVariables(c(
 #'   typically well-separated from background/floor priors (often ~1e-6); the
 #'   default is a conservative gap above that floor.
 #'
-#' @return Data frame: one row per confident `observation_id`, with all
+#' @return Data frame: one row per confident `observation_id` -- an
+#'   observation whose top hit overall is the one locally plausible species
+#'   of its genus (a top hit to any other species, including a congener, is
+#'   excluded) -- with all
 #'   `match_df` columns plus `confident_genus` (the genus that qualified) and
 #'   `confident_species` (its single plausible species, from `priors`).
 #'   Only binomial prior names count as species, and each distinct species
 #'   counts once however many sites list it. Attributes `n_qualifying_genera`
 #'   and `n_prior_names_not_binomial` (species-rank prior names such as
-#'   "Ulva sp." or a family name that were not counted) qualify that result.
+#'   "Ulva sp." or a family name that were not counted) qualify that result;
+#'   `n_excluded_other_species` counts top hits in a qualifying genus that
+#'   were not its plausible species.
 #'
 #' @seealso [calibrate_query_noise()]
 #'
@@ -42,6 +47,7 @@ utils::globalVariables(c(
 #' match_df <- data.frame(
 #'   observation_id = paste0("Q", 1:5),
 #'   genus          = "Genusone",
+#'   taxon_name     = "Genusone speciesa",
 #'   score_original = c(95, 96, 94, 97, 93)
 #' )
 #' priors <- data.frame(
@@ -64,7 +70,7 @@ identify_confident_observations <- function(match_df,
     stop("identify_confident_observations: 'priors' must be a data frame.", call. = FALSE)
   }
 
-  needed_match <- c("observation_id", "genus")
+  needed_match <- c("observation_id", "genus", "taxon_name")
   missing_match <- setdiff(needed_match, names(match_df))
   if (length(missing_match) > 0L) {
     stop(sprintf(
@@ -121,16 +127,23 @@ identify_confident_observations <- function(match_df,
     return(match_df[integer(0L), , drop = FALSE])
   }
 
-  confident <- match_df |>
-    dplyr::filter(genus %in% genus_summary$genus) |>
+  # Each observation's TOP hit overall, kept only when it IS the genus's one
+  # locally plausible species. Taking the best hit within a qualifying genus
+  # instead admits rows whose matched reference is a different species (a
+  # congener, or the sequence of an unreferenced species matching a relative)
+  # and observations whose best match lies in another genus; both pull the
+  # observed scores below the confident species' own, biasing the offset.
+  top <- match_df |>
     dplyr::group_by(observation_id) |>
     dplyr::slice_max(.data[[score_col]], n = 1L, with_ties = FALSE) |>
     dplyr::ungroup()
-
-  confident$confident_genus <- confident$genus
-  confident$confident_species <- genus_summary$confident_species[
-    match(confident$genus, genus_summary$genus)
+  top$confident_species <- genus_summary$confident_species[
+    match(top$genus, genus_summary$genus)
   ]
+  n_top_in_genus <- sum(!is.na(top$confident_species))
+  confident <- top[!is.na(top$confident_species) &
+    top$taxon_name == top$confident_species, , drop = FALSE]
+  confident$confident_genus <- confident$genus
 
   # The qualifying-genus count is conditional on which names count as
   # species: open-nomenclature and coarse names ("Ulva sp.", "Mazzaella cf.
@@ -145,6 +158,8 @@ identify_confident_observations <- function(match_df,
     nrow(genus_summary), n_names_not_binomial, n_species_names
   ))
   attr(confident, "n_qualifying_genera") <- nrow(genus_summary)
+  # top hits in a qualifying genus that were NOT the confident species
+  attr(confident, "n_excluded_other_species") <- n_top_in_genus - nrow(confident)
   attr(confident, "n_prior_names_not_binomial") <- n_names_not_binomial
 
   confident
@@ -580,11 +595,31 @@ calibrate_query_noise <- function(model_params,
 
   global_mu_score <- as.numeric(model_params$H1_Global_Mu["score_logit"])
   lookup_idx <- match(confident$confident_species, model_params$H1_Lookup$lookup_key)
-  expected_logit <- ifelse(
-    !is.na(lookup_idx),
-    model_params$H1_Lookup$mu_score[lookup_idx],
-    global_mu_score
-  )
+  # A confident species with no trained mean has no expected score to compare
+  # with; its rows are left out rather than compared with the global mean.
+  n_no_trained_mean <- sum(is.na(lookup_idx))
+  if (n_no_trained_mean > 0L) {
+    keep <- !is.na(lookup_idx)
+    confident <- confident[keep, , drop = FALSE]
+    observed_logit <- observed_logit[keep]
+    p_norm <- p_norm[keep]
+    lookup_idx <- lookup_idx[keep]
+  }
+  expected_logit <- model_params$H1_Lookup$mu_score[lookup_idx]
+  if (length(expected_logit) < min_confident_obs) {
+    warning(sprintf(
+      "calibrate_query_noise: only %d confident observation(s) have a trained species mean (need >= %d). Returning model_params unchanged.",
+      length(expected_logit), min_confident_obs
+    ), call. = FALSE)
+    model_params$Query_Calibration <- list(
+      offset_logit = 0, offset_form = "constant", slope = 1, intercept = 0,
+      sigma_ratio = 1, reference_evidence = NA_real_,
+      n_confident_obs = length(expected_logit),
+      n_confident_genera = length(unique(confident$confident_genus)),
+      plausibility_threshold = plausibility_threshold
+    )
+    return(model_params)
+  }
 
   residuals <- observed_logit - expected_logit
   offset <- stats::median(residuals, na.rm = TRUE)
@@ -711,6 +746,8 @@ calibrate_query_noise <- function(model_params,
     reference_evidence = reference_evidence,
     n_confident_obs = nrow(confident),
     n_confident_genera = n_confident_genera,
+    n_excluded_other_species = attr(confident, "n_excluded_other_species") %||% NA_integer_,
+    n_excluded_no_trained_mean = n_no_trained_mean,
     plausibility_threshold = plausibility_threshold
   )
 

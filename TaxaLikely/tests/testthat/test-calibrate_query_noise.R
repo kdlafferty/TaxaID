@@ -34,6 +34,7 @@
   data.frame(
     observation_id = paste0("Q", 1:40),
     genus = "Genusone",
+    taxon_name = "Genusone speciesa",
     score_original = 95.0,
     stringsAsFactors = FALSE
   )
@@ -137,6 +138,7 @@ test_that("calibrate_query_noise: logit and sqrt_mismatch produce different-scal
     data.frame(
       observation_id = sprintf("Q%02d_%d", i, seq_len(n_obs_each)),
       genus = gen[i],
+      taxon_name = keys[i],
       score_original = score_fn(mu[i]),
       stringsAsFactors = FALSE
     )
@@ -248,4 +250,20 @@ test_that("calibrate_query_noise: model_params without Score_Transform errors lo
     ),
     "Score_Transform"
   )
+})
+
+test_that("calibrate_query_noise: confident species without a trained mean are left out, not compared with the global mean", {
+  params <- .make_calib_model_params("logit")
+  m <- .make_calib_match_df()
+  extra <- data.frame(observation_id = paste0("R", 1:40), genus = "Genustwo",
+    taxon_name = "Genustwo speciesb", score_original = 70, stringsAsFactors = FALSE)
+  pr <- rbind(.make_calib_priors(), data.frame(taxon_name = "Genustwo speciesb",
+    taxon_name_rank = "species", theta_mean = 0.5))
+  base <- calibrate_query_noise(params, m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE)
+  with_extra <- calibrate_query_noise(params, rbind(m, extra), pr,
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE)
+  # Genustwo speciesb has no H1_Lookup row: its 70% scores must not move the offset
+  expect_equal(with_extra$Query_Calibration$offset_logit, base$Query_Calibration$offset_logit)
+  expect_equal(with_extra$Query_Calibration$n_excluded_no_trained_mean, 40L)
 })
