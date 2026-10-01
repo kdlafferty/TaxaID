@@ -79,7 +79,7 @@ utils::globalVariables(c(
     (!("hypothesis_type" %in% names(result)) |
       !result$hypothesis_type %in% c(
         "unreferenced_species", "unreferenced_genus",
-        "unreferenced_family", "unresolved_species"
+        "unreferenced_family", "unreferenced_order", "unresolved_species"
       ))
 
   if (!any(is_coarse)) {
@@ -1650,7 +1650,7 @@ join_priors <- function(likelihoods,
     # before, then restore any unreferenced row it removed.
     .unref_types <- c(
       "unreferenced_species", "unreferenced_genus",
-      "unreferenced_family", "unresolved_species"
+      "unreferenced_family", "unreferenced_order", "unresolved_species"
     )
     result$.jp_row <- seq_len(nrow(result))
     kept <- TaxaMatch::filter_redundant_hypotheses(

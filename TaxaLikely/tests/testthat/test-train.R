@@ -785,6 +785,7 @@ test_that("evaluate_likelihoods: ring rows are named by the anchor's order and c
   expect_equal(ord$taxon_name, "Cls1")
   expect_equal(ord$taxon_name_rank, "class")
   # an 82% match fits an unsequenced family of the order better than the species
+  # (the species row may be dropped altogether by ratio_threshold)
   sp <- liks$score_likelihood[liks$taxon_name == "Cls1ord1fam1gen1 spa"]
-  expect_gt(fam$score_likelihood, sp)
+  expect_true(length(sp) == 0L || fam$score_likelihood > sp)
 })

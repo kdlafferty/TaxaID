@@ -939,6 +939,7 @@ test_that("evaluate_likelihoods: q_identical = 1 makes H2 equal the anchor's H1 
   h1_best <- max(liks$score_likelihood[liks$hypothesis_type == "specific_candidate"])
   h2 <- liks$score_likelihood[liks$hypothesis_type == "unreferenced_species"]
   expect_equal(h2, h1_best, tolerance = 1e-8)
+})
 
 test_that("evaluate_likelihoods: a placeholder family never names the H3 row", {
   skip_if_not_installed("TaxaTools")

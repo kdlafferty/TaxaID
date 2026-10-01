@@ -197,3 +197,21 @@ test_that("smoke: an implausible candidate no longer wins once relatives carry t
     after$taxon_name[which.max(after$posterior_point_est)], "Littorina"
   )
 })
+
+test_that("the order ring takes unreferenced species of other families, not those claimed finer", {
+  j <- .upm_joined()
+  j <- rbind(j, transform(j[3, ], taxon_name = "Littorinimorpha", taxon_name_rank = "order",
+    hypothesis_type = "unreferenced_family"))
+  pr <- rbind(.upm_priors(), data.frame(taxon_name = "Crepidula adunca", taxon_name_rank = "species",
+    grid_id = "site1", main_habitat = "Marine", theta_mean = 7e-3, alpha = 7, beta = 993))
+  tax <- .upm_tax()
+  tax$order <- c(rep("Littorinimorpha", 5), "Trochida")
+  tax <- rbind(tax, data.frame(taxon_name = "Crepidula adunca", genus = "Crepidula",
+    family = "Calyptraeidae", order = "Littorinimorpha"))
+  out <- suppressMessages(add_unreferenced_prior_mass(j, pr, tax,
+    referenced_names = c("Littorina littorea", "Littorina scutulata")))
+  o <- out[out$taxon_name == "Littorinimorpha", ]
+  # only Crepidula adunca: Littorina keenae is the genus row's, Lacuna spp. the family row's
+  expect_equal(o$unreferenced_mass, 7e-3)
+  expect_equal(o$unreferenced_n_species, 1L)
+})

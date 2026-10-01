@@ -649,7 +649,7 @@ posterior_consensus <- function(posterior_df,
       tax_cols_present <- intersect(rank_system_eff, names(posterior_df))
       if (length(tax_cols_present) > 0) {
         unref_mask <- posterior_df$hypothesis_type %in%
-          c("unreferenced_species", "unreferenced_genus")
+          c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order")
         needs_tax <- unref_mask &
           rowSums(is.na(posterior_df[, tax_cols_present, drop = FALSE])) > 0
         unref_names <- unique(posterior_df$taxon_name[needs_tax])
