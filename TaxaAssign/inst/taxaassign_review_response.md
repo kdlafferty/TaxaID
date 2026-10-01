@@ -806,5 +806,7 @@ on the likelihoods alone (uniform priors, no downranking) and adds
 On real CalIntertidal Round 1 posteriors, prior-decided species calls: 12S 2,144 of
 9,347 (22.9%), COI 1,909 of 5,835 (32.7%), 18S 568 of 1,478 (38.4%) -- many at
 posterior ~1.0, e.g. Oligocottus snyderi where the sequence supports only Oligocottus.
-The second pass roughly doubles consensus time (67 s for 13,735 12S observations).
+Re-running the saved 09-27 Round 1 posteriors on current main reproduces the
+saved calls at 0.995 (COI), 0.997 (12S) and 0.976 (18S): the first real-data
+measure of what the fixes merged since then changed. The second pass roughly doubles consensus time (67 s for 13,735 12S observations).
 Six tests.

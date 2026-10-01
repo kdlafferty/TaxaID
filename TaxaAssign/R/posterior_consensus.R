@@ -259,6 +259,13 @@
 #' coarse-rank expansion (`winner_rank_expanded`) and a downranked call are
 #' prior-decided by construction, and are reported as such.
 #'
+#' The baseline is a uniform prior over the observation's own candidate set,
+#' not the absence of a prior. Its weights therefore depend on how many
+#' candidates the observation has, and generic complement rows (an
+#' unsequenced congener or genus) get the same weight as named species, so an
+#' observation with many near-equal candidates reads as prior-decided more
+#' readily than one with few.
+#'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
