@@ -296,6 +296,19 @@
 #' `"narrowed"`, `"broadened"`, `"changed"`). `min_likelihood_support` turns
 #' the measure into a reporting rule.
 #'
+#' A value of 0.5 is the principled one, not a tuning knob: the reported
+#' taxon is then more probable on the sequence evidence than every
+#' alternative combined (named priors flattened). Unnamed and generic mass
+#' that no named taxon contains counts against every taxon at every rank, so
+#' when most of the likelihood says "something not in the references" no
+#' named taxon reaches 0.5 and the call is unresolved.
+#'
+#' `cumulative_threshold` and `min_likelihood_support` are complementary and
+#' should not be merged: the first acts on the posterior, the second on the
+#' sequence's share of the baseline. A call can clear the first because the
+#' prior helps while failing the second because the sequence does not; that
+#' gap is the quantity of interest.
+#'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
