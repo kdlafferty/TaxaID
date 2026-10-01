@@ -548,7 +548,7 @@ on functions this document already covers above.
   matches the code. No behavioural change.
 - `refine_reference_verdicts()` now refines only accessions the evaluation actually
   evaluated (non-NA `hierarchy_flag`), and only with pair-cache rows cast under the same
-  `params_key`. It previously matched pair rows on accession alone, so stale rows left by
+  `params_key` (a row with no key is dropped when the verdict has one). It previously matched pair rows on accession alone, so stale rows left by
   an earlier run gave never-evaluated accessions trust verdicts with no evidence behind
   them -- 159 "remove" verdicts on a CaliforniaIntertidal 18S screen.
 - `blast_sequences()` gains `num_threads` and `word_size` (local only). Local

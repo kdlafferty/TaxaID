@@ -1143,3 +1143,27 @@ test_that("refine_reference_verdicts() ignores pair rows cast under different sc
   expect_false(out$trust_refined)
   expect_equal(out$reference_action_trust, "keep")
 })
+
+test_that("refine_reference_verdicts() ignores unkeyed pair rows when the verdict is keyed", {
+  # An unkeyed row cannot be shown to come from the current screen settings;
+  # here it would vote "remove", so the test fails if it is counted.
+  pairs <- data.frame(
+    id_x = "q1", id_y = paste0("p", 1:5), p_match = 0.99,
+    pair_finest_common_rank = NA_character_, params_key = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  ev <- data.frame(
+    accession = "q1", hierarchy_flag = "congruent", label_confidence = 0.99,
+    reference_action = "keep", frac_independent_below_min_congruent_rank = 0,
+    params_key = "CURRENT_SETTINGS", stringsAsFactors = FALSE
+  )
+  out <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE)
+  expect_false(out$trust_refined)
+  expect_equal(out$reference_action_trust, "keep")
+  expect_false(any(out$reference_action_trust %in% "remove"))
+
+  # A pair table with no params_key column at all is treated the same way.
+  out2 <- refine_reference_verdicts(ev, pair_table = pairs[, names(pairs) != "params_key"],
+                                    verbose = FALSE)
+  expect_false(out2$trust_refined)
+})

@@ -809,11 +809,18 @@ refine_reference_verdicts <- function(evaluation,
   evaluated <- acc[!is.na(evaluation$hierarchy_flag)]
   keep <- pair_table$id_x %in% evaluated & pair_table$id_x != pair_table$id_y
   # And only votes cast under the same screen settings as this accession's
-  # own verdict, when both carry a params_key.
-  if ("params_key" %in% names(pair_table) && "params_key" %in% names(evaluation)) {
+  # own verdict. When the verdict carries a params_key, a pair row must carry
+  # the same one: a row with no key cannot be shown to come from these
+  # settings, and the verdict it would feed can be a removal. A verdict with
+  # no key has nothing to compare against, so its rows are kept.
+  if ("params_key" %in% names(evaluation)) {
     ev_key <- evaluation$params_key[match(pair_table$id_x, acc)]
-    keep <- keep & (is.na(ev_key) | is.na(pair_table$params_key) |
-      pair_table$params_key == ev_key)
+    pair_key <- if ("params_key" %in% names(pair_table)) {
+      pair_table$params_key
+    } else {
+      rep(NA_character_, nrow(pair_table))
+    }
+    keep <- keep & (is.na(ev_key) | (!is.na(pair_key) & pair_key == ev_key))
   }
   pairs <- pair_table[keep, needed, drop = FALSE]
 
