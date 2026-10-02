@@ -29,13 +29,15 @@ from the \code{.x}-suffixed columns in \code{raw_df}.}
 
 \item{score_bounds}{Optional \code{c(min, max)} for score normalization.}
 
-\item{min_observed_sigma}{Numeric or \code{NULL} (default).  Floor on observed
-within-species score variance.  Prevents overfitting on species with very
-low variance (e.g., a species with two nearly identical reference
-sequences).  \code{NULL} resolves to \code{1.0} for \code{score_transform = "logit"}
-(in logit space, 1.0 corresponds to meaningful within-species variation)
-or the equivalent rescaled value for \code{"sqrt_mismatch"} -- see
-\code{score_transform} below.}
+\item{min_observed_sigma}{Numeric or \code{NULL} (default).  Numerical floor on
+the score variances (pooled and per species).  \code{NULL} resolves to \code{0.01}
+transform units squared (\code{0.01} in logit space, rescaled for
+\code{"sqrt_mismatch"}), a guard against degenerate zero-variance estimates,
+not a noise model: the spread is estimated from the reference pairs,
+per-species estimates are shrunk toward the pooled one, and the extra
+scatter of field queries is measured by \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}. A
+floor of \code{1.0} unit^2 was measured at 5-8x the real within-species
+variance on 12S, 18S and COI, flattening every likelihood ratio.}
 
 \item{prior_weight}{Numeric.  Equivalent pseudo-sample size for Empirical
 Bayes shrinkage toward the global mean.  Controls how strongly

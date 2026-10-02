@@ -634,13 +634,9 @@ test_that("shrinkage = 'empirical_bayes': no between-species signal collapses to
   expect_true(all(abs(out$H1_Lookup$mu_score - out$H1_Global_Mu[["score_logit"]]) < 1e-12))
   expect_true(all(out$H1_Lookup$shrink_w_gap >= 0 & out$H1_Lookup$shrink_w_gap <= 1))
   expect_gte(out$Stats$tau2_gap, 0)
-  # A shrunk mean always lies between the global mean and the species' own
-  # mean: with weight w in [0,1] it can never overshoot either.
-  g <- out$H1_Global_Mu[["gap_logit"]]
-  expect_true(all(
-    (out$H1_Lookup$mu_gap - g) * (out$H1_Lookup$shrink_w_gap) >= -1e-12 |
-      out$H1_Lookup$shrink_w_gap == 0
-  ))
+  # (Betweenness of each shrunk gap mean follows from shrink_w_gap in
+  # [0, 1], asserted above; an earlier sign check held only while the
+  # variance floor forced tau2_gap to 0.)
 })
 
 test_that("shrinkage = 'empirical_bayes' falls back to 'fixed' with fewer than 3 species", {

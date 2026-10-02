@@ -681,13 +681,15 @@ utils::globalVariables(c(
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL` auto-detects
 #'   from the `.x`-suffixed columns in `raw_df`.
 #' @param score_bounds Optional `c(min, max)` for score normalization.
-#' @param min_observed_sigma Numeric or `NULL` (default).  Floor on observed
-#'   within-species score variance.  Prevents overfitting on species with very
-#'   low variance (e.g., a species with two nearly identical reference
-#'   sequences).  `NULL` resolves to `1.0` for `score_transform = "logit"`
-#'   (in logit space, 1.0 corresponds to meaningful within-species variation)
-#'   or the equivalent rescaled value for `"sqrt_mismatch"` -- see
-#'   `score_transform` below.
+#' @param min_observed_sigma Numeric or `NULL` (default).  Numerical floor on
+#'   the score variances (pooled and per species).  `NULL` resolves to `0.01`
+#'   transform units squared (`0.01` in logit space, rescaled for
+#'   `"sqrt_mismatch"`), a guard against degenerate zero-variance estimates,
+#'   not a noise model: the spread is estimated from the reference pairs,
+#'   per-species estimates are shrunk toward the pooled one, and the extra
+#'   scatter of field queries is measured by [calibrate_query_noise()]. A
+#'   floor of `1.0` unit^2 was measured at 5-8x the real within-species
+#'   variance on 12S, 18S and COI, flattening every likelihood ratio.
 #' @param prior_weight Numeric.  Equivalent pseudo-sample size for Empirical
 #'   Bayes shrinkage toward the global mean.  Controls how strongly
 #'   species-specific estimates are regularized.  A value of 10 means each
@@ -1028,7 +1030,11 @@ train_likelihood_model <- function(raw_df,
   }
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (is.null(min_observed_sigma)) {
-    min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
+    # A numerical guard only, far below any real within-species variance; the
+    # spread itself comes from the data, and field-query noise from
+    # calibrate_query_noise(). (A floor of 1.0 transform unit^2 was 5-8x the
+    # real within-species variance on 12S, 18S and COI.)
+    min_observed_sigma <- 0.01 * .transform_unit_ratio(score_transform)^2
   }
   if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")

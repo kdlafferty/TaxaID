@@ -701,8 +701,17 @@ calibrate_query_noise <- function(model_params,
   }
 
   global_sigma_score <- model_params$H1_Sigma["score_logit", "score_logit"]
+  # Field-query widening: variance (5% trimmed each side) of the residuals
+  # over the trained variance, never below 1 -- a field read is a
+  # reference-like sequence plus noise, so it cannot be tighter than the
+  # references. A MAD-based ratio collapses to 0 on the discrete identity
+  # scores of a short amplicon and was the narrowing that once zeroed correct
+  # candidates.
   sigma_ratio <- if (calibrate_sigma) {
-    (stats::mad(residuals, na.rm = TRUE)^2) / global_sigma_score
+    r <- residuals[is.finite(residuals)]
+    q <- stats::quantile(r, c(0.05, 0.95), names = FALSE)
+    r <- pmin(pmax(r, q[1]), q[2])
+    max(1, stats::var(r) / global_sigma_score)
   } else {
     1
   }
