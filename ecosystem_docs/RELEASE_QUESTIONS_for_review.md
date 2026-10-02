@@ -64,7 +64,30 @@ there any reason the URL must be present?
 
 ---
 
-## 3. One dependency-citation link has an expired certificate
+## 3. Which GitHub organisation should the release cite?
+
+Every in-tree reference -- 28 of them across the root README, the nine package
+READMEs, the `inst/CITATION` files and `DESCRIPTION` -- names
+`github.com/kdlafferty/TaxaID`, which is also the configured `origin` remote and
+resolves (HTTP 200). But this ecosystem's own CLAUDE.md records a 2026-09-13 change
+updating all nine `inst/CITATION` files to `github.com/DOI-USGS/TaxaID`, and that
+URL currently returns 404 -- so either the DOI-USGS repository does not exist yet,
+or it exists privately, or that change was reverted or never reached these files.
+
+QUESTION FOR THE REVIEWER: for a USGS software release, must the canonical
+repository live under the DOI-USGS organisation, and if so is the migration part
+of the release process (in which case all 28 references change at that point, and
+the citation block's URL with them)? If the release can cite a personal-account
+repository, nothing needs to change.
+
+WHY IT MATTERS NOW RATHER THAN AT RELEASE: a reader who follows the CLAUDE.md
+record would conclude the citations already point at DOI-USGS; they do not. One of
+the two records is wrong and it is cheaper to find out which before the citation
+block is frozen.
+
+---
+
+## 4. One dependency-citation link has an expired certificate
 
 `https://insectapp.las.iastate.edu`, cited in `TaxaMatch/README.md`, fails with
 libcurl error 60 -- the host is alive and serves content, but its TLS certificate
@@ -74,7 +97,19 @@ lapsed be kept as-is, replaced with a DOI or archival link, or dropped?
 
 ---
 
-## Not questions: items checked and found fine
+## Resolved, no reviewer time needed
+
+The per-package AI-use disclosure sentence has been DE-LINKED at the maintainer's
+decision (2026-10-02): the sentence stays in all nine package READMEs, the
+hyperlink to `https://claude.ai/code` is gone. That clears the only URL
+`R CMD check` named by itself while keeping the disclosure. Question 2(a) above --
+whether USGS has a required FORM for the disclosure -- is still open.
+
+A deep GitHub blob link in `TaxaMatch/README.md` returns HTTP 503 to automated
+probing and looks broken; it is not. The repository root resolves (200) and the
+anchor's target heading exists in the file (`## Reference Accession Quality
+{#reference-accession-quality}`). GitHub refuses automated agents on blob paths.
+Checked so that nobody spends time on it twice.
 
 Four further URLs flagged by automated checking are publisher and vendor
 bot-blocking and resolve normally for a human -- a PNAS Nexus DOI, a PeerJ
