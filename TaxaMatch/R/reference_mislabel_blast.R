@@ -97,26 +97,27 @@ utils::globalVariables(character(0))
 
 #' blastn queries against subjects, best identity per pair
 #' @noRd
-.mislabel_blastn <- function(queries, subjects, blast_bin, work_dir, qcov = 80,
+.mislabel_blastn <- function(queries, subjects, blast_bin, qcov = 80,
                              max_target_seqs = 100000L, threads = 1L, use_db = FALSE) {
+  # BLAST+ splits several file arguments on whitespace even when quoted
+  # (-db, makeblastdb -in, and -query/-out in practice), so every file lives in
+  # a private temp directory, never under a caller's work dir such as
+  # "My Drive".
+  tmp <- tempfile("mislabel_blast_")
+  dir.create(tmp)
+  if (grepl("\\s", tmp)) stop("tempdir() contains whitespace; BLAST+ cannot use it.", call. = FALSE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   wfa <- function(x, f) writeLines(paste0(">", names(x), "\n", x), f)
-  qf <- file.path(work_dir, "q.fa")
-  sf <- file.path(work_dir, "s.fa")
-  hf <- file.path(work_dir, "h.tsv")
-  unlink(hf)
+  qf <- file.path(tmp, "q.fa")
+  sf <- file.path(tmp, "s.fa")
+  hf <- file.path(tmp, "h.tsv")
   wfa(queries, qf)
   wfa(subjects, sf)
   common <- c("-task blastn", "-query", shQuote(qf), "-outfmt",
               shQuote("6 qseqid sseqid pident qcovs"), "-max_target_seqs", max_target_seqs,
               "-out", shQuote(hf))
   if (use_db) {
-    # BLAST's -db argument splits on whitespace even when quoted, so the
-    # database never goes under work_dir (which may be e.g. "My Drive").
-    db_dir <- tempfile("mislabel_db_")
-    dir.create(db_dir)
-    if (grepl("\\s", db_dir)) stop("tempdir() contains whitespace; BLAST -db cannot use it.", call. = FALSE)
-    on.exit(unlink(db_dir, recursive = TRUE), add = TRUE)
-    dbp <- file.path(db_dir, "pooldb")
+    dbp <- file.path(tmp, "pooldb")
     system2(file.path(blast_bin, "makeblastdb"),
             c("-in", shQuote(sf), "-dbtype nucl -parse_seqids -out", shQuote(dbp)),
             stdout = FALSE, stderr = FALSE)
@@ -148,12 +149,10 @@ utils::globalVariables(character(0))
 #' @return named list (one per rank) of data.frame(accession, B).
 #' @noRd
 .mislabel_neighbours <- function(pool, refs, blast_bin, rank_system = c("species", "genus", "family"),
-                                 max_target_seqs = 500L, threads = 4L, qcov = 80,
-                                 work_dir = tempfile("mislabel_nb_")) {
-  dir.create(work_dir, showWarnings = FALSE, recursive = TRUE)
+                                 max_target_seqs = 500L, threads = 4L, qcov = 80) {
   dep <- pool$deposits
   refs <- intersect(refs, names(pool$amp))
-  h <- .mislabel_blastn(pool$amp[refs], pool$seq, blast_bin, work_dir, qcov = qcov,
+  h <- .mislabel_blastn(pool$amp[refs], pool$seq, blast_bin, qcov = qcov,
                         max_target_seqs = max_target_seqs, threads = threads, use_db = TRUE)
   # Every reference is in the pool and so hits at least itself: an empty
   # result is a failed search, never "no neighbours".
@@ -187,8 +186,7 @@ utils::globalVariables(character(0))
 #' @return data.frame(q, s, pid), best identity per pair over all searches.
 #' @noRd
 .mislabel_pair_hits <- function(pool, neighbours, blast_bin, rank_system = c("species", "genus", "family"),
-                                qcov = 80, work_dir = tempfile("mislabel_pairs_"), verbose = TRUE) {
-  dir.create(work_dir, showWarnings = FALSE, recursive = TRUE)
+                                qcov = 80, verbose = TRUE) {
   dep <- pool$deposits
   jobs <- do.call(rbind, lapply(rank_system, function(r) {
     nb <- neighbours[[r]]
@@ -212,7 +210,7 @@ utils::globalVariables(character(0))
     q <- intersect(unique(c(refs_i, inA)), names(pool$amp))
     s <- intersect(unique(c(inA, inB)), names(pool$seq))
     if (length(q) && length(s)) {
-      res[[i]] <- .mislabel_blastn(pool$amp[q], pool$seq[s], blast_bin, work_dir, qcov = qcov)
+      res[[i]] <- .mislabel_blastn(pool$amp[q], pool$seq[s], blast_bin, qcov = qcov)
     }
     if (verbose && i %% 200 == 0) {
       message(sprintf("  pair %d/%d (%.1f min)", i, nrow(keys),
