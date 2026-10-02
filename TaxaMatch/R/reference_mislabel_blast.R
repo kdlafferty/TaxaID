@@ -114,7 +114,7 @@ utils::globalVariables(character(0))
   wfa(queries, qf)
   wfa(subjects, sf)
   common <- c("-task blastn", "-query", shQuote(qf), "-outfmt",
-              shQuote("6 qseqid sseqid pident qcovs"), "-max_target_seqs", max_target_seqs,
+              shQuote("6 qseqid sseqid pident qcovhsp"), "-max_target_seqs", max_target_seqs,
               "-out", shQuote(hf))
   if (use_db) {
     dbp <- file.path(tmp, "pooldb")
@@ -134,6 +134,12 @@ utils::globalVariables(character(0))
   h$s <- sub("^[^|]*[|]([^|]+)[|].*$", "\\1", h$s)
   h$q <- .mislabel_strip_version(h$q)
   h$s <- .mislabel_strip_version(h$s)
+  # Coverage is judged PER ALIGNMENT SEGMENT (qcovhsp), not summed over the
+  # pair's segments (qcovs): with qcovs a short near-perfect fragment could
+  # stand in for the whole amplicon, and which fragments BLAST reports
+  # differs between -subject and database mode -- on 12S the same pair's
+  # identity then differed by a median of 14.5 points between modes. A kept
+  # identity always describes one alignment covering >= qcov% of the query.
   h <- h[h$qcov >= qcov & h$q != h$s, ]
   if (!nrow(h)) return(data.frame(q = character(0), s = character(0), pid = numeric(0)))
   stats::aggregate(pid ~ q + s, data = h, FUN = max)
@@ -177,50 +183,92 @@ utils::globalVariables(character(0))
   })
 }
 
-#' Targeted per-pair searches that measure x, y and d
+#' Targeted searches that measure x, y and d
 #'
-#' For each distinct (rank, A, B): queries are the references in that pair
-#' plus every query-capable member of A; subjects are all members of A and B
-#' (whole sequences, so a short amplicon-only deposit is not out-scored).
-#' Every pair a statistic needs is therefore searched exhaustively.
+#' Two kinds of search, together exhaustive for every pair a statistic needs:
+#' \itemize{
+#'   \item within-group: each family's query-capable deposits against all of
+#'     that family's deposits, ONCE per family. Every species- and genus-rank
+#'     within-group comparison lies inside a family, so this covers x and the
+#'     split guard at all three ranks. Deposits with no family are searched
+#'     within their genus, or failing that their species.
+#'   \item between-group: for each distinct (rank, A, B), every query-capable
+#'     member of A against the members of B only -- y and d.
+#' }
+#' The earlier design searched A against A and B together for every pair, so
+#' a large group was re-searched against itself once per neighbour (an 18S
+#' family of 5,351 deposits, many times over). Subjects are whole sequences,
+#' so a short amplicon-only deposit is not out-scored. Progress is saved to
+#' `checkpoint` (when given) every `checkpoint_every` searches, and a rerun
+#' with the same checkpoint resumes.
 #' @return data.frame(q, s, pid), best identity per pair over all searches.
 #' @noRd
 .mislabel_pair_hits <- function(pool, neighbours, blast_bin, rank_system = c("species", "genus", "family"),
                                 qcov = 80, threads = 8L, db_min_subjects = 200L,
-                                verbose = TRUE) {
+                                checkpoint = NULL, checkpoint_every = 100L, verbose = TRUE) {
   dep <- pool$deposits
   jobs <- do.call(rbind, lapply(rank_system, function(r) {
     nb <- neighbours[[r]]
     nb$A <- dep[[r]][match(nb$accession, dep$acc)]
     nb <- nb[!is.na(nb$A) & !is.na(nb$B), ]
     if (!nrow(nb)) return(NULL)
-    data.frame(rank = r, A = nb$A, B = nb$B, accession = nb$accession, stringsAsFactors = FALSE)
+    data.frame(rank = r, A = nb$A, B = nb$B, stringsAsFactors = FALSE)
   }))
   if (is.null(jobs) || !nrow(jobs)) {
     stop("no reference has a nearest other group at any rank -- nothing to measure.", call. = FALSE)
   }
-  keys <- unique(jobs[, c("rank", "A", "B")])
-  if (verbose) message(sprintf("mislabel pair searches: %d (rank, A, B) pairs", nrow(keys)))
-  res <- vector("list", nrow(keys))
+  between <- unique(jobs)
+  # within-group units: families, then genus/species for deposits lacking a
+  # family (rank_system's coarsest available level)
+  coarse <- rev(rank_system)
+  unit <- rep(NA_character_, nrow(dep)); unit_rank <- rep(NA_character_, nrow(dep))
+  for (r in coarse) {
+    fill <- is.na(unit) & !is.na(dep[[r]])
+    unit[fill] <- dep[[r]][fill]; unit_rank[fill] <- r
+  }
+  within <- unique(data.frame(rank = unit_rank, A = unit, stringsAsFactors = FALSE))
+  within <- within[!is.na(within$A), ]
+  tasks <- rbind(data.frame(kind = "within", rank = within$rank, A = within$A, B = NA_character_),
+                 data.frame(kind = "between", rank = between$rank, A = between$A, B = between$B))
+  if (verbose) message(sprintf("mislabel searches: %d within-group, %d between-group", nrow(within), nrow(between)))
+  res <- vector("list", nrow(tasks))
+  start <- 1L
+  if (!is.null(checkpoint) && file.exists(checkpoint)) {
+    ck <- readRDS(checkpoint)
+    if (identical(ck$tasks, tasks)) {
+      res[seq_along(ck$res)] <- ck$res
+      start <- ck$done + 1L
+      if (verbose) message(sprintf("  resuming at search %d of %d from checkpoint", start, nrow(tasks)))
+    } else if (verbose) {
+      message("  checkpoint is for a different task list; starting over")
+    }
+  }
   t0 <- Sys.time()
-  for (i in seq_len(nrow(keys))) {
-    r <- keys$rank[i]
-    inA <- dep$acc[dep[[r]] %in% keys$A[i]]
-    inB <- dep$acc[dep[[r]] %in% keys$B[i]]
-    refs_i <- jobs$accession[jobs$rank == r & jobs$A == keys$A[i] & jobs$B == keys$B[i]]
-    q <- intersect(unique(c(refs_i, inA)), names(pool$amp))
-    s <- intersect(unique(c(inA, inB)), names(pool$seq))
-    if (length(q) && length(s)) {
-      # -subject mode is single-threaded; a large group (family rank) runs
-      # far faster as a threaded database search. Percent identities are the
-      # same; only E-value statistics differ, so a marginal hit near the
-      # E-value cutoff can appear in one mode and not the other.
-      big <- length(s) >= db_min_subjects
-      res[[i]] <- .mislabel_blastn(pool$amp[q], pool$seq[s], blast_bin, qcov = qcov,
+  if (start <= nrow(tasks)) for (i in start:nrow(tasks)) {
+    r <- tasks$rank[i]
+    if (tasks$kind[i] == "within") {
+      inA <- dep$acc[!is.na(unit) & unit == tasks$A[i] & unit_rank == r]
+      subj <- inA
+    } else {
+      inA <- dep$acc[dep[[r]] %in% tasks$A[i]]
+      subj <- dep$acc[dep[[r]] %in% tasks$B[i]]
+    }
+    q <- intersect(inA, names(pool$amp))
+    subj <- intersect(subj, names(pool$seq))
+    if (length(q) && length(subj)) {
+      # -subject mode is single-threaded; a large subject set runs far faster
+      # as a threaded database search. Percent identities are the same; only
+      # E-value statistics differ, so a marginal hit near the E-value cutoff
+      # can appear in one mode and not the other.
+      big <- length(subj) >= db_min_subjects
+      res[[i]] <- .mislabel_blastn(pool$amp[q], pool$seq[subj], blast_bin, qcov = qcov,
                                    threads = if (big) threads else 1L, use_db = big)
     }
+    if (!is.null(checkpoint) && (i %% checkpoint_every == 0L || i == nrow(tasks))) {
+      saveRDS(list(tasks = tasks, done = i, res = res[seq_len(i)]), checkpoint)
+    }
     if (verbose && i %% 200 == 0) {
-      message(sprintf("  pair %d/%d (%.1f min)", i, nrow(keys),
+      message(sprintf("  search %d/%d (%.1f min)", i, nrow(tasks),
                       as.numeric(difftime(Sys.time(), t0, units = "mins"))))
     }
   }
