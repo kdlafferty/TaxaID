@@ -929,3 +929,43 @@ test_that("evaluate_likelihoods warns when the match object admits lower coverag
     evaluate_likelihoods(md, mp_na, rank_system = c("genus", "species"), verbose = FALSE)
   )
 })
+
+test_that("evaluate_likelihoods: q_identical = 1 makes H2 equal the anchor's H1 density", {
+  skip_if_not_installed("TaxaTools")
+  p <- .make_model_params()
+  p$H2$q_identical <- 1
+  liks <- suppressWarnings(evaluate_likelihoods(.make_match_df(), p,
+    c("family", "genus", "species"), n_sims = 0))$likelihoods
+  h1_best <- max(liks$score_likelihood[liks$hypothesis_type == "specific_candidate"])
+  h2 <- liks$score_likelihood[liks$hypothesis_type == "unreferenced_species"]
+  expect_equal(h2, h1_best, tolerance = 1e-8)
+})
+
+test_that("evaluate_likelihoods: a placeholder family never names the H3 row", {
+  skip_if_not_installed("TaxaTools")
+  m <- .make_match_df()
+  m$order <- "Cypriniformes"
+  m$family <- "unk_family"
+  liks <- suppressWarnings(evaluate_likelihoods(
+    m, .make_model_params(), c("order", "family", "genus", "species")
+  ))$likelihoods
+  expect_false(any(liks$taxon_name %in% "unk_family"))
+  h3 <- liks[liks$hypothesis_type == "unreferenced_genus", ]
+  expect_equal(h3$taxon_name, "Cypriniformes")
+  expect_equal(h3$taxon_name_rank, "order")
+})
+
+
+test_that("evaluate_likelihoods: a coarse top hit with blank ranks does not anchor the rings", {
+  skip_if_not_installed("TaxaTools")
+  m <- .make_match_df()
+  coarse <- m[1, ]
+  coarse$taxon_name <- "Eukaryota"; coarse$taxon_name_rank <- "kingdom"
+  coarse$family <- ""; coarse$genus <- ""; coarse$species <- ""
+  coarse$score <- 99
+  liks <- suppressWarnings(evaluate_likelihoods(rbind(coarse, m), .make_model_params(),
+    c("family", "genus", "species"), n_sims = 0))$likelihoods
+  h3 <- liks[liks$hypothesis_type == "unreferenced_genus", ]
+  expect_equal(h3$taxon_name, "Leuciscidae")
+  expect_false(any(is.na(liks$taxon_name[liks$hypothesis_type != "specific_candidate"])))
+})

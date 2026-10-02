@@ -506,10 +506,19 @@ utils::globalVariables(c(
       }
     }
 
-    best_i <- which.max(s_vec)
+    # Anchor for the unsequenced-relative rings: the best-scoring candidate
+    # that has a genus. A higher-scoring hit identified only at a coarse rank
+    # (e.g. "Eukaryota") would name every ring NA and drop them all.
+    has_tax <- if (!is.null(genus_vec)) {
+      !is.na(genus_vec) & nzchar(trimws(as.character(genus_vec)))
+    } else {
+      rep(TRUE, length(s_vec))
+    }
+    best_i <- if (any(has_tax)) which(has_tax)[which.max(s_vec[has_tax])] else which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
       return(list(
-        h1 = h1_vals, h2 = 0, h3 = 0, h2_delta_source = "global_fallback",
+        h1 = h1_vals, h2 = 0, h3 = 0, rings = rep(0, length(model_params$Rings)),
+        h2_delta_source = "global_fallback",
         used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
         used_h2_delta = h2_delta, used_h2_tau_sq = NA_real_
       ))
@@ -584,8 +593,11 @@ utils::globalVariables(c(
     # specific entry at all (used_mu1[best_i] is then already global_mu,
     # since that is what use_mu starts as before any lookup).
     h2_anchor_mu <- if (!is.na(used_mu1[best_i])) used_mu1[best_i] else global_mu[1L]
-    h2_mu <- c(h2_anchor_mu - use_h2_delta, 0)
-    h3_mu <- c(h2_anchor_mu - use_h3_delta, 0)
+    # gap means: measured in training (0 for models trained before that)
+    h2_gap_mu <- model_params$H2$gap_mean %||% 0
+    h3_gap_mu <- model_params$H3$gap_mean %||% 0
+    h2_mu <- c(h2_anchor_mu - use_h2_delta, h2_gap_mu)
+    h3_mu <- c(h2_anchor_mu - use_h3_delta, h3_gap_mu)
     if (use_1d) {
       h2_val <- stats::dnorm(best_pt[1L],
         mean = h2_mu[1L],
@@ -599,9 +611,32 @@ utils::globalVariables(c(
       h2_val <- mvtnorm::dmvnorm(best_pt, mean = h2_mu, sigma = use_h2_sigma)
       h3_val <- mvtnorm::dmvnorm(best_pt, mean = h3_mu, sigma = h3_sigma)
     }
+    # An unsequenced congener with an IDENTICAL barcode scores against the
+    # anchor as a conspecific would: H2 is a mixture of the anchor's own H1
+    # density (weight q) and the shifted Gaussian (1 - q).
+    q_id <- model_params$H2$q_identical %||% 0
+    if (!is.null(model_params$H2_Lookup) && "q_identical" %in% names(model_params$H2_Lookup) &&
+      !is.null(genus_vec) && !is.na(genus_vec[best_i])) {
+      gq <- match(genus_vec[best_i], model_params$H2_Lookup$genus)
+      if (!is.na(gq) && !is.na(model_params$H2_Lookup$q_identical[gq])) {
+        q_id <- model_params$H2_Lookup$q_identical[gq]
+      }
+    }
+    if (isTRUE(q_id > 0)) h2_val <- q_id * h1_vals[best_i] + (1 - q_id) * h2_val
+
+    # Outer rings (order, class): same anchor, each ring's shift applied on top
+    # of whichever H2 shift was resolved for the anchor's genus.
+    ring_vals <- vapply(model_params$Rings %||% list(), function(R) {
+      mu_r <- c(h2_anchor_mu - (use_h2_delta + (R$delta - h2_delta)), 0)
+      if (use_1d) {
+        stats::dnorm(best_pt[1L], mean = mu_r[1L], sd = sqrt(R$sigma[1L, 1L]))
+      } else {
+        mvtnorm::dmvnorm(best_pt, mean = mu_r, sigma = R$sigma)
+      }
+    }, numeric(1))
 
     list(
-      h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source,
+      h1 = h1_vals, h2 = h2_val, h3 = h3_val, rings = ring_vals, h2_delta_source = delta_source,
       used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
       used_h2_delta = resolved_h2_delta, used_h2_tau_sq = resolved_h2_tau_sq
     )
@@ -659,8 +694,30 @@ utils::globalVariables(c(
     )
 
   # Build H2/H3 rows from the best candidate
-  best_i <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
+  cand_has_tax <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(cand)) {
+    g <- as.character(cand[[genus_rank_col]])
+    !is.na(g) & nzchar(trimws(g)) & !.is_placeholder_rank(g)
+  } else {
+    rep(TRUE, nrow(cand))
+  }
+  h1_tax <- primary$h1 * cand_has_tax
+  best_i <- if (any(h1_tax > 0)) {
+    which.max(h1_tax)
+  } else if (any(primary$h1 > 0) && !any(cand_has_tax)) {
+    which.max(primary$h1)
+  } else if (any(cand_has_tax)) {
+    which(cand_has_tax)[which.max(cand$score_logit[cand_has_tax])]
+  } else {
+    which.max(cand$score_logit)
+  }
   best_row <- cand[best_i, , drop = FALSE]
+  # A placeholder rank value ("unk_family") names no taxon; blank it so the
+  # H2/H3 rows are named by the nearest real rank, not by the placeholder.
+  for (rc in intersect(rank_cols, names(best_row))) {
+    if (is.character(best_row[[rc]]) && .is_placeholder_rank(best_row[[rc]])) {
+      best_row[[rc]] <- NA_character_
+    }
+  }
 
   # Derive H2 taxon_name: finest rank NA -> create_taxon_names picks genus
   # Derive H3 taxon_name: two finest ranks NA -> create_taxon_names picks family
@@ -692,7 +749,27 @@ utils::globalVariables(c(
   row_h3$raw_likelihood_evidence <- primary$h3 # H3 sigma is global fixed; no inflation
   row_h3$h2_delta_source <- primary$h2_delta_source
 
-  res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
+  # Outer ring rows: named by the anchor's own order (class); skipped when the
+  # anchor has no real value at that rank.
+  ring_rows <- list()
+  for (ri in seq_along(model_params$Rings %||% list())) {
+    R <- model_params$Rings[[ri]]
+    if (!R$rank %in% rank_cols || !R$rank %in% names(best_row)) next
+    v <- best_row[[R$rank]]
+    if (is.na(v) || .is_placeholder_rank(v)) next
+    row_r <- best_row
+    finer <- rank_cols[seq_along(rank_cols) > match(R$rank, rank_cols)]
+    for (fc in intersect(finer, names(row_r))) row_r[[fc]] <- NA_character_
+    row_r <- TaxaTools::create_taxon_names(row_r, rank_cols)
+    row_r$hypothesis_type <- R$hypothesis_type
+    row_r$raw_likelihood <- primary$rings[ri]
+    row_r$raw_likelihood_cov <- primary$rings[ri]
+    row_r$raw_likelihood_evidence <- primary$rings[ri]
+    row_r$h2_delta_source <- primary$h2_delta_source
+    ring_rows[[length(ring_rows) + 1L]] <- row_r
+  }
+
+  res <- dplyr::bind_rows(c(list(df_h1, row_h2, row_h3), ring_rows))
 
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
@@ -854,12 +931,17 @@ utils::globalVariables(c(
     h1_idx_map <- vector("list", nrow(res_agg))
     h2_rows <- integer(0L)
     h3_rows <- integer(0L)
+    ring_types <- vapply(model_params$Rings %||% list(), function(R) R$hypothesis_type, character(1))
+    ring_rows_mc <- lapply(ring_types, function(x) integer(0L))
     for (r in seq_len(nrow(res_agg))) {
       ht <- res_agg$hypothesis_type[r]
       if (ht == "specific_candidate") {
         h1_idx_map[[r]] <- which(cand$taxon_name == res_agg$taxon_name[r])
       } else if (ht == "unreferenced_species") {
         h2_rows <- c(h2_rows, r)
+      } else if (ht %in% ring_types) {
+        k <- match(ht, ring_types)
+        ring_rows_mc[[k]] <- c(ring_rows_mc[[k]], r)
       } else {
         h3_rows <- c(h3_rows, r)
       }
@@ -894,6 +976,9 @@ utils::globalVariables(c(
         }
         if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2
         if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3
+        for (k in seq_along(ring_rows_mc)) {
+          if (length(ring_rows_mc[[k]]) > 0L) iter_liks[ring_rows_mc[[k]]] <- sim_res$rings[k]
+        }
 
         iter_max <- max(iter_liks, na.rm = TRUE)
         if (iter_max == 0 || is.na(iter_max)) iter_max <- 1
@@ -932,6 +1017,9 @@ utils::globalVariables(c(
         }
         if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2
         if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3
+        for (k in seq_along(ring_rows_mc)) {
+          if (length(ring_rows_mc[[k]]) > 0L) iter_liks[ring_rows_mc[[k]]] <- sim_res$rings[k]
+        }
 
         iter_max <- max(iter_liks, na.rm = TRUE)
         if (iter_max == 0 || is.na(iter_max)) iter_max <- 1
@@ -1934,4 +2022,17 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
     ), call. = FALSE)
   }
   invisible(NULL)
+}
+
+
+# Placeholder rank labels that name no taxon: "unk_family", "unk_order"
+# (reference-database fillers), "incertae sedis", "unclassified X".
+# Mirrors TaxaAssign's helper of the same name.
+.is_placeholder_rank <- function(x) {
+  x <- trimws(as.character(x))
+  !is.na(x) & grepl(
+    "^unk_[a-z]+$|^incertae[ _]sedis\\b|^unclassified\\b|^unknown$",
+    x,
+    ignore.case = TRUE, perl = TRUE
+  )
 }

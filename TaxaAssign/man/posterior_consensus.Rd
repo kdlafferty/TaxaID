@@ -17,7 +17,11 @@ posterior_consensus(
   group_priors = NULL,
   min_effective_records = 0,
   taxonomy_cache_dir = NULL,
-  pool_tail = FALSE
+  pool_tail = FALSE,
+  unnamed_in_threshold = TRUE,
+  consensus_method = c("lca", "credible_node"),
+  likelihood_consensus = TRUE,
+  robust_prior_s = 1
 )
 }
 \arguments{
@@ -159,6 +163,51 @@ the remaining mass. \code{TRUE}: they form one tail block, the threshold is
 measured against the TOTAL named posterior mass, and the whole block joins
 the plausible set when the hypotheses above the floor fall short. See
 \emph{Details}. \code{tail_mass} is reported either way.}
+
+\item{unnamed_in_threshold}{Logical (default \code{TRUE}). Posterior on rows
+with no \code{taxon_name} (a catch-all whose position has no name, e.g. an
+unsequenced genus of a family recorded only as a placeholder) cannot join
+the LCA but is mass the call does not hold. \code{TRUE} counts it in the
+denominator of \code{cumulative_threshold}, and an observation whose named
+hypotheses cannot reach the threshold of the total is reported
+unresolved (\code{consensus_reason = "unnamed_mass"}). \code{FALSE} measures the
+threshold against named mass only. \code{unnamed_mass} is reported either way.}
+
+\item{consensus_method}{\code{"lca"} (default) or \code{"credible_node"}. \code{"lca"}
+takes the smallest top set of hypotheses reaching \code{cumulative_threshold}
+and reports their lowest common taxon. \code{"credible_node"} sums the
+posterior of every hypothesis under each taxon, rank by rank from the
+finest, and reports the finest taxon holding at least
+\code{cumulative_threshold} of the total (unnamed mass included when
+\code{unnamed_in_threshold = TRUE}); no hypothesis is dropped below
+\code{min_posterior}, and a hypothesis named at a coarser rank (an
+unsequenced genus of a family, say) counts toward that taxon and its
+ancestors. Unresolved (\code{consensus_reason = "no_credible_node"}) when no
+taxon at any rank in \code{rank_system} holds the threshold.}
+
+\item{likelihood_consensus}{Logical (default \code{TRUE}). Also compute the
+consensus the likelihoods support when the prior is flattened among the
+named candidates (each gets the mean of their priors; generic
+unsequenced-relative rows keep their own; uniform when there is no
+\code{prior_mean}), same consensus method and
+\code{cumulative_threshold}, \code{min_posterior} and \code{pool_tail}, no downranking)
+and compare it with the reported call. Adds \code{likelihood_consensus_taxon},
+\code{likelihood_consensus_rank}, \code{prior_role} and \code{likelihood_support};
+changes no other column. Skipped (columns \code{NA}) when \code{posterior_df} has
+no \code{score_likelihood} column. See \emph{Sequence support}.}
+
+\item{robust_prior_s}{Numeric (default \code{1}; \code{0} turns it off). Used with
+\code{consensus_method = "credible_node"}. The occurrence prior is estimated
+from finitely many records, so a node is reported only if its posterior
+stays at or above \code{cumulative_threshold} for every prior within an
+imprecise-Dirichlet neighbourhood of the estimated one: \code{s} additional
+records of unknown species (Walley 1996; Walley's recommended range is
+1-2), against the prior's own concentration \code{N} (median \code{alpha + beta}
+of the observation's kernel-estimated rows). Calls the sequence decides
+are unaffected; a call that rests on the prior is kept only if it would
+survive \code{s} further records of a better-matching taxon. The bound is
+reported as \code{robust_lower_posterior}. Skipped when \code{score_likelihood},
+\code{prior_mean}, \code{prior_alpha} or \code{prior_beta} is missing.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -211,9 +260,29 @@ including the members of a pooled tail block (0 when there is no
 named hypothesis).}
 \item{\code{tail_mass}}{Summed posterior of the hypotheses below
 \code{min_posterior}: how much mass sat in the tail block.}
+\item{\code{robust_lower_posterior}}{With \code{consensus_method = "credible_node"} and \code{robust_prior_s > 0}: the lower bound of the
+reported taxon's posterior over the imprecise-prior neighbourhood
+(see \code{robust_prior_s}). \code{NA} otherwise.}
+\item{\code{unnamed_mass}}{Posterior on rows with no \code{taxon_name}. Not part
+of \code{tail_mass}, which covers named hypotheses only.}
 \item{\code{tail_pooled}}{\code{TRUE} when the tail block joined the plausible
 set because the hypotheses above \code{min_posterior} held less than
 \code{cumulative_threshold} of the total mass.}
+\item{\code{likelihood_consensus_taxon}, \code{likelihood_consensus_rank}}{The
+call the likelihoods alone support (uniform priors). \code{NA} when
+\code{likelihood_consensus = FALSE} or there is no \code{score_likelihood}.}
+\item{\code{prior_role}}{How the prior moved the call relative to the
+likelihood-only call: \code{"agrees"} (same taxon), \code{"narrowed"} (a finer
+taxon inside the likelihood-only call, or a call where the
+likelihoods alone made none), \code{"broadened"} (a coarser taxon
+containing it, or no call where the likelihoods made one) or
+\code{"changed"} (a taxon outside it, or nesting that could not be
+verified). \code{NA} when neither pass made a call.}
+\item{\code{likelihood_support}}{Share of the baseline (sequence evidence,
+named candidates' priors flattened) that falls in the reported
+taxon: how close the sequence alone comes to the call. A call at
+posterior 0.92 with support 0.84 was nudged over the threshold by the
+prior; one with support 0.10 was chosen by it.}
 \item{\code{plausible_taxa}}{List column: character vector of plausible taxon
 names, sorted by descending posterior. Computed BEFORE downranking, so
 for a downranked row it reflects the original coarser-rank plausible
@@ -466,6 +535,43 @@ that confidence has to be caught post hoc, by
 \code{TaxaFlag::review_assignments()}'s \code{plausibility == "unprecedented"} check,
 not by prior competition inside this function.
 }
+\section{Defaults}{
+
+A setting that corrects a defect defaults on; one that chooses between
+defensible rules is opt-in until its trade is measured.
+\code{unnamed_in_threshold = TRUE} is a correction: leaving unnamed mass out of
+the denominator makes \code{cumulative_threshold} mean something other than it
+says. \code{pool_tail} and \code{consensus_method = "credible_node"} are choices of
+rule, so they default off (\code{FALSE}, \code{"lca"}).
+}
+
+\section{Sequence support}{
+
+The posterior multiplies the likelihood by an occurrence prior, so a
+reported taxon can be one the sequence evidence alone does not single
+out: when several candidates match equally well, the prior picks among
+them. That is the intended use of a prior, but the reader of a species
+list needs to know which calls rest on the sequence and which on where the
+species is known to occur. With \code{likelihood_consensus = TRUE} the call is
+compared with a baseline in which the named candidates' priors are
+flattened (each gets their mean) while generic unsequenced-relative rows
+keep their own priors. \code{likelihood_support} is the share of that baseline
+in the reported taxon: 0.84 means the sequence nearly makes the call
+itself and the prior nudged it over \code{cumulative_threshold}; 0.10 means
+the prior chose it. \code{prior_role} records the direction (\code{"agrees"},
+\code{"narrowed"}, \code{"broadened"}, \code{"changed"}). Neither changes the call: in a
+clade with one local species the prior legitimately concentrates the
+posterior on it, which is correct inference, so sequence support is
+reported, not used to move calls.
+
+A support above 0.5 means the reported taxon is more probable on the
+sequence evidence than every alternative combined (named priors
+flattened); unnamed and generic mass that no named taxon contains counts
+against every taxon. The gap between the posterior (which clears
+\code{cumulative_threshold}) and \code{likelihood_support} is the part of the call
+that rests on the prior.
+}
+
 \examples{
 posterior_df <- data.frame(
   observation_id = c("S1", "S1", "S1"),

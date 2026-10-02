@@ -634,13 +634,18 @@ test_that("shrinkage = 'empirical_bayes': no between-species signal collapses to
   expect_true(all(abs(out$H1_Lookup$mu_score - out$H1_Global_Mu[["score_logit"]]) < 1e-12))
   expect_true(all(out$H1_Lookup$shrink_w_gap >= 0 & out$H1_Lookup$shrink_w_gap <= 1))
   expect_gte(out$Stats$tau2_gap, 0)
-  # A shrunk mean always lies between the global mean and the species' own
-  # mean: with weight w in [0,1] it can never overshoot either.
-  g <- out$H1_Global_Mu[["gap_logit"]]
-  expect_true(all(
-    (out$H1_Lookup$mu_gap - g) * (out$H1_Lookup$shrink_w_gap) >= -1e-12 |
-      out$H1_Lookup$shrink_w_gap == 0
+  # Each shrunk gap mean lies between the pooled mean and the species' own
+  # mean (the shrinkage formula, not just w in [0, 1]). Own means come from an
+  # unshrunk fit (fixed shrinkage with prior_weight -> 0, so w -> 1). This
+  # replaces a sign check that held only while tau2_gap was forced to 0.
+  own_fit <- suppressMessages(train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+    shrinkage = "fixed", prior_weight = 1e-9, use_hierarchy = FALSE, anchor_perfect = FALSE
   ))
+  g <- out$H1_Global_Mu[["gap_logit"]]
+  own <- own_fit$H1_Lookup$mu_gap[match(out$H1_Lookup$lookup_key, own_fit$H1_Lookup$lookup_key)]
+  sh <- out$H1_Lookup$mu_gap
+  expect_true(any(out$H1_Lookup$shrink_w_gap > 0)) # the check is not vacuous
+  expect_true(all(sh >= pmin(g, own) - 1e-9 & sh <= pmax(g, own) + 1e-9))
 })
 
 test_that("shrinkage = 'empirical_bayes' falls back to 'fixed' with fewer than 3 species", {
@@ -652,4 +657,140 @@ test_that("shrinkage = 'empirical_bayes' falls back to 'fixed' with fewer than 3
     "needs >= 3 species"
   )
   expect_equal(out$Stats$shrinkage, "fixed")
+})
+
+# ---- Measured H3 (confamilial) ---------------------------------------------
+# n_fam families, each with two genera of two species, two sequences each.
+# Within species 0.97, congeners 0.92, confamilials (other genus, same family)
+# 0.85, everything else 0.70.
+.make_family_raw_df <- function(n_fam = 4L) {
+  tax <- expand.grid(f = seq_len(n_fam), g = 1:2, s = 1:2, q = 1:2)
+  tax$id <- with(tax, sprintf("F%dG%dS%dQ%d", f, g, s, q))
+  tax$family <- paste0("Fam", LETTERS[tax$f])
+  tax$genus <- paste0(tax$family, "gen", tax$g)
+  tax$species <- paste(tax$genus, paste0("sp", tax$s))
+  grid <- expand.grid(id_x = tax$id, id_y = tax$id, stringsAsFactors = FALSE)
+  grid <- grid[grid$id_x != grid$id_y, ]
+  i <- match(grid$id_x, tax$id)
+  j <- match(grid$id_y, tax$id)
+  for (r in c("family", "genus", "species")) {
+    grid[[paste0(r, ".x")]] <- tax[[r]][i]
+    grid[[paste0(r, ".y")]] <- tax[[r]][j]
+  }
+  grid$p_match <- ifelse(grid$species.x == grid$species.y, 0.97,
+    ifelse(grid$genus.x == grid$genus.y, 0.92,
+      ifelse(grid$family.x == grid$family.y, 0.85, 0.70)
+    )
+  )
+  grid
+}
+
+test_that("train_likelihood_model: H3 is measured from confamilial pairs when enough families exist", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_family_raw_df(4L),
+    rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$h3_source, "measured")
+  expect_equal(m$Stats$n_h3_families, 4L)
+  # the measured H3 mean sits at the confamilial score (0.85), not at the
+  # heuristic H2 shift + 2 transform units
+  expected_h3_mean <- TaxaLikely:::.transform_p(0.85, m$Score_Transform)
+  expect_equal(unname(m$H1_Global_Mu[1] - m$H3$delta), expected_h3_mean, tolerance = 0.05)
+  expect_lt(m$H3$delta, m$H2$delta + 2.0 * TaxaLikely:::.transform_unit_ratio(m$Score_Transform))
+  # rings stay nested
+  expect_gte(m$H3$delta, m$H2$delta)
+})
+
+test_that("train_likelihood_model: H3 falls back to the H2-plus-two-units rule with too few families", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_family_raw_df(2L),
+    rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$h3_source, "heuristic")
+  expect_equal(m$H3$delta, m$H2$delta + 2.0 * TaxaLikely:::.transform_unit_ratio(m$Score_Transform))
+})
+
+test_that("train_likelihood_model: H2 gap is measured from references with their own species dropped", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_family_raw_df(4L), rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$h2_gap_source, "measured")
+  # own species dropped: best = congener (0.92), runner-up = confamilial (0.85)
+  tf <- function(p) TaxaLikely:::.transform_p(p, m$Score_Transform)
+  expect_equal(m$H2$gap_mean, tf(0.92) - tf(0.85), tolerance = 1e-6)
+  expect_equal(m$Stats$q_identical, 0)
+})
+
+test_that("train_likelihood_model: identical-barcode congeners set q_identical", {
+  raw <- .make_family_raw_df(4L)
+  same_genus <- raw$genus.x == raw$genus.y & raw$species.x != raw$species.y
+  raw$p_match[same_genus] <- 1.0
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    raw, rank_system = c("family", "genus", "species")
+  )))
+  expect_equal(m$Stats$q_identical, 1)
+})
+
+# ---- Outer rings (order, class) ---------------------------------------------
+# 3 classes x 2 orders x 2 families x 2 genera, one species each, two
+# sequences per species. Within species 0.99, confamilial 0.90, same order
+# other family 0.85, same class other order 0.80, otherwise 0.70.
+.make_ring_raw_df <- function() {
+  tax <- expand.grid(c = 1:3, o = 1:2, f = 1:2, g = 1:2, q = 1:2)
+  tax$id <- with(tax, sprintf("C%dO%dF%dG%dQ%d", c, o, f, g, q))
+  tax$class <- paste0("Cls", tax$c)
+  tax$order <- paste0(tax$class, "ord", tax$o)
+  tax$family <- paste0(tax$order, "fam", tax$f)
+  tax$genus <- paste0(tax$family, "gen", tax$g)
+  tax$species <- paste(tax$genus, "spa")
+  grid <- expand.grid(id_x = tax$id, id_y = tax$id, stringsAsFactors = FALSE)
+  grid <- grid[grid$id_x != grid$id_y, ]
+  i <- match(grid$id_x, tax$id); j <- match(grid$id_y, tax$id)
+  for (r in c("class", "order", "family", "genus", "species")) {
+    grid[[paste0(r, ".x")]] <- tax[[r]][i]
+    grid[[paste0(r, ".y")]] <- tax[[r]][j]
+  }
+  grid$p_match <- with(grid, ifelse(species.x == species.y, 0.99,
+    ifelse(family.x == family.y, 0.90,
+      ifelse(order.x == order.y, 0.85, ifelse(class.x == class.y, 0.80, 0.70)))))
+  grid
+}
+
+test_that("train_likelihood_model: outer rings are measured, nested and named by rank", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_ring_raw_df(), rank_system = c("class", "order", "family", "genus", "species")
+  )))
+  expect_named(m$Rings, c("order", "class"))
+  expect_equal(m$Rings$order$hypothesis_type, "unreferenced_family")
+  expect_equal(m$Rings$class$hypothesis_type, "unreferenced_order")
+  tf <- function(p) TaxaLikely:::.transform_p(p, m$Score_Transform)
+  mu <- unname(m$H1_Global_Mu[1])
+  expect_equal(mu - m$Rings$order$delta, tf(0.85), tolerance = 0.05)
+  expect_equal(mu - m$Rings$class$delta, tf(0.80), tolerance = 0.05)
+  expect_gte(m$Rings$order$delta, m$H3$delta)
+  expect_gte(m$Rings$class$delta, m$Rings$order$delta)
+})
+
+test_that("evaluate_likelihoods: ring rows are named by the anchor's order and class", {
+  skip_if_not_installed("TaxaTools")
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+    .make_ring_raw_df(), rank_system = c("class", "order", "family", "genus", "species")
+  )))
+  q <- data.frame(observation_id = "Q1", score = c(82, 78),
+    taxon_name = c("Cls1ord1fam1gen1 spa", "Cls1ord2fam1gen1 spa"), taxon_name_rank = "species",
+    class = "Cls1", order = c("Cls1ord1", "Cls1ord2"),
+    family = c("Cls1ord1fam1", "Cls1ord2fam1"), genus = c("Cls1ord1fam1gen1", "Cls1ord2fam1gen1"),
+    species = c("Cls1ord1fam1gen1 spa", "Cls1ord2fam1gen1 spa"), stringsAsFactors = FALSE)
+  liks <- suppressWarnings(evaluate_likelihoods(q, m,
+    c("class", "order", "family", "genus", "species"), n_sims = 20))$likelihoods
+  fam <- liks[liks$hypothesis_type == "unreferenced_family", ]
+  ord <- liks[liks$hypothesis_type == "unreferenced_order", ]
+  expect_equal(fam$taxon_name, "Cls1ord1")
+  expect_equal(fam$taxon_name_rank, "order")
+  expect_equal(ord$taxon_name, "Cls1")
+  expect_equal(ord$taxon_name_rank, "class")
+  # an 82% match fits an unsequenced family of the order better than the species
+  # (the species row may be dropped altogether by ratio_threshold)
+  sp <- liks$score_likelihood[liks$taxon_name == "Cls1ord1fam1gen1 spa"]
+  expect_true(length(sp) == 0L || fam$score_likelihood > sp)
 })

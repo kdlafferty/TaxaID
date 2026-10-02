@@ -73,10 +73,20 @@
 #'   which must then hold exactly one `grid_id`.
 #' @param unreferenced_types Character. `hypothesis_type` values treated as
 #'   generic unreferenced hypotheses. Default
-#'   `c("unreferenced_species", "unreferenced_genus")`.
+#'   `c("unreferenced_species", "unreferenced_genus", "unreferenced_family",
+#'   "unreferenced_order")`: an unsequenced congener (scope genus), genus
+#'   (family), family (order) or order (class).
 #' @param mismatch_message_fraction Numeric in \[0, 1\]. Message threshold for
 #'   the share of named candidates missing from `referenced_names`. Default
 #'   0.05.
+#' @param named_rows Logical (default `FALSE`). `FALSE` adds each ring row's
+#'   recorded unreferenced local species to that row's prior. `TRUE` instead
+#'   adds one row per such species (`hypothesis_type = "unreferenced_species"`,
+#'   named at species rank) carrying the ring row's likelihood and its own
+#'   occurrence prior, and leaves the ring row's prior as it was (the
+#'   unrecorded part). The species can then be reported by name when the
+#'   prior concentrates on it; the total prior in each scope is the same
+#'   either way.
 #'
 #' @return `joined` with `prior_mean`, `prior_alpha` and `prior_beta` updated
 #'   on rows that gained mass, plus `prior_mean_floor` (the prior before this
@@ -122,8 +132,9 @@ add_unreferenced_prior_mass <- function(joined,
                                         taxonomy,
                                         referenced_names,
                                         grid_id = NULL,
-                                        unreferenced_types = c("unreferenced_species", "unreferenced_genus"),
-                                        mismatch_message_fraction = 0.05) {
+                                        unreferenced_types = c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order"),
+                                        mismatch_message_fraction = 0.05,
+                                        named_rows = FALSE) {
   # --- Validation --------------------------------------------------------------
   req_j <- c(
     "observation_id", "taxon_name", "taxon_name_rank", "hypothesis_type",
@@ -191,9 +202,19 @@ add_unreferenced_prior_mass <- function(joined,
 
   # --- Generic rows and their scopes -------------------------------------------
   rank_order <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
+  # A generic row gains mass only at its own ring's rank: an unsequenced
+  # congener at genus, an unsequenced genus at family. A row renamed to a
+  # coarser real ancestor because its family was a placeholder ("unk_family"
+  # -> its order) keeps its floor: its true scope is unknown.
+  ring_rank <- c(
+    unreferenced_species = "genus", unreferenced_genus = "family",
+    unreferenced_family = "order", unreferenced_order = "class"
+  )
+  expected_rank <- unname(ring_rank[out$hypothesis_type])
   gen <- which(out$hypothesis_type %in% unreferenced_types &
     !is.na(out$taxon_name) & out$taxon_name_rank %in% setdiff(names(taxonomy), "taxon_name") &
-    out$taxon_name_rank != "species")
+    out$taxon_name_rank != "species" &
+    (is.na(expected_rank) | out$taxon_name_rank == expected_rank))
   out$unreferenced_scope[gen] <- out$taxon_name[gen]
   out$unreferenced_scope_rank[gen] <- out$taxon_name_rank[gen]
   out$unreferenced_mass[gen] <- 0
@@ -273,7 +294,38 @@ add_unreferenced_prior_mass <- function(joined,
   mem <- if (length(members_all)) do.call(rbind, members_all) else NULL
 
   n_changed <- 0L
-  if (!is.null(mem) && nrow(mem) > 0L) {
+  n_named <- 0L
+  if (named_rows && !is.null(mem) && nrow(mem) > 0L) {
+    # One named row per recorded unreferenced local species, carrying the
+    # likelihood of the ring whose scope contains it and its own prior. The
+    # ring row keeps its own prior (the unrecorded part only).
+    new <- out[mem$row, , drop = FALSE]
+    new$taxon_name <- mem$taxon_name
+    new$taxon_name_rank <- "species"
+    new$hypothesis_type <- "unreferenced_species"
+    if ("species" %in% names(new)) new$species <- mem$taxon_name
+    tx <- tax[match(mem$taxon_name, tax$taxon_name), , drop = FALSE]
+    for (rc in intersect(setdiff(names(tax), "taxon_name"), names(new))) new[[rc]] <- tx[[rc]]
+    th <- pmin(pmax(mem$theta_mean, 1e-12), 1 - 1e-9)
+    ne <- th * (1 - th) / pmax(mem$var, 1e-30) - 1
+    ne <- ifelse(is.finite(ne) & ne > 0, ne, 2)
+    new$prior_mean <- th
+    new$prior_alpha <- th * ne
+    new$prior_beta <- (1 - th) * ne
+    new$prior_mean_floor <- NA_real_
+    new$unreferenced_scope <- mem$scope
+    new$unreferenced_scope_rank <- mem$rank
+    new$unreferenced_mass <- NA_real_
+    new$unreferenced_n_species <- NA_integer_
+    nsp <- tapply(mem$taxon_name, mem$row, length)
+    out$unreferenced_n_species[as.integer(names(nsp))] <- as.integer(nsp)
+    for (cc in intersect(c("prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent",
+      "prior_mix_p_conc", "prior_mix_var_present", "prior_mix_var_absent", "prior_mix_veto_bound"), names(new))) {
+      new[[cc]] <- NA
+    }
+    n_named <- nrow(new)
+    out <- rbind(out, new)
+  } else if (!is.null(mem) && nrow(mem) > 0L) {
     mass <- tapply(mem$theta_mean, mem$row, sum)
     varm <- tapply(mem$var, mem$row, sum)
     nsp <- tapply(mem$taxon_name, mem$row, length)
@@ -317,6 +369,10 @@ add_unreferenced_prior_mass <- function(joined,
     }
   }
 
+  if (named_rows) {
+    cli::cli_inform("Unreferenced named rows at {.val {grid_id}}: {n_named} recorded \\
+      unreferenced local species added under {length(unique(mem$row))} ring row(s).")
+  }
   cli::cli_inform(c(
     "Unreferenced prior mass at {.val {grid_id}}: {n_changed} of {length(gen)} generic \\
     row(s) gained mass from unreferenced local relatives \\

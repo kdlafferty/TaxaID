@@ -34,6 +34,7 @@
   data.frame(
     observation_id = paste0("Q", 1:40),
     genus = "Genusone",
+    taxon_name = "Genusone speciesa",
     score_original = 95.0,
     stringsAsFactors = FALSE
   )
@@ -137,6 +138,7 @@ test_that("calibrate_query_noise: logit and sqrt_mismatch produce different-scal
     data.frame(
       observation_id = sprintf("Q%02d_%d", i, seq_len(n_obs_each)),
       genus = gen[i],
+      taxon_name = keys[i],
       score_original = score_fn(mu[i]),
       stringsAsFactors = FALSE
     )
@@ -148,24 +150,25 @@ test_that("calibrate_query_noise: logit and sqrt_mismatch produce different-scal
   list(params = params, match_df = rows, priors = priors, mu = mu)
 }
 
-test_that("calibrate_query_noise: offset_form default is 'linear'", {
-  # With enough confident species spanning a range of trained means, the default
-  # (no offset_form supplied) must fit the affine form.
+test_that("calibrate_query_noise: offset_form default is 'constant'", {
+  # Even with enough confident species spanning a range of trained means, the
+  # default (no offset_form supplied) applies one additive offset.
   fx <- .make_multi_species_fixture(
     score_fn = function(mu) rep(100 * stats::plogis(mu - 0.8), 4L)
   )
   out <- calibrate_query_noise(fx$params, fx$match_df, fx$priors,
     min_confident_obs = 30L, verbose = FALSE
   )
-  expect_equal(out$Query_Calibration$offset_form, "linear")
+  expect_equal(out$Query_Calibration$offset_form, "constant")
+  expect_equal(out$Query_Calibration$slope, 1)
 })
 
-test_that("calibrate_query_noise: default 'linear' falls back to 'constant' on thin reference data", {
-  # A single-species reference set cannot support the affine fit; the default
+test_that("calibrate_query_noise: 'linear' falls back to 'constant' on thin reference data", {
+  # A single-species reference set cannot support the affine fit; 'linear'
   # must degrade gracefully to the additive offset (with a warning).
   expect_warning(
     out <- calibrate_query_noise(.make_calib_model_params("logit"), .make_calib_match_df(),
-      .make_calib_priors(),
+      .make_calib_priors(), offset_form = "linear",
       min_confident_obs = 30L, verbose = FALSE
     ),
     "Falling back to constant"
@@ -247,4 +250,69 @@ test_that("calibrate_query_noise: model_params without Score_Transform errors lo
     ),
     "Score_Transform"
   )
+})
+
+test_that("calibrate_query_noise: confident species without a trained mean are left out, not compared with the global mean", {
+  params <- .make_calib_model_params("logit")
+  m <- .make_calib_match_df()
+  extra <- data.frame(observation_id = paste0("R", 1:40), genus = "Genustwo",
+    taxon_name = "Genustwo speciesb", score_original = 70, stringsAsFactors = FALSE)
+  pr <- rbind(.make_calib_priors(), data.frame(taxon_name = "Genustwo speciesb",
+    taxon_name_rank = "species", theta_mean = 0.5))
+  base <- calibrate_query_noise(params, m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE)
+  with_extra <- calibrate_query_noise(params, rbind(m, extra), pr,
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE)
+  # Genustwo speciesb has no H1_Lookup row: its 70% scores must not move the offset
+  expect_equal(with_extra$Query_Calibration$offset_logit, base$Query_Calibration$offset_logit)
+  expect_equal(with_extra$Query_Calibration$n_excluded_no_trained_mean, 40L)
+})
+
+# ---- field-scatter widening (calibrate_sigma) --------------------------------
+.tight_params <- function() {
+  p <- .make_calib_model_params("logit")
+  p$H1_Sigma["score_logit", "score_logit"] <- 0.01
+  p$H1_Lookup$sigma_score <- 0.01
+  p
+}
+
+test_that("calibrate_sigma: too few confident observations hold the conservative floor", {
+  out <- calibrate_query_noise(.tight_params(), .make_calib_match_df(), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE)
+  # 40 observations < min_sigma_obs = 100: spread held at 1.0 logit unit^2
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 1.0)
+  expect_match(out$Query_Calibration$sigma_source, "conservative floor")
+})
+
+test_that("calibrate_sigma: measured scatter no wider than the references leaves the spread", {
+  out <- calibrate_query_noise(.tight_params(), .make_calib_match_df(), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, min_sigma_obs = 10L, verbose = FALSE)
+  # identical scores: no residual scatter, ratio 1 (never narrows)
+  expect_equal(out$Query_Calibration$sigma_ratio, 1)
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 0.01)
+  expect_equal(out$Query_Calibration$sigma_source, "measured")
+})
+
+test_that("calibrate_sigma: wider field scatter widens the spread", {
+  m <- .make_calib_match_df()
+  m$score_original <- rep(c(90, 99), 20)
+  out <- calibrate_query_noise(.tight_params(), m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, min_sigma_obs = 10L, verbose = FALSE)
+  expect_gt(out$Query_Calibration$sigma_ratio, 1)
+  expect_gt(out$H1_Sigma["score_logit", "score_logit"], 0.01)
+})
+
+test_that("calibrate_sigma = FALSE leaves the spread untouched", {
+  out <- calibrate_query_noise(.tight_params(), .make_calib_match_df(), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, calibrate_sigma = FALSE, verbose = FALSE)
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 0.01)
+})
+
+test_that("calibrate_sigma: an uncalibrated exit (too few confident observations) still holds the floor", {
+  m <- .make_calib_match_df()[1:10, ]
+  out <- suppressWarnings(calibrate_query_noise(.tight_params(), m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE))
+  expect_equal(out$Query_Calibration$offset_logit, 0)
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 1.0)
+  expect_match(out$Query_Calibration$sigma_source, "conservative floor")
 })

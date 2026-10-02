@@ -1083,3 +1083,67 @@ on functions this document already covers above.
   leaves it almost unchanged. The documentation now says so, and says the cause is not
   established. No change to the model; a bound to [0, 1] was tried and withdrawn because
   it predicted held-out COI species worse.
+
+### train_likelihood_model(): H3 measured from confamilial pairs (added after the review)
+
+The unsequenced-genus hypothesis (H3) used a fixed rule, the H2 shift plus 2.0
+transform units, with no data behind it. It is now measured the way H2 is: from each
+reference's best match to another genus of the same family, family-equal-weighted,
+kept at least as distant as the pooled H2 shift. With fewer than 3 families supplying
+such matches the old rule is used, and `Stats$h3_source` says which applied. On real
+CalIntertidal data the fixed rule was far too pessimistic: implied mean identity
+83.3 vs 91.8 percent measured (12S; 858 references in 47 families supplied pairs),
+85.8 vs 95.5 (18S; 702 in 197), 74.6 vs 86.8 (COI; 25,513 in 1,143). The measured
+similarity is a LOWER BOUND: under `by_genus = TRUE` most confamilial pairs are never
+computed (each genus sees a random sample of other genera), which biases it toward a
+more distant match. So H3 still loses somewhat too easily and calls keep residual
+overconfidence -- the change under-corrects, it does not err toward caution. The
+identity floor biases the other way, but only 3 to 8 percent of the pool sits near
+the floor (`Stats$h3_share_near_floor`). Two
+tests: measured on a 4-family fixture, heuristic fallback on a 2-family one.
+
+- `calibrate_query_noise(offset_form)` defaults to `"constant"` (one additive offset);
+  `"linear"` remains available. Measured as held-out error on real CalIntertidal confident
+  species, leaving out one species at a time: every correction beat none by a factor of
+  2-5; constant matched or beat linear for 12S (where a line cannot be fitted) and 18S
+  (slope interval spanning both 0 and 1); linear was better only for COI, through a
+  negative slope whose cause is not established. The maintainer chose one method for all
+  markers, the simplest to state and the most conventional. That gives up a measured gain:
+  for COI the held-out error is 0.198 (constant) against 0.181 (linear) on Illumina and
+  0.159 against 0.127 on Nanopore, about 9% and 20% worse, on a slope whose 95% interval
+  excludes zero on both platforms (-75 to -25 and -64 to -34). "Constant for every marker"
+  is therefore a choice of one method over a marker-specific gain, not a finding that
+  constant performed best everywhere. Tests:
+  test-calibrate_query_noise.R (the default test now asserts "constant"; the thin-data
+  fallback test passes `offset_form = "linear"` explicitly).
+
+### 2026-10-01: the H1 spread comes from the data; field scatter is measured, never narrowed
+
+`train_likelihood_model()` floored every H1 variance at 1.0 transform unit^2 (0.0156 on the
+`sqrt_mismatch` scale), the same on every marker. The real within-species variance in the
+CalIntertidal reference pairs is 0.0020 (12S), 0.0030 (18S) and 0.0021 (COI), so the floor
+was 5-8x the data and flattened every likelihood ratio (a 100% vs 96.3% match differed by a
+factor of 4.6). The floor is now a numerical guard (0.01 unit^2); the spread is estimated from
+the reference pairs. Field queries carry extra sequencing noise, which the floor had been
+absorbing implicitly; `calibrate_query_noise(calibrate_sigma = TRUE)`, now the default,
+measures it on the confident observations as a trimmed residual-variance ratio and only ever
+widens. (An earlier MAD-based version narrowed the spread on discrete identity scores and
+zeroed correct candidates; that is why the estimator and the widen-only rule matter.) Where a
+marker x platform has fewer than `min_sigma_obs` (100) confident observations, nothing is
+measured and the spread is held at the former floor; `$Query_Calibration$sigma_source`
+records which applied. This keeps the change package-generic (no marker or platform is
+treated specially) at no extra cost. Measured: on a known-truth counterfactual test, wrong
+calls fell where the sequence separates the species (12S T2 20% -> 6%, T3 41% -> 11%; 18S T3
+83% -> 36%); on real 12S field data the confident species became the likelihood winner more
+often (Illumina 75% -> 93%, 0.3% zeroed); 18S, with 22-33 confident observations per platform,
+keeps the former spread and is unchanged.
+
+### 2026-10-01: a test satisfied by a degenerate input is not evidence
+
+A shrinkage check in test-train.R asserted `(mu_gap - g) * shrink_w_gap >= 0 | shrink_w_gap == 0`,
+which is not betweenness: it fails for any species whose gap mean lies below the pooled mean. It
+passed only because the old variance floor forced tau2_gap to 0, so every weight was 0 and the
+escape clause fired. It is replaced by the real property, each shrunk mean lies between the pooled
+mean and the species' own mean (from an unshrunk fit), with an assertion that some weight is
+non-zero so the check cannot pass vacuously. The same pattern appeared once before in this screen
+(an order-dependent failure that was really n_sims = 0).

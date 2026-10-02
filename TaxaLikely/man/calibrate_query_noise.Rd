@@ -10,9 +10,10 @@ calibrate_query_noise(
   priors,
   plausibility_threshold = 0.001,
   min_confident_obs = 30L,
-  offset_form = c("linear", "constant"),
+  offset_form = c("constant", "linear"),
   min_calib_species = 8L,
-  calibrate_sigma = FALSE,
+  calibrate_sigma = TRUE,
+  min_sigma_obs = 100L,
   evidence_col = NULL,
   logit_epsilon = 1e-04,
   verbose = TRUE
@@ -38,40 +39,37 @@ confident observations required to compute an offset. Below this, the
 function warns and returns \code{model_params} unchanged (offset = 0, sigma
 ratio = 1).}
 
-\item{offset_form}{Character (default \code{"linear"}). \code{"linear"} remaps each H1
-mean through a robustly-fit line \code{intercept + slope * trained_mean} (fit on
-per-species medians) -- a level-aware calibration that estimates, rather
-than assumes, how much per-species reference-scale structure transfers to
-the inference scale, and reduces to a pure additive offset when it fully
-transfers (slope = 1). It is the default because, across every real dataset
-tested (external-pipeline- and BLAST-scored DNA markers), the fitted slope
-collapsed toward 0 and a single calibrated location fit real query scores
-as well as or better than per-species-mean-plus-offset (see "Level-aware
-recalibration"). \code{"constant"} is the conservative opt-out -- one additive
-offset applied to every H1 mean (the package's original behavior),
-appropriate when you would rather retain per-species locations than collapse
-them on a location-only validation set. \code{"linear"} falls back to
-\code{"constant"} (with a warning) when fewer than \code{min_calib_species} confident
-species, or no spread of trained means, are available -- so a thin-reference
-marker (e.g. one with only a handful of referenced species) is handled
-safely without a caller having to special-case it. In particular, when
-the trained per-species score means have no spread at all -- which
-happens whenever \code{train_likelihood_model()} reports
-\code{Stats$tau2_score = 0} under \code{shrinkage = "empirical_bayes"} (observed on
-every production site to date, per that shrinkage mode's own
-documentation) -- every species' H1 mean IS the global mean by
-construction, \code{"linear"} has no spread of trained means to fit against,
-and it falls back to \code{"constant"} with a warning -- so requesting
-\code{"linear"} there is moot.}
+\item{offset_form}{Character (default \code{"constant"}). \code{"constant"} adds one
+additive offset to every H1 mean: the query scale is shifted to the
+reference scale by the amount the confident observations require, and the
+per-species locations keep their relative positions. \code{"linear"} instead
+remaps each H1 mean through \code{intercept + slope * trained_mean}, fit on
+per-species medians of the confident observations, so how much per-species
+structure transfers is estimated rather than assumed. The default is
+\code{"constant"} because, measured on held-out confident species from real
+12S, 18S and COI data, the constant offset recovered most of the
+improvement over no correction (held-out error falling by a factor of 2 to
+5), matched or beat the linear form for 12S and 18S, and is the simplest
+correction to state; the linear form helped only COI, through a negative
+slope whose cause is not established (see "Level-aware recalibration").
+\code{"linear"} falls back to \code{"constant"} (with a warning) when fewer than
+\code{min_calib_species} confident species, or no spread of trained means, are
+available.}
 
 \item{min_calib_species}{Integer (default \code{8L}). Minimum number of distinct
 confident species (spanning a range of trained means) required to fit the
 \code{offset_form = "linear"} line. Ignored when \code{offset_form = "constant"}.}
 
-\item{calibrate_sigma}{Logical (default \code{FALSE}). Also apply the
-MAD-based variance-scale correction described in the Sigma correction
-section below. \strong{Empirically made results worse on the one real dataset
-this was tested against} -- read that section before enabling.}
+\item{calibrate_sigma}{Logical (default \code{TRUE}). Widen the H1 spread by
+the measured extra scatter of field queries over reference pairs: the
+ratio of the residual variance (5 percent trimmed each side) to the
+trained variance, never below 1. See the Sigma correction section.}
+
+\item{min_sigma_obs}{Integer (default \code{100L}). Fewest confident
+observations from which the field scatter is measured. Below it the H1
+spread is held at the conservative floor of 1.0 transform unit^2 (it is
+never narrowed where it cannot be checked); \verb{$Query_Calibration$sigma_source}
+records which applied.}
 
 \item{evidence_col}{Character or \code{NULL} (default \code{NULL}). Name of a column
 in \code{match_df} giving each observation's raw evidence quantity (e.g. DNA
@@ -145,32 +143,20 @@ without altering the \emph{relative} structure between species, or the
 \code{H2}/\code{H3} congener-divergence deltas (which are differences from the
 shifted mean, so they carry through unchanged).
 }
-\section{Sigma correction (opt-in, off by default -- use with caution)}{
+\section{Sigma correction}{
 
-The same confident-observation residuals can also be used to scale H1's
-\emph{variance} (\code{calibrate_sigma = TRUE}): reference-vs-reference pairs
-understate real query-to-query scatter in the opposite direction from the
-mean bias (in the one real dataset this was tested against, MAD-based
-residual variance ran ~11x tighter than the reference-trained variance).
-Applying that ratio to \code{H1_Sigma["score_logit", "score_logit"]} and every
-\code{H1_Lookup$sigma_score} sounds like the natural complement to the mean fix,
-but \strong{empirically made things worse, not better}, on the one real dataset
-this was tested against: it helped 0 of 13,442 real observations and hurt
-4,878, in some cases (including the motivating \code{Sardinops} case) zeroing
-out a correct H1 candidate entirely. The likely mechanism: the confident
-set is selection-biased toward the \emph{easiest} cases (abundant, well-sampled
-genera, clean high-depth reads) and its internal spread understates the
-true population's variability, which includes rarer/lower-quality
-specimens that never qualify as "confident" in the first place -- so a
-sigma correction derived from it is too tight for the general population,
-triggering exactly the failure mode \code{evaluate_likelihoods()}'s existing
-per-species sigma floor was built to prevent, just at the global-model
-level instead of the per-species level. Left in as an opt-in, documented
-negative result rather than removed outright, since a smarter correction
-(e.g. shrinking
-toward the original reference-based sigma rather than fully replacing it)
-may be worth revisiting -- but do not enable it without validating on your
-own data first, the same way this was validated (and rejected) here.
+\code{train_likelihood_model()} estimates the H1 spread from reference pairs. A
+field query is a reference-like sequence plus sequencing and amplification
+noise, so its scatter around a species' mean can only be wider. The
+correction measures that extra scatter on the confident observations
+(variance of their residuals, 5 percent trimmed each side, over the trained
+variance) and widens the spread by it; it never narrows. The variance is
+used because identity scores on a short amplicon take few distinct values,
+on which a median absolute deviation can collapse to zero; an earlier
+MAD-based version narrowed the spread that way and zeroed correct
+candidates. With fewer than \code{min_sigma_obs} confident observations the
+scatter cannot be measured, and the spread is held at the conservative
+floor of 1.0 transform unit^2.
 }
 
 \section{Level-aware recalibration (\code{offset_form = "linear"})}{
@@ -210,19 +196,18 @@ congener-divergence deltas (defined relative to the H1 mean) and the gap
 feature -- the structure that actually discriminates between candidate
 species -- are untouched.
 
-One caveat governs why \code{"constant"} is retained as an opt-out rather than
-removed. The confident set is selection-biased toward abundant, well-sampled,
-easy genera, and by construction has exactly one plausible species per genus
+One caveat bears on choosing between the two forms. The confident set is
+selection-biased toward abundant, well-sampled, easy genera, and by construction has exactly one plausible species per genus
 -- so it can measure absolute H1 \emph{location} fit but cannot directly test
 congener \emph{discrimination}. A \code{"linear"} fit whose slope collapses to 0 removes
 per-species location structure that is demonstrably not real on the inference
 scale, but that this validation set cannot independently confirm is safe to
-remove in hard congener-vs-congener cases. For that reason \code{"constant"}
-remains available for an analyst who would rather keep per-species locations
-than collapse them; \code{"linear"} is the default because on every real dataset
-examined the collapse was both indicated (slope near 0) and harmless-to-helpful
-for assignment, and because it reduces to \code{"constant"} automatically wherever
-the per-species means do transfer (slope near 1). \code{"linear"} requires at least
+remove in hard congener-vs-congener cases. For that reason, and on the
+evidence, \code{"constant"} is the default: on held-out confident species from real 12S, 18S and COI data
+it matched or beat \code{"linear"} everywhere except COI, and it is the simplest
+correction to state. \code{"linear"} is available when a marker's own evidence
+supports a slope; it reduces to \code{"constant"} automatically wherever the
+per-species means transfer exactly (slope 1). \code{"linear"} requires at least
 \code{min_calib_species} confident species spanning a range of trained means; it
 falls back to \code{"constant"} with a warning otherwise.
 

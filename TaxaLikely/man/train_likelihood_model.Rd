@@ -29,13 +29,15 @@ from the \code{.x}-suffixed columns in \code{raw_df}.}
 
 \item{score_bounds}{Optional \code{c(min, max)} for score normalization.}
 
-\item{min_observed_sigma}{Numeric or \code{NULL} (default).  Floor on observed
-within-species score variance.  Prevents overfitting on species with very
-low variance (e.g., a species with two nearly identical reference
-sequences).  \code{NULL} resolves to \code{1.0} for \code{score_transform = "logit"}
-(in logit space, 1.0 corresponds to meaningful within-species variation)
-or the equivalent rescaled value for \code{"sqrt_mismatch"} -- see
-\code{score_transform} below.}
+\item{min_observed_sigma}{Numeric or \code{NULL} (default).  Numerical floor on
+the score variances (pooled and per species).  \code{NULL} resolves to \code{0.01}
+transform units squared (\code{0.01} in logit space, rescaled for
+\code{"sqrt_mismatch"}), a guard against degenerate zero-variance estimates,
+not a noise model: the spread is estimated from the reference pairs,
+per-species estimates are shrunk toward the pooled one, and the extra
+scatter of field queries is measured by \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}. A
+floor of \code{1.0} unit^2 was measured at 5-8x the real within-species
+variance on 12S, 18S and COI, flattening every likelihood ratio.}
 
 \item{prior_weight}{Numeric.  Equivalent pseudo-sample size for Empirical
 Bayes shrinkage toward the global mean.  Controls how strongly
@@ -308,6 +310,45 @@ divergence (e.g. an unreferenced acoustic or visual mimic in the acoustic
 and image pathways, where evidence similarity need not track phylogeny at
 all) -- see \code{inst/TaxaLikely_supplemental_methods.md} for a fuller
 discussion of that limitation.
+}
+
+\section{Unsequenced-genus likelihood (H3)}{
+
+\code{H3} is the hypothesis that the query comes from a genus of the anchor's
+family that has no reference sequence. Its score distribution is measured
+the way \code{H2}'s is: for each reference, its best match to a species of
+another genus in the same family (rank_code_c, conventionally family). The
+mean is family-equal-weighted (mean of family means), so one heavily
+sequenced family cannot set it, and the shift is kept at least as large as
+the pooled \code{H2} shift so an unsequenced genus is never assumed to match
+better than an unsequenced congener. The variance uses the same
+family-equal weights (mean within-family variance plus the variance of
+family means). That choice is not direction-free: on real data it
+sharpened 18S \code{H3} (sd 0.149 to 0.114 transform units), making 18S species
+calls somewhat more confident, and widened COI's (0.066 to 0.078). With fewer than 3 families supplying
+such matches, the shift falls back to the \code{H2} shift plus 2.0 transform
+units; \code{Stats$h3_source} records which was used.
+
+Two sampling effects bear on the measured value, in opposite directions.
+Pairs below \code{build_sequence_matrix()}'s identity floor (\code{max_dist}) are
+never stored, so a very poor confamilial match cannot be observed, which
+would push the estimate up; \code{Stats$h3_share_near_floor} reports how much
+of the pool sits in the lowest 5 percent of its observed range (3 to 8
+percent on real 12S, 18S and COI data, so this effect is small). And
+under \code{build_sequence_matrix(by_genus = TRUE)} each genus is aligned
+against a random sample of other genera's single representatives, so most
+confamilial pairs are never computed (79 to 95 percent of eligible
+references had none on the same data) and the stored best is the best
+against one sampled genus rather than against every referenced genus of
+the family. That pushes the estimate down. The measured similarity is
+therefore a lower bound: an unsequenced genus probably matches more
+closely than \code{H3} assumes, so \code{H3} still loses somewhat too easily to a
+referenced candidate and calls keep some residual overconfidence. The
+correction runs the right way but is smaller than the true one. On real
+data it sits far closer than the earlier fixed rule: an implied mean
+identity of 91.8 against 83.3 percent (12S; 858 references in 47
+families supplied confamilial pairs), 95.5 against 85.8 (18S; 702 in 197)
+and 86.8 against 74.6 (COI; 25,513 in 1,143).
 }
 
 \section{Pseudo-data anchoring}{

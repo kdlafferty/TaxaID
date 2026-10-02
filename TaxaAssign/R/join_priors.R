@@ -79,7 +79,7 @@ utils::globalVariables(c(
     (!("hypothesis_type" %in% names(result)) |
       !result$hypothesis_type %in% c(
         "unreferenced_species", "unreferenced_genus",
-        "unreferenced_family", "unresolved_species"
+        "unreferenced_family", "unreferenced_order", "unresolved_species"
       ))
 
   if (!any(is_coarse)) {
@@ -264,214 +264,125 @@ utils::globalVariables(c(
 
 # .compute_dark_diversity_groups()
 #
-# For a set of unmodelled candidate taxa (those with no TaxaExpect prior),
-# computes mass-conserving group priors by hierarchical descent through
-# phylum -> class -> order -> family -> genus.
+# Per-clade dark-diversity budget for unmodelled candidates (no occurrence
+# record). For each clade X (phylum .. genus): f1 = its singletons, D = their
+# mean share (the share one missing species would hold if present), K = its
+# unrecorded candidates, W = evidence weight already priced by other
+# generators. The expected number of missing species is shrunk toward the
+# parent's: N* = (f1 + kappa * Nhat) / (1 + kappa), Nhat = parent N* times the
+# clade's share of the parent's candidates. Each candidate gets
+# min(1, (N* - W) / K) * D at its finest known clade: the clade's unseen mass
+# shared among its candidates, never more than one species' share. The
+# remainder (missing species no candidate accounts for) is returned in
+# attr(, "dark_budget") for the unsequenced-relative ring rows: at genus
+# N* - K - W, at a coarser rank N* minus its child clades' N*.
 #
-# At each rank:
-#   - Sub-clades with 0 singletons: form ONE combined group.
-#     Budget = 1 effective singleton * parent_clade_singleton_mean / n_candidates.
-#   - Sub-clades with >= 1 singletons: subdivide further (recurse).
-#   - Genus is terminal: candidates always grouped at genus level.
-#
-# Concentration phi = effective_singletons * singleton_ess.
-# alpha = prior_mean * phi, beta = (1 - prior_mean) * phi.
-#
-# This ensures total dark-diversity mass scales with the number of singletons
-# (proxy for true undetected diversity), not with n_candidates. Without this,
-# 50 unreferenced candidates each assigned Beta(1, N-1) produce 50x the
-# intended dark-diversity mass.
-#
-# Args:
-#   unref_df              : data frame of unique unmodelled taxon names + taxonomy.
-#   singleton_df          : singleton-mirror rows from taxaexpect_priors, with
-#                           source taxonomy joined on source_taxon_name.
-#   global_singleton_mean : fallback theta when no singletons match a candidate.
-#   singleton_ess         : effective sample size for Beta concentration.
-#
-# Returns: unref_df with added columns group_prior_alpha, group_prior_beta,
-#   dark_diversity_group, n_singletons_group, n_undetected_group.
+# Returns: unref_df with group_prior_alpha, group_prior_beta,
+#   dark_diversity_group, n_singletons_group, n_undetected_group, and
+#   attr "dark_budget" (rank, clade, f1, N, K, W, D, remainder).
 #' @noRd
 .compute_dark_diversity_groups <- function(unref_df,
                                            singleton_df,
                                            global_singleton_mean,
-                                           singleton_ess = 2L) {
+                                           singleton_ess = 2L,
+                                           evidence_df = NULL,
+                                           kappa = 1) {
   tax_ranks <- c("phylum", "class", "order", "family", "genus")
   n <- nrow(unref_df)
-
-  # Pre-allocate output vectors
-  g_alpha <- rep(NA_real_, n)
-  g_beta <- rep(NA_real_, n)
-  g_label <- rep(NA_character_, n)
-  g_ns <- rep(0L, n)
-  g_nu <- rep(0L, n)
-
-  # Degenerate cases: no candidates, no singletons, or bad fallback
-  if (n == 0L) {
-    unref_df$group_prior_alpha <- g_alpha
-    unref_df$group_prior_beta <- g_beta
-    unref_df$dark_diversity_group <- g_label
-    unref_df$n_singletons_group <- g_ns
-    unref_df$n_undetected_group <- g_nu
-    return(unref_df)
+  for (col in tax_ranks) {
+    if (col %in% names(unref_df)) unref_df[[col]] <- dplyr::na_if(as.character(unref_df[[col]]), "")
+    if (col %in% names(singleton_df)) singleton_df[[col]] <- dplyr::na_if(as.character(singleton_df[[col]]), "")
+    if (!is.null(evidence_df) && col %in% names(evidence_df)) evidence_df[[col]] <- dplyr::na_if(as.character(evidence_df[[col]]), "")
   }
+  ranks <- tax_ranks[tax_ranks %in% names(unref_df) & tax_ranks %in% names(singleton_df)]
   gsm <- global_singleton_mean
   if (!is.finite(gsm) || gsm <= 0) gsm <- 1 / (n + 1)
-
-  # Normalize empty strings to NA in taxonomy columns
-  for (col in tax_ranks) {
-    if (col %in% names(unref_df)) unref_df[[col]] <- dplyr::na_if(unref_df[[col]], "")
-    if (col %in% names(singleton_df)) singleton_df[[col]] <- dplyr::na_if(singleton_df[[col]], "")
-  }
-
-  # Pre-compute singleton theta (needed for group means)
   singleton_df$theta_s <- singleton_df$alpha / (singleton_df$alpha + singleton_df$beta)
 
-  # Helper: compute alpha/beta from (n_singletons, prior_mean, ess)
-  # Helper: split a total probability mass evenly across n candidates,
-  # capped away from 1 (a defensive guard against pathological alpha/beta
-  # when downstream code divides by (1 - pm)). Reproduced in some form at
-  # five points in the recursive descent below; consolidated here so the
-  # capping constant only needs to change in one place.
-  .split_mean_cap <- function(mass, n) min(mass / n, 1 - 1e-9)
-
-  .make_ab <- function(n_s, pm, ess) {
-    eff_s <- max(1L, as.integer(n_s))
-    phi <- eff_s * ess
-    list(a = min(pm, 1 - 1e-9) * phi, b = (1 - min(pm, 1 - 1e-9)) * phi)
+  # ---- per-clade budget, top-down --------------------------------------------
+  # f1 = singletons in the clade, D = their mean share (one missing species'
+  # share if present), K = unrecorded candidates, W = evidence weight already
+  # priced elsewhere. N* = (f1 + kappa * Nhat) / (1 + kappa), Nhat = the
+  # parent's N* apportioned by the clade's share of the parent's candidates.
+  key <- function(r, v) paste(r, v, sep = "\r")
+  budget <- list()
+  root <- list(N = nrow(singleton_df), D = gsm, K = n)
+  parent_of <- function(df, r_i) {
+    if (r_i == 1L) rep("ROOT", nrow(df)) else key(ranks[r_i - 1L], df[[ranks[r_i - 1L]]])
   }
-
-  # Helper: record group assignment for candidate positions
-  .record <- function(pos, n_s, pm, label) {
-    n_c <- length(pos)
-    ab <- .make_ab(n_s, pm, singleton_ess)
-    g_alpha[pos] <<- ab$a
-    g_beta[pos] <<- ab$b
-    g_label[pos] <<- label
-    g_ns[pos] <<- as.integer(n_s)
-    g_nu[pos] <<- as.integer(n_c)
-  }
-
-  # Recursive descent.
-  # cpos: integer positions into unref_df being processed in this call.
-  # spos: integer positions into singleton_df matching the current clade.
-  # parent_mean: mean theta of singletons in the current (parent) clade.
-  # depth: rank depth (1 = phylum, 5 = genus).
-  .descend <- function(cpos, spos, parent_mean, depth) {
-    if (length(cpos) == 0L) {
-      return(invisible(NULL))
-    }
-
-    if (depth > length(tax_ranks)) {
-      # Exhausted all ranks -- group everything together
-      pm <- .split_mean_cap(parent_mean, length(cpos))
-      .record(cpos, length(spos), pm, "terminal")
-      return(invisible(NULL))
-    }
-
-    rank <- tax_ranks[depth]
-
-    if (!rank %in% names(unref_df)) {
-      # Taxonomy column absent for candidates at this rank -- skip to next
-      .descend(cpos, spos, parent_mean, depth + 1L)
-      return(invisible(NULL))
-    }
-
-    cvals <- unref_df[[rank]][cpos]
-
-    # --- Candidates with NA at this rank ----------------------------------------
-    na_pos <- cpos[is.na(cvals)]
-    if (length(na_pos) > 0L) {
-      if (depth == 1L) {
-        # At phylum level, unknown-phylum candidates share no taxonomic context
-        # with each other.  Do NOT pool them -- each should fall back to the
-        # global floor individually in join_priors().  Set only the label so the
-        # still_na fallback below (which checks is.na(g_label)) skips them.
-        g_label[na_pos] <<- "no_phylum"
-      } else {
-        pm <- .split_mean_cap(parent_mean, length(na_pos))
-        .record(na_pos, 0L, pm, paste0("no_", rank))
+  bud <- data.frame(rank = "ROOT", clade = "ROOT", key = "ROOT", f1 = root$N, D = root$D,
+    K = root$K, W = 0, N = root$N, stringsAsFactors = FALSE)
+  for (ri in seq_along(ranks)) {
+    r <- ranks[ri]
+    cl <- unique(c(unref_df[[r]], singleton_df[[r]]))
+    cl <- cl[!is.na(cl)]
+    if (!length(cl)) next
+    rows <- lapply(cl, function(v) {
+      s_in <- !is.na(singleton_df[[r]]) & singleton_df[[r]] == v
+      c_in <- !is.na(unref_df[[r]]) & unref_df[[r]] == v
+      par <- if (ri == 1L) "ROOT" else {
+        pv <- unique(c(unref_df[[ranks[ri - 1L]]][c_in], singleton_df[[ranks[ri - 1L]]][s_in]))
+        pv <- pv[!is.na(pv)]
+        if (length(pv)) key(ranks[ri - 1L], pv[1]) else "ROOT"
       }
-    }
-
-    # --- Candidates with a known value at this rank --------------------------
-    non_na_pos <- cpos[!is.na(cvals)]
-    if (length(non_na_pos) == 0L) {
-      return(invisible(NULL))
-    }
-
-    for (val in unique(cvals[!is.na(cvals)])) {
-      val_cpos <- cpos[!is.na(cvals) & cvals == val]
-      n_c <- length(val_cpos)
-
-      # Singletons sharing this rank value
-      if (rank %in% names(singleton_df) && length(spos) > 0L) {
-        svals <- singleton_df[[rank]][spos]
-        val_spos <- spos[!is.na(svals) & svals == val]
-      } else {
-        val_spos <- integer(0L)
-      }
-      n_s <- length(val_spos)
-
-      if (n_s == 0L) {
-        # No singletons in this sub-clade -- form one combined group here
-        pm <- .split_mean_cap(parent_mean, n_c)
-        if (depth > 1L) {
-          parent_rank <- tax_ranks[depth - 1L]
-          if (parent_rank %in% names(unref_df)) {
-            pv <- unique(unref_df[[parent_rank]][val_cpos])
-            pv_str <- if (length(pv) == 1L && !is.na(pv[1L])) pv[1L] else "mixed"
-          } else {
-            pv_str <- "unknown"
-          }
-          lbl <- paste0("zero_", rank, "s_in_", pv_str)
-        } else {
-          lbl <- paste0("zero_", rank, "s")
-        }
-        .record(val_cpos, 0L, pm, lbl)
-      } else if (depth == length(tax_ranks)) {
-        # Genus is terminal -- group all candidates in this genus
-        val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
-        if (!is.finite(val_mean)) val_mean <- parent_mean
-        pm <- .split_mean_cap(n_s * val_mean, n_c)
-        .record(val_cpos, n_s, pm, paste0(rank, ":", val))
-      } else {
-        # Has singletons at this rank and not yet at terminal -- recurse
-        val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
-        if (!is.finite(val_mean)) val_mean <- parent_mean
-        .descend(val_cpos, val_spos, val_mean, depth + 1L)
-      }
-    }
-
-    invisible(NULL)
+      w_in <- if (!is.null(evidence_df) && r %in% names(evidence_df)) {
+        sum(evidence_df$w[!is.na(evidence_df[[r]]) & evidence_df[[r]] == v], na.rm = TRUE)
+      } else 0
+      data.frame(rank = r, clade = v, key = key(r, v), parent = par, f1 = sum(s_in),
+        Dself = if (any(s_in)) mean(singleton_df$theta_s[s_in], na.rm = TRUE) else NA_real_,
+        K = sum(c_in), W = w_in, stringsAsFactors = FALSE)
+    })
+    rr <- do.call(rbind, rows)
+    pidx <- match(rr$parent, bud$key)
+    pN <- bud$N[pidx]; pK <- bud$K[pidx]; pD <- bud$D[pidx]
+    pN[is.na(pN)] <- root$N; pK[is.na(pK)] <- root$K; pD[is.na(pD)] <- root$D
+    Nhat <- ifelse(pK > 0, pN * rr$K / pK, 0)
+    rr$N <- (rr$f1 + kappa * Nhat) / (1 + kappa)
+    rr$D <- ifelse(is.na(rr$Dself) | !is.finite(rr$Dself), pD, rr$Dself)
+    bud <- rbind(bud, rr[, c("rank", "clade", "key", "f1", "D", "K", "W", "N")])
   }
 
-  # Kick off recursion at phylum level
-  .descend(seq_len(n), seq_len(nrow(singleton_df)), gsm, 1L)
-
-  # Any still-unassigned rows (e.g. singleton_df was empty or all taxonomy NA):
-  # assign a single global group.
-  # Note: depth-1 NA candidates have g_label set to "no_phylum" but g_alpha = NA
-  # (intentionally left unset so join_priors() applies the global floor per-row).
-  # Exclude them here by requiring BOTH alpha and label to be NA.
-  still_na <- is.na(g_alpha) & is.na(g_label)
-  if (any(still_na)) {
-    n_c <- sum(still_na)
-    pm <- .split_mean_cap(gsm, n_c)
-    ab <- .make_ab(0L, pm, singleton_ess)
-    g_alpha[still_na] <- ab$a
-    g_beta[still_na] <- ab$b
-    g_label[still_na] <- "zero_phyla"
-    g_ns[still_na] <- 0L
-    g_nu[still_na] <- n_c
+  # ---- candidate priors: min(1, (N* - W) / K) * D at the finest known clade --
+  g_alpha <- rep(NA_real_, n); g_beta <- rep(NA_real_, n)
+  g_label <- rep(NA_character_, n); g_ns <- rep(0L, n); g_nu <- rep(0L, n)
+  for (i in seq_len(n)) {
+    fin <- NA_character_
+    for (r in rev(ranks)) {
+      v <- unref_df[[r]][i]
+      if (!is.na(v)) { fin <- key(r, v); break }
+    }
+    if (is.na(fin)) { g_label[i] <- "no_phylum"; next }
+    b <- bud[bud$key == fin, , drop = FALSE][1, ]
+    w <- if (b$K > 0) min(1, max(b$N - b$W, 0) / b$K) else 0
+    pm <- min(max(w * b$D, 1e-12), 1 - 1e-9)
+    phi <- max(1, b$N) * singleton_ess
+    g_alpha[i] <- pm * phi; g_beta[i] <- (1 - pm) * phi
+    g_label[i] <- sub("\r", ":", fin); g_ns[i] <- as.integer(b$f1); g_nu[i] <- as.integer(b$K)
   }
-
   unref_df$group_prior_alpha <- g_alpha
   unref_df$group_prior_beta <- g_beta
   unref_df$dark_diversity_group <- g_label
   unref_df$n_singletons_group <- g_ns
   unref_df$n_undetected_group <- g_nu
 
+  # ---- remainder for ring rows -------------------------------------------------
+  # Missing species no named candidate accounts for. At genus: N* - K - W. At a
+  # coarser rank: the clade's N* not carried by its child clades (unsequenced
+  # lower clades), so nothing is counted twice.
+  bud$child_N <- vapply(bud$key, function(k) {
+    r <- bud$rank[bud$key == k][1]
+    ri <- match(r, ranks)
+    if (is.na(ri) || ri == length(ranks)) return(0)
+    v <- bud$clade[bud$key == k][1]
+    ch <- unique(c(unref_df[[ranks[ri + 1L]]][!is.na(unref_df[[r]]) & unref_df[[r]] == v],
+      singleton_df[[ranks[ri + 1L]]][!is.na(singleton_df[[r]]) & singleton_df[[r]] == v]))
+    ch <- ch[!is.na(ch)]
+    sum(bud$N[bud$key %in% key(ranks[ri + 1L], ch)])
+  }, numeric(1))
+  bud$remainder <- ifelse(bud$rank == "genus",
+    pmax(bud$N - bud$K - bud$W, 0),
+    pmax(bud$N - bud$child_N, 0)) * bud$D
+  attr(unref_df, "dark_budget") <- bud[bud$rank != "ROOT", c("rank", "clade", "f1", "N", "K", "W", "D", "remainder")]
   unref_df
 }
 
@@ -1388,6 +1299,15 @@ join_priors <- function(likelihoods,
           sing_tax_norm[, c("taxon_name", st_rank_cols), drop = FALSE],
           by = "taxon_name", all.x = TRUE
         )
+        # An unrecorded candidate is usually absent from the occurrence
+        # taxonomy; take its ranks from its own rows where that left them empty.
+        own <- result[is_unmod & !is.na(result$taxon_name), , drop = FALSE]
+        own <- own[!duplicated(own$taxon_name), , drop = FALSE]
+        oi <- match(unmod_df$taxon_name, own$taxon_name)
+        for (rc in intersect(st_rank_cols, names(own))) {
+          fill <- is.na(unmod_df[[rc]]) | !nzchar(unmod_df[[rc]])
+          unmod_df[[rc]][fill] <- as.character(own[[rc]][oi[fill]])
+        }
 
         # Compute global singleton mean for fallback
         gs_a <- global_singleton$singleton_alpha
@@ -1399,12 +1319,26 @@ join_priors <- function(likelihoods,
         }
 
         # Compute group priors
+        # Evidence-priced taxa (regional, iNaturalist, watch list) use up part
+        # of their clade's missing-species budget.
+        ev_df <- NULL
+        if (all(c("undetected_type", "prior_mix_w") %in% names(taxaexpect_priors))) {
+          ev <- taxaexpect_priors[!is.na(taxaexpect_priors$prior_mix_w) &
+            taxaexpect_priors$undetected_type %in% "evidence_blend", c("taxon_name", "prior_mix_w"), drop = FALSE]
+          ev <- ev[!duplicated(ev$taxon_name), , drop = FALSE]
+          if (nrow(ev)) {
+            ev_df <- merge(data.frame(taxon_name = ev$taxon_name, w = ev$prior_mix_w),
+              sing_tax_norm[, c("taxon_name", st_rank_cols), drop = FALSE], by = "taxon_name", all.x = TRUE)
+          }
+        }
         unmod_groups <- .compute_dark_diversity_groups(
-          unref_df              = unmod_df,
+          unref_df              = unmod_df[!is.na(match(unmod_df$taxon_name, result$taxon_name[is_unmod & result$taxon_name_rank %in% "species"])), , drop = FALSE],
           singleton_df          = sing_rows,
           global_singleton_mean = gs_mean,
-          singleton_ess         = 2L
+          singleton_ess         = 2L,
+          evidence_df           = ev_df
         )
+        dark_budget <- attr(unmod_groups, "dark_budget")
 
         # Join group priors back to result rows by taxon_name (index-based,
         # preserves row order and avoids duplicates from merge)
@@ -1428,6 +1362,24 @@ join_priors <- function(likelihoods,
           cli::cli_inform(
             "join_priors: group dark diversity priors applied to {sum(apply_mask)} unmodelled row(s) across {n_groups_used} taxonomic group(s)."
           )
+        }
+        # Ring rows (an unsequenced relative named by its clade) carry the
+        # clade's remaining missing-species mass, when larger than their floor.
+        ring_types <- c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order")
+        if (!is.null(dark_budget) && nrow(dark_budget) && "hypothesis_type" %in% names(result)) {
+          rk <- paste(dark_budget$rank, dark_budget$clade, sep = "\r")
+          ring <- which(result$hypothesis_type %in% ring_types & !is.na(result$taxon_name))
+          rm_i <- match(paste(result$taxon_name_rank[ring], result$taxon_name[ring], sep = "\r"), rk)
+          has <- !is.na(rm_i) & dark_budget$remainder[rm_i] > result$prior_mean[ring]
+          if (any(has)) {
+            rows <- ring[has]
+            pm <- pmin(dark_budget$remainder[rm_i[has]], 1 - 1e-9)
+            phi <- pmax(1, dark_budget$N[rm_i[has]]) * 2
+            result$prior_mean[rows] <- pm
+            result$prior_alpha[rows] <- pm * phi
+            result$prior_beta[rows] <- (1 - pm) * phi
+            cli::cli_inform("join_priors: {length(rows)} unsequenced-relative row(s) carry their clade's remaining dark-diversity mass.")
+          }
         }
       }
     }
@@ -1650,7 +1602,7 @@ join_priors <- function(likelihoods,
     # before, then restore any unreferenced row it removed.
     .unref_types <- c(
       "unreferenced_species", "unreferenced_genus",
-      "unreferenced_family", "unresolved_species"
+      "unreferenced_family", "unreferenced_order", "unresolved_species"
     )
     result$.jp_row <- seq_len(nrow(result))
     kept <- TaxaMatch::filter_redundant_hypotheses(

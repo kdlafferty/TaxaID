@@ -273,11 +273,18 @@ test_that("unreferenced_family rows are excluded from LCA", {
       "unreferenced_family", 0.4
     )
   )
+  # The catch-all cannot join the LCA, but its 0.4 is mass the call does not
+  # hold: with unnamed_in_threshold = TRUE (default) 0.6 < 0.9 of the total,
+  # so the observation is unresolved.
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  # Only Fundulus parvipinnis contributes -> single species resolved
-  expect_equal(out$n_plausible, 1L)
-  expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
-  expect_true(out$is_resolved)
+  expect_true(is.na(out$consensus_taxon))
+  expect_equal(out$consensus_reason, "unnamed_mass")
+  expect_equal(out$unnamed_mass, 0.4)
+  # named-only threshold: only Fundulus parvipinnis contributes -> resolved
+  old <- posterior_consensus(df, rank_system = c("genus", "species"), unnamed_in_threshold = FALSE)
+  expect_equal(old$n_plausible, 1L)
+  expect_equal(old$consensus_taxon, "Fundulus parvipinnis")
+  expect_true(old$is_resolved)
 })
 
 test_that("unreferenced_genus named species are included in LCA", {
@@ -1401,4 +1408,213 @@ test_that("by default the tail is discarded as before, but its mass is reported"
 test_that("pool_tail must be TRUE or FALSE", {
   df <- .tail_df(0.95, c(0.03, 0.02))
   expect_error(posterior_consensus(df, pool_tail = NA), "pool_tail")
+})
+
+# ---- consensus_method = "credible_node" ------------------------------------
+.cn_df <- function() {
+  data.frame(
+    observation_id = "E1",
+    taxon_name = c("Oligocottus snyderi", paste("Oligocottus", c("a", "b", "c", "d", "e")), "Clinocottus analis"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    order = "Perciformes",
+    family = c(rep("Cottidae", 6), "Psychrolutidae"),
+    genus = c(rep("Oligocottus", 6), "Clinocottus"),
+    posterior_point_est = c(0.80, rep(0.03, 5), 0.05), stringsAsFactors = FALSE
+  )
+}
+.cn <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("order", "family", "genus", "species"), ...)))
+
+test_that("credible_node reports the finest taxon holding the threshold", {
+  out <- .cn(.cn_df(), consensus_method = "credible_node")
+  expect_equal(out$consensus_taxon, "Oligocottus")
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_reason, "credible_node")
+  expect_equal(out$consensus_posterior, 0.95, tolerance = 1e-9)
+})
+
+test_that("credible_node counts rows named at coarser ranks toward their own taxon", {
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Balticina finmarchica", "Balticina", "Balticinidae", "Scleralcyonacea"),
+    taxon_name_rank = c("species", "genus", "family", "order"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus", "unreferenced_family"),
+    order = "Scleralcyonacea", family = c(rep("Balticinidae", 3), NA),
+    genus = c("Balticina", "Balticina", NA, NA),
+    posterior_point_est = c(0.05, 0.10, 0.30, 0.55), stringsAsFactors = FALSE
+  )
+  out <- .cn(df, consensus_method = "credible_node")
+  # family holds 0.45; only the order holds >= 0.9
+  expect_equal(out$consensus_taxon, "Scleralcyonacea")
+  expect_equal(out$consensus_rank, "order")
+})
+
+test_that("credible_node is unresolved when unnamed mass keeps every taxon below the threshold", {
+  df <- .cn_df()
+  df <- rbind(df, transform(df[1, ], taxon_name = NA, taxon_name_rank = NA,
+    hypothesis_type = "unreferenced_genus", order = NA, family = NA, genus = NA,
+    posterior_point_est = 0.2))
+  out <- .cn(df, consensus_method = "credible_node")
+  expect_true(is.na(out$consensus_taxon))
+  expect_equal(out$consensus_reason, "no_credible_node")
+})
+
+test_that("the default consensus_method is lca and unchanged", {
+  expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
+})
+
+test_that("a genus-rank row carrying its anchor's species value is not counted as that species", {
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Garveia", "Garveia grisea", "Garveia sp. CC-2005"),
+    taxon_name_rank = c("genus", "species", "species"),
+    hypothesis_type = c("unreferenced_species", "specific_candidate", "specific_candidate"),
+    family = "Bougainvilliidae", genus = "Garveia",
+    species = c("Garveia sp. CC-2005", "Garveia grisea", "Garveia sp. CC-2005"),
+    posterior_point_est = c(0.934, 0.022, 0.044), stringsAsFactors = FALSE
+  )
+  rs <- c("family", "genus", "species")
+  cn <- suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs, consensus_method = "credible_node")))
+  expect_equal(cn$consensus_taxon, "Garveia")
+  expect_equal(cn$consensus_rank, "genus")
+  lc <- suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs, pool_tail = TRUE)))
+  expect_equal(lc$consensus_taxon, "Garveia")
+})
+
+# ---- likelihood-only consensus and prior_role ------------------------------
+.pd_df <- function(lik, prior, taxa = c("Littorina keenae", "Littorina scutulata"),
+                   rank = "species") {
+  pt <- lik * prior / sum(lik * prior)
+  data.frame(
+    observation_id = "E1", taxon_name = taxa, taxon_name_rank = rank,
+    hypothesis_type = "specific_candidate", family = "Littorinidae",
+    genus = "Littorina", score_likelihood = lik, prior_mean = prior,
+    posterior_point_est = pt, stringsAsFactors = FALSE
+  )
+}
+.pd_run <- function(df, ...) {
+  suppressMessages(posterior_consensus(df,
+    rank_system = c("family", "genus", "species"), ...
+  ))
+}
+
+test_that("equal likelihoods split by the prior are prior-decided (narrowed)", {
+  out <- .pd_run(.pd_df(lik = c(1, 1), prior = c(0.2, 0.001)))
+  expect_equal(out$consensus_taxon, "Littorina keenae")
+  expect_equal(out$likelihood_consensus_taxon, "Littorina")
+  expect_equal(out$likelihood_consensus_rank, "genus")
+  expect_equal(out$prior_role, "narrowed")
+})
+
+test_that("a call the likelihoods already make is not prior-decided", {
+  out <- .pd_run(.pd_df(lik = c(1, 0.001), prior = c(0.01, 0.01)))
+  expect_equal(out$consensus_taxon, "Littorina keenae")
+  expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
+  expect_equal(out$prior_role, "agrees")
+})
+
+test_that("a prior that overturns the likelihood winner is 'changed'", {
+  out <- .pd_run(.pd_df(lik = c(1, 0.01), prior = c(1e-6, 0.5)))
+  expect_equal(out$consensus_taxon, "Littorina scutulata")
+  expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
+  expect_equal(out$prior_role, "changed")
+})
+
+test_that("a prior that spreads mass to a coarser call is 'broadened', not decided", {
+  out <- .pd_run(.pd_df(lik = c(1, 0.02), prior = c(0.01, 0.6)))
+  expect_equal(out$likelihood_consensus_taxon, "Littorina keenae")
+  expect_equal(out$consensus_taxon, "Littorina")
+  expect_equal(out$prior_role, "broadened")
+})
+
+test_that("likelihood_consensus = FALSE, or no score_likelihood, leaves NA columns", {
+  off <- .pd_run(.pd_df(lik = c(1, 1), prior = c(0.2, 0.001)), likelihood_consensus = FALSE)
+  expect_true(is.na(off$prior_role))
+  expect_false("prior_decided" %in% names(off))
+  df <- .pd_df(lik = c(1, 1), prior = c(0.2, 0.001))
+  df$score_likelihood <- NULL
+  nolik <- .pd_run(df)
+  expect_true(all(c("likelihood_consensus_taxon", "likelihood_support") %in% names(nolik)))
+  expect_true(is.na(nolik$likelihood_support))
+})
+
+test_that("the likelihood pass leaves every other column unchanged", {
+  df <- .pd_df(lik = c(1, 1), prior = c(0.2, 0.001))
+  on <- .pd_run(df)
+  off <- .pd_run(df, likelihood_consensus = FALSE)
+  new_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank", "prior_role", "likelihood_support")
+  expect_identical(on[, setdiff(names(on), new_cols)], off[, setdiff(names(off), new_cols)])
+})
+
+test_that("a complement row the prior already discounts does not move prior_role", {
+  lik <- c(1, 0.05, 0.9)
+  prior <- c(0.01, 0.01, 1e-6)
+  pt <- lik * prior / sum(lik * prior)
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Littorina keenae", "Littorina scutulata", "Littorina"),
+    taxon_name_rank = c("species", "species", "genus"),
+    hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species"),
+    family = "Littorinidae", genus = "Littorina",
+    score_likelihood = lik, prior_mean = prior, posterior_point_est = pt,
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_taxon, "Littorina keenae")
+  # under a uniform baseline the genus row (lik 0.9) would win and every call
+  # would read prior-decided; flattening only the named candidates does not
+  expect_equal(out$prior_role, "agrees")
+})
+
+test_that("likelihood_support is the reported taxon's share under the flattened-prior baseline", {
+  lik <- c(1, 0.19); prior <- c(4.6e-3, 2.2e-3)
+  df <- data.frame(observation_id = "E1", taxon_name = c("Rhacochilus vacca", "Rhacochilus toxotes"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    family = "Embiotocidae", genus = "Rhacochilus", score_likelihood = lik, prior_mean = prior,
+    posterior_point_est = lik * prior / sum(lik * prior), stringsAsFactors = FALSE)
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_taxon, "Rhacochilus vacca")
+  expect_equal(out$likelihood_support, 1 / 1.19, tolerance = 1e-9)
+  expect_equal(out$prior_role, "narrowed")
+})
+
+
+# ---- robust credible node (imprecise prior, robust_prior_s) ------------------
+.rb_df <- function(lik, prior, N) {
+  data.frame(observation_id = "E1",
+    taxon_name = c("Rhacochilus vacca", "Rhacochilus toxotes"), taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate", family = "Embiotocidae", genus = "Rhacochilus",
+    score_likelihood = lik, prior_mean = prior, prior_alpha = prior * N, prior_beta = (1 - prior) * N,
+    prior_branch = "kernel_estimated",
+    posterior_point_est = lik * prior / sum(lik * prior), stringsAsFactors = FALSE)
+}
+.rb <- function(df, ...) suppressMessages(posterior_consensus(df,
+  rank_system = c("family", "genus", "species"), consensus_method = "credible_node",
+  likelihood_consensus = FALSE, ...))
+
+test_that("a call resting on a thinly supported prior coarsens; off restores it", {
+  # equal likelihoods, prior 0.97 vs 0.03 from few records (N = 30)
+  df <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 30)
+  on <- .rb(df)
+  off <- .rb(df, robust_prior_s = 0)
+  expect_equal(off$consensus_taxon, "Rhacochilus vacca")
+  expect_equal(on$consensus_taxon, "Rhacochilus")
+  expect_equal(on$consensus_rank, "genus")
+  expect_true(is.na(off$robust_lower_posterior))
+})
+
+test_that("a call the sequence decides is unaffected by the robust rule", {
+  df <- .rb_df(c(1, 1e-4), c(0.005, 0.005), N = 30)
+  on <- .rb(df)
+  expect_equal(on$consensus_taxon, "Rhacochilus vacca")
+  expect_gte(on$robust_lower_posterior, 0.9)
+})
+
+test_that("a prior from many records survives the robust rule", {
+  df <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 1e6)
+  expect_equal(.rb(df)$consensus_taxon, "Rhacochilus vacca")
+})
+
+test_that("robust_prior_s is validated", {
+  expect_error(.rb(.rb_df(c(1, 1), c(0.5, 0.5), 10), robust_prior_s = -1), "non-negative")
 })

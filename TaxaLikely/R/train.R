@@ -8,7 +8,9 @@ utils::globalVariables(c(
   "mu_score", "mu_gap", "sigma_score", "lookup_key", "rank",
   "score_logit_mean", "gap_logit_mean", "score_logit_var",
   "n_obs_species", "shrunk_mu_score", "shrunk_mu_gap", "shrunk_sigma",
-  "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk",
+  "w", "species", "max_congener_score", "max_confamilial_score",
+  "h2_gap_obs", "h3_gap_obs", "v", "max_ring_d_score", "max_ring_e_score", "partner_species", "genus", "ident", "n_species_cong", "same_genus", "same_family", "gap", "best_p", "top1", "top2",
+  "top1_genus", "top1_family", "own_genus", "own_family", "delta_emp", "n_pairs", "delta_shrunk",
   "mean_cong", "var_cong", "var_shrunk",
   "median_foreign_match", "n_foreign_pairs", "n_foreign_taxa", "species_x",
   "coverage", "foreign_match_coverage", "median_self_coverage",
@@ -287,6 +289,117 @@ utils::globalVariables(c(
     NULL
   }
 
+  # ---- STEP 3C: CONFAMILIAL STATS (best same-family, different-genus match) --
+  # The H3 analogue of max_congener_score: the closest match to a species of
+  # ANOTHER genus in the SAME family (rank_code_c is the third-finest rank,
+  # conventionally family). Measures how well an unsequenced genus of the
+  # family would score, which the H3 likelihood needs. NA when the sequence's
+  # family has no other referenced genus.
+  has_family_code <- has_genus_code &&
+    all(c("rank_code_c.x", "rank_code_c.y") %in% names(df_logit))
+  confamilial_stats <- if (has_family_code) {
+    df_logit |>
+      dplyr::filter(
+        !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]]),
+        !is.na(.data[["rank_code_c.x"]]), !is.na(.data[["rank_code_c.y"]])
+      ) |>
+      dplyr::group_by(id_x) |>
+      dplyr::summarise(
+        max_confamilial_score = suppressWarnings(
+          max(score_logit[
+            .data[["rank_code_c.x"]] == .data[["rank_code_c.y"]] &
+              .data[["rank_code_b.x"]] != .data[["rank_code_b.y"]] &
+              pair_ok
+          ], -Inf)
+        ),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        max_confamilial_score = ifelse(is.infinite(max_confamilial_score),
+          NA_real_, max_confamilial_score
+        )
+      )
+  } else {
+    NULL
+  }
+
+  # ---- STEP 3E: OUTER RINGS (order, class, ...) -------------------------------
+  # For each rank coarser than the third-finest (rank_code_d = order,
+  # rank_code_e = class under the standard rank_system), the best match to a
+  # partner in the same group at that rank but a different group one rank
+  # finer: e.g. another family of the same order. Measures how an unsequenced
+  # family (order) would score, for the outer rings.
+  ring_stats <- NULL
+  for (L in c("d", "e")) {
+    prevL <- letters[match(L, letters) - 1L]
+    cx <- paste0("rank_code_", L, c(".x", ".y"))
+    px <- paste0("rank_code_", prevL, c(".x", ".y"))
+    if (!all(c(cx, px) %in% names(df_logit))) next
+    rs_L <- df_logit |>
+      dplyr::filter(
+        !is.na(.data[[cx[1]]]), !is.na(.data[[cx[2]]]),
+        !is.na(.data[[px[1]]]), !is.na(.data[[px[2]]])
+      ) |>
+      dplyr::group_by(id_x) |>
+      dplyr::summarise(
+        v = suppressWarnings(max(score_logit[
+          .data[[cx[1]]] == .data[[cx[2]]] & .data[[px[1]]] != .data[[px[2]]] & pair_ok
+        ], -Inf)),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(v = ifelse(is.infinite(v), NA_real_, v))
+    names(rs_L)[2] <- paste0("max_ring_", L, "_score")
+    ring_stats <- if (is.null(ring_stats)) rs_L else dplyr::full_join(ring_stats, rs_L, by = "id_x")
+  }
+
+  # ---- STEP 3D: UNSEQUENCED-RELATIVE GAPS -------------------------------------
+  # The query feature `gap` is (best match) - (second-best match). If the
+  # source were an unsequenced congener (H2), its candidates would be every
+  # referenced species except its own: so for each reference, drop its own
+  # species and take the best and second-best partner species. When the best
+  # is a congener, top1 - top2 is an H2 gap draw. Dropping the reference's own
+  # genus the same way gives an H3 (unsequenced-genus) draw when the best
+  # remaining partner is confamilial. Capped like the H1 gap.
+  gap_stats <- NULL
+  if (has_family_code) {
+    per_partner <- df_logit |>
+      dplyr::filter(
+        pair_ok,
+        !is.na(.data[["rank_code_a.x"]]), !is.na(.data[["rank_code_a.y"]]),
+        .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]
+      ) |>
+      dplyr::group_by(id_x, partner_species = .data[["rank_code_a.y"]]) |>
+      dplyr::summarise(
+        best_p = max(score_logit),
+        top1_genus = .data[["rank_code_b.y"]][1L],
+        top1_family = .data[["rank_code_c.y"]][1L],
+        own_genus = .data[["rank_code_b.x"]][1L],
+        own_family = .data[["rank_code_c.x"]][1L],
+        .groups = "drop"
+      )
+    .top2_gap <- function(pp) {
+      pp |>
+        dplyr::group_by(id_x) |>
+        dplyr::arrange(dplyr::desc(best_p), .by_group = TRUE) |>
+        dplyr::summarise(
+          top1 = best_p[1L],
+          top2 = if (dplyr::n() > 1L) best_p[2L] else NA_real_,
+          same_genus = top1_genus[1L] == own_genus[1L],
+          same_family = top1_family[1L] == own_family[1L],
+          .groups = "drop"
+        ) |>
+        dplyr::mutate(gap = pmin(ifelse(is.na(top2), max_gap_ceiling, top1 - top2), max_gap_ceiling))
+    }
+    g2 <- .top2_gap(per_partner)
+    g3 <- .top2_gap(per_partner[!is.na(per_partner$top1_genus) &
+      per_partner$top1_genus != per_partner$own_genus, , drop = FALSE])
+    gap_stats <- dplyr::full_join(
+      g2 |> dplyr::transmute(id_x, h2_gap_obs = ifelse(same_genus %in% TRUE, gap, NA_real_)),
+      g3 |> dplyr::transmute(id_x, h3_gap_obs = ifelse(same_family %in% TRUE, gap, NA_real_)),
+      by = "id_x"
+    )
+  }
+
   # ---- STEP 4: H1 PAIRS (same taxon, different sequence IDs) ----------------
   h1_pairs <- df_logit |>
     dplyr::filter(
@@ -301,6 +414,17 @@ utils::globalVariables(c(
     dplyr::left_join(h1_pairs, congener_stats, by = "id_x")
   } else {
     dplyr::mutate(h1_pairs, max_congener_score = NA_real_)
+  }
+  h1_pairs <- if (!is.null(confamilial_stats)) {
+    dplyr::left_join(h1_pairs, confamilial_stats, by = "id_x")
+  } else {
+    dplyr::mutate(h1_pairs, max_confamilial_score = NA_real_)
+  }
+  if (!is.null(ring_stats)) h1_pairs <- dplyr::left_join(h1_pairs, ring_stats, by = "id_x")
+  h1_pairs <- if (!is.null(gap_stats)) {
+    dplyr::left_join(h1_pairs, gap_stats, by = "id_x")
+  } else {
+    dplyr::mutate(h1_pairs, h2_gap_obs = NA_real_, h3_gap_obs = NA_real_)
   }
 
   h1_pairs <- h1_pairs |>
@@ -349,6 +473,9 @@ utils::globalVariables(c(
     dplyr::mutate(
       max_foreign_score  = noise_floor_transformed,
       max_congener_score = NA_real_,
+      max_confamilial_score = NA_real_,
+      h2_gap_obs = NA_real_,
+      h3_gap_obs = NA_real_,
       gap_logit          = max_gap_ceiling,
       rank_category      = "Singleton",
       N_Obs              = 1L,
@@ -424,6 +551,43 @@ utils::globalVariables(c(
 #' and image pathways, where evidence similarity need not track phylogeny at
 #' all) -- see `inst/TaxaLikely_supplemental_methods.md` for a fuller
 #' discussion of that limitation.
+#'
+#' @section Unsequenced-genus likelihood (H3):
+#' `H3` is the hypothesis that the query comes from a genus of the anchor's
+#' family that has no reference sequence. Its score distribution is measured
+#' the way `H2`'s is: for each reference, its best match to a species of
+#' another genus in the same family (rank_code_c, conventionally family). The
+#' mean is family-equal-weighted (mean of family means), so one heavily
+#' sequenced family cannot set it, and the shift is kept at least as large as
+#' the pooled `H2` shift so an unsequenced genus is never assumed to match
+#' better than an unsequenced congener. The variance uses the same
+#' family-equal weights (mean within-family variance plus the variance of
+#' family means). That choice is not direction-free: on real data it
+#' sharpened 18S `H3` (sd 0.149 to 0.114 transform units), making 18S species
+#' calls somewhat more confident, and widened COI's (0.066 to 0.078). With fewer than 3 families supplying
+#' such matches, the shift falls back to the `H2` shift plus 2.0 transform
+#' units; `Stats$h3_source` records which was used.
+#'
+#' Two sampling effects bear on the measured value, in opposite directions.
+#' Pairs below `build_sequence_matrix()`'s identity floor (`max_dist`) are
+#' never stored, so a very poor confamilial match cannot be observed, which
+#' would push the estimate up; `Stats$h3_share_near_floor` reports how much
+#' of the pool sits in the lowest 5 percent of its observed range (3 to 8
+#' percent on real 12S, 18S and COI data, so this effect is small). And
+#' under `build_sequence_matrix(by_genus = TRUE)` each genus is aligned
+#' against a random sample of other genera's single representatives, so most
+#' confamilial pairs are never computed (79 to 95 percent of eligible
+#' references had none on the same data) and the stored best is the best
+#' against one sampled genus rather than against every referenced genus of
+#' the family. That pushes the estimate down. The measured similarity is
+#' therefore a lower bound: an unsequenced genus probably matches more
+#' closely than `H3` assumes, so `H3` still loses somewhat too easily to a
+#' referenced candidate and calls keep some residual overconfidence. The
+#' correction runs the right way but is smaller than the true one. On real
+#' data it sits far closer than the earlier fixed rule: an implied mean
+#' identity of 91.8 against 83.3 percent (12S; 858 references in 47
+#' families supplied confamilial pairs), 95.5 against 85.8 (18S; 702 in 197)
+#' and 86.8 against 74.6 (COI; 25,513 in 1,143).
 #'
 #' @section Pseudo-data anchoring:
 #' When `anchor_perfect = TRUE`, synthetic "perfect match" observations are
@@ -517,13 +681,15 @@ utils::globalVariables(c(
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL` auto-detects
 #'   from the `.x`-suffixed columns in `raw_df`.
 #' @param score_bounds Optional `c(min, max)` for score normalization.
-#' @param min_observed_sigma Numeric or `NULL` (default).  Floor on observed
-#'   within-species score variance.  Prevents overfitting on species with very
-#'   low variance (e.g., a species with two nearly identical reference
-#'   sequences).  `NULL` resolves to `1.0` for `score_transform = "logit"`
-#'   (in logit space, 1.0 corresponds to meaningful within-species variation)
-#'   or the equivalent rescaled value for `"sqrt_mismatch"` -- see
-#'   `score_transform` below.
+#' @param min_observed_sigma Numeric or `NULL` (default).  Numerical floor on
+#'   the score variances (pooled and per species).  `NULL` resolves to `0.01`
+#'   transform units squared (`0.01` in logit space, rescaled for
+#'   `"sqrt_mismatch"`), a guard against degenerate zero-variance estimates,
+#'   not a noise model: the spread is estimated from the reference pairs,
+#'   per-species estimates are shrunk toward the pooled one, and the extra
+#'   scatter of field queries is measured by [calibrate_query_noise()]. A
+#'   floor of `1.0` unit^2 was measured at 5-8x the real within-species
+#'   variance on 12S, 18S and COI, flattening every likelihood ratio.
 #' @param prior_weight Numeric.  Equivalent pseudo-sample size for Empirical
 #'   Bayes shrinkage toward the global mean.  Controls how strongly
 #'   species-specific estimates are regularized.  A value of 10 means each
@@ -864,7 +1030,11 @@ train_likelihood_model <- function(raw_df,
   }
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (is.null(min_observed_sigma)) {
-    min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
+    # A numerical guard only, far below any real within-species variance; the
+    # spread itself comes from the data, and field-query noise from
+    # calibrate_query_noise(). (A floor of 1.0 transform unit^2 was 5-8x the
+    # real within-species variance on 12S, 18S and COI.)
+    min_observed_sigma <- 0.01 * .transform_unit_ratio(score_transform)^2
   }
   if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
@@ -1427,20 +1597,166 @@ train_likelihood_model <- function(raw_df,
     }
   }
 
-  h2_sigma_mat <- matrix(c(h2_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
-  rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
-  h3_sigma_mat <- diag(2) * unit_ratio^2
-  rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
+  # ---- H2/H3 GAP, MEASURED --------------------------------------------------
+  # The gap feature under H2 (H3) is measured from references with their own
+  # species (genus) dropped -- see STEP 3D in .prep_training_data(). With fewer
+  # than 10 draws the earlier assumption (mean 0, unit variance) is kept and
+  # Stats$h2_gap_source / h3_gap_source say so.
+  .gap_fit <- function(x) {
+    x <- x[is.finite(x)]
+    if (length(x) >= 10L) {
+      list(mean = mean(x), var = max(stats::var(x), 0.1 * unit_ratio^2),
+        n = length(x), source = "measured")
+    } else {
+      list(mean = 0, var = 1.0 * unit_ratio^2, n = length(x), source = "assumed")
+    }
+  }
+  known <- train_df[train_df$rank_category == "1_Known_Species", , drop = FALSE]
+  h2_gap <- .gap_fit(if ("h2_gap_obs" %in% names(known)) known$h2_gap_obs else numeric(0))
+  h3_gap <- .gap_fit(if ("h3_gap_obs" %in% names(known)) known$h3_gap_obs else numeric(0))
+  # A gap needs each reference's runner-up partner SPECIES. A thinned pair
+  # table (build_sequence_matrix(pair_retention =)) keeps it only for some
+  # strata: "best_per_partner" keeps every congener species and the best of
+  # each other family, which recovers the H2 runner-up exactly but not the H3
+  # one; "best_per_class" keeps neither. Where it is not exact the earlier
+  # assumption is kept, so a thinned table trains the same model as "all"
+  # wherever it can.
+  retention <- attr(raw_df, "pair_retention")$policy %||% "all"
+  .assumed <- function(why) list(mean = 0, var = 1.0 * unit_ratio^2, n = 0L, source = why)
+  if (retention == "best_per_class") h2_gap <- .assumed("assumed (pair_retention = best_per_class)")
+  if (retention != "all") h3_gap <- .assumed(sprintf("assumed (pair_retention = %s)", retention))
 
-  H2 <- list(delta = h2_delta_val, sigma = h2_sigma_mat)
-  # H3 delta = H2 delta + 2.0 (logit units) / rescaled equivalent: heuristic
-  # representing one additional taxonomic rank step (genus-level mismatch vs
-  # species-level mismatch). Applied on top of whichever H2 delta -- pooled
-  # global or genus-specific via H2_Lookup -- is selected at inference time;
-  # see .evaluate_one_query(). H3 itself has no genus-specific estimate
-  # (would need family-level congener data); low priority, noted as a
-  # possible future extension.
-  H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio, sigma = h3_sigma_mat)
+  # ---- IDENTICAL-BARCODE CONGENERS ------------------------------------------
+  # Some congeners share an identical barcode; a query from such an unsequenced
+  # congener scores against the anchor like a conspecific, which a single
+  # shifted Gaussian cannot represent. q_identical is the share of species
+  # (with congener data) whose references mostly have an identical congener
+  # (best congener score at >= 99.9 percent identity). Counting species, not
+  # references, keeps one mislabelled accession from setting it. Per genus it
+  # is shrunk toward the pooled share with prior_weight pseudo-species.
+  q_identical <- 0
+  q_lookup <- NULL
+  if ("max_congener_score" %in% names(known) && "rank_code_b" %in% names(known)) {
+    ident_thr <- .transform_p(0.999, score_transform, logit_epsilon)
+    kc <- known[!is.na(known$max_congener_score), , drop = FALSE]
+    if (nrow(kc) > 0L) {
+      sp <- kc |>
+        dplyr::group_by(genus = .data[["rank_code_b"]], species = .data[["rank_code_a"]]) |>
+        dplyr::summarise(ident = mean(max_congener_score >= ident_thr) >= 0.5, .groups = "drop")
+      q_identical <- mean(sp$ident)
+      q_lookup <- sp |>
+        dplyr::group_by(genus) |>
+        dplyr::summarise(
+          n_species_cong = dplyr::n(),
+          q_identical = (sum(ident) + prior_weight * q_identical) / (dplyr::n() + prior_weight),
+          .groups = "drop"
+        )
+    }
+  }
+  if (!is.null(H2_Lookup) && !is.null(q_lookup)) {
+    H2_Lookup$q_identical <- q_lookup$q_identical[match(H2_Lookup$genus, q_lookup$genus)]
+    H2_Lookup$q_identical[is.na(H2_Lookup$q_identical)] <- q_identical
+  }
+
+  h2_sigma_mat <- matrix(c(h2_var, 0, 0, h2_gap$var), ncol = 2L)
+  rownames(h2_sigma_mat) <- colnames(h2_sigma_mat) <- c("score_logit", "gap_logit")
+  H2 <- list(delta = h2_delta_val, sigma = h2_sigma_mat, gap_mean = h2_gap$mean,
+    q_identical = q_identical)
+
+  # ---- H3: MEASURED FROM CONFAMILIAL PAIRS -----------------------------------
+  # H3 is "the source is an unsequenced genus of the anchor's family". Its
+  # score distribution is measured the way H2's is: from each reference's best
+  # match to a species of ANOTHER genus in the SAME family
+  # (max_confamilial_score). The mean is family-equal-weighted (mean of family
+  # means) so one heavily sequenced family cannot set it. The H3 shift is kept
+  # at least as large as the pooled H2 shift, so the rings stay nested (an
+  # unsequenced genus is never assumed to match better than an unsequenced
+  # congener). When fewer than 3 families supply confamilial matches, the
+  # earlier rule (H2 shift + 2.0 transform units, unit variance) is used and
+  # Stats$h3_source says so. As at inference, the shift is applied on top of
+  # whichever H2 shift is selected for the anchor's genus.
+  h3_delta_val <- h2_delta_val + 2.0 * unit_ratio
+  h3_var <- 1.0 * unit_ratio^2
+  h3_source <- "heuristic"
+  n_h3_pooled <- NA_integer_
+  n_h3_families <- NA_integer_
+  h3_share_near_floor <- NA_real_
+  if ("max_confamilial_score" %in% names(train_df)) {
+    fam_col <- if ("rank_code_c" %in% names(train_df)) "rank_code_c" else NULL
+    h3_src <- train_df[train_df$rank_category == "1_Known_Species" &
+      !is.na(train_df$max_confamilial_score) &
+      train_df$max_confamilial_score > noise_floor_congener, , drop = FALSE]
+    fam_ids <- if (!is.null(fam_col)) h3_src[[fam_col]] else rep("all", nrow(h3_src))
+    n_fam <- length(unique(fam_ids[!is.na(fam_ids)]))
+    if (nrow(h3_src) > 2L && n_fam >= 3L) {
+      fam_means <- tapply(h3_src$max_confamilial_score, fam_ids, mean, na.rm = TRUE)
+      confam_mean <- mean(fam_means, na.rm = TRUE)
+      h3_delta_val <- max(h2_delta_val, mu_score_global - confam_mean)
+      # Variance on the same family-equal weights as the mean (law of total
+      # variance: mean within-family variance + variance of family means), so
+      # a heavily sequenced family can set neither the centre nor the spread.
+      fam_within <- tapply(h3_src$max_confamilial_score, fam_ids, function(v) {
+        v <- v[!is.na(v)]
+        if (length(v) > 1L) mean((v - mean(v))^2) else 0
+      })
+      h3_var_fe <- mean(fam_within, na.rm = TRUE) +
+        mean((fam_means - confam_mean)^2, na.rm = TRUE)
+      h3_var <- max(h3_var_fe, 0.1 * unit_ratio^2)
+      h3_source <- "measured"
+      n_h3_pooled <- nrow(h3_src)
+      n_h3_families <- n_fam
+      # Reference pairs below the matrix builder's identity floor are never
+      # stored, so a confamilial match that poor cannot be observed. Report how
+      # much of the pool sits near the lowest observed value as a check on that
+      # censoring.
+      lo <- min(h3_src$max_confamilial_score, na.rm = TRUE)
+      span <- diff(range(h3_src$max_confamilial_score, na.rm = TRUE))
+      h3_share_near_floor <- mean(h3_src$max_confamilial_score <= lo + 0.05 * span)
+    }
+  }
+  h3_sigma_mat <- matrix(c(h3_var, 0, 0, h3_gap$var), ncol = 2L)
+  rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
+  H3 <- list(delta = h3_delta_val, sigma = h3_sigma_mat, gap_mean = h3_gap$mean)
+
+  # ---- OUTER RINGS: MEASURED THE SAME WAY AS H3 -----------------------------
+  # One ring per rank coarser than family that the rank_system carries (order
+  # -> "an unsequenced family of this order", class -> "an unsequenced order
+  # of this class"), from each reference's best match to another group one
+  # rank finer inside the same group (max_ring_<code>_score). Group-equal
+  # weighted mean and variance; each ring's shift is at least the previous
+  # ring's, so the rings stay nested. A ring with fewer than 3 groups
+  # supplying matches is not built. Gap: the earlier assumption (mean 0,
+  # unit variance).
+  Rings <- list()
+  ring_type <- c(d = "unreferenced_family", e = "unreferenced_order")
+  prev_delta <- h3_delta_val
+  for (L in c("d", "e")) {
+    vcol <- paste0("max_ring_", L, "_score")
+    gcol <- paste0("rank_code_", L)
+    if (!vcol %in% names(train_df) || !gcol %in% names(train_df)) next
+    src <- train_df[train_df$rank_category == "1_Known_Species" &
+      !is.na(train_df[[vcol]]) & train_df[[vcol]] > noise_floor_congener, , drop = FALSE]
+    grp <- src[[gcol]]
+    n_grp <- length(unique(grp[!is.na(grp)]))
+    if (nrow(src) < 3L || n_grp < 3L) next
+    g_means <- tapply(src[[vcol]], grp, mean, na.rm = TRUE)
+    r_mean <- mean(g_means, na.rm = TRUE)
+    g_within <- tapply(src[[vcol]], grp, function(v) {
+      v <- v[!is.na(v)]
+      if (length(v) > 1L) mean((v - mean(v))^2) else 0
+    })
+    r_var <- max(mean(g_within, na.rm = TRUE) + mean((g_means - r_mean)^2, na.rm = TRUE),
+      0.1 * unit_ratio^2)
+    r_delta <- max(prev_delta, mu_score_global - r_mean)
+    rk <- rank_system[length(rank_system) - match(L, letters) + 1L]
+    r_sigma <- matrix(c(r_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
+    rownames(r_sigma) <- colnames(r_sigma) <- c("score_logit", "gap_logit")
+    Rings[[rk]] <- list(
+      rank = rk, hypothesis_type = unname(ring_type[L]), delta = r_delta,
+      sigma = r_sigma, n = nrow(src), n_groups = n_grp
+    )
+    prev_delta <- r_delta
+  }
 
   # ---- NON-MONOTONICITY / MONOTONE-LIKELIHOOD-RATIO DIAGNOSTIC --------------
   # This check exists because the fitted score->likelihood relationship can
@@ -1508,6 +1824,7 @@ train_likelihood_model <- function(raw_df,
       H2 = H2,
       H3 = H3,
       H2_Lookup = H2_Lookup,
+      Rings = Rings,
       Confusion_Risk_Curves = confusion_risk_curves,
       Score_Transform = score_transform,
       Stats = list(
@@ -1517,6 +1834,13 @@ train_likelihood_model <- function(raw_df,
         n_anchors = n_anchors,
         n_h1_pooled = sum(species_params$n_obs_species),
         n_h2_pooled = n_h2_pooled,
+        h3_source = h3_source,
+        h2_gap_source = h2_gap$source, n_h2_gap = h2_gap$n,
+        h3_gap_source = h3_gap$source, n_h3_gap = h3_gap$n,
+        q_identical = q_identical,
+        n_h3_pooled = n_h3_pooled,
+        n_h3_families = n_h3_families,
+        h3_share_near_floor = h3_share_near_floor,
         prior_weight = prior_weight,
         shrinkage = shrinkage,
         tau2_score = tau2_score,

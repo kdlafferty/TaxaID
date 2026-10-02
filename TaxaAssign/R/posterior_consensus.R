@@ -92,6 +92,47 @@
 #'   measured against the TOTAL named posterior mass, and the whole block joins
 #'   the plausible set when the hypotheses above the floor fall short. See
 #'   \emph{Details}. `tail_mass` is reported either way.
+#' @param unnamed_in_threshold Logical (default `TRUE`). Posterior on rows
+#'   with no `taxon_name` (a catch-all whose position has no name, e.g. an
+#'   unsequenced genus of a family recorded only as a placeholder) cannot join
+#'   the LCA but is mass the call does not hold. `TRUE` counts it in the
+#'   denominator of `cumulative_threshold`, and an observation whose named
+#'   hypotheses cannot reach the threshold of the total is reported
+#'   unresolved (`consensus_reason = "unnamed_mass"`). `FALSE` measures the
+#'   threshold against named mass only. `unnamed_mass` is reported either way.
+#' @param consensus_method `"lca"` (default) or `"credible_node"`. `"lca"`
+#'   takes the smallest top set of hypotheses reaching `cumulative_threshold`
+#'   and reports their lowest common taxon. `"credible_node"` sums the
+#'   posterior of every hypothesis under each taxon, rank by rank from the
+#'   finest, and reports the finest taxon holding at least
+#'   `cumulative_threshold` of the total (unnamed mass included when
+#'   `unnamed_in_threshold = TRUE`); no hypothesis is dropped below
+#'   `min_posterior`, and a hypothesis named at a coarser rank (an
+#'   unsequenced genus of a family, say) counts toward that taxon and its
+#'   ancestors. Unresolved (`consensus_reason = "no_credible_node"`) when no
+#'   taxon at any rank in `rank_system` holds the threshold.
+#' @param likelihood_consensus Logical (default `TRUE`). Also compute the
+#'   consensus the likelihoods support when the prior is flattened among the
+#'   named candidates (each gets the mean of their priors; generic
+#'   unsequenced-relative rows keep their own; uniform when there is no
+#'   `prior_mean`), same consensus method and
+#'   `cumulative_threshold`, `min_posterior` and `pool_tail`, no downranking)
+#'   and compare it with the reported call. Adds `likelihood_consensus_taxon`,
+#'   `likelihood_consensus_rank`, `prior_role` and `likelihood_support`;
+#'   changes no other column. Skipped (columns `NA`) when `posterior_df` has
+#'   no `score_likelihood` column. See \emph{Sequence support}.
+#' @param robust_prior_s Numeric (default `1`; `0` turns it off). Used with
+#'   `consensus_method = "credible_node"`. The occurrence prior is estimated
+#'   from finitely many records, so a node is reported only if its posterior
+#'   stays at or above `cumulative_threshold` for every prior within an
+#'   imprecise-Dirichlet neighbourhood of the estimated one: `s` additional
+#'   records of unknown species (Walley 1996; Walley's recommended range is
+#'   1-2), against the prior's own concentration `N` (median `alpha + beta`
+#'   of the observation's kernel-estimated rows). Calls the sequence decides
+#'   are unaffected; a call that rests on the prior is kept only if it would
+#'   survive `s` further records of a better-matching taxon. The bound is
+#'   reported as `robust_lower_posterior`. Skipped when `score_likelihood`,
+#'   `prior_mean`, `prior_alpha` or `prior_beta` is missing.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -236,6 +277,39 @@
 #' `TaxaFlag::review_assignments()`'s `plausibility == "unprecedented"` check,
 #' not by prior competition inside this function.
 #'
+#' @section Defaults:
+#' A setting that corrects a defect defaults on; one that chooses between
+#' defensible rules is opt-in until its trade is measured.
+#' `unnamed_in_threshold = TRUE` is a correction: leaving unnamed mass out of
+#' the denominator makes `cumulative_threshold` mean something other than it
+#' says. `pool_tail` and `consensus_method = "credible_node"` are choices of
+#' rule, so they default off (`FALSE`, `"lca"`).
+#'
+#' @section Sequence support:
+#' The posterior multiplies the likelihood by an occurrence prior, so a
+#' reported taxon can be one the sequence evidence alone does not single
+#' out: when several candidates match equally well, the prior picks among
+#' them. That is the intended use of a prior, but the reader of a species
+#' list needs to know which calls rest on the sequence and which on where the
+#' species is known to occur. With `likelihood_consensus = TRUE` the call is
+#' compared with a baseline in which the named candidates' priors are
+#' flattened (each gets their mean) while generic unsequenced-relative rows
+#' keep their own priors. `likelihood_support` is the share of that baseline
+#' in the reported taxon: 0.84 means the sequence nearly makes the call
+#' itself and the prior nudged it over `cumulative_threshold`; 0.10 means
+#' the prior chose it. `prior_role` records the direction (`"agrees"`,
+#' `"narrowed"`, `"broadened"`, `"changed"`). Neither changes the call: in a
+#' clade with one local species the prior legitimately concentrates the
+#' posterior on it, which is correct inference, so sequence support is
+#' reported, not used to move calls.
+#'
+#' A support above 0.5 means the reported taxon is more probable on the
+#' sequence evidence than every alternative combined (named priors
+#' flattened); unnamed and generic mass that no named taxon contains counts
+#' against every taxon. The gap between the posterior (which clears
+#' `cumulative_threshold`) and `likelihood_support` is the part of the call
+#' that rests on the prior.
+#'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
@@ -286,9 +360,30 @@
 #'       named hypothesis).}
 #'     \item{`tail_mass`}{Summed posterior of the hypotheses below
 #'       `min_posterior`: how much mass sat in the tail block.}
+#'     \item{`robust_lower_posterior`}{With `consensus_method =
+#'       "credible_node"` and `robust_prior_s > 0`: the lower bound of the
+#'       reported taxon's posterior over the imprecise-prior neighbourhood
+#'       (see `robust_prior_s`). `NA` otherwise.}
+#'     \item{`unnamed_mass`}{Posterior on rows with no `taxon_name`. Not part
+#'       of `tail_mass`, which covers named hypotheses only.}
 #'     \item{`tail_pooled`}{`TRUE` when the tail block joined the plausible
 #'       set because the hypotheses above `min_posterior` held less than
 #'       `cumulative_threshold` of the total mass.}
+#'     \item{`likelihood_consensus_taxon`, `likelihood_consensus_rank`}{The
+#'       call the likelihoods alone support (uniform priors). `NA` when
+#'       `likelihood_consensus = FALSE` or there is no `score_likelihood`.}
+#'     \item{`prior_role`}{How the prior moved the call relative to the
+#'       likelihood-only call: `"agrees"` (same taxon), `"narrowed"` (a finer
+#'       taxon inside the likelihood-only call, or a call where the
+#'       likelihoods alone made none), `"broadened"` (a coarser taxon
+#'       containing it, or no call where the likelihoods made one) or
+#'       `"changed"` (a taxon outside it, or nesting that could not be
+#'       verified). `NA` when neither pass made a call.}
+#'     \item{`likelihood_support`}{Share of the baseline (sequence evidence,
+#'       named candidates' priors flattened) that falls in the reported
+#'       taxon: how close the sequence alone comes to the call. A call at
+#'       posterior 0.92 with support 0.84 was nudged over the threshold by the
+#'       prior; one with support 0.10 was chosen by it.}
 #'     \item{`plausible_taxa`}{List column: character vector of plausible taxon
 #'       names, sorted by descending posterior. Computed BEFORE downranking, so
 #'       for a downranked row it reflects the original coarser-rank plausible
@@ -513,9 +608,26 @@ posterior_consensus <- function(posterior_df,
                                 group_priors = NULL,
                                 min_effective_records = 0,
                                 taxonomy_cache_dir = NULL,
-                                pool_tail = FALSE) {
+                                pool_tail = FALSE,
+                                unnamed_in_threshold = TRUE,
+                                consensus_method = c("lca", "credible_node"),
+                                likelihood_consensus = TRUE,
+                                robust_prior_s = 1) {
+  consensus_method <- match.arg(consensus_method)
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
+  }
+  if (!is.logical(unnamed_in_threshold) || length(unnamed_in_threshold) != 1L ||
+    is.na(unnamed_in_threshold)) {
+    cli::cli_abort("{.arg unnamed_in_threshold} must be TRUE or FALSE.")
+  }
+  if (!is.numeric(robust_prior_s) || length(robust_prior_s) != 1L ||
+    is.na(robust_prior_s) || robust_prior_s < 0) {
+    cli::cli_abort("{.arg robust_prior_s} must be a single non-negative number (0 turns it off).")
+  }
+  if (!is.logical(likelihood_consensus) || length(likelihood_consensus) != 1L ||
+    is.na(likelihood_consensus)) {
+    cli::cli_abort("{.arg likelihood_consensus} must be TRUE or FALSE.")
   }
   if (!is.numeric(min_effective_records) ||
     length(min_effective_records) != 1L ||
@@ -634,7 +746,7 @@ posterior_consensus <- function(posterior_df,
       tax_cols_present <- intersect(rank_system_eff, names(posterior_df))
       if (length(tax_cols_present) > 0) {
         unref_mask <- posterior_df$hypothesis_type %in%
-          c("unreferenced_species", "unreferenced_genus")
+          c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order")
         needs_tax <- unref_mask &
           rowSums(is.na(posterior_df[, tax_cols_present, drop = FALSE])) > 0
         unref_names <- unique(posterior_df$taxon_name[needs_tax])
@@ -694,7 +806,10 @@ posterior_consensus <- function(posterior_df,
             )
             idx <- match(posterior_df$taxon_name, verified_flat$taxon_name)
             for (tc in intersect(tax_cols_present, names(verified_flat))) {
-              fill <- needs_tax & !is.na(idx)
+              # fill only cells that are empty: a lookup must never replace
+              # a rank value the row already has (nor blank it with NA)
+              fill <- needs_tax & !is.na(idx) & is.na(posterior_df[[tc]]) &
+                !is.na(verified_flat[[tc]][idx])
               if (!any(fill)) next
               posterior_df[[tc]][fill] <- verified_flat[[tc]][idx[fill]]
             }
@@ -715,7 +830,8 @@ posterior_consensus <- function(posterior_df,
     .consensus_one_observation(
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
-      group_priors, min_effective_records, pool_tail
+      group_priors, min_effective_records, pool_tail, unnamed_in_threshold,
+      consensus_method, robust_prior_s
     )
   })
 
@@ -746,6 +862,12 @@ posterior_consensus <- function(posterior_df,
     }
   }
 
+  result <- .add_prior_role(
+    result, posterior_df, rank_system_eff, likelihood_consensus,
+    cumulative_threshold, min_posterior, pool_tail,
+    unnamed_in_threshold, consensus_method
+  )
+
   attr(result, "report_params") <- list(
     cumulative_threshold = cumulative_threshold,
     min_posterior        = min_posterior,
@@ -765,6 +887,178 @@ posterior_consensus <- function(posterior_df,
 #' compute_posterior()). Consolidates a pattern repeated ~8 times below for
 #' the winner_* pass-through columns.
 #' @noRd
+# Deepest credible node: for each rank from finest to coarsest, sum the
+# posterior of every hypothesis under each taxon at that rank (a hypothesis
+# named at a coarser rank, e.g. an unsequenced genus of family X, counts
+# toward X and its ancestors only) and return the first taxon holding at least
+# `threshold` of `total`. NA when no taxon at any rank does.
+.credible_node <- function(named_all, posterior_col, rank_system, total, threshold) {
+  post <- named_all[[posterior_col]]
+  post[is.na(post)] <- 0
+  if (!is.finite(total) || total <= 0) {
+    return(list(taxon = NA_character_, rank = NA_character_))
+  }
+  for (r in rev(rank_system)) {
+    vals <- .extract_rank_values(named_all, r)
+    if (is.null(vals) || all(is.na(vals))) next
+    mass <- tapply(post[!is.na(vals)], vals[!is.na(vals)], sum)
+    best <- which.max(mass)
+    if (length(best) && mass[best] / total >= threshold) {
+      return(list(taxon = names(mass)[best], rank = r))
+    }
+  }
+  list(taxon = NA_character_, rank = NA_character_)
+}
+
+# Likelihood-only consensus and the prior's role in the reported call.
+# The likelihood pass reuses .consensus_one_observation() on each
+# observation's score_likelihood normalised to sum to 1 (uniform priors),
+# with no group_priors and no downranking, so the two calls differ only by
+# the prior. Its per-observation warnings repeat the main pass's and are
+# muffled.
+.add_prior_role <- function(result, posterior_df, rank_system, enabled,
+                            cumulative_threshold, min_posterior, pool_tail,
+                            unnamed_in_threshold = TRUE, consensus_method = "lca") {
+  result$likelihood_consensus_taxon <- NA_character_
+  result$likelihood_consensus_rank <- NA_character_
+  result$prior_role <- NA_character_
+  result$likelihood_support <- NA_real_
+  if (!enabled || !"score_likelihood" %in% names(posterior_df) || nrow(result) == 0L) {
+    return(result)
+  }
+  # Baseline: the prior flattened AMONG THE NAMED CANDIDATES only (each gets
+  # the mean of their priors), generic unsequenced-relative rows keeping
+  # their own. The question is whether the prior chose between named species
+  # or moved the rank -- not whether the complement would win under a flat
+  # prior, which it nearly always would. Without prior_mean: uniform.
+  lik <- posterior_df$score_likelihood
+  lik[is.na(lik) | lik < 0] <- 0
+  w <- lik
+  if ("prior_mean" %in% names(posterior_df)) {
+    pr <- posterior_df$prior_mean
+    pr[is.na(pr) | pr < 0] <- 0
+    spec <- posterior_df$hypothesis_type %in% "specific_candidate"
+    spec_mean <- stats::ave(ifelse(spec, pr, NA_real_), posterior_df$observation_id,
+      FUN = function(v) rep(mean(v, na.rm = TRUE), length(v)))
+    pr_flat <- ifelse(spec & is.finite(spec_mean), spec_mean, pr)
+    w <- lik * pr_flat
+  }
+  tot <- stats::ave(w, posterior_df$observation_id, FUN = sum)
+  posterior_df$.lik_post <- ifelse(tot > 0, w / tot, 0)
+  chunks <- split(posterior_df, posterior_df$observation_id)
+  ids <- as.character(result$observation_id)
+  lik_rows <- suppressWarnings(lapply(ids, function(sid) {
+    ch <- chunks[[sid]]
+    if (is.null(ch)) return(.empty_consensus_row(sid))
+    .consensus_one_observation(
+      ch, sid, rank_system, cumulative_threshold, min_posterior,
+      ".lik_post", NULL, 0, pool_tail, unnamed_in_threshold, consensus_method
+    )
+  }))
+  result$likelihood_consensus_taxon <- vapply(lik_rows, function(r) as.character(r$consensus_taxon[[1L]]), character(1))
+  result$likelihood_consensus_rank <- vapply(lik_rows, function(r) as.character(r$consensus_rank[[1L]]), character(1))
+  result$prior_role <- vapply(seq_along(ids), function(i) {
+    .prior_role_one(
+      chunks[[ids[i]]], rank_system,
+      result$consensus_taxon[i], result$consensus_rank[i],
+      result$likelihood_consensus_taxon[i], result$likelihood_consensus_rank[i]
+    )
+  }, character(1))
+  # Share of the baseline (sequence, named priors flattened) held by the
+  # reported taxon: the magnitude behind prior_role.
+  result$likelihood_support <- vapply(seq_along(ids), function(i) {
+    ch <- chunks[[ids[i]]]
+    tx <- result$consensus_taxon[i]
+    rk <- result$consensus_rank[i]
+    if (is.null(ch) || is.na(tx) || is.na(rk)) return(NA_real_)
+    v <- .extract_rank_values(ch, rk)
+    tot <- sum(ch$.lik_post, na.rm = TRUE)
+    if (is.null(v) || tot <= 0) return(NA_real_)
+    sum(ch$.lik_post[!is.na(v) & v == tx], na.rm = TRUE) / tot
+  }, numeric(1))
+  result
+}
+
+.rank_depth <- function(rank, rank_system) {
+  std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  d <- match(rank, rank_system)
+  if (is.na(d)) d <- match(rank, std) - length(std) + length(rank_system)
+  d
+}
+
+# The value at target_rank of the observation's rows whose value at
+# taxon_rank is taxon; NA unless exactly one value is found.
+.ancestor_at <- function(chunk, taxon, taxon_rank, target_rank) {
+  if (is.null(chunk) || is.na(taxon_rank) || is.na(target_rank)) return(NA_character_)
+  hit <- chunk[.extract_rank_values(chunk, taxon_rank) %in% taxon, , drop = FALSE]
+  if (nrow(hit) == 0L) return(NA_character_)
+  anc <- unique(stats::na.omit(.extract_rank_values(hit, target_rank)))
+  if (length(anc) == 1L) as.character(anc) else NA_character_
+}
+
+.prior_role_one <- function(chunk, rank_system, t_p, r_p, t_l, r_l) {
+  if (is.na(t_p) && is.na(t_l)) return(NA_character_)
+  if (is.na(t_l)) return("narrowed")
+  if (is.na(t_p)) return("broadened")
+  if (identical(r_p, r_l)) return(if (identical(t_p, t_l)) "agrees" else "changed")
+  d_p <- .rank_depth(r_p, rank_system)
+  d_l <- .rank_depth(r_l, rank_system)
+  if (is.na(d_p) || is.na(d_l)) return("changed")
+  if (d_p > d_l) {
+    anc <- .ancestor_at(chunk, t_p, r_p, r_l)
+    if (!is.na(anc) && anc == t_l) "narrowed" else "changed"
+  } else {
+    anc <- .ancestor_at(chunk, t_l, r_l, r_p)
+    if (!is.na(anc) && anc == t_p) "broadened" else "changed"
+  }
+}
+
+# Robust credible node (imprecise prior). The occurrence prior is estimated
+# from finitely many records, so each node's posterior is taken at its lower
+# bound over the epsilon-contamination class {(1 - eps) pi + eps q : q any
+# distribution} (Berger & Berliner 1986); eps = s / (N + s) is Walley's (1996)
+# imprecise Dirichlet model with N the prior's own concentration (median
+# alpha + beta of the observation's kernel-estimated rows). The worst case
+# puts all of eps on the best-fitting hypothesis outside the node:
+#   lower(v) = (1 - eps) A_v / ((1 - eps) sum(L pi) + eps max_{h not in v} L_h).
+# Returns the finest node whose lower posterior reaches the threshold.
+.credible_node_robust <- function(chunk, rank_system, s, threshold) {
+  L <- chunk$score_likelihood
+  L[is.na(L) | L < 0] <- 0
+  pi <- chunk$prior_mean
+  pi[is.na(pi) | pi < 0] <- 0
+  conc <- chunk$prior_alpha + chunk$prior_beta
+  kern <- if ("prior_branch" %in% names(chunk)) .is_kernel_branch(chunk$prior_branch) else rep(FALSE, nrow(chunk))
+  N <- suppressWarnings(stats::median(conc[kern & is.finite(conc)]))
+  if (!is.finite(N)) N <- suppressWarnings(stats::median(conc[is.finite(conc)]))
+  if (!is.finite(N) || N <= 0) {
+    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_))
+  }
+  eps <- s / (N + s)
+  w <- L * pi
+  tot <- sum(w)
+  if (!is.finite(tot) || tot <= 0) {
+    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_))
+  }
+  for (r in rev(rank_system)) {
+    v <- .extract_rank_values(chunk, r)
+    if (is.null(v) || all(is.na(v))) next
+    best <- NA_character_
+    bestp <- -1
+    for (nd in unique(v[!is.na(v)])) {
+      inn <- !is.na(v) & v == nd
+      Ls <- if (any(!inn)) max(L[!inn]) else 0
+      pl <- (1 - eps) * sum(w[inn]) / ((1 - eps) * tot + eps * Ls)
+      if (pl > bestp) {
+        bestp <- pl
+        best <- nd
+      }
+    }
+    if (bestp >= threshold) return(list(taxon = best, rank = r, lower = bestp))
+  }
+  list(taxon = NA_character_, rank = NA_character_, lower = NA_real_)
+}
+
 .row_col_or <- function(row, col, default = NA_real_) {
   if (col %in% names(row)) row[[col]][[1L]] else default
 }
@@ -775,11 +1069,21 @@ posterior_consensus <- function(posterior_df,
                                        cumulative_threshold, min_posterior,
                                        posterior_col, group_priors = NULL,
                                        min_effective_records = 0,
-                                       pool_tail = FALSE) {
+                                       pool_tail = FALSE,
+                                       unnamed_in_threshold = TRUE,
+                                       consensus_method = "lca",
+                                       robust_prior_s = 0) {
+  # credible_node sums every hypothesis, so no hypothesis is dropped below
+  # min_posterior: the tail is always part of the plausible set.
+  if (consensus_method == "credible_node") pool_tail <- TRUE
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
   named_all <- chunk[!is.na(chunk$taxon_name), ]
+  # Posterior on unnamed rows: a hypothesis with no name cannot join an LCA, but
+  # its mass is still mass the call does not hold.
+  unnamed_mass <- sum(chunk[[posterior_col]][is.na(chunk$taxon_name)], na.rm = TRUE)
+  extra_denom <- if (unnamed_in_threshold) unnamed_mass else 0
 
   prior_updated_flag <- if ("prior_updated" %in% names(chunk)) {
     any(chunk$prior_updated, na.rm = TRUE)
@@ -846,9 +1150,11 @@ posterior_consensus <- function(posterior_df,
       return(out_empty)
     }
     surv_total <- sum(named[[posterior_col]], na.rm = TRUE)
-    cum_prop <- cumsum(named[[posterior_col]]) / surv_total
+    denom <- surv_total + extra_denom
+    cum_prop <- cumsum(named[[posterior_col]]) / denom
   } else {
-    cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / named_total else numeric(0)
+    denom <- named_total + extra_denom
+    cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / denom else numeric(0)
   }
   n_include <- which(cum_prop >= cumulative_threshold)[1L]
   tail_pooled <- pool_tail && is.na(n_include) && nrow(tail_rows) > 0L
@@ -911,6 +1217,31 @@ posterior_consensus <- function(posterior_df,
 
   # LCA among plausible hypotheses
   lca <- .find_lca(plausible, rank_system)
+  # When the named hypotheses cannot reach cumulative_threshold of the total
+  # because posterior sits on unnamed rows, no named taxon holds the call:
+  # report it unresolved rather than the LCA of a set that falls short.
+  unnamed_blocked <- unnamed_in_threshold && unnamed_mass > 0 &&
+    sum(plausible[[posterior_col]], na.rm = TRUE) / denom < cumulative_threshold
+  if (unnamed_blocked) {
+    lca$taxon <- NA_character_
+    lca$rank <- NA_character_
+    lca$consensus_reason <- "unnamed_mass"
+  }
+  robust_lower <- NA_real_
+  if (consensus_method == "credible_node") {
+    can_robust <- robust_prior_s > 0 &&
+      all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
+    node <- if (can_robust) {
+      .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold)
+    } else {
+      total <- named_total + extra_denom
+      .credible_node(named_all, posterior_col, rank_system, total, cumulative_threshold)
+    }
+    lca$taxon <- node$taxon
+    lca$rank <- node$rank
+    lca$consensus_reason <- if (is.na(node$taxon)) "no_credible_node" else "credible_node"
+    if (can_robust) robust_lower <- node$lower
+  }
 
   # --- Discrimination diagnostics ------------------------------------------
   # Two questions the winner_*_confusion_risk columns above cannot answer on
@@ -1151,6 +1482,8 @@ posterior_consensus <- function(posterior_df,
     n_plausible = n_include,
     tail_mass = tail_mass,
     tail_pooled = tail_pooled,
+    unnamed_mass = unnamed_mass,
+    robust_lower_posterior = robust_lower,
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
     winner_likelihood = winner_likelihood,
@@ -1249,6 +1582,20 @@ posterior_consensus <- function(posterior_df,
 #' for why this derivation matters). All other missing columns return NA.
 #' @noRd
 .extract_rank_values <- function(input_df, rank) {
+  vals <- .extract_rank_values_raw(input_df, rank)
+  # A row never reports a value at a rank finer than its own: an unsequenced-
+  # congener row named at genus can still carry its anchor species in a
+  # `species` column, which would otherwise count it as that species.
+  if ("taxon_name_rank" %in% names(input_df)) {
+    std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+    r_d <- match(rank, std)
+    row_d <- match(input_df$taxon_name_rank, std)
+    if (!is.na(r_d)) vals[!is.na(row_d) & row_d < r_d] <- NA_character_
+  }
+  vals
+}
+
+.extract_rank_values_raw <- function(input_df, rank) {
   if (rank == "genus") {
     # Derive genus from binomial as fallback for any NA values
     derived <- ifelse(
@@ -1318,6 +1665,8 @@ posterior_consensus <- function(posterior_df,
     n_plausible = 0L,
     tail_mass = NA_real_,
     tail_pooled = NA,
+    unnamed_mass = NA_real_,
+    robust_lower_posterior = NA_real_,
     winner_prior = NA_real_,
     winner_theta_mean = NA_real_,
     winner_likelihood = NA_real_,

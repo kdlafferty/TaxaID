@@ -33,6 +33,7 @@
   match_df <- data.frame(
     observation_id = paste0("Q", seq_along(scores)),
     genus = "Genusone",
+    taxon_name = "Genusone speciesa",
     score_original = scores,
     stringsAsFactors = FALSE
   )
