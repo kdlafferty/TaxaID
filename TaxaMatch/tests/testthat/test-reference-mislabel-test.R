@@ -168,7 +168,7 @@ test_that("two-pass rule and last-references guard set the action", {
   expect_equal(out$reason[out$accession == "MIS2"], "not_selected_in_pass2")
   expect_equal(out$action[out$accession == "CLOSE"], "untested")
   expect_match(attr(out, "rule_key"), "^mislabel_lr_v1\\|ranks=species\\|sep_q=0.95")
-  expect_match(attr(out, "rule_key"), "two_pass$")
+  expect_match(attr(out, "rule_key"), "conflict_share=off\\|two_pass$")
 })
 
 test_that("the test is deterministic", {
@@ -186,4 +186,29 @@ test_that("an empty neighbour search is an error, not 'no neighbours'", {
   expect_error(.mislabel_pair_hits(pool, list(species = data.frame(accession = "A1", B = NA_character_)),
                                    blast_bin = "x", rank_system = "species", verbose = FALSE),
                "nothing to measure")
+})
+
+test_that("a pattern across many of a group's batches is a taxonomic conflict, not removal", {
+  s <- .mk_stats()
+  mis <- s[s$accession == "MIS1", ]
+  # three more selections of the same A -> B, in different batches
+  s <- rbind(s, transform(mis, accession = "CX100"), transform(mis, accession = "CY100"),
+             transform(mis, accession = "CZ100"))
+  sp <- stats::setNames(rep("spX", nrow(s)), s$accession)
+  dep <- data.frame(acc = c(s$accession, "DA100", "DB100"), species = "a", stringsAsFactors = FALSE)
+  dep$batch <- .mislabel_batch_of(dep$acc)[dep$acc]
+  out <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species", deposits = dep)
+  # group "a" spans many batches; 4 selected batches (MIS1, CX, CY, CZ) out of the group's is
+  # below 1/3 only if the group is large -- here the group is every synthetic reference
+  expect_true(all(out$selected_batches[out$accession %in% c("MIS1", "CX100")] == 4L))
+  dep_small <- dep[dep$acc %in% c("MIS1", "CX100", "CY100", "CZ100", "DA100", "DB100"), ]
+  out2 <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species", deposits = dep_small)
+  expect_equal(unique(out2$action[out2$accession %in% c("MIS1", "CX100", "CY100", "CZ100")]), "inspect")
+  expect_equal(unique(out2$reason[out2$accession == "MIS1"]), "taxonomic_conflict")
+  expect_match(attr(out2, "rule_key"), "conflict_share=0.333")
+  # a single selected batch is never a conflict
+  s1 <- s[!s$accession %in% c("CX100", "CY100", "CZ100"), ]
+  out3 <- .test_reference_mislabels(function(ex) s1, sp, rank_system = "species",
+                                    deposits = dep_small[dep_small$acc %in% c("MIS1", "DA100"), ])
+  expect_false(out3$taxonomic_conflict[out3$accession == "MIS1"])
 })

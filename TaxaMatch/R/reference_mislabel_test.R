@@ -373,13 +373,19 @@ utils::globalVariables(character(0))
 #' @param ref_species Named character: listed species per reference
 #'   accession, for the last-references guard.
 #' @param min_refs_left Integer.
+#' @param deposits The deposit pool (`acc`, `batch`, rank columns), for the
+#'   taxonomic-conflict guard; `NULL` disables it.
+#' @param conflict_share A selection is a taxonomic conflict, sent to
+#'   "inspect", when at least this share of its group's independent batches
+#'   (and at least 2) are selected toward the same nearest group.
 #' @param ... Passed to `.mislabel_lr_test()`.
 #' @return data.frame from pass 1 with `selected_pass1`, `selected_pass2`,
 #'   `posterior_pass2`, `refs_left`, `action` (`remove`, `inspect`, `keep`,
 #'   `untested`) and `reason`. Attributes: both passes' `pi` and `guard`,
 #'   and `rule_key`.
 #' @noRd
-.test_reference_mislabels <- function(stats_fun, ref_species, min_refs_left = 2L, ...) {
+.test_reference_mislabels <- function(stats_fun, ref_species, min_refs_left = 2L,
+                                      deposits = NULL, conflict_share = 1 / 3, ...) {
   dots <- list(...)
   p1 <- do.call(.mislabel_lr_test, c(list(stats = stats_fun(character(0))), dots))
   sel1 <- p1$accession[p1$selected]
@@ -396,14 +402,40 @@ utils::globalVariables(character(0))
     if (is.na(sp[i])) return(NA_integer_)
     sum(ref_species == sp[i] & !(names(ref_species) %in% removed))
   }, integer(1))
+  # Taxonomic-conflict guard. Mislabels are rare and idiosyncratic; when a
+  # large share of a group's independent submission batches all point at the
+  # same nearest group, the group's label (a cryptic complex, an unsettled
+  # genus) is the problem, not those submissions. Counted over the deposit
+  # pool, not just the references, and only when >= 2 batches are selected --
+  # one selection is not a pattern.
+  out$group_batches <- NA_integer_
+  out$selected_batches <- NA_integer_
+  out$taxonomic_conflict <- FALSE
+  if (!is.null(deposits) && any(both)) {
+    bat <- stats::setNames(deposits$batch, deposits$acc)
+    key <- paste(out$rank, out$A, out$B, sep = "\r")
+    for (k in unique(key[both])) {
+      rows <- which(key == k)
+      sel <- rows[both[rows]]
+      rk <- out$rank[sel[1]]
+      grp <- unique(deposits$batch[deposits[[rk]] %in% out$A[sel[1]]])
+      sb <- unique(bat[out$accession[sel]])
+      out$group_batches[sel] <- length(grp)
+      out$selected_batches[sel] <- length(sb)
+      out$taxonomic_conflict[sel] <- length(sb) >= 2L && length(grp) > 0L &&
+        length(sb) / length(grp) >= conflict_share
+    }
+  }
   out$action <- ifelse(out$status != "tested", "untested",
                 ifelse(!both, "keep",
-                ifelse(!is.na(out$refs_left) & out$refs_left < min_refs_left, "inspect", "remove")))
+                ifelse(out$taxonomic_conflict, "inspect",
+                ifelse(!is.na(out$refs_left) & out$refs_left < min_refs_left, "inspect", "remove"))))
   out$reason <- ifelse(out$action == "untested", out$status,
                 ifelse(out$action == "keep" & out$selected_pass1, "not_selected_in_pass2",
                 ifelse(out$action == "keep", "not_selected",
+                ifelse(out$taxonomic_conflict, "taxonomic_conflict",
                 ifelse(out$action == "inspect", "would_leave_too_few_references",
-                       "selected_both_passes"))))
+                       "selected_both_passes")))))
   a <- utils::modifyList(list(rank_system = c("species", "genus", "family"), sep_q = 0.95,
                               k = 20, eps = 0.01, fdr = 0.05, min_batches = 2L,
                               min_within = 20L, bw_mult = 1), dots)
@@ -411,7 +443,8 @@ utils::globalVariables(character(0))
     paste0("ranks=", paste(a$rank_system, collapse = ",")), paste0("sep_q=", a$sep_q),
     paste0("k=", a$k), paste0("eps=", a$eps), paste0("fdr=", a$fdr),
     paste0("minb=", a$min_batches), paste0("min_within=", a$min_within),
-    paste0("bw=", a$bw_mult), paste0("min_refs_left=", min_refs_left), "two_pass", sep = "|")
+    paste0("bw=", a$bw_mult), paste0("min_refs_left=", min_refs_left),
+    paste0("conflict_share=", if (is.null(deposits)) "off" else signif(conflict_share, 3)), "two_pass", sep = "|")
   attr(out, "pi") <- c(pass1 = attr(p1, "pi"), pass2 = attr(p2, "pi"))
   attr(out, "guard") <- attr(p1, "guard")
   attr(out, "guard_pass2") <- attr(p2, "guard")
