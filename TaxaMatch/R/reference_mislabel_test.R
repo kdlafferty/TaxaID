@@ -386,7 +386,10 @@ utils::globalVariables(character(0))
   fin <- if (is.na(finer)) NULL else stats::setNames(deposits[[finer]], deposits$acc)
   h <- hits[hits$q %in% inA & hits$s %in% c(inA, inB) & hits$q != hits$s, ]
   h <- h[bat[h$q] != bat[h$s], ]
-  if (!is.null(fin)) h <- h[!(h$s %in% inA & fin[h$s] %in% fin[h$q] & !is.na(fin[h$q])), ]
+  if (!is.null(fin)) {
+    same_finer <- !is.na(fin[h$q]) & !is.na(fin[h$s]) & fin[h$s] == fin[h$q]
+    h <- h[!(h$s %in% inA & same_finer), ]
+  }
   if (!nrow(h)) return(c(n_batches = 0L, n_blike = 0L))
   per_q <- lapply(split(h, h$q), function(z) {
     a <- z$s %in% inA

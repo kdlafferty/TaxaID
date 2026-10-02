@@ -238,3 +238,15 @@ test_that("the split-group guard diverts only a split group, and removes small g
   expect_equal(out3$action[out3$accession == "MIS1"], "remove")
   expect_false(out3$taxonomic_conflict[out3$accession == "MIS1"])
 })
+
+test_that(".mislabel_group_split() at genus rank compares other species of the genus", {
+  sx <- .mk_split(c("AA100", "AB100", "AC100", "AD100"))
+  # two species within genus "a", nearest genus "b"
+  sx$dep$genus <- ifelse(sx$dep$species == "b", "b", "a")
+  sx$dep$species <- ifelse(sx$dep$acc %in% c("AA100", "AB100", "AC100"), "a1",
+                    ifelse(sx$dep$species == "b", "b1", "a2"))
+  sp <- .mislabel_group_split(sx$hits, sx$dep, "genus", "a", "b")
+  # every genus-a deposit has an other-species congener to compare with
+  expect_equal(unname(sp[["n_batches"]]), 6L)
+  expect_gt(sp[["n_blike"]], 0L)
+})
