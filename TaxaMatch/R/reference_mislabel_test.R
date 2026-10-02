@@ -262,15 +262,19 @@ utils::globalVariables(character(0))
 #' @param min_within Minimum within-group references needed to learn a
 #'   rank's guard and density; a rank with fewer is not tested.
 #' @param bw_mult Bandwidth multiplier (sensitivity checks; 1 = default).
+#' @param strong_q Quantile of within-group mismatch beyond which a reference
+#'   is extreme for its own group (`guard$cutoff_strong`); used to decide
+#'   when a removal that would leave too few references is still made.
 #' @return data.frame, one row per accession: the tested rank and its
 #'   statistics, `separation`, `logLR`, `posterior`, `selected`, and
 #'   `status`. Attributes: `pi`, `guard` (per-rank table), `n_testable`.
 #' @noRd
 .mislabel_lr_test <- function(stats, rank_system = c("species", "genus", "family"),
                               sep_q = 0.95, k = 20, eps = 0.01, fdr = 0.05,
-                              min_batches = 2L, min_within = 20L, bw_mult = 1) {
+                              min_batches = 2L, min_within = 20L, bw_mult = 1,
+                              strong_q = 0.99) {
   if (!"class" %in% names(stats)) stats$class <- NA_character_
-  guard <- data.frame(rank = rank_system, n_within = 0L, cutoff = NA_real_,
+  guard <- data.frame(rank = rank_system, n_within = 0L, cutoff = NA_real_, cutoff_strong = NA_real_,
                       quantum_x = NA_real_, quantum_r = NA_real_, n_measured = 0L,
                       stringsAsFactors = FALSE)
   per_rank <- list()
@@ -290,6 +294,7 @@ utils::globalVariables(character(0))
     }
     m <- 100 - w$x
     guard$cutoff[gi] <- as.numeric(stats::quantile(m, sep_q))
+    guard$cutoff_strong[gi] <- as.numeric(stats::quantile(m, strong_q))
     qx <- .estimate_score_quantum(m)
     guard$quantum_x[gi] <- qx
     ms <- .smooth_comb(m, qx)
@@ -417,7 +422,10 @@ utils::globalVariables(character(0))
 #'   table for `.mislabel_lr_test()` (it closes over hits/deposits).
 #' @param ref_species Named character: listed species per reference
 #'   accession, for the last-references guard.
-#' @param min_refs_left Integer.
+#' @param min_refs_left Integer. A removal that would leave the listed
+#'   species (counted by binomial) with fewer references goes to "inspect"
+#'   unless the evidence of mislabel is strong (see the code comment and
+#'   `strong_q` in `.mislabel_lr_test()`).
 #' @param deposits,hits The deposit pool (`acc`, `batch`, rank columns) and
 #'   the pair-search hits, for the taxonomic-conflict guard; either `NULL`
 #'   disables it.
@@ -447,12 +455,32 @@ utils::globalVariables(character(0))
   out$selected_pass2 <- p2$selected[j] %in% TRUE
   out$posterior_pass2 <- p2$posterior[j]
   both <- out$selected_pass1 & out$selected_pass2
-  sp <- ref_species[out$accession]
+  # References remaining per species, counted by binomial so that a listed
+  # subspecies or informal variety ("Carassius auratus ssp. 'Kinbuna'")
+  # counts toward its species.
+  binom_of <- function(x) sub("^(\\S+ \\S+).*$", "\\1", x)
+  ref_bin <- stats::setNames(binom_of(ref_species), names(ref_species))
+  sp <- ref_bin[out$accession]
   removed <- out$accession[both]
   out$refs_left <- vapply(seq_len(nrow(out)), function(i) {
     if (is.na(sp[i])) return(NA_integer_)
-    sum(ref_species == sp[i] & !(names(ref_species) %in% removed))
+    sum(ref_bin == sp[i] & !(names(ref_bin) %in% removed))
   }, integer(1))
+  # A removal that would leave too few references is still made when the
+  # evidence of mislabel is strong, in either of two forms, both learned from
+  # the data: the reference matches another genus within ordinary
+  # within-species variation (identity to B >= 100 minus the species-rank
+  # separation cutoff), or it is farther from its own group than
+  # strong_q of correctly labelled members (beyond guard$cutoff_strong).
+  g1 <- attr(p1, "guard")
+  sp_cut <- g1$cutoff[g1$rank == "species"]
+  if (!length(sp_cut) || is.na(sp_cut)) sp_cut <- -Inf
+  strong_cut <- g1$cutoff_strong[match(out$rank, g1$rank)]
+  word1 <- function(x) sub(" .*$", "", x)
+  cross_genus <- out$rank != "species" | word1(out$A) != word1(out$B)
+  out$strong_evidence <- both & (
+    (!is.na(out$y) & out$y >= 100 - sp_cut & cross_genus) |
+      (!is.na(out$x) & !is.na(strong_cut) & (100 - out$x) > strong_cut))
   # Taxonomic-conflict guard. A coherent group with a dissenting minority
   # is the mislabel shape and is removed. When the listed group is itself
   # split -- most of its independent deposit batches look like the nearest
@@ -478,21 +506,24 @@ utils::globalVariables(character(0))
   out$action <- ifelse(out$status != "tested", "untested",
                 ifelse(!both, "keep",
                 ifelse(out$taxonomic_conflict, "inspect",
-                ifelse(!is.na(out$refs_left) & out$refs_left < min_refs_left, "inspect", "remove"))))
+                ifelse(!is.na(out$refs_left) & out$refs_left < min_refs_left & !out$strong_evidence,
+                       "inspect", "remove"))))
   out$reason <- ifelse(out$action == "untested", out$status,
                 ifelse(out$action == "keep" & out$selected_pass1, "not_selected_in_pass2",
                 ifelse(out$action == "keep", "not_selected",
                 ifelse(out$taxonomic_conflict, "taxonomic_conflict",
                 ifelse(out$action == "inspect", "would_leave_too_few_references",
-                       "selected_both_passes")))))
+                ifelse(!is.na(out$refs_left) & out$refs_left < min_refs_left,
+                       "strong_evidence_last_references", "selected_both_passes"))))))
   a <- utils::modifyList(list(rank_system = c("species", "genus", "family"), sep_q = 0.95,
                               k = 20, eps = 0.01, fdr = 0.05, min_batches = 2L,
-                              min_within = 20L, bw_mult = 1), dots)
+                              min_within = 20L, bw_mult = 1, strong_q = 0.99), dots)
   attr(out, "rule_key") <- paste(.MISLABEL_RULE_VERSION,
     paste0("ranks=", paste(a$rank_system, collapse = ",")), paste0("sep_q=", a$sep_q),
     paste0("k=", a$k), paste0("eps=", a$eps), paste0("fdr=", a$fdr),
     paste0("minb=", a$min_batches), paste0("min_within=", a$min_within),
     paste0("bw=", a$bw_mult), paste0("min_refs_left=", min_refs_left),
+    paste0("last_refs_strong=q", a$strong_q, "|match>=100-species_cutoff"),
     paste0("split_guard=", if (is.null(deposits) || is.null(hits)) "off" else
       paste0(split_share, "/min", min_group_batches)), "two_pass", sep = "|")
   attr(out, "pi") <- c(pass1 = attr(p1, "pi"), pass2 = attr(p2, "pi"))

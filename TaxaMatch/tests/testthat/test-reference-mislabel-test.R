@@ -159,9 +159,10 @@ test_that("two-pass rule and last-references guard set the action", {
   sp <- c(stats::setNames(rep("spX", nrow(s)), s$accession))
   sp[["MIS1"]] <- "lonely"
   out <- .test_reference_mislabels(stats_fun, sp, rank_system = "species")
-  # MIS1 selected twice but its species would have no reference left
-  expect_equal(out$action[out$accession == "MIS1"], "inspect")
-  expect_equal(out$reason[out$accession == "MIS1"], "would_leave_too_few_references")
+  # MIS1 selected twice; its species would have no reference left, but it is
+  # extreme for its own group, so the evidence is strong and it is removed
+  expect_equal(out$action[out$accession == "MIS1"], "remove")
+  expect_equal(out$reason[out$accession == "MIS1"], "strong_evidence_last_references")
   # MIS2 selected in pass 1 only
   expect_true(out$selected_pass1[out$accession == "MIS2"])
   expect_equal(out$action[out$accession == "MIS2"], "keep")
@@ -249,4 +250,31 @@ test_that(".mislabel_group_split() at genus rank compares other species of the g
   # every genus-a deposit has an other-species congener to compare with
   expect_equal(unname(sp[["n_batches"]]), 6L)
   expect_gt(sp[["n_blike"]], 0L)
+})
+
+test_that("last-reference removals need strong evidence; references count by binomial", {
+  crafted <- data.frame(
+    accession = c("L1", "L2", "L3", "C1"), rank = c("species", "species", "genus", "species"),
+    A = c("Gen a", "Gen a", "Gen", "Car aur"), B = c("Gen b", "Oth b", "Oth", "Car lan"),
+    x = c(97.9, 93, 82, 98.3), x_batches = 3L, y = c(99.4, 100, 93, 100), y_batches = 3L,
+    d = c(98.2, 93, 82, 98.3), d_batches = 3L, status = "tested", separation = 5,
+    logLR = 10, posterior = 0.99, selected = TRUE, stringsAsFactors = FALSE)
+  attr(crafted, "pi") <- 0.05
+  attr(crafted, "guard") <- data.frame(rank = c("species", "genus"), cutoff = c(1.6, 12.8),
+                                       cutoff_strong = c(6.2, 17.6))
+  local_mocked_bindings(.mislabel_lr_test = function(stats, ...) crafted)
+  sp <- c(L1 = "Gen a", L2 = "Gen x", L3 = "Gen y", C1 = "Car aur ssp. 'K'",
+          C2 = "Car aur", C3 = "Car aur")
+  out <- .test_reference_mislabels(function(ex) NULL, sp)
+  act <- stats::setNames(out$action, out$accession)
+  # congeneric, near its own species, last reference: not strong -> inspect
+  expect_equal(act[["L1"]], "inspect")
+  # matches another genus at 100%: strong -> removed even as last reference
+  expect_equal(act[["L2"]], "remove")
+  # 18% from its own genus, beyond the 17.6% strong cutoff: removed
+  expect_equal(act[["L3"]], "remove")
+  # a listed subspecies counts toward its species, which keeps 2 references
+  expect_equal(out$refs_left[out$accession == "C1"], 2L)
+  expect_equal(out$reason[out$accession == "C1"], "selected_both_passes")
+  expect_match(attr(out, "rule_key"), "last_refs_strong=q0.99")
 })
