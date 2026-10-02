@@ -1578,3 +1578,43 @@ test_that("likelihood_support is the reported taxon's share under the flattened-
   expect_equal(out$prior_role, "narrowed")
 })
 
+
+# ---- robust credible node (imprecise prior, robust_prior_s) ------------------
+.rb_df <- function(lik, prior, N) {
+  data.frame(observation_id = "E1",
+    taxon_name = c("Rhacochilus vacca", "Rhacochilus toxotes"), taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate", family = "Embiotocidae", genus = "Rhacochilus",
+    score_likelihood = lik, prior_mean = prior, prior_alpha = prior * N, prior_beta = (1 - prior) * N,
+    prior_branch = "kernel_estimated",
+    posterior_point_est = lik * prior / sum(lik * prior), stringsAsFactors = FALSE)
+}
+.rb <- function(df, ...) suppressMessages(posterior_consensus(df,
+  rank_system = c("family", "genus", "species"), consensus_method = "credible_node",
+  likelihood_consensus = FALSE, ...))
+
+test_that("a call resting on a thinly supported prior coarsens; off restores it", {
+  # equal likelihoods, prior 0.97 vs 0.03 from few records (N = 30)
+  df <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 30)
+  on <- .rb(df)
+  off <- .rb(df, robust_prior_s = 0)
+  expect_equal(off$consensus_taxon, "Rhacochilus vacca")
+  expect_equal(on$consensus_taxon, "Rhacochilus")
+  expect_equal(on$consensus_rank, "genus")
+  expect_true(is.na(off$robust_lower_posterior))
+})
+
+test_that("a call the sequence decides is unaffected by the robust rule", {
+  df <- .rb_df(c(1, 1e-4), c(0.005, 0.005), N = 30)
+  on <- .rb(df)
+  expect_equal(on$consensus_taxon, "Rhacochilus vacca")
+  expect_gte(on$robust_lower_posterior, 0.9)
+})
+
+test_that("a prior from many records survives the robust rule", {
+  df <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 1e6)
+  expect_equal(.rb(df)$consensus_taxon, "Rhacochilus vacca")
+})
+
+test_that("robust_prior_s is validated", {
+  expect_error(.rb(.rb_df(c(1, 1), c(0.5, 0.5), 10), robust_prior_s = -1), "non-negative")
+})

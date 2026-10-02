@@ -237,6 +237,7 @@ test_that("named rows let a local unreferenced species be called by name", {
     referenced_names = c("Littorina littorea", "Littorina scutulata"), named_rows = TRUE))
   post <- suppressMessages(compute_posterior(out, n_sims = 0))
   cons <- suppressMessages(posterior_consensus(post, rank_system = c("family", "genus", "species"),
-    consensus_method = "credible_node", likelihood_consensus = FALSE))
+    consensus_method = "credible_node", likelihood_consensus = FALSE,
+    robust_prior_s = 0)) # the fixture's priors rest on 1,000 records; this test is about naming
   expect_equal(cons$consensus_taxon, "Littorina keenae")
 })

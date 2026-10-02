@@ -20,7 +20,8 @@ posterior_consensus(
   pool_tail = FALSE,
   unnamed_in_threshold = TRUE,
   consensus_method = c("lca", "credible_node"),
-  likelihood_consensus = TRUE
+  likelihood_consensus = TRUE,
+  robust_prior_s = 1
 )
 }
 \arguments{
@@ -194,6 +195,19 @@ and compare it with the reported call. Adds \code{likelihood_consensus_taxon},
 \code{likelihood_consensus_rank}, \code{prior_role} and \code{likelihood_support};
 changes no other column. Skipped (columns \code{NA}) when \code{posterior_df} has
 no \code{score_likelihood} column. See \emph{Sequence support}.}
+
+\item{robust_prior_s}{Numeric (default \code{1}; \code{0} turns it off). Used with
+\code{consensus_method = "credible_node"}. The occurrence prior is estimated
+from finitely many records, so a node is reported only if its posterior
+stays at or above \code{cumulative_threshold} for every prior within an
+imprecise-Dirichlet neighbourhood of the estimated one: \code{s} additional
+records of unknown species (Walley 1996; Walley's recommended range is
+1-2), against the prior's own concentration \code{N} (median \code{alpha + beta}
+of the observation's kernel-estimated rows). Calls the sequence decides
+are unaffected; a call that rests on the prior is kept only if it would
+survive \code{s} further records of a better-matching taxon. The bound is
+reported as \code{robust_lower_posterior}. Skipped when \code{score_likelihood},
+\code{prior_mean}, \code{prior_alpha} or \code{prior_beta} is missing.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -246,6 +260,9 @@ including the members of a pooled tail block (0 when there is no
 named hypothesis).}
 \item{\code{tail_mass}}{Summed posterior of the hypotheses below
 \code{min_posterior}: how much mass sat in the tail block.}
+\item{\code{robust_lower_posterior}}{With \code{consensus_method = "credible_node"} and \code{robust_prior_s > 0}: the lower bound of the
+reported taxon's posterior over the imprecise-prior neighbourhood
+(see \code{robust_prior_s}). \code{NA} otherwise.}
 \item{\code{unnamed_mass}}{Posterior on rows with no \code{taxon_name}. Not part
 of \code{tail_mass}, which covers named hypotheses only.}
 \item{\code{tail_pooled}}{\code{TRUE} when the tail block joined the plausible

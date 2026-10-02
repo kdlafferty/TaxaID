@@ -121,6 +121,18 @@
 #'   `likelihood_consensus_rank`, `prior_role` and `likelihood_support`;
 #'   changes no other column. Skipped (columns `NA`) when `posterior_df` has
 #'   no `score_likelihood` column. See \emph{Sequence support}.
+#' @param robust_prior_s Numeric (default `1`; `0` turns it off). Used with
+#'   `consensus_method = "credible_node"`. The occurrence prior is estimated
+#'   from finitely many records, so a node is reported only if its posterior
+#'   stays at or above `cumulative_threshold` for every prior within an
+#'   imprecise-Dirichlet neighbourhood of the estimated one: `s` additional
+#'   records of unknown species (Walley 1996; Walley's recommended range is
+#'   1-2), against the prior's own concentration `N` (median `alpha + beta`
+#'   of the observation's kernel-estimated rows). Calls the sequence decides
+#'   are unaffected; a call that rests on the prior is kept only if it would
+#'   survive `s` further records of a better-matching taxon. The bound is
+#'   reported as `robust_lower_posterior`. Skipped when `score_likelihood`,
+#'   `prior_mean`, `prior_alpha` or `prior_beta` is missing.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -348,6 +360,10 @@
 #'       named hypothesis).}
 #'     \item{`tail_mass`}{Summed posterior of the hypotheses below
 #'       `min_posterior`: how much mass sat in the tail block.}
+#'     \item{`robust_lower_posterior`}{With `consensus_method =
+#'       "credible_node"` and `robust_prior_s > 0`: the lower bound of the
+#'       reported taxon's posterior over the imprecise-prior neighbourhood
+#'       (see `robust_prior_s`). `NA` otherwise.}
 #'     \item{`unnamed_mass`}{Posterior on rows with no `taxon_name`. Not part
 #'       of `tail_mass`, which covers named hypotheses only.}
 #'     \item{`tail_pooled`}{`TRUE` when the tail block joined the plausible
@@ -595,7 +611,8 @@ posterior_consensus <- function(posterior_df,
                                 pool_tail = FALSE,
                                 unnamed_in_threshold = TRUE,
                                 consensus_method = c("lca", "credible_node"),
-                                likelihood_consensus = TRUE) {
+                                likelihood_consensus = TRUE,
+                                robust_prior_s = 1) {
   consensus_method <- match.arg(consensus_method)
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
@@ -603,6 +620,10 @@ posterior_consensus <- function(posterior_df,
   if (!is.logical(unnamed_in_threshold) || length(unnamed_in_threshold) != 1L ||
     is.na(unnamed_in_threshold)) {
     cli::cli_abort("{.arg unnamed_in_threshold} must be TRUE or FALSE.")
+  }
+  if (!is.numeric(robust_prior_s) || length(robust_prior_s) != 1L ||
+    is.na(robust_prior_s) || robust_prior_s < 0) {
+    cli::cli_abort("{.arg robust_prior_s} must be a single non-negative number (0 turns it off).")
   }
   if (!is.logical(likelihood_consensus) || length(likelihood_consensus) != 1L ||
     is.na(likelihood_consensus)) {
@@ -810,7 +831,7 @@ posterior_consensus <- function(posterior_df,
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
       group_priors, min_effective_records, pool_tail, unnamed_in_threshold,
-      consensus_method
+      consensus_method, robust_prior_s
     )
   })
 
@@ -992,6 +1013,52 @@ posterior_consensus <- function(posterior_df,
   }
 }
 
+# Robust credible node (imprecise prior). The occurrence prior is estimated
+# from finitely many records, so each node's posterior is taken at its lower
+# bound over the epsilon-contamination class {(1 - eps) pi + eps q : q any
+# distribution} (Berger & Berliner 1986); eps = s / (N + s) is Walley's (1996)
+# imprecise Dirichlet model with N the prior's own concentration (median
+# alpha + beta of the observation's kernel-estimated rows). The worst case
+# puts all of eps on the best-fitting hypothesis outside the node:
+#   lower(v) = (1 - eps) A_v / ((1 - eps) sum(L pi) + eps max_{h not in v} L_h).
+# Returns the finest node whose lower posterior reaches the threshold.
+.credible_node_robust <- function(chunk, rank_system, s, threshold) {
+  L <- chunk$score_likelihood
+  L[is.na(L) | L < 0] <- 0
+  pi <- chunk$prior_mean
+  pi[is.na(pi) | pi < 0] <- 0
+  conc <- chunk$prior_alpha + chunk$prior_beta
+  kern <- if ("prior_branch" %in% names(chunk)) .is_kernel_branch(chunk$prior_branch) else rep(FALSE, nrow(chunk))
+  N <- suppressWarnings(stats::median(conc[kern & is.finite(conc)]))
+  if (!is.finite(N)) N <- suppressWarnings(stats::median(conc[is.finite(conc)]))
+  if (!is.finite(N) || N <= 0) {
+    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_))
+  }
+  eps <- s / (N + s)
+  w <- L * pi
+  tot <- sum(w)
+  if (!is.finite(tot) || tot <= 0) {
+    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_))
+  }
+  for (r in rev(rank_system)) {
+    v <- .extract_rank_values(chunk, r)
+    if (is.null(v) || all(is.na(v))) next
+    best <- NA_character_
+    bestp <- -1
+    for (nd in unique(v[!is.na(v)])) {
+      inn <- !is.na(v) & v == nd
+      Ls <- if (any(!inn)) max(L[!inn]) else 0
+      pl <- (1 - eps) * sum(w[inn]) / ((1 - eps) * tot + eps * Ls)
+      if (pl > bestp) {
+        bestp <- pl
+        best <- nd
+      }
+    }
+    if (bestp >= threshold) return(list(taxon = best, rank = r, lower = bestp))
+  }
+  list(taxon = NA_character_, rank = NA_character_, lower = NA_real_)
+}
+
 .row_col_or <- function(row, col, default = NA_real_) {
   if (col %in% names(row)) row[[col]][[1L]] else default
 }
@@ -1004,7 +1071,8 @@ posterior_consensus <- function(posterior_df,
                                        min_effective_records = 0,
                                        pool_tail = FALSE,
                                        unnamed_in_threshold = TRUE,
-                                       consensus_method = "lca") {
+                                       consensus_method = "lca",
+                                       robust_prior_s = 0) {
   # credible_node sums every hypothesis, so no hypothesis is dropped below
   # min_posterior: the tail is always part of the plausible set.
   if (consensus_method == "credible_node") pool_tail <- TRUE
@@ -1159,12 +1227,20 @@ posterior_consensus <- function(posterior_df,
     lca$rank <- NA_character_
     lca$consensus_reason <- "unnamed_mass"
   }
+  robust_lower <- NA_real_
   if (consensus_method == "credible_node") {
-    total <- named_total + extra_denom
-    node <- .credible_node(named_all, posterior_col, rank_system, total, cumulative_threshold)
+    can_robust <- robust_prior_s > 0 &&
+      all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
+    node <- if (can_robust) {
+      .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold)
+    } else {
+      total <- named_total + extra_denom
+      .credible_node(named_all, posterior_col, rank_system, total, cumulative_threshold)
+    }
     lca$taxon <- node$taxon
     lca$rank <- node$rank
     lca$consensus_reason <- if (is.na(node$taxon)) "no_credible_node" else "credible_node"
+    if (can_robust) robust_lower <- node$lower
   }
 
   # --- Discrimination diagnostics ------------------------------------------
@@ -1407,6 +1483,7 @@ posterior_consensus <- function(posterior_df,
     tail_mass = tail_mass,
     tail_pooled = tail_pooled,
     unnamed_mass = unnamed_mass,
+    robust_lower_posterior = robust_lower,
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
     winner_likelihood = winner_likelihood,
@@ -1589,6 +1666,7 @@ posterior_consensus <- function(posterior_df,
     tail_mass = NA_real_,
     tail_pooled = NA,
     unnamed_mass = NA_real_,
+    robust_lower_posterior = NA_real_,
     winner_prior = NA_real_,
     winner_theta_mean = NA_real_,
     winner_likelihood = NA_real_,
