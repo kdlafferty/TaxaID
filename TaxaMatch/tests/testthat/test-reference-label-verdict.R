@@ -1099,3 +1099,71 @@ test_that("verify_local_corroborations() input validation", {
     "non-negative number"
   )
 })
+
+# The real shape that produced 159 evidence-free "remove" verdicts on an 18S
+# screen: accessions present in the evaluation but never evaluated (every
+# screen column NA), with stale pair-cache rows left by an earlier run. The
+# test asserts ABSENCE -- no verdict may appear for them.
+test_that("refine_reference_verdicts() gives no verdict to an accession that was never evaluated", {
+  pairs <- data.frame(
+    id_x = c(rep("evaluated", 5), rep("never_evaluated", 5)),
+    id_y = paste0("p", 1:10), p_match = 0.99,
+    # The stale rows disagree at every rank, so they would vote "remove".
+    pair_finest_common_rank = c(rep("species", 5), rep(NA_character_, 5)),
+    stringsAsFactors = FALSE
+  )
+  ev <- data.frame(
+    accession = c("evaluated", "never_evaluated"),
+    hierarchy_flag = c("congruent", NA),
+    label_confidence = c(0.99, NA), reference_action = c("keep", NA),
+    frac_independent_below_min_congruent_rank = c(0, NA),
+    stringsAsFactors = FALSE
+  )
+  out <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE)
+  ne <- out[out$accession == "never_evaluated", ]
+  expect_false(ne$trust_refined)
+  expect_true(is.na(ne$reference_action_trust))
+  expect_true(is.na(ne$hierarchy_flag_trust))
+  expect_false(any(out$reference_action_trust %in% "remove"))
+  expect_true(out$trust_refined[out$accession == "evaluated"])
+})
+
+test_that("refine_reference_verdicts() ignores pair rows cast under different screen settings", {
+  pairs <- data.frame(
+    id_x = "q1", id_y = paste0("p", 1:5), p_match = 0.99,
+    pair_finest_common_rank = NA_character_, params_key = "OLD_SETTINGS",
+    stringsAsFactors = FALSE
+  )
+  ev <- data.frame(
+    accession = "q1", hierarchy_flag = "congruent", label_confidence = 0.99,
+    reference_action = "keep", frac_independent_below_min_congruent_rank = 0,
+    params_key = "CURRENT_SETTINGS", stringsAsFactors = FALSE
+  )
+  out <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE)
+  expect_false(out$trust_refined)
+  expect_equal(out$reference_action_trust, "keep")
+})
+
+test_that("refine_reference_verdicts() ignores unkeyed pair rows when the verdict is keyed", {
+  # An unkeyed row cannot be shown to come from the current screen settings;
+  # here it would vote "remove", so the test fails if it is counted.
+  pairs <- data.frame(
+    id_x = "q1", id_y = paste0("p", 1:5), p_match = 0.99,
+    pair_finest_common_rank = NA_character_, params_key = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  ev <- data.frame(
+    accession = "q1", hierarchy_flag = "congruent", label_confidence = 0.99,
+    reference_action = "keep", frac_independent_below_min_congruent_rank = 0,
+    params_key = "CURRENT_SETTINGS", stringsAsFactors = FALSE
+  )
+  out <- refine_reference_verdicts(ev, pair_table = pairs, verbose = FALSE)
+  expect_false(out$trust_refined)
+  expect_equal(out$reference_action_trust, "keep")
+  expect_false(any(out$reference_action_trust %in% "remove"))
+
+  # A pair table with no params_key column at all is treated the same way.
+  out2 <- refine_reference_verdicts(ev, pair_table = pairs[, names(pairs) != "params_key"],
+                                    verbose = FALSE)
+  expect_false(out2$trust_refined)
+})
