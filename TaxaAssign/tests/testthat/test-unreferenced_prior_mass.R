@@ -215,3 +215,28 @@ test_that("the order ring takes unreferenced species of other families, not thos
   expect_equal(o$unreferenced_mass, 7e-3)
   expect_equal(o$unreferenced_n_species, 1L)
 })
+
+test_that("named_rows = TRUE adds one row per recorded unreferenced species with its ring's likelihood", {
+  out <- suppressMessages(add_unreferenced_prior_mass(.upm_joined(), .upm_priors(), .upm_tax(),
+    referenced_names = c("Littorina littorea", "Littorina scutulata"), named_rows = TRUE))
+  k <- out[out$taxon_name == "Littorina keenae", ]
+  expect_equal(nrow(k), 1L)
+  expect_equal(k$taxon_name_rank, "species")
+  expect_equal(k$score_likelihood, 0.3) # the genus ring's likelihood
+  expect_equal(k$prior_mean, 4e-3)
+  lac <- out[out$taxon_name %in% c("Lacuna vincta", "Lacuna unifasciata"), ]
+  expect_equal(nrow(lac), 2L)
+  expect_true(all(lac$score_likelihood == 0.05)) # the family ring's likelihood
+  # ring rows keep their floor priors
+  expect_equal(out$prior_mean[out$taxon_name == "Littorina"], 3e-6)
+  expect_equal(out$prior_mean[out$taxon_name == "Littorinidae"], 3e-6)
+})
+
+test_that("named rows let a local unreferenced species be called by name", {
+  out <- suppressMessages(add_unreferenced_prior_mass(.upm_joined(), .upm_priors(), .upm_tax(),
+    referenced_names = c("Littorina littorea", "Littorina scutulata"), named_rows = TRUE))
+  post <- suppressMessages(compute_posterior(out, n_sims = 0))
+  cons <- suppressMessages(posterior_consensus(post, rank_system = c("family", "genus", "species"),
+    consensus_method = "credible_node", likelihood_consensus = FALSE))
+  expect_equal(cons$consensus_taxon, "Littorina keenae")
+})

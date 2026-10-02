@@ -12,7 +12,8 @@ add_unreferenced_prior_mass(
   grid_id = NULL,
   unreferenced_types = c("unreferenced_species", "unreferenced_genus",
     "unreferenced_family", "unreferenced_order"),
-  mismatch_message_fraction = 0.05
+  mismatch_message_fraction = 0.05,
+  named_rows = FALSE
 )
 }
 \arguments{
@@ -44,6 +45,15 @@ generic unreferenced hypotheses. Default
 \item{mismatch_message_fraction}{Numeric in [0, 1]. Message threshold for
 the share of named candidates missing from \code{referenced_names}. Default
 0.05.}
+
+\item{named_rows}{Logical (default \code{FALSE}). \code{FALSE} adds each ring row's
+recorded unreferenced local species to that row's prior. \code{TRUE} instead
+adds one row per such species (\code{hypothesis_type = "unreferenced_species"},
+named at species rank) carrying the ring row's likelihood and its own
+occurrence prior, and leaves the ring row's prior as it was (the
+unrecorded part). The species can then be reported by name when the
+prior concentrates on it; the total prior in each scope is the same
+either way.}
 }
 \value{
 \code{joined} with \code{prior_mean}, \code{prior_alpha} and \code{prior_beta} updated
