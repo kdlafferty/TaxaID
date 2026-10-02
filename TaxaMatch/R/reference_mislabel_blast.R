@@ -110,7 +110,13 @@ utils::globalVariables(character(0))
               shQuote("6 qseqid sseqid pident qcovs"), "-max_target_seqs", max_target_seqs,
               "-out", shQuote(hf))
   if (use_db) {
-    dbp <- file.path(work_dir, "pooldb")
+    # BLAST's -db argument splits on whitespace even when quoted, so the
+    # database never goes under work_dir (which may be e.g. "My Drive").
+    db_dir <- tempfile("mislabel_db_")
+    dir.create(db_dir)
+    if (grepl("\\s", db_dir)) stop("tempdir() contains whitespace; BLAST -db cannot use it.", call. = FALSE)
+    on.exit(unlink(db_dir, recursive = TRUE), add = TRUE)
+    dbp <- file.path(db_dir, "pooldb")
     system2(file.path(blast_bin, "makeblastdb"),
             c("-in", shQuote(sf), "-dbtype nucl -parse_seqids -out", shQuote(dbp)),
             stdout = FALSE, stderr = FALSE)
@@ -149,6 +155,12 @@ utils::globalVariables(character(0))
   refs <- intersect(refs, names(pool$amp))
   h <- .mislabel_blastn(pool$amp[refs], pool$seq, blast_bin, work_dir, qcov = qcov,
                         max_target_seqs = max_target_seqs, threads = threads, use_db = TRUE)
+  # Every reference is in the pool and so hits at least itself: an empty
+  # result is a failed search, never "no neighbours".
+  if (!nrow(h)) {
+    stop("the neighbour search returned no hits at all -- BLAST failed (check blast_bin and the database path).",
+         call. = FALSE)
+  }
   bat <- stats::setNames(dep$batch, dep$acc)
   h <- h[bat[h$q] != bat[h$s], ]
   h <- h[order(h$q, -h$pid), ]
@@ -185,6 +197,9 @@ utils::globalVariables(character(0))
     if (!nrow(nb)) return(NULL)
     data.frame(rank = r, A = nb$A, B = nb$B, accession = nb$accession, stringsAsFactors = FALSE)
   }))
+  if (is.null(jobs) || !nrow(jobs)) {
+    stop("no reference has a nearest other group at any rank -- nothing to measure.", call. = FALSE)
+  }
   keys <- unique(jobs[, c("rank", "A", "B")])
   if (verbose) message(sprintf("mislabel pair searches: %d (rank, A, B) pairs", nrow(keys)))
   res <- vector("list", nrow(keys))

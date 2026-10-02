@@ -176,3 +176,14 @@ test_that("the test is deterministic", {
   b <- .mislabel_lr_test(.mk_stats(), rank_system = "species")
   expect_identical(a, b)
 })
+
+test_that("an empty neighbour search is an error, not 'no neighbours'", {
+  pool <- list(deposits = data.frame(acc = "A1", batch = "A#1", species = "s", genus = "g",
+                                     family = "f", stringsAsFactors = FALSE),
+               amp = c(A1 = "ACGT"), seq = c(A1 = "ACGT"))
+  local_mocked_bindings(.mislabel_blastn = function(...) data.frame(q = character(0), s = character(0), pid = numeric(0)))
+  expect_error(.mislabel_neighbours(pool, "A1", blast_bin = "x"), "BLAST failed")
+  expect_error(.mislabel_pair_hits(pool, list(species = data.frame(accession = "A1", B = NA_character_)),
+                                   blast_bin = "x", rank_system = "species", verbose = FALSE),
+               "nothing to measure")
+})
