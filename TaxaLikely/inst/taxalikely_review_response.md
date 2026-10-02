@@ -1116,3 +1116,24 @@ tests: measured on a 4-family fixture, heuristic fallback on a 2-family one.
   constant performed best everywhere. Tests:
   test-calibrate_query_noise.R (the default test now asserts "constant"; the thin-data
   fallback test passes `offset_form = "linear"` explicitly).
+
+### 2026-10-01: the H1 spread comes from the data; field scatter is measured, never narrowed
+
+`train_likelihood_model()` floored every H1 variance at 1.0 transform unit^2 (0.0156 on the
+`sqrt_mismatch` scale), the same on every marker. The real within-species variance in the
+CalIntertidal reference pairs is 0.0020 (12S), 0.0030 (18S) and 0.0021 (COI), so the floor
+was 5-8x the data and flattened every likelihood ratio (a 100% vs 96.3% match differed by a
+factor of 4.6). The floor is now a numerical guard (0.01 unit^2); the spread is estimated from
+the reference pairs. Field queries carry extra sequencing noise, which the floor had been
+absorbing implicitly; `calibrate_query_noise(calibrate_sigma = TRUE)`, now the default,
+measures it on the confident observations as a trimmed residual-variance ratio and only ever
+widens. (An earlier MAD-based version narrowed the spread on discrete identity scores and
+zeroed correct candidates; that is why the estimator and the widen-only rule matter.) Where a
+marker x platform has fewer than `min_sigma_obs` (100) confident observations, nothing is
+measured and the spread is held at the former floor; `$Query_Calibration$sigma_source`
+records which applied. This keeps the change package-generic (no marker or platform is
+treated specially) at no extra cost. Measured: on a known-truth counterfactual test, wrong
+calls fell where the sequence separates the species (12S T2 20% -> 6%, T3 41% -> 11%; 18S T3
+83% -> 36%); on real 12S field data the confident species became the likelihood winner more
+often (Illumina 75% -> 93%, 0.3% zeroed); 18S, with 22-33 confident observations per platform,
+keeps the former spread and is unchanged.

@@ -192,31 +192,19 @@ identify_confident_observations <- function(match_df,
 #' `H2`/`H3` congener-divergence deltas (which are differences from the
 #' shifted mean, so they carry through unchanged).
 #'
-#' @section Sigma correction (opt-in, off by default -- use with caution):
-#' The same confident-observation residuals can also be used to scale H1's
-#' *variance* (`calibrate_sigma = TRUE`): reference-vs-reference pairs
-#' understate real query-to-query scatter in the opposite direction from the
-#' mean bias (in the one real dataset this was tested against, MAD-based
-#' residual variance ran ~11x tighter than the reference-trained variance).
-#' Applying that ratio to `H1_Sigma["score_logit", "score_logit"]` and every
-#' `H1_Lookup$sigma_score` sounds like the natural complement to the mean fix,
-#' but **empirically made things worse, not better**, on the one real dataset
-#' this was tested against: it helped 0 of 13,442 real observations and hurt
-#' 4,878, in some cases (including the motivating `Sardinops` case) zeroing
-#' out a correct H1 candidate entirely. The likely mechanism: the confident
-#' set is selection-biased toward the *easiest* cases (abundant, well-sampled
-#' genera, clean high-depth reads) and its internal spread understates the
-#' true population's variability, which includes rarer/lower-quality
-#' specimens that never qualify as "confident" in the first place -- so a
-#' sigma correction derived from it is too tight for the general population,
-#' triggering exactly the failure mode `evaluate_likelihoods()`'s existing
-#' per-species sigma floor was built to prevent, just at the global-model
-#' level instead of the per-species level. Left in as an opt-in, documented
-#' negative result rather than removed outright, since a smarter correction
-#' (e.g. shrinking
-#' toward the original reference-based sigma rather than fully replacing it)
-#' may be worth revisiting -- but do not enable it without validating on your
-#' own data first, the same way this was validated (and rejected) here.
+#' @section Sigma correction:
+#' `train_likelihood_model()` estimates the H1 spread from reference pairs. A
+#' field query is a reference-like sequence plus sequencing and amplification
+#' noise, so its scatter around a species' mean can only be wider. The
+#' correction measures that extra scatter on the confident observations
+#' (variance of their residuals, 5 percent trimmed each side, over the trained
+#' variance) and widens the spread by it; it never narrows. The variance is
+#' used because identity scores on a short amplicon take few distinct values,
+#' on which a median absolute deviation can collapse to zero; an earlier
+#' MAD-based version narrowed the spread that way and zeroed correct
+#' candidates. With fewer than `min_sigma_obs` confident observations the
+#' scatter cannot be measured, and the spread is held at the conservative
+#' floor of 1.0 transform unit^2.
 #'
 #' @section Level-aware recalibration (`offset_form = "linear"`):
 #' The default `"constant"` form is correct only if the train-vs-inference
@@ -416,10 +404,15 @@ identify_confident_observations <- function(match_df,
 #' @param min_calib_species Integer (default `8L`). Minimum number of distinct
 #'   confident species (spanning a range of trained means) required to fit the
 #'   `offset_form = "linear"` line. Ignored when `offset_form = "constant"`.
-#' @param calibrate_sigma Logical (default `FALSE`). Also apply the
-#'   MAD-based variance-scale correction described in the Sigma correction
-#'   section below. **Empirically made results worse on the one real dataset
-#'   this was tested against** -- read that section before enabling.
+#' @param calibrate_sigma Logical (default `TRUE`). Widen the H1 spread by
+#'   the measured extra scatter of field queries over reference pairs: the
+#'   ratio of the residual variance (5 percent trimmed each side) to the
+#'   trained variance, never below 1. See the Sigma correction section.
+#' @param min_sigma_obs Integer (default `100L`). Fewest confident
+#'   observations from which the field scatter is measured. Below it the H1
+#'   spread is held at the conservative floor of 1.0 transform unit^2 (it is
+#'   never narrowed where it cannot be checked); `$Query_Calibration$sigma_source`
+#'   records which applied.
 #' @param evidence_col Character or `NULL` (default `NULL`). Name of a column
 #'   in `match_df` giving each observation's raw evidence quantity (e.g. DNA
 #'   read depth, image detection count, acoustic recording duration). When
@@ -486,7 +479,8 @@ calibrate_query_noise <- function(model_params,
                                   min_confident_obs = 30L,
                                   offset_form = c("constant", "linear"),
                                   min_calib_species = 8L,
-                                  calibrate_sigma = FALSE,
+                                  calibrate_sigma = TRUE,
+                                  min_sigma_obs = 100L,
                                   evidence_col = NULL,
                                   logit_epsilon = 1e-4,
                                   verbose = TRUE) {
@@ -532,23 +526,33 @@ calibrate_query_noise <- function(model_params,
 
   n_confident_genera <- length(unique(confident$confident_genus))
 
+  # Uncalibrated exits: with too few confident observations nothing is
+  # measured, so the spread is held at the conservative floor (1.0 transform
+  # unit^2) rather than left at the narrower reference-trained value.
+  .floor_exit <- function(mp, n_obs, n_gen) {
+    ratio <- 1
+    if (calibrate_sigma) {
+      gv <- mp$H1_Sigma["score_logit", "score_logit"]
+      ratio <- max(1, 1.0 * .transform_unit_ratio(model_score_transform)^2 / gv)
+      mp$H1_Sigma["score_logit", "score_logit"] <- gv * ratio
+      mp$H1_Lookup$sigma_score <- mp$H1_Lookup$sigma_score * ratio
+    }
+    mp$Query_Calibration <- list(
+      offset_logit = 0, offset_form = "constant", slope = 1, intercept = 0,
+      sigma_ratio = ratio,
+      sigma_source = if (calibrate_sigma) sprintf("conservative floor (%d confident observations < %d)", n_obs, min_sigma_obs) else "not calibrated",
+      reference_evidence = NA_real_, n_confident_obs = n_obs,
+      n_confident_genera = n_gen, plausibility_threshold = plausibility_threshold
+    )
+    mp
+  }
+
   if (nrow(confident) < min_confident_obs) {
     warning(sprintf(
-      "calibrate_query_noise: only %d confident observation(s) found (need >= %d). Returning model_params unchanged.",
+      "calibrate_query_noise: only %d confident observation(s) found (need >= %d). No offset applied; the H1 spread is held at the conservative floor.",
       nrow(confident), min_confident_obs
     ), call. = FALSE)
-    model_params$Query_Calibration <- list(
-      offset_logit = 0,
-      offset_form = "constant",
-      slope = 1,
-      intercept = 0,
-      sigma_ratio = 1,
-      reference_evidence = NA_real_,
-      n_confident_obs = nrow(confident),
-      n_confident_genera = n_confident_genera,
-      plausibility_threshold = plausibility_threshold
-    )
-    return(model_params)
+    return(.floor_exit(model_params, nrow(confident), n_confident_genera))
   }
 
   p_raw <- confident[[score_col]]
@@ -608,17 +612,10 @@ calibrate_query_noise <- function(model_params,
   expected_logit <- model_params$H1_Lookup$mu_score[lookup_idx]
   if (length(expected_logit) < min_confident_obs) {
     warning(sprintf(
-      "calibrate_query_noise: only %d confident observation(s) have a trained species mean (need >= %d). Returning model_params unchanged.",
+      "calibrate_query_noise: only %d confident observation(s) have a trained species mean (need >= %d). No offset applied; the H1 spread is held at the conservative floor.",
       length(expected_logit), min_confident_obs
     ), call. = FALSE)
-    model_params$Query_Calibration <- list(
-      offset_logit = 0, offset_form = "constant", slope = 1, intercept = 0,
-      sigma_ratio = 1, reference_evidence = NA_real_,
-      n_confident_obs = length(expected_logit),
-      n_confident_genera = length(unique(confident$confident_genus)),
-      plausibility_threshold = plausibility_threshold
-    )
-    return(model_params)
+    return(.floor_exit(model_params, length(expected_logit), length(unique(confident$confident_genus))))
   }
 
   residuals <- observed_logit - expected_logit
@@ -707,13 +704,23 @@ calibrate_query_noise <- function(model_params,
   # references. A MAD-based ratio collapses to 0 on the discrete identity
   # scores of a short amplicon and was the narrowing that once zeroed correct
   # candidates.
-  sigma_ratio <- if (calibrate_sigma) {
+  # With too few confident observations to measure it, the field scatter is
+  # not estimated and the spread is held at the conservative floor of 1.0
+  # transform unit^2 instead (the earlier fixed value), so nothing narrows
+  # where it cannot be checked.
+  n_res <- sum(is.finite(residuals))
+  sigma_source <- "not calibrated"
+  sigma_ratio <- if (!calibrate_sigma) {
+    1
+  } else if (n_res >= min_sigma_obs) {
+    sigma_source <- "measured"
     r <- residuals[is.finite(residuals)]
     q <- stats::quantile(r, c(0.05, 0.95), names = FALSE)
     r <- pmin(pmax(r, q[1]), q[2])
     max(1, stats::var(r) / global_sigma_score)
   } else {
-    1
+    sigma_source <- sprintf("conservative floor (%d confident observations < %d)", n_res, min_sigma_obs)
+    max(1, 1.0 * .transform_unit_ratio(model_score_transform)^2 / global_sigma_score)
   }
 
   reference_evidence <- NA_real_
@@ -752,6 +759,7 @@ calibrate_query_noise <- function(model_params,
     slope = slope,
     intercept = intercept,
     sigma_ratio = sigma_ratio,
+    sigma_source = sigma_source,
     reference_evidence = reference_evidence,
     n_confident_obs = nrow(confident),
     n_confident_genera = n_confident_genera,

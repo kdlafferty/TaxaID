@@ -267,3 +267,52 @@ test_that("calibrate_query_noise: confident species without a trained mean are l
   expect_equal(with_extra$Query_Calibration$offset_logit, base$Query_Calibration$offset_logit)
   expect_equal(with_extra$Query_Calibration$n_excluded_no_trained_mean, 40L)
 })
+
+# ---- field-scatter widening (calibrate_sigma) --------------------------------
+.tight_params <- function() {
+  p <- .make_calib_model_params("logit")
+  p$H1_Sigma["score_logit", "score_logit"] <- 0.01
+  p$H1_Lookup$sigma_score <- 0.01
+  p
+}
+
+test_that("calibrate_sigma: too few confident observations hold the conservative floor", {
+  out <- calibrate_query_noise(.tight_params(), .make_calib_match_df(), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE)
+  # 40 observations < min_sigma_obs = 100: spread held at 1.0 logit unit^2
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 1.0)
+  expect_match(out$Query_Calibration$sigma_source, "conservative floor")
+})
+
+test_that("calibrate_sigma: measured scatter no wider than the references leaves the spread", {
+  out <- calibrate_query_noise(.tight_params(), .make_calib_match_df(), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, min_sigma_obs = 10L, verbose = FALSE)
+  # identical scores: no residual scatter, ratio 1 (never narrows)
+  expect_equal(out$Query_Calibration$sigma_ratio, 1)
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 0.01)
+  expect_equal(out$Query_Calibration$sigma_source, "measured")
+})
+
+test_that("calibrate_sigma: wider field scatter widens the spread", {
+  m <- .make_calib_match_df()
+  m$score_original <- rep(c(90, 99), 20)
+  out <- calibrate_query_noise(.tight_params(), m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, min_sigma_obs = 10L, verbose = FALSE)
+  expect_gt(out$Query_Calibration$sigma_ratio, 1)
+  expect_gt(out$H1_Sigma["score_logit", "score_logit"], 0.01)
+})
+
+test_that("calibrate_sigma = FALSE leaves the spread untouched", {
+  out <- calibrate_query_noise(.tight_params(), .make_calib_match_df(), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, calibrate_sigma = FALSE, verbose = FALSE)
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 0.01)
+})
+
+test_that("calibrate_sigma: an uncalibrated exit (too few confident observations) still holds the floor", {
+  m <- .make_calib_match_df()[1:10, ]
+  out <- suppressWarnings(calibrate_query_noise(.tight_params(), m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, verbose = FALSE))
+  expect_equal(out$Query_Calibration$offset_logit, 0)
+  expect_equal(out$H1_Sigma["score_logit", "score_logit"], 1.0)
+  expect_match(out$Query_Calibration$sigma_source, "conservative floor")
+})
