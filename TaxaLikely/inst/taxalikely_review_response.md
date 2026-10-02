@@ -1137,3 +1137,13 @@ calls fell where the sequence separates the species (12S T2 20% -> 6%, T3 41% ->
 83% -> 36%); on real 12S field data the confident species became the likelihood winner more
 often (Illumina 75% -> 93%, 0.3% zeroed); 18S, with 22-33 confident observations per platform,
 keeps the former spread and is unchanged.
+
+### 2026-10-01: a test satisfied by a degenerate input is not evidence
+
+A shrinkage check in test-train.R asserted `(mu_gap - g) * shrink_w_gap >= 0 | shrink_w_gap == 0`,
+which is not betweenness: it fails for any species whose gap mean lies below the pooled mean. It
+passed only because the old variance floor forced tau2_gap to 0, so every weight was 0 and the
+escape clause fired. It is replaced by the real property, each shrunk mean lies between the pooled
+mean and the species' own mean (from an unshrunk fit), with an assertion that some weight is
+non-zero so the check cannot pass vacuously. The same pattern appeared once before in this screen
+(an order-dependent failure that was really n_sims = 0).

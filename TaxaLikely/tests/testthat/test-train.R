@@ -634,9 +634,18 @@ test_that("shrinkage = 'empirical_bayes': no between-species signal collapses to
   expect_true(all(abs(out$H1_Lookup$mu_score - out$H1_Global_Mu[["score_logit"]]) < 1e-12))
   expect_true(all(out$H1_Lookup$shrink_w_gap >= 0 & out$H1_Lookup$shrink_w_gap <= 1))
   expect_gte(out$Stats$tau2_gap, 0)
-  # (Betweenness of each shrunk gap mean follows from shrink_w_gap in
-  # [0, 1], asserted above; an earlier sign check held only while the
-  # variance floor forced tau2_gap to 0.)
+  # Each shrunk gap mean lies between the pooled mean and the species' own
+  # mean (the shrinkage formula, not just w in [0, 1]). Own means come from an
+  # unshrunk fit (fixed shrinkage with prior_weight -> 0, so w -> 1). This
+  # replaces a sign check that held only while tau2_gap was forced to 0.
+  own_fit <- suppressMessages(train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+    shrinkage = "fixed", prior_weight = 1e-9, use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  g <- out$H1_Global_Mu[["gap_logit"]]
+  own <- own_fit$H1_Lookup$mu_gap[match(out$H1_Lookup$lookup_key, own_fit$H1_Lookup$lookup_key)]
+  sh <- out$H1_Lookup$mu_gap
+  expect_true(any(out$H1_Lookup$shrink_w_gap > 0)) # the check is not vacuous
+  expect_true(all(sh >= pmin(g, own) - 1e-9 & sh <= pmax(g, own) + 1e-9))
 })
 
 test_that("shrinkage = 'empirical_bayes' falls back to 'fixed' with fewer than 3 species", {

@@ -827,3 +827,48 @@ addressed through the prior for unrecorded relatives, not a reporting threshold.
 `likelihood_support` remains as a column so a reader can see how much of a call rests on
 the prior. The binary `prior_decided` flag was dropped: it read TRUE for nearly every
 species call (83/83 on 18S) and so carried no information.
+
+### 2026-10-01: dark diversity is a shared per-clade budget (changes numbers for every caller)
+
+The dark-diversity prior for named candidates with no occurrence record is now a budget shared
+within each clade, not a per-candidate allowance. Per clade X (phylum .. genus): f1 singletons,
+D = their mean share (one missing species' share if present), K unrecorded candidates, W weight
+already priced by evidence generators. The expected number of missing species is shrunk toward
+the parent clade, N* = (f1 + kappa * Nhat) / (1 + kappa), kappa = 1, Nhat = the parent's N*
+apportioned by the clade's share of the parent's candidates. Each candidate gets
+min(1, (N* - W) / K) * D: the clade's unseen mass shared among its candidates and never more than
+one species' share (so 4 missing species across 10 candidates gives 0.4 * D each). The remainder
+-- missing species no candidate accounts for -- goes to the unsequenced-relative ring rows (genus
+N* - K - W; a coarser clade N* minus its child clades'), so nothing is counted twice. BUG FIX:
+candidates took their taxonomy from the occurrence taxonomy, where unrecorded candidates are
+absent by definition, so most fell to the global floor; they now take their ranks from their own
+rows. This function had no tests; it now has six.
+
+### 2026-10-01: add_unreferenced_prior_mass(named_rows) -- opt-in, default FALSE
+
+New argument, default FALSE (no change for existing callers). TRUE adds one row per recorded
+local species without a reference, carrying the likelihood of the unsequenced-relative ring
+whose scope contains it and its own occurrence prior; the ring row keeps only the unrecorded
+part. The total prior per scope is the same as the default summing mode. It lets a local
+unreferenced species be reported by name when the prior concentrates on it (counterfactual case
+C-1: an unreferenced, locally common species with no local congeners was called at species in
+88-92% of cases with named rows, 0% without). Referenced local species that were not search
+hits get no row: missing the hit window is evidence of a worse match.
+
+### 2026-10-01: posterior_consensus(robust_prior_s = 1) -- robust credible node, default ON
+
+The maintainer's decision: on by default, `robust_prior_s = 0` turns it off, to be revisited if
+an evaluation says so. Active with consensus_method = "credible_node". Because the occurrence
+prior is estimated from finitely many records, a node is reported only if its posterior stays at
+or above cumulative_threshold across an imprecise-Dirichlet neighbourhood of the prior:
+eps = s / (N + s), N = the median alpha + beta of the observation's kernel-estimated rows, with
+the worst case putting eps on the best-fitting hypothesis outside the node (Berger & Berliner
+1986; Walley 1996). Calls the sequence decides are unaffected; a call resting on the prior is kept
+only if it would survive s further records of a better-matching taxon. Reported as
+robust_lower_posterior. Asymmetric-loss rules, prior-data conflict thresholds, prior tempering
+and a higher threshold were evaluated and rejected: none separates a prior-decided error from a
+legitimate one-local-species call, and the last two broke that case. Known-truth counterfactual,
+corrected likelihood model, s = 1 vs off: F6 (rare species vs a close, 136x commoner congener)
+wrong 12S 70 -> 35%, 18S 95 -> 71%; T3 (unrecorded species vs a common congener) wrong 11 -> 3%,
+36 -> 7%; cost on the legitimate case C-1, species calls 89 -> 80%, 85 -> 78%. The margin scales
+with the records behind the prior, so sparsely recorded sites coarsen most.
