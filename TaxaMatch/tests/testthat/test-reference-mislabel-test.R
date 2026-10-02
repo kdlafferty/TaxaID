@@ -168,7 +168,7 @@ test_that("two-pass rule and last-references guard set the action", {
   expect_equal(out$reason[out$accession == "MIS2"], "not_selected_in_pass2")
   expect_equal(out$action[out$accession == "CLOSE"], "untested")
   expect_match(attr(out, "rule_key"), "^mislabel_lr_v1\\|ranks=species\\|sep_q=0.95")
-  expect_match(attr(out, "rule_key"), "conflict_share=off\\|two_pass$")
+  expect_match(attr(out, "rule_key"), "split_guard=off\\|two_pass$")
 })
 
 test_that("the test is deterministic", {
@@ -188,27 +188,53 @@ test_that("an empty neighbour search is an error, not 'no neighbours'", {
                "nothing to measure")
 })
 
-test_that("a pattern across many of a group's batches is a taxonomic conflict, not removal", {
-  s <- .mk_stats()
-  mis <- s[s$accession == "MIS1", ]
-  # three more selections of the same A -> B, in different batches
-  s <- rbind(s, transform(mis, accession = "CX100"), transform(mis, accession = "CY100"),
-             transform(mis, accession = "CZ100"))
-  sp <- stats::setNames(rep("spX", nrow(s)), s$accession)
-  dep <- data.frame(acc = c(s$accession, "DA100", "DB100"), species = "a", stringsAsFactors = FALSE)
+# Synthetic group "a" (6 batches) and "b" (3 batches); `blike` names the a-labelled
+# deposits whose sequence is really b-like.
+.mk_split <- function(blike) {
+  acc <- c(paste0(c("AA", "AB", "AC", "AD", "AE", "AF"), "100"), paste0(c("BA", "BB", "BC"), "100"))
+  dep <- data.frame(acc = acc, species = rep(c("a", "b"), c(6, 3)), genus = "G", family = "F",
+                    stringsAsFactors = FALSE)
   dep$batch <- .mislabel_batch_of(dep$acc)[dep$acc]
-  out <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species", deposits = dep)
-  # group "a" spans many batches; 4 selected batches (MIS1, CX, CY, CZ) out of the group's is
-  # below 1/3 only if the group is large -- here the group is every synthetic reference
-  expect_true(all(out$selected_batches[out$accession %in% c("MIS1", "CX100")] == 4L))
-  dep_small <- dep[dep$acc %in% c("MIS1", "CX100", "CY100", "CZ100", "DA100", "DB100"), ]
-  out2 <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species", deposits = dep_small)
-  expect_equal(unique(out2$action[out2$accession %in% c("MIS1", "CX100", "CY100", "CZ100")]), "inspect")
-  expect_equal(unique(out2$reason[out2$accession == "MIS1"]), "taxonomic_conflict")
-  expect_match(attr(out2, "rule_key"), "conflict_share=0.333")
-  # a single selected batch is never a conflict
-  s1 <- s[!s$accession %in% c("CX100", "CY100", "CZ100"), ]
-  out3 <- .test_reference_mislabels(function(ex) s1, sp, rank_system = "species",
-                                    deposits = dep_small[dep_small$acc %in% c("MIS1", "DA100"), ])
+  truth <- ifelse(dep$species == "b" | dep$acc %in% blike, "b", "a")
+  g <- expand.grid(i = seq_along(acc), j = seq_along(acc))
+  g <- g[g$i != g$j, ]
+  hits <- data.frame(q = acc[g$i], s = acc[g$j], pid = ifelse(truth[g$i] == truth[g$j], 100, 90),
+                     stringsAsFactors = FALSE)
+  list(dep = dep, hits = hits)
+}
+
+test_that(".mislabel_group_split() separates a split group from a coherent one", {
+  co <- .mk_split("AA100")
+  sp <- .mislabel_group_split(co$hits, co$dep, "species", "a", "b")
+  expect_equal(unname(sp[["n_batches"]]), 6L)
+  expect_equal(unname(sp[["n_blike"]]), 1L)
+  # 4 of 6 b-like: a split group reads as split (a median would let the
+  # b-like majority vouch for itself and read 0)
+  sx <- .mk_split(c("AA100", "AB100", "AC100", "AD100"))
+  sp2 <- .mislabel_group_split(sx$hits, sx$dep, "species", "a", "b")
+  expect_equal(unname(sp2[["n_blike"]]), 4L)
+  # two mislabelled deposits that match each other: a minority, not a split
+  pair <- .mk_split(c("AA100", "AB100"))
+  sp3 <- .mislabel_group_split(pair$hits, pair$dep, "species", "a", "b")
+  expect_lt(sp3[["n_blike"]] / sp3[["n_batches"]], 0.5)
+})
+
+test_that("the split-group guard diverts only a split group, and removes small groups", {
+  s <- .mk_stats()
+  sp <- stats::setNames(rep("spX", nrow(s)), s$accession)
+  sx <- .mk_split(c("AA100", "AB100", "AC100", "AD100"))
+  out <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species",
+                                   deposits = sx$dep, hits = sx$hits)
+  expect_equal(out$action[out$accession == "MIS1"], "inspect")
+  expect_equal(out$reason[out$accession == "MIS1"], "taxonomic_conflict")
+  expect_match(attr(out, "rule_key"), "split_guard=0.5/min5")
+  co <- .mk_split("AA100")
+  out2 <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species",
+                                    deposits = co$dep, hits = co$hits)
+  expect_equal(out2$action[out2$accession == "MIS1"], "remove")
+  # a split group too small to judge is removed, not diverted
+  out3 <- .test_reference_mislabels(function(ex) s, sp, rank_system = "species",
+                                    deposits = sx$dep, hits = sx$hits, min_group_batches = 7L)
+  expect_equal(out3$action[out3$accession == "MIS1"], "remove")
   expect_false(out3$taxonomic_conflict[out3$accession == "MIS1"])
 })

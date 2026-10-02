@@ -358,6 +358,48 @@ utils::globalVariables(character(0))
   out
 }
 
+#' Is a listed group itself split toward its nearest group?
+#'
+#' For every deposit of group `A` (at `rank`), compares its best identity to
+#' the rest of `A` (other batches only) with its best identity to `B`; a tie
+#' counts as B-like. Above species rank, members of the deposit's own finer
+#' group are excluded from "the rest of A", as in the test. A batch is B-like
+#' when most of its deposits are.
+#'
+#' A maximum rather than the test's median-over-batches is deliberate. With a
+#' median, a B-like majority vouches for itself and a split group reads as
+#' coherent. With a maximum, the only distortion is that a B-like MINORITY
+#' whose members match each other can vouch for itself -- which only makes a
+#' group look more coherent, and so only ever leads to removal, the cheap
+#' error. The guard therefore diverts only a genuine majority split.
+#'
+#' @return c(n_batches = batches with both comparisons, n_blike = B-like
+#'   batches).
+#' @noRd
+.mislabel_group_split <- function(hits, deposits, rank, A, B,
+                                  rank_system = c("species", "genus", "family")) {
+  k <- match(rank, rank_system)
+  finer <- if (k > 1L) rank_system[k - 1L] else NA_character_
+  inA <- deposits$acc[deposits[[rank]] %in% A]
+  inB <- deposits$acc[deposits[[rank]] %in% B]
+  bat <- stats::setNames(deposits$batch, deposits$acc)
+  fin <- if (is.na(finer)) NULL else stats::setNames(deposits[[finer]], deposits$acc)
+  h <- hits[hits$q %in% inA & hits$s %in% c(inA, inB) & hits$q != hits$s, ]
+  h <- h[bat[h$q] != bat[h$s], ]
+  if (!is.null(fin)) h <- h[!(h$s %in% inA & fin[h$s] %in% fin[h$q] & !is.na(fin[h$q])), ]
+  if (!nrow(h)) return(c(n_batches = 0L, n_blike = 0L))
+  per_q <- lapply(split(h, h$q), function(z) {
+    a <- z$s %in% inA
+    c(toA = if (any(a)) max(z$pid[a]) else NA_real_,
+      toB = if (any(!a)) max(z$pid[!a]) else NA_real_)
+  })
+  m <- do.call(rbind, per_q)
+  m <- m[!is.na(m[, "toA"]) & !is.na(m[, "toB"]), , drop = FALSE]
+  if (!nrow(m)) return(c(n_batches = 0L, n_blike = 0L))
+  blike <- tapply(m[, "toB"] >= m[, "toA"], bat[rownames(m)], mean) > 0.5
+  c(n_batches = length(blike), n_blike = sum(blike))
+}
+
 #' Run the mislabel test with the two-pass robustness rule and the
 #' last-references guard
 #'
@@ -373,11 +415,16 @@ utils::globalVariables(character(0))
 #' @param ref_species Named character: listed species per reference
 #'   accession, for the last-references guard.
 #' @param min_refs_left Integer.
-#' @param deposits The deposit pool (`acc`, `batch`, rank columns), for the
-#'   taxonomic-conflict guard; `NULL` disables it.
-#' @param conflict_share A selection is a taxonomic conflict, sent to
-#'   "inspect", when at least this share of its group's independent batches
-#'   (and at least 2) are selected toward the same nearest group.
+#' @param deposits,hits The deposit pool (`acc`, `batch`, rank columns) and
+#'   the pair-search hits, for the taxonomic-conflict guard; either `NULL`
+#'   disables it.
+#' @param split_share,min_group_batches A selection is a taxonomic conflict,
+#'   sent to "inspect", when its listed group has at least
+#'   `min_group_batches` independent deposit batches that can be compared
+#'   and more than `split_share` of them are closer to the nearest group than
+#'   to the rest of their own group (`.mislabel_group_split()`). A coherent
+#'   group with a dissenting minority -- the mislabel shape -- is removed, and
+#'   so is a group too small to judge.
 #' @param ... Passed to `.mislabel_lr_test()`.
 #' @return data.frame from pass 1 with `selected_pass1`, `selected_pass2`,
 #'   `posterior_pass2`, `refs_left`, `action` (`remove`, `inspect`, `keep`,
@@ -385,7 +432,8 @@ utils::globalVariables(character(0))
 #'   and `rule_key`.
 #' @noRd
 .test_reference_mislabels <- function(stats_fun, ref_species, min_refs_left = 2L,
-                                      deposits = NULL, conflict_share = 1 / 3, ...) {
+                                      deposits = NULL, hits = NULL, split_share = 0.5,
+                                      min_group_batches = 5L, ...) {
   dots <- list(...)
   p1 <- do.call(.mislabel_lr_test, c(list(stats = stats_fun(character(0))), dots))
   sel1 <- p1$accession[p1$selected]
@@ -402,28 +450,26 @@ utils::globalVariables(character(0))
     if (is.na(sp[i])) return(NA_integer_)
     sum(ref_species == sp[i] & !(names(ref_species) %in% removed))
   }, integer(1))
-  # Taxonomic-conflict guard. Mislabels are rare and idiosyncratic; when a
-  # large share of a group's independent submission batches all point at the
-  # same nearest group, the group's label (a cryptic complex, an unsettled
-  # genus) is the problem, not those submissions. Counted over the deposit
-  # pool, not just the references, and only when >= 2 batches are selected --
-  # one selection is not a pattern.
+  # Taxonomic-conflict guard. A coherent group with a dissenting minority
+  # is the mislabel shape and is removed. When the listed group is itself
+  # split -- most of its independent deposit batches look like the nearest
+  # group -- its circumscription is in question (an unsettled genus, a
+  # cryptic complex), so the selection goes to inspect. A group with fewer
+  # than min_group_batches comparable batches is too small to judge, and is
+  # removed: a false removal costs much less than a retained mislabel.
   out$group_batches <- NA_integer_
-  out$selected_batches <- NA_integer_
+  out$group_batches_blike <- NA_integer_
   out$taxonomic_conflict <- FALSE
-  if (!is.null(deposits) && any(both)) {
-    bat <- stats::setNames(deposits$batch, deposits$acc)
+  if (!is.null(deposits) && !is.null(hits) && any(both)) {
+    rs <- utils::modifyList(list(rank_system = c("species", "genus", "family")), dots)$rank_system
     key <- paste(out$rank, out$A, out$B, sep = "\r")
     for (k in unique(key[both])) {
-      rows <- which(key == k)
-      sel <- rows[both[rows]]
-      rk <- out$rank[sel[1]]
-      grp <- unique(deposits$batch[deposits[[rk]] %in% out$A[sel[1]]])
-      sb <- unique(bat[out$accession[sel]])
-      out$group_batches[sel] <- length(grp)
-      out$selected_batches[sel] <- length(sb)
-      out$taxonomic_conflict[sel] <- length(sb) >= 2L && length(grp) > 0L &&
-        length(sb) / length(grp) >= conflict_share
+      sel <- which(key == k & both)
+      sp <- .mislabel_group_split(hits, deposits, out$rank[sel[1]], out$A[sel[1]], out$B[sel[1]], rs)
+      out$group_batches[sel] <- sp[["n_batches"]]
+      out$group_batches_blike[sel] <- sp[["n_blike"]]
+      out$taxonomic_conflict[sel] <- sp[["n_batches"]] >= min_group_batches &&
+        sp[["n_blike"]] / sp[["n_batches"]] > split_share
     }
   }
   out$action <- ifelse(out$status != "tested", "untested",
@@ -444,7 +490,8 @@ utils::globalVariables(character(0))
     paste0("k=", a$k), paste0("eps=", a$eps), paste0("fdr=", a$fdr),
     paste0("minb=", a$min_batches), paste0("min_within=", a$min_within),
     paste0("bw=", a$bw_mult), paste0("min_refs_left=", min_refs_left),
-    paste0("conflict_share=", if (is.null(deposits)) "off" else signif(conflict_share, 3)), "two_pass", sep = "|")
+    paste0("split_guard=", if (is.null(deposits) || is.null(hits)) "off" else
+      paste0(split_share, "/min", min_group_batches)), "two_pass", sep = "|")
   attr(out, "pi") <- c(pass1 = attr(p1, "pi"), pass2 = attr(p2, "pi"))
   attr(out, "guard") <- attr(p1, "guard")
   attr(out, "guard_pass2") <- attr(p2, "guard")
