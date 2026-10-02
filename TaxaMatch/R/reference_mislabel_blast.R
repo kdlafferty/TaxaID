@@ -186,7 +186,8 @@ utils::globalVariables(character(0))
 #' @return data.frame(q, s, pid), best identity per pair over all searches.
 #' @noRd
 .mislabel_pair_hits <- function(pool, neighbours, blast_bin, rank_system = c("species", "genus", "family"),
-                                qcov = 80, verbose = TRUE) {
+                                qcov = 80, threads = 8L, db_min_subjects = 200L,
+                                verbose = TRUE) {
   dep <- pool$deposits
   jobs <- do.call(rbind, lapply(rank_system, function(r) {
     nb <- neighbours[[r]]
@@ -210,7 +211,13 @@ utils::globalVariables(character(0))
     q <- intersect(unique(c(refs_i, inA)), names(pool$amp))
     s <- intersect(unique(c(inA, inB)), names(pool$seq))
     if (length(q) && length(s)) {
-      res[[i]] <- .mislabel_blastn(pool$amp[q], pool$seq[s], blast_bin, qcov = qcov)
+      # -subject mode is single-threaded; a large group (family rank) runs
+      # far faster as a threaded database search. Percent identities are the
+      # same; only E-value statistics differ, so a marginal hit near the
+      # E-value cutoff can appear in one mode and not the other.
+      big <- length(s) >= db_min_subjects
+      res[[i]] <- .mislabel_blastn(pool$amp[q], pool$seq[s], blast_bin, qcov = qcov,
+                                   threads = if (big) threads else 1L, use_db = big)
     }
     if (verbose && i %% 200 == 0) {
       message(sprintf("  pair %d/%d (%.1f min)", i, nrow(keys),
