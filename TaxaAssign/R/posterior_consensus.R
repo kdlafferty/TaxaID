@@ -135,12 +135,18 @@
 #'   stays at or above `cumulative_threshold` for every prior within an
 #'   imprecise-Dirichlet neighbourhood of the estimated one: `s` additional
 #'   records of unknown species (Walley 1996; Walley's recommended range is
-#'   1-2), against the prior's own concentration `N` (median `alpha + beta`
-#'   of the observation's kernel-estimated rows). Calls the sequence decides
-#'   are unaffected; a call that rests on the prior is kept only if it would
-#'   survive `s` further records of a better-matching taxon. The bound is
-#'   reported as `robust_lower_posterior`. Skipped when `score_likelihood`,
-#'   `prior_mean`, `prior_alpha` or `prior_beta` is missing.
+#'   1-2), against the site's record concentration `N`: the
+#'   `prior_site_records` column from [join_priors()] when present, else the
+#'   median `alpha + beta` of the observation's kernel-estimated rows (never
+#'   floor or dark-diversity rows, whose `alpha + beta` are pseudo-counts). A
+#'   call is kept only if it survives `s` further records of the best-fitting
+#'   taxon outside it. A call the sequence decides by a wide margin is
+#'   unaffected; a marginal call whose candidates carry priors worth only a
+#'   few records is coarsened even when the outside taxon fits somewhat
+#'   worse, because one record then moves the prior noticeably. The bound is
+#'   reported as `robust_lower_posterior`. Skipped (plain credible node) when
+#'   `score_likelihood`, `prior_mean`, `prior_alpha` or `prior_beta` is
+#'   missing, or when no record count is available.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -1095,12 +1101,22 @@ posterior_consensus <- function(posterior_df,
   L[is.na(L) | L < 0] <- 0
   pi <- chunk$prior_mean
   pi[is.na(pi) | pi < 0] <- 0
-  conc <- chunk$prior_alpha + chunk$prior_beta
-  kern <- if ("prior_branch" %in% names(chunk)) .is_kernel_branch(chunk$prior_branch) else rep(FALSE, nrow(chunk))
-  N <- suppressWarnings(stats::median(conc[kern & is.finite(conc)]))
-  if (!is.finite(N)) N <- suppressWarnings(stats::median(conc[is.finite(conc)]))
+  # N = the site's record concentration (join_priors' prior_site_records),
+  # else the observation's own kernel-estimated rows. Never the floor or
+  # dark-diversity rows: their alpha + beta are pseudo-counts (a few units),
+  # which would make eps ~ 0.1 and coarsen nearly every call. With no record
+  # count the check is not applied (plain credible node).
+  N <- NA_real_
+  if ("prior_site_records" %in% names(chunk)) {
+    N <- suppressWarnings(stats::median(chunk$prior_site_records[is.finite(chunk$prior_site_records)]))
+  }
+  if (!is.finite(N) && "prior_branch" %in% names(chunk)) {
+    conc <- chunk$prior_alpha + chunk$prior_beta
+    kern <- .is_kernel_branch(chunk$prior_branch)
+    N <- suppressWarnings(stats::median(conc[kern & is.finite(conc)]))
+  }
   if (!is.finite(N) || N <= 0) {
-    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_))
+    return(NULL)
   }
   .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L)
 }
@@ -1278,8 +1294,10 @@ posterior_consensus <- function(posterior_df,
   if (consensus_method == "credible_node") {
     can_robust <- robust_prior_s > 0 &&
       all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
+    node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold)
+    if (is.null(node)) can_robust <- FALSE
     node <- if (can_robust) {
-      .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold)
+      node
     } else {
       # every row is in the denominator, named or not (unnamed_in_threshold
       # governs the "lca" method only)

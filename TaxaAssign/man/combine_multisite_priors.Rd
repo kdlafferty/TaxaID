@@ -52,6 +52,11 @@ which could turn a confident, correct call into a nonsensical tie.
 keys on \code{grid_id}/\code{main_habitat} as well); this function is the deliberate
 combination step that must run on that site-preserving output before
 \code{\link[=compute_posterior]{compute_posterior()}}.
+
+\code{prior_site_records} (from \code{\link[=join_priors]{join_priors()}}), when present, is summed over
+the combined sites: the combined prior pools their precision, so the
+record count \code{\link[=posterior_consensus]{posterior_consensus()}}'s \code{robust_prior_s} check uses is the
+pooled one, not one site's.
 }
 
 \subsection{Combination rule: precision-weighted, not a plain product}{

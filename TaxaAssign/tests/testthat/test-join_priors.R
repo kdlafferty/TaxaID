@@ -795,3 +795,19 @@ test_that("a genus name shared by two families does not multiply rows", {
   expect_equal(nrow(out[out$observation_id == "ESV_001" & out$taxon_name == "Eisenia", ]), 1L)
   expect_equal(sum(out$taxon_name == "Eisenia arborea"), 1L)
 })
+
+test_that("join_priors stamps the site's kernel record concentration on every row", {
+  lk <- data.frame(observation_id = "ASV_1",
+    taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Gadus macrocephalus"),
+    taxon_name_rank = "species", genus = "Gadus", family = "Gadidae", stringsAsFactors = FALSE)
+  pr <- data.frame(taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Other sp", NA),
+    taxon_name_rank = c("species", "species", "species", NA), grid_id = "G1", main_habitat = "Marine",
+    alpha = c(30, 5, 1, 0.01), beta = c(970, 995, 1999, 999.99),
+    prior_branch = c("kernel_estimated", "kernel_estimated", "kernel_estimated", "resident_undetected"),
+    undetected_type = c(NA, NA, NA, "global_floor"), stringsAsFactors = FALSE)
+  out <- suppressWarnings(suppressMessages(join_priors(lk, pr,
+    site = list(grid_id = "G1", main_habitat = "Marine"), backbone_id = 11L)))
+  # median of 1000, 1000, 2000 over kernel rows only; the floor row is ignored
+  expect_true("prior_site_records" %in% names(out))
+  expect_equal(unname(out$prior_site_records), rep(1000, nrow(out)))
+})

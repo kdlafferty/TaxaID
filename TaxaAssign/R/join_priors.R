@@ -606,7 +606,11 @@ utils::globalVariables(c(
 #'   `prior_mean`, `prior_alpha`, and `prior_beta` added. All input columns are
 #'   preserved. Additional columns from `taxaexpect_priors`
 #'   (e.g. `alpha`, `beta`, `model_tier`) are included from the
-#'   join.
+#'   join. `prior_site_records`: the site x habitat's kernel prior
+#'   concentration (median `alpha + beta` of its kernel-estimated rows), the
+#'   record count [posterior_consensus()]'s `robust_prior_s` check uses; `NA`
+#'   when `taxaexpect_priors` has no `prior_branch` or the site has no
+#'   kernel-estimated rows.
 #'
 #' @seealso [compute_posterior()], [TaxaLikely::expand_unreferenced_hypotheses()],
 #'   [TaxaLikely::apply_coverage_constraints()]
@@ -1652,6 +1656,23 @@ join_priors <- function(likelihoods,
         "join_priors: join rate by rank (the rest receive the dark diversity floor):",
         stats::setNames(rate_lines, rep(" ", length(rate_lines)))
       ))
+    }
+  }
+
+  # ---- Site record concentration (for posterior_consensus(robust_prior_s)) ---
+  # The kernel prior's Dirichlet concentration for the site x habitat: the
+  # median alpha + beta of its kernel-estimated rows. Stamped on every row so
+  # the robust check can use the site's records for an observation whose own
+  # candidates are all unrecorded (whose alpha + beta are floor or dark-
+  # diversity pseudo-counts, not records).
+  result$prior_site_records <- NA_real_
+  if ("prior_branch" %in% names(taxaexpect_priors) &&
+    all(c("grid_id", "main_habitat") %in% names(result))) {
+    kp <- taxaexpect_priors[.is_kernel_branch(taxaexpect_priors$prior_branch) &
+      is.finite(taxaexpect_priors$alpha + taxaexpect_priors$beta), , drop = FALSE]
+    if (nrow(kp) > 0L) {
+      site_n <- tapply(kp$alpha + kp$beta, paste(kp$grid_id, kp$main_habitat, sep = "\r"), stats::median)
+      result$prior_site_records <- as.numeric(site_n[paste(result$grid_id, result$main_habitat, sep = "\r")])
     }
   }
 

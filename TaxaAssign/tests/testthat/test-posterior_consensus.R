@@ -1684,3 +1684,21 @@ test_that("the robust rule stamps a call it coarsened", {
   df <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 30)
   expect_equal(.rb(df)$consensus_limit, "robust_prior")
 })
+
+test_that("robust N never comes from floor or dark-diversity pseudo-counts", {
+  # all candidates unrecorded (floor rows, alpha + beta = 4): no record count,
+  # so the plain rule applies rather than eps = 1/5
+  df <- .rb_df(c(1, 0.05), c(2.5e-6, 2.5e-6), N = 4)
+  df$prior_branch <- "resident_undetected"
+  out <- .rb(df)
+  expect_equal(out$consensus_taxon, "Rhacochilus vacca")
+  expect_true(is.na(out$robust_lower_posterior))
+  # the site's record count, when supplied, is used instead
+  df$prior_site_records <- 3e5
+  out2 <- .rb(df)
+  expect_false(is.na(out2$robust_lower_posterior))
+  # and it overrides the observation's own kernel rows
+  k <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 1e6) # survives at N = 1e6
+  k$prior_site_records <- 30 # but the site has only 30 records
+  expect_equal(.rb(k)$consensus_taxon, "Rhacochilus")
+})
