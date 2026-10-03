@@ -299,8 +299,12 @@ utils::globalVariables(character(0))
     guard$quantum_x[gi] <- qx
     ms <- .smooth_comb(m, qx)
     f_all <- .mislabel_reflected_kde(ms, bw_mult)
+    # class-level densities only where a class has >= 2 within-group
+    # references (a KDE needs two points; a lone member would get weight
+    # 1/(1+k) anyway, so it simply uses the rank-wide density)
     cls_n <- table(w$class)
-    f_cls <- lapply(split(ms, w$class), .mislabel_reflected_kde, bw_mult = bw_mult)
+    cls_n <- cls_n[cls_n >= 2L]
+    f_cls <- lapply(split(ms, w$class)[names(cls_n)], .mislabel_reflected_kde, bw_mult = bw_mult)
     f <- function(xv, cl) {
       mm <- 100 - xv
       wt <- if (!is.na(cl) && cl %in% names(cls_n)) cls_n[[cl]] / (cls_n[[cl]] + k) else 0
@@ -309,6 +313,11 @@ utils::globalVariables(character(0))
     }
     rr <- (s$y - s$d)[ok_b & !is.na(s$y) & !is.na(s$d)]
     guard$n_measured[gi] <- length(rr)
+    if (length(rr) < min_within) {
+      s$status <- "rank_not_learnable"
+      per_rank[[r]] <- s
+      next
+    }
     qr <- .estimate_score_quantum(rr)
     guard$quantum_r[gi] <- qr
     rrs <- .smooth_comb(rr, qr)

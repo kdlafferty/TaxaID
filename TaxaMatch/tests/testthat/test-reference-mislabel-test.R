@@ -278,3 +278,10 @@ test_that("last-reference removals need strong evidence; references count by bin
   expect_equal(out$reason[out$accession == "C1"], "selected_both_passes")
   expect_match(attr(out, "rule_key"), "last_refs_strong=q0.99")
 })
+
+test_that("a class with a single within-group reference does not break the density", {
+  s <- .mk_stats()
+  s$class[s$accession == "R0001"] <- "Lonely"
+  out <- .mislabel_lr_test(s, rank_system = "species")
+  expect_true(out$selected[out$accession == "MIS1"])
+})
