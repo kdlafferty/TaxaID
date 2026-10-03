@@ -271,11 +271,13 @@ test_that("strip_modifiers only removes ONE leading word, never a repeated run",
 test_that("strip_modifiers does not rescue an uncertainty-hedge word", {
   # Deliberately NOT in the default list -- a hedge should keep failing the
   # capital-letter filter, not get silently rescued into a confident binomial.
-  out <- clean_taxon_names(c(
-    "possible Homo sapiens", "putative Cottus asper",
-    "cf. Cottus asper"
-  ))
+  out <- clean_taxon_names(c("possible Homo sapiens", "putative Cottus asper"))
   expect_true(all(is.na(out)))
+  # "cf." is an open-nomenclature qualifier, not a hedge word: it asserts the
+  # genus (decision A2, 2026-10-02), with the qualifier kept in an attribute
+  q <- clean_taxon_names("cf. Cottus asper")
+  expect_equal(as.character(q), "Cottus")
+  expect_equal(attr(q, "name_qualifier"), "cf.")
 })
 
 test_that("strip_modifiers is a no-op for a name that already starts with a capital letter", {
