@@ -915,3 +915,11 @@ coarsens marginal calls whose candidates carry priors worth only a few records, 
 moves the prior noticeably. That is the imprecise-Dirichlet model's own behaviour, not an
 aggregation artefact, and it is the evaluation the maintainer asked to see before keeping the
 default.
+
+### 2026-10-02: combine_multisite_priors sums prior_site_records
+
+Found by the workflow peer: at ESV grain a combined row inherited one site's `prior_site_records`,
+so the robust check would use an arbitrary site's record count. The combined prior pools the
+sites' precision (its concentration is at least the sum of theirs), so the record count behind it
+is now the sum over the combined sites, consistent with the prior it accompanies. (The test fails
+on the previous code, which returned the first site's 1,000 instead of 4,000.)

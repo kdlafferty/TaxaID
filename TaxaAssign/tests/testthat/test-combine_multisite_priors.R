@@ -322,3 +322,12 @@ test_that("repeats of one site that disagree stop the call", {
   b <- transform(a, prior_alpha = 3, prior_mean = 3 / 11, prior_beta = 8)
   expect_error(combine_multisite_priors(rbind(a, b)), "DIFFERENT priors")
 })
+
+test_that("prior_site_records is summed over the combined sites", {
+  j <- data.frame(observation_id = "E1", taxon_name = "Gadus morhua", taxon_name_rank = "species",
+    grid_id = c("G1", "G2"), main_habitat = "Marine", prior_alpha = c(30, 5), prior_beta = c(970, 995),
+    prior_mean = c(0.03, 0.005), prior_site_records = c(1000, 3000), stringsAsFactors = FALSE)
+  out <- suppressMessages(combine_multisite_priors(j))
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$prior_site_records, 4000)
+})

@@ -88,6 +88,14 @@ utils::globalVariables(c(
   template$main_habitat <- NA_character_
   template$n_sites_combined <- n
   template$combined_sites <- paste(sort(unique(rows$grid_id)), collapse = "|")
+  # The combined prior pools the sites' precision (phi at least the sum of
+  # theirs), so the record count behind it is the sum of the sites' counts:
+  # posterior_consensus(robust_prior_s) must see the same record base the
+  # combined prior claims, not one arbitrary site's.
+  if ("prior_site_records" %in% names(rows)) {
+    sr <- rows$prior_site_records[is.finite(rows$prior_site_records)]
+    template$prior_site_records <- if (length(sr)) sum(sr) else NA_real_
+  }
 
   # Presence-mixture guard. compute_posterior()'s Monte Carlo
   # path samples presence from prior_mix_w ALONE for any row carrying the
@@ -131,6 +139,11 @@ utils::globalVariables(c(
 #' keys on `grid_id`/`main_habitat` as well); this function is the deliberate
 #' combination step that must run on that site-preserving output before
 #' [compute_posterior()].
+#'
+#' `prior_site_records` (from [join_priors()]), when present, is summed over
+#' the combined sites: the combined prior pools their precision, so the
+#' record count [posterior_consensus()]'s `robust_prior_s` check uses is the
+#' pooled one, not one site's.
 #'
 #' ## Combination rule: precision-weighted, not a plain product
 #' A simpler design would multiply each candidate's per-site `prior_mean` values together and
