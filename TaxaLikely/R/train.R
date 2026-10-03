@@ -323,14 +323,17 @@ utils::globalVariables(c(
     NULL
   }
 
-  # ---- STEP 3E: OUTER RINGS (order, class, ...) -------------------------------
+  # ---- STEP 3E: OUTER RINGS (every rank coarser than family) -----------------
   # For each rank coarser than the third-finest (rank_code_d = order,
-  # rank_code_e = class under the standard rank_system), the best match to a
+  # rank_code_e = class, rank_code_f = phylum, ... under the standard
+  # rank_system; as many as the rank_system carries), the best match to a
   # partner in the same group at that rank but a different group one rank
   # finer: e.g. another family of the same order. Measures how an unsequenced
-  # family (order) would score, for the outer rings.
+  # family (order) would score, for the outer rings. Which rings exist is left
+  # to the data (see OUTER RINGS below), not to a fixed list of ranks.
+  ring_codes <- if (length(rank_system) >= 4L) letters[4:length(rank_system)] else character(0)
   ring_stats <- NULL
-  for (L in c("d", "e")) {
+  for (L in ring_codes) {
     prevL <- letters[match(L, letters) - 1L]
     cx <- paste0("rank_code_", L, c(".x", ".y"))
     px <- paste0("rank_code_", prevL, c(".x", ".y"))
@@ -1721,16 +1724,18 @@ train_likelihood_model <- function(raw_df,
   # ---- OUTER RINGS: MEASURED THE SAME WAY AS H3 -----------------------------
   # One ring per rank coarser than family that the rank_system carries (order
   # -> "an unsequenced family of this order", class -> "an unsequenced order
-  # of this class"), from each reference's best match to another group one
-  # rank finer inside the same group (max_ring_<code>_score). Group-equal
-  # weighted mean and variance; each ring's shift is at least the previous
-  # ring's, so the rings stay nested. A ring with fewer than 3 groups
-  # supplying matches is not built. Gap: the earlier assumption (mean 0,
-  # unit variance).
+  # of this class", phylum -> "an unsequenced class of this phylum", ...),
+  # typed unreferenced_<the rank one finer>, from each reference's best match
+  # to another group one rank finer inside the same group
+  # (max_ring_<code>_score). Group-equal weighted mean and variance; each
+  # ring's shift is at least the previous ring's, so the rings stay nested.
+  # The data decide which rings exist: a ring with fewer than 3 groups
+  # supplying matches is not built (e.g. a kingdom ring when every reference
+  # shares one kingdom). Gap: the earlier assumption (mean 0, unit variance).
   Rings <- list()
-  ring_type <- c(d = "unreferenced_family", e = "unreferenced_order")
   prev_delta <- h3_delta_val
-  for (L in c("d", "e")) {
+  ring_codes <- if (length(rank_system) >= 4L) letters[4:length(rank_system)] else character(0)
+  for (L in ring_codes) {
     vcol <- paste0("max_ring_", L, "_score")
     gcol <- paste0("rank_code_", L)
     if (!vcol %in% names(train_df) || !gcol %in% names(train_df)) next
@@ -1749,10 +1754,11 @@ train_likelihood_model <- function(raw_df,
       0.1 * unit_ratio^2)
     r_delta <- max(prev_delta, mu_score_global - r_mean)
     rk <- rank_system[length(rank_system) - match(L, letters) + 1L]
+    child_rk <- rank_system[length(rank_system) - match(L, letters) + 2L]
     r_sigma <- matrix(c(r_var, 0, 0, 1.0 * unit_ratio^2), ncol = 2L)
     rownames(r_sigma) <- colnames(r_sigma) <- c("score_logit", "gap_logit")
     Rings[[rk]] <- list(
-      rank = rk, hypothesis_type = unname(ring_type[L]), delta = r_delta,
+      rank = rk, hypothesis_type = paste0("unreferenced_", child_rk), delta = r_delta,
       sigma = r_sigma, n = nrow(src), n_groups = n_grp
     )
     prev_delta <- r_delta

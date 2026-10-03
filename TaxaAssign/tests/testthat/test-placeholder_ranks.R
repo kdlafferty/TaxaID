@@ -174,3 +174,11 @@ test_that("a placeholder rank value never forms a credible node", {
   expect_equal(ctl$consensus_taxon, "Mammalia")
   expect_equal(ctl$consensus_rank, "class")
 })
+
+test_that("unreferenced ring types are recognised at any standard rank", {
+  expect_equal(.is_unreferenced_type(c("unreferenced_species", "unreferenced_class", "unreferenced_phylum",
+    "specific_candidate", "unresolved_species", NA)), c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE))
+  expect_equal(.unreferenced_ring_rank(c("unreferenced_genus", "unreferenced_class", "unreferenced_phylum")),
+    c("family", "phylum", "kingdom"))
+  expect_equal(.rank_order(c("family", "genus", "subgenus", "species"))[6:8], c("genus", "subgenus", "species"))
+})

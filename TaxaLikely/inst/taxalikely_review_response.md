@@ -1147,3 +1147,22 @@ escape clause fired. It is replaced by the real property, each shrunk mean lies 
 mean and the species' own mean (from an unshrunk fit), with an assertion that some weight is
 non-zero so the check cannot pass vacuously. The same pattern appeared once before in this screen
 (an order-dependent failure that was really n_sims = 0).
+
+### 2026-10-02: outer rings at every rank the data support (the two-rank cap removed)
+
+Maintainer's decision. Training measured rings for order and class only (a fixed `c("d", "e")`);
+each was already built only when at least 3 groups supply matches. The fixed list is removed:
+every rank coarser than family in `rank_system` gets a ring when the data support one, by the
+same rule, typed `unreferenced_<the rank one finer>` (phylum: `unreferenced_class`). On
+CalIntertidal references a phylum ring is supported for 18S (21 phyla, 48,668 pairs) and COI
+(11 phyla, 742,178 pairs) but not 12S (one phylum); a kingdom ring is never built because every
+reference carries one kingdom value. Consequence the consensus needed: it can report up to phylum,
+and the model now hypothesises an unsequenced class within the phylum rather than leaving that
+rank to the consensus alone. Spread, measured as group-equal best identity of each reference to
+another class of its phylum (another order of its class for comparison): 18S phylum ring 21
+groups, mean 0.876, total SD 0.059 (class ring: 65 groups, 0.912, 0.062); COI phylum 11 groups,
+0.793, 0.031 (class: 38, 0.807, 0.041). The phylum ring is no more heterogeneous than the class
+ring. Its variance already includes the between-group spread, so a heterogeneous ring is a wide
+(weak) likelihood rather than a falsely precise one; no fallback threshold is added. Tests: a
+six-rank fixture builds order, class and phylum rings and no kingdom ring (one group); the phylum
+ring row is named by the anchor's phylum. Both fail on the previous code.

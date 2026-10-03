@@ -77,10 +77,8 @@ utils::globalVariables(c(
     result$taxon_name_rank %in% coarser_ranks &
     !is.na(result$taxon_name) &
     (!("hypothesis_type" %in% names(result)) |
-      !result$hypothesis_type %in% c(
-        "unreferenced_species", "unreferenced_genus",
-        "unreferenced_family", "unreferenced_order", "unresolved_species"
-      ))
+      !(.is_unreferenced_type(result$hypothesis_type) |
+        result$hypothesis_type %in% "unresolved_species"))
 
   if (!any(is_coarse)) {
     return(result)
@@ -1369,10 +1367,9 @@ join_priors <- function(likelihoods,
         }
         # Ring rows (an unsequenced relative named by its clade) carry the
         # clade's remaining missing-species mass, when larger than their floor.
-        ring_types <- c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order")
         if (!is.null(dark_budget) && nrow(dark_budget) && "hypothesis_type" %in% names(result)) {
           rk <- paste(dark_budget$rank, dark_budget$clade, sep = "\r")
-          ring <- which(result$hypothesis_type %in% ring_types & !is.na(result$taxon_name))
+          ring <- which(.is_unreferenced_type(result$hypothesis_type) & !is.na(result$taxon_name))
           rm_i <- match(paste(result$taxon_name_rank[ring], result$taxon_name[ring], sep = "\r"), rk)
           has <- !is.na(rm_i) & dark_budget$remainder[rm_i] > result$prior_mean[ring]
           if (any(has)) {
@@ -1604,17 +1601,13 @@ join_priors <- function(likelihoods,
     # labels for those candidates: they are their competitors. The redundancy
     # filter cannot tell the two apart, so it would delete them. Run it as
     # before, then restore any unreferenced row it removed.
-    .unref_types <- c(
-      "unreferenced_species", "unreferenced_genus",
-      "unreferenced_family", "unreferenced_order", "unresolved_species"
-    )
     result$.jp_row <- seq_len(nrow(result))
     kept <- TaxaMatch::filter_redundant_hypotheses(
       result,
       rank_system = rank_system
     )
     if ("hypothesis_type" %in% names(result)) {
-      lost <- result[result$hypothesis_type %in% .unref_types &
+      lost <- result[(.is_unreferenced_type(result$hypothesis_type) | result$hypothesis_type %in% "unresolved_species") &
         !result$.jp_row %in% kept$.jp_row, , drop = FALSE]
       if (nrow(lost) > 0L) {
         kept <- dplyr::bind_rows(kept, lost)

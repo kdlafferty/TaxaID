@@ -1702,3 +1702,49 @@ test_that("robust N never comes from floor or dark-diversity pseudo-counts", {
   k$prior_site_records <- 30 # but the site has only 30 records
   expect_equal(.rb(k)$consensus_taxon, "Rhacochilus")
 })
+
+# ---- lineage_conflict, threshold > 0.5, rank order (2026-10-02) --------------
+.lc <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("phylum", "class", "order", "family", "genus", "species"),
+  consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0, ...)))
+
+test_that("lineage_conflict reports a name the rows use with two lineages", {
+  h <- data.frame(observation_id = "E1", taxon_name = c("Porella aaa", "Porella bbb"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    phylum = c("Bryozoa", "Marchantiophyta"), class = c("Gymnolaemata", "Jungermanniopsida"),
+    order = c("Cheilostomatida", "Porellales"), family = c("Bryocryptellidae", "Porellaceae"),
+    genus = "Porella", posterior_point_est = c(0.5, 0.5), stringsAsFactors = FALSE)
+  out <- .lc(h)
+  expect_true("lineage_conflict" %in% names(out))
+  expect_equal(out$lineage_conflict, "genus:Porella")
+  # reported only: the call itself is unchanged by the diagnostic
+  expect_equal(out$consensus_taxon, "Porella")
+  ok <- transform(h, phylum = "Bryozoa", class = "Gymnolaemata", order = "Cheilostomatida",
+    family = "Bryocryptellidae")
+  expect_true(is.na(.lc(ok)$lineage_conflict))
+})
+
+test_that("credible_node refuses a threshold at or below one half", {
+  df <- data.frame(observation_id = "E1", taxon_name = c("Aaa x", "Bbb y"), taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate", phylum = "P", class = "C", order = "O",
+    family = c("F1", "F2"), genus = c("Aaa", "Bbb"), posterior_point_est = c(0.5, 0.5),
+    stringsAsFactors = FALSE)
+  expect_error(.lc(df, cumulative_threshold = 0.5), "exceed 0.5")
+  # the lca method is unchanged
+  expect_no_error(suppressWarnings(suppressMessages(posterior_consensus(df,
+    rank_system = c("family", "genus", "species"), cumulative_threshold = 0.5, likelihood_consensus = FALSE))))
+})
+
+test_that("a non-standard rank in rank_system orders the rank masking", {
+  # row B is named at subgenus but carries its anchor's species in `species`:
+  # it must not count toward that species
+  df <- data.frame(observation_id = "E1", taxon_name = c("Aaa bbb", "Aaa (Sub)"),
+    taxon_name_rank = c("species", "subgenus"), hypothesis_type = c("specific_candidate", "unreferenced_species"),
+    family = "F1", genus = "Aaa", subgenus = c(NA, "Aaa (Sub)"), species = c("Aaa bbb", "Aaa bbb"),
+    posterior_point_est = c(0.5, 0.5), stringsAsFactors = FALSE)
+  out <- suppressWarnings(suppressMessages(posterior_consensus(df,
+    rank_system = c("family", "genus", "subgenus", "species"), consensus_method = "credible_node",
+    likelihood_consensus = FALSE, robust_prior_s = 0)))
+  expect_equal(out$consensus_taxon, "Aaa")
+  expect_equal(out$consensus_rank, "genus")
+})

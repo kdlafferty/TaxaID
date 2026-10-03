@@ -187,7 +187,12 @@ its ancestors. Each row counts toward the (rank, name) nodes its own
 lineage carries: a row with no value at a rank (a backbone with no class
 for ray-finned fishes, say) joins no node there but stays in the
 denominator, and no rank is ever imputed. Rows with no \code{taxon_name} count
-in the denominator only. \code{rank_system} may run up to \code{"phylum"} and
+in the denominator only. A node is identified by its (rank, name), so
+rows sharing a name must share one lineage (a homonym, or one taxon
+labelled on two backbones, would pool); \code{lineage_conflict} reports any
+name an observation's rows use with two lineages. Requires
+\code{cumulative_threshold} above 0.5, where a credible node is unique.
+\code{rank_system} may run up to \code{"phylum"} and
 \code{"kingdom"} when those columns are present. Unresolved
 (\code{consensus_reason = "no_credible_node"}) when no node at any rank in
 \code{rank_system} holds the threshold. Why a call is coarser than the finest
@@ -274,6 +279,13 @@ including the members of a pooled tail block (0 when there is no
 named hypothesis).}
 \item{\code{tail_mass}}{Summed posterior of the hypotheses below
 \code{min_posterior}: how much mass sat in the tail block.}
+\item{\code{lineage_conflict}}{Character. Names that the observation's
+own rows use with two different lineages, as \code{"rank:name"} joined by
+\code{"; "} (e.g. \code{"genus:Porella"} for a bryozoan and a liverwort genus
+of that name, or one genus whose order is labelled two ways); \code{NA}
+when there is none. Such a node pools what may be two taxa; the
+inputs should give each name one lineage. Reported only: never
+changes a call.}
 \item{\code{consensus_limit}}{With \code{consensus_method = "credible_node"}:
 why the call is coarser than the finest rank in \code{rank_system} (NA when
 it is not coarser). \code{"backbone"}: at some finer rank, rows resolved

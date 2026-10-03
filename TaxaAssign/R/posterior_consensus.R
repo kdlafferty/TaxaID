@@ -114,7 +114,12 @@
 #'   lineage carries: a row with no value at a rank (a backbone with no class
 #'   for ray-finned fishes, say) joins no node there but stays in the
 #'   denominator, and no rank is ever imputed. Rows with no `taxon_name` count
-#'   in the denominator only. `rank_system` may run up to `"phylum"` and
+#'   in the denominator only. A node is identified by its (rank, name), so
+#'   rows sharing a name must share one lineage (a homonym, or one taxon
+#'   labelled on two backbones, would pool); `lineage_conflict` reports any
+#'   name an observation's rows use with two lineages. Requires
+#'   `cumulative_threshold` above 0.5, where a credible node is unique.
+#'   `rank_system` may run up to `"phylum"` and
 #'   `"kingdom"` when those columns are present. Unresolved
 #'   (`consensus_reason = "no_credible_node"`) when no node at any rank in
 #'   `rank_system` holds the threshold. Why a call is coarser than the finest
@@ -374,6 +379,13 @@
 #'       named hypothesis).}
 #'     \item{`tail_mass`}{Summed posterior of the hypotheses below
 #'       `min_posterior`: how much mass sat in the tail block.}
+#'     \item{`lineage_conflict`}{Character. Names that the observation's
+#'       own rows use with two different lineages, as `"rank:name"` joined by
+#'       `"; "` (e.g. `"genus:Porella"` for a bryozoan and a liverwort genus
+#'       of that name, or one genus whose order is labelled two ways); `NA`
+#'       when there is none. Such a node pools what may be two taxa; the
+#'       inputs should give each name one lineage. Reported only: never
+#'       changes a call.}
 #'     \item{`consensus_limit`}{With `consensus_method = "credible_node"`:
 #'       why the call is coarser than the finest rank in `rank_system` (NA when
 #'       it is not coarser). `"backbone"`: at some finer rank, rows resolved
@@ -702,6 +714,11 @@ posterior_consensus <- function(posterior_df,
     cumulative_threshold <= 0 || cumulative_threshold > 1) {
     cli::cli_abort("{.arg cumulative_threshold} must be a single number in (0, 1].")
   }
+  if (consensus_method == "credible_node" && cumulative_threshold <= 0.5) {
+    # Two disjoint nodes can both hold half the mass, so the credible node is
+    # unique only above 0.5; at or below it the call would depend on row order.
+    cli::cli_abort("{.arg cumulative_threshold} must exceed 0.5 with {.code consensus_method = \"credible_node\"}: a credible node is unique only above one half.")
+  }
   if (!is.numeric(min_posterior) || length(min_posterior) != 1L ||
     min_posterior < 0 || min_posterior >= 1) {
     cli::cli_abort("{.arg min_posterior} must be a single number in [0, 1).")
@@ -768,8 +785,7 @@ posterior_consensus <- function(posterior_df,
     } else {
       tax_cols_present <- intersect(rank_system_eff, names(posterior_df))
       if (length(tax_cols_present) > 0) {
-        unref_mask <- posterior_df$hypothesis_type %in%
-          c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order")
+        unref_mask <- .is_unreferenced_type(posterior_df$hypothesis_type)
         needs_tax <- unref_mask &
           rowSums(is.na(posterior_df[, tax_cols_present, drop = FALSE])) > 0
         unref_names <- unique(posterior_df$taxon_name[needs_tax])
@@ -942,7 +958,7 @@ posterior_consensus <- function(posterior_df,
     (1 - e) * sum(w[inn]) / ((1 - e) * tot + e * Ls)
   }
   vals <- lapply(rank_system, function(r) {
-    v <- .extract_rank_values(chunk, r)
+    v <- .extract_rank_values(chunk, r, rank_system)
     if (is.null(v)) v <- rep(NA_character_, nrow(chunk))
     v[!named] <- NA_character_
     v
@@ -1085,6 +1101,37 @@ posterior_consensus <- function(posterior_df,
     anc <- .ancestor_at(chunk, t_l, r_l, r_p)
     if (!is.na(anc) && anc == t_p) "broadened" else "changed"
   }
+}
+
+# Names that the observation's own rows use for two different lineages: a
+# (rank, name) node whose rows carry different non-missing values at some
+# coarser rank. The credible node identifies a taxon by (rank, name), so such
+# a node pools what may be two taxa (a homonym) or one taxon labelled
+# inconsistently; consensus cannot tell which. Reported only; never changes a
+# call. NA when there is none.
+.lineage_conflicts <- function(chunk, rank_system) {
+  named <- chunk[!is.na(chunk$taxon_name), , drop = FALSE]
+  if (nrow(named) < 2L || length(rank_system) < 2L) return(NA_character_)
+  vals <- lapply(rank_system, function(r) {
+    v <- .extract_rank_values(named, r, rank_system)
+    if (is.null(v)) rep(NA_character_, nrow(named)) else v
+  })
+  out <- character(0)
+  for (i in 2:length(rank_system)) {
+    v <- vals[[i]]
+    for (nd in unique(v[!is.na(v)])) {
+      inn <- !is.na(v) & v == nd
+      if (sum(inn) < 2L) next
+      for (j in seq_len(i - 1L)) {
+        u <- vals[[j]][inn]
+        if (length(unique(u[!is.na(u)])) > 1L) {
+          out <- c(out, paste0(rank_system[i], ":", nd))
+          break
+        }
+      }
+    }
+  }
+  if (length(out)) paste(unique(out), collapse = "; ") else NA_character_
 }
 
 # Robust credible node (imprecise prior). The occurrence prior is estimated
@@ -1552,6 +1599,7 @@ posterior_consensus <- function(posterior_df,
     unnamed_mass = unnamed_mass,
     robust_lower_posterior = robust_lower,
     consensus_limit = consensus_limit,
+    lineage_conflict = .lineage_conflicts(chunk, rank_system),
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
     winner_likelihood = winner_likelihood,
@@ -1649,13 +1697,15 @@ posterior_consensus <- function(posterior_df,
 #' when the species column is absent (see the species branch's own comment
 #' for why this derivation matters). All other missing columns return NA.
 #' @noRd
-.extract_rank_values <- function(input_df, rank) {
+.extract_rank_values <- function(input_df, rank, rank_system = NULL) {
   vals <- .extract_rank_values_raw(input_df, rank)
   # A row never reports a value at a rank finer than its own: an unsequenced-
   # congener row named at genus can still carry its anchor species in a
-  # `species` column, which would otherwise count it as that species.
+  # `species` column, which would otherwise count it as that species. Rank
+  # order is the standard ladder with any non-standard ranks of the caller's
+  # rank_system (e.g. "subgenus") inserted where rank_system places them.
   if ("taxon_name_rank" %in% names(input_df)) {
-    std <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+    std <- .rank_order(rank_system)
     r_d <- match(rank, std)
     row_d <- match(input_df$taxon_name_rank, std)
     if (!is.na(r_d)) vals[!is.na(row_d) & row_d < r_d] <- NA_character_
@@ -1736,6 +1786,7 @@ posterior_consensus <- function(posterior_df,
     unnamed_mass = NA_real_,
     robust_lower_posterior = NA_real_,
     consensus_limit = NA_character_,
+    lineage_conflict = NA_character_,
     winner_prior = NA_real_,
     winner_theta_mean = NA_real_,
     winner_likelihood = NA_real_,

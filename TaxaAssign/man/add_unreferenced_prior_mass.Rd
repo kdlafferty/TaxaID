@@ -11,7 +11,7 @@ add_unreferenced_prior_mass(
   referenced_names,
   grid_id = NULL,
   unreferenced_types = c("unreferenced_species", "unreferenced_genus",
-    "unreferenced_family", "unreferenced_order"),
+    "unreferenced_family", "unreferenced_order", "unreferenced_class"),
   mismatch_message_fraction = 0.05,
   named_rows = FALSE
 )
@@ -39,8 +39,10 @@ which must then hold exactly one \code{grid_id}.}
 
 \item{unreferenced_types}{Character. \code{hypothesis_type} values treated as
 generic unreferenced hypotheses. Default
-\code{c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order")}: an unsequenced congener (scope genus), genus
-(family), family (order) or order (class).}
+\code{c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order", "unreferenced_class")}: an unsequenced congener
+(scope genus), genus (family), family (order), order (class) or class
+(phylum). A ring's scope rank is always one coarser than the rank in its
+type, so other \verb{unreferenced_<rank>} values work the same way.}
 
 \item{mismatch_message_fraction}{Numeric in [0, 1]. Message threshold for
 the share of named candidates missing from \code{referenced_names}. Default

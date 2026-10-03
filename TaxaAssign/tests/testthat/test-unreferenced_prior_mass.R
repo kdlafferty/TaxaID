@@ -241,3 +241,33 @@ test_that("named rows let a local unreferenced species be called by name", {
     robust_prior_s = 0)) # the fixture's priors rest on 1,000 records; this test is about naming
   expect_equal(cons$consensus_taxon, "Littorina keenae")
 })
+
+test_that("a ring at any rank takes its own scope: the phylum ring takes another class's species", {
+  j <- .upm_joined()
+  j <- rbind(j,
+    transform(j[3, ], taxon_name = "Littorinimorpha", taxon_name_rank = "order", hypothesis_type = "unreferenced_family"),
+    transform(j[3, ], taxon_name = "Gastropoda", taxon_name_rank = "class", hypothesis_type = "unreferenced_order"),
+    transform(j[3, ], taxon_name = "Mollusca", taxon_name_rank = "phylum", hypothesis_type = "unreferenced_class"))
+  extra <- c("Crepidula adunca", "Nucella emarginata", "Mytilus californianus")
+  pr <- rbind(.upm_priors(), data.frame(taxon_name = extra, taxon_name_rank = "species",
+    grid_id = "site1", main_habitat = "Marine", theta_mean = c(7e-3, 5e-3, 9e-3),
+    alpha = c(7, 5, 9), beta = c(993, 995, 991)))
+  tax <- .upm_tax()
+  tax$order <- c(rep("Littorinimorpha", 5), "Trochida")
+  tax$class <- "Gastropoda"
+  tax$phylum <- "Mollusca"
+  tax <- rbind(tax, data.frame(taxon_name = extra, genus = c("Crepidula", "Nucella", "Mytilus"),
+    family = c("Calyptraeidae", "Muricidae", "Mytilidae"),
+    order = c("Littorinimorpha", "Neogastropoda", "Mytilida"),
+    class = c("Gastropoda", "Gastropoda", "Bivalvia"), phylum = "Mollusca"))
+  out <- suppressMessages(add_unreferenced_prior_mass(j, pr, tax,
+    referenced_names = c("Littorina littorea", "Littorina scutulata")))
+  ph <- out[out$taxon_name == "Mollusca", ]
+  # only Mytilus californianus (another class); gastropods are claimed by finer rings
+  expect_equal(ph$unreferenced_mass, 9e-3)
+  expect_equal(ph$unreferenced_n_species, 1L)
+  cl <- out[out$taxon_name == "Gastropoda", ]
+  # Nucella (Neogastropoda) and Tegula (Trochida): other orders of the class
+  expect_equal(cl$unreferenced_mass, 5e-3 + 2e-2)
+  expect_equal(cl$unreferenced_n_species, 2L)
+})

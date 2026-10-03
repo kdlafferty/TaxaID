@@ -961,3 +961,25 @@ placeholder handling and I concluded there was none -- the handling is in a help
 that file calls on its first line of work. Checking the file was a proxy for
 checking the behaviour; feeding the case in and reading the output was the real
 check, and it is now a test.
+
+### 2026-10-02: rings at any rank; lineage_conflict; credible_node threshold > 0.5; rank order
+
+Maintainer's decisions (review of the rank-ancestry work, items 1a-1c, and the ring cap):
+- Ring types are recognised by one rule, `unreferenced_<rank>` at any standard rank, with the
+  ring's scope one rank coarser (internal `.is_unreferenced_type()`, `.unreferenced_ring_rank()`),
+  replacing four fixed lists in `add_unreferenced_prior_mass()`, `join_priors()` (twice) and
+  `posterior_consensus()`. `add_unreferenced_prior_mass()`'s default `unreferenced_types` gains
+  `"unreferenced_class"`. A phylum ring row now takes the recorded unreferenced species of other
+  classes of its phylum (tested; fails on the previous code).
+- `lineage_conflict` (new column, reported only): names the observation's own rows use with two
+  different lineages. The credible node identifies a taxon by (rank, name); a homonym or a taxon
+  labelled two ways would pool, and consensus cannot tell which. Measured on the 2026-09-27
+  posteriors: 18S 33 observations, COI 22 (genuine homonyms such as Porella and Lunularia,
+  bryozoan vs liverwort; and inconsistent labels such as Alcyonacea vs Malacalcyonacea). The fix
+  belongs to the inputs (one lineage per name, or a taxon key); the workflow peer has been told.
+- `consensus_method = "credible_node"` requires `cumulative_threshold > 0.5`: two disjoint nodes
+  can both hold half the mass, and at 0.5 the call depended on row order (measured: the same rows
+  reversed gave a different species). The default 0.9 is unaffected; `"lca"` is unchanged.
+- Rank masking (a row never reports a rank finer than its own) orders ranks by the standard
+  ladder with the caller's non-standard ranks inserted (internal `.rank_order()`), so a row named
+  at e.g. subgenus no longer counts toward the species its anchor carries.

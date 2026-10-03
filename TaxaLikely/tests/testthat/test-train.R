@@ -794,3 +794,60 @@ test_that("evaluate_likelihoods: ring rows are named by the anchor's order and c
   sp <- liks$score_likelihood[liks$taxon_name == "Cls1ord1fam1gen1 spa"]
   expect_true(length(sp) == 0L || fam$score_likelihood > sp)
 })
+
+# ---- rings at every rank the data support (no fixed cap) --------------------
+.make_ring_raw_df6 <- function() {
+  tax <- expand.grid(p = 1:3, c = 1:2, o = 1:2, f = 1:2, g = 1:2)
+  tax$id <- with(tax, sprintf("P%dC%dO%dF%dG%d", p, c, o, f, g))
+  tax$kingdom <- "K1" # one kingdom: no kingdom ring can be measured
+  tax$phylum <- paste0("Phy", tax$p)
+  tax$class <- paste0(tax$phylum, "cls", tax$c)
+  tax$order <- paste0(tax$class, "ord", tax$o)
+  tax$family <- paste0(tax$order, "fam", tax$f)
+  tax$genus <- paste0(tax$family, "gen", tax$g)
+  tax$species <- paste(tax$genus, "spa")
+  tax <- rbind(tax, transform(tax, id = paste0(id, "b"))) # two refs per species
+  grid <- expand.grid(id_x = tax$id, id_y = tax$id, stringsAsFactors = FALSE)
+  grid <- grid[grid$id_x != grid$id_y, ]
+  i <- match(grid$id_x, tax$id); j <- match(grid$id_y, tax$id)
+  for (r in c("kingdom", "phylum", "class", "order", "family", "genus", "species")) {
+    grid[[paste0(r, ".x")]] <- tax[[r]][i]
+    grid[[paste0(r, ".y")]] <- tax[[r]][j]
+  }
+  grid$p_match <- with(grid, ifelse(species.x == species.y, 0.99,
+    ifelse(genus.x == genus.y, 0.95, ifelse(family.x == family.y, 0.90,
+      ifelse(order.x == order.y, 0.85, ifelse(class.x == class.y, 0.80,
+        ifelse(phylum.x == phylum.y, 0.75, 0.70)))))))
+  grid
+}
+
+test_that("train_likelihood_model: rings at every rank the data support, none at a rank they do not", {
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(.make_ring_raw_df6(),
+    rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  )))
+  # phylum ring built (3 phyla supply cross-class matches); kingdom ring not
+  # (one kingdom: no group supplies a cross-phylum match within it)
+  expect_named(m$Rings, c("order", "class", "phylum"))
+  expect_equal(m$Rings$phylum$hypothesis_type, "unreferenced_class")
+  tf <- function(p) TaxaLikely:::.transform_p(p, m$Score_Transform)
+  mu <- unname(m$H1_Global_Mu[1])
+  expect_equal(mu - m$Rings$phylum$delta, tf(0.75), tolerance = 0.05)
+  expect_gte(m$Rings$phylum$delta, m$Rings$class$delta)
+})
+
+test_that("evaluate_likelihoods: the phylum ring row is named by the anchor's phylum", {
+  skip_if_not_installed("TaxaTools")
+  rs <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(.make_ring_raw_df6(), rank_system = rs)))
+  q <- data.frame(observation_id = "Q1", score = c(76, 72),
+    taxon_name = c("Phy1cls1ord1fam1gen1 spa", "Phy2cls1ord1fam1gen1 spa"), taxon_name_rank = "species",
+    kingdom = "K1", phylum = c("Phy1", "Phy2"), class = c("Phy1cls1", "Phy2cls1"),
+    order = c("Phy1cls1ord1", "Phy2cls1ord1"), family = c("Phy1cls1ord1fam1", "Phy2cls1ord1fam1"),
+    genus = c("Phy1cls1ord1fam1gen1", "Phy2cls1ord1fam1gen1"),
+    species = c("Phy1cls1ord1fam1gen1 spa", "Phy2cls1ord1fam1gen1 spa"), stringsAsFactors = FALSE)
+  liks <- suppressWarnings(evaluate_likelihoods(q, m, rs, n_sims = 20))$likelihoods
+  cls <- liks[liks$hypothesis_type == "unreferenced_class", ]
+  expect_equal(cls$taxon_name, "Phy1")
+  expect_equal(cls$taxon_name_rank, "phylum")
+  expect_false(any(liks$hypothesis_type == "unreferenced_phylum")) # no kingdom ring
+})

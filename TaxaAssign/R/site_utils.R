@@ -430,6 +430,41 @@
 #' genus, multiplying generic rows) and it is reported as a unanimous
 #' species named "". Called on each table as it enters the package.
 #' @noRd
+# Unreferenced-relative hypothesis types, for rings at any standard rank:
+# "unreferenced_<r>" is an unsequenced <r> of the clade one rank coarser
+# (unreferenced_species: an unsequenced species of the genus; ...;
+# unreferenced_class: an unsequenced class of the phylum). One rule instead
+# of fixed lists, so a ring at a new rank needs no edit here.
+.RANK_LADDER <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+
+# Full rank order: the standard ladder, with each non-standard rank of
+# rank_system inserted after the rank that precedes it there.
+.rank_order <- function(rank_system = NULL) {
+  ord <- .RANK_LADDER
+  if (is.null(rank_system)) return(ord)
+  for (k in seq_along(rank_system)) {
+    r <- rank_system[k]
+    if (r %in% ord) next
+    prev <- if (k > 1L) match(rank_system[k - 1L], ord) else 0L
+    if (is.na(prev)) prev <- length(ord)
+    ord <- append(ord, r, after = prev)
+  }
+  ord
+}
+
+.is_unreferenced_type <- function(x) {
+  !is.na(x) & grepl("^unreferenced_(phylum|class|order|family|genus|species)$", x)
+}
+
+# The rank a ring row is named at: one coarser than the rank in its type.
+.unreferenced_ring_rank <- function(type) {
+  i <- match(sub("^unreferenced_", "", type), .RANK_LADDER)
+  out <- rep(NA_character_, length(type))
+  ok <- .is_unreferenced_type(type) & !is.na(i) & i > 1L
+  out[ok] <- .RANK_LADDER[i[ok] - 1L]
+  out
+}
+
 .blank_ranks_to_na <- function(df,
                                cols = c(
                                  "kingdom", "phylum", "class", "order",

@@ -74,8 +74,10 @@
 #' @param unreferenced_types Character. `hypothesis_type` values treated as
 #'   generic unreferenced hypotheses. Default
 #'   `c("unreferenced_species", "unreferenced_genus", "unreferenced_family",
-#'   "unreferenced_order")`: an unsequenced congener (scope genus), genus
-#'   (family), family (order) or order (class).
+#'   "unreferenced_order", "unreferenced_class")`: an unsequenced congener
+#'   (scope genus), genus (family), family (order), order (class) or class
+#'   (phylum). A ring's scope rank is always one coarser than the rank in its
+#'   type, so other `unreferenced_<rank>` values work the same way.
 #' @param mismatch_message_fraction Numeric in \[0, 1\]. Message threshold for
 #'   the share of named candidates missing from `referenced_names`. Default
 #'   0.05.
@@ -132,7 +134,7 @@ add_unreferenced_prior_mass <- function(joined,
                                         taxonomy,
                                         referenced_names,
                                         grid_id = NULL,
-                                        unreferenced_types = c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order"),
+                                        unreferenced_types = c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order", "unreferenced_class"),
                                         mismatch_message_fraction = 0.05,
                                         named_rows = FALSE) {
   # --- Validation --------------------------------------------------------------
@@ -206,11 +208,7 @@ add_unreferenced_prior_mass <- function(joined,
   # congener at genus, an unsequenced genus at family. A row renamed to a
   # coarser real ancestor because its family was a placeholder ("unk_family"
   # -> its order) keeps its floor: its true scope is unknown.
-  ring_rank <- c(
-    unreferenced_species = "genus", unreferenced_genus = "family",
-    unreferenced_family = "order", unreferenced_order = "class"
-  )
-  expected_rank <- unname(ring_rank[out$hypothesis_type])
+  expected_rank <- .unreferenced_ring_rank(out$hypothesis_type)
   gen <- which(out$hypothesis_type %in% unreferenced_types &
     !is.na(out$taxon_name) & out$taxon_name_rank %in% setdiff(names(taxonomy), "taxon_name") &
     out$taxon_name_rank != "species" &
