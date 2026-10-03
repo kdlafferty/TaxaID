@@ -936,3 +936,28 @@ robust_prior_s = 1): it is NOT this defect. The best-matching reference is Gelid
 at San Juanico (262 records) that prior is worth ~1.5 records; one more record of Gelidium flips
 it. No call (on family/genus/species) is the intended robust outcome, under the site's N and the
 kernel rows' N alike.
+
+### 2026-10-02: a placeholder rank value can never form a credible node (test only)
+
+`posterior_consensus()` normalises placeholder rank values to `NA` on entry via
+`.blank_ranks_to_na()`, which matches `^unk_<word>$`, `^incertae[ _]sedis`,
+`^unclassified` and `^unknown` case-insensitively. That normaliser has its own
+tests; what had no test was the CONSEQUENCE in the consensus rule, which is what
+a reader actually depends on: two candidates from different phyla that share only
+a placeholder class must not be pooled into a node named for the placeholder,
+because that would report a non-taxon as the consensus and sum the posterior mass
+of unrelated taxa. Reachable on real data -- NCBI leaves some fish orders
+*incertae sedis* -- once phylum/class ranks are supplied in `rank_system`.
+
+Added to `test-placeholder_ranks.R`: six placeholder spellings must each give
+`consensus_taxon = NA` with `consensus_limit = "backbone"`, plus a CONTROL with a
+real shared class (`Mammalia`) that must form that node, so the test
+distinguishes "placeholder suppressed" from "no node could form here". Verified
+sensitive rather than assumed: with `.is_placeholder_rank()` stubbed to return
+FALSE, the file goes from 35 passing / 0 failing to 12 passing / 23 failing.
+
+No code changed. Raised because a grep of `posterior_consensus.R` alone found no
+placeholder handling and I concluded there was none -- the handling is in a helper
+that file calls on its first line of work. Checking the file was a proxy for
+checking the behaviour; feeding the case in and reading the output was the real
+check, and it is now a test.

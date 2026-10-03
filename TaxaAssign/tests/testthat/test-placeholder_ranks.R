@@ -135,3 +135,42 @@ test_that("a small unnamed share does not block a call that still clears the thr
     rank_system = c("genus", "species"))))
   expect_equal(out$consensus_taxon, "Neocolponema")
 })
+
+# A placeholder rank VALUE must never become a credible node. The normaliser
+# that prevents it (.blank_ranks_to_na(), called on entry) is tested above on
+# its own; this pins the CONSEQUENCE in posterior_consensus(), which is the
+# thing a reader cares about and the thing a later edit could lose while the
+# normaliser's own tests still pass. Two rows from different phyla sharing only
+# a placeholder class must not be pooled into a node named for the placeholder:
+# that would report a non-taxon as the consensus and sum the mass of unrelated
+# taxa.
+.placeholder_node_df <- function(class_value) {
+  data.frame(
+    observation_id = "O1",
+    taxon_name = c("Aa one", "Bb two"), taxon_name_rank = "species",
+    phylum = c("Chordata", "Mollusca"), class = class_value,
+    order = c("Ord1", "Ord2"), family = c("Fam1", "Fam2"),
+    genus = c("Aa", "Bb"), species = c("Aa one", "Bb two"),
+    hypothesis_type = "specific_candidate",
+    posterior_point_est = c(0.5, 0.5), posterior_mean = c(0.5, 0.5),
+    score_likelihood = 1, prior_mean = 0.1, stringsAsFactors = FALSE
+  )
+}
+
+test_that("a placeholder rank value never forms a credible node", {
+  rs <- c("phylum", "class", "order", "family", "genus", "species")
+  for (v in c("incertae sedis", "Incertae Sedis", "incertae_sedis",
+              "unclassified Eukaryota", "unk_class", "unknown")) {
+    out <- suppressMessages(posterior_consensus(
+      .placeholder_node_df(v), rank_system = rs, consensus_method = "credible_node"))
+    expect_true(is.na(out$consensus_taxon), info = v)
+    expect_equal(out$consensus_limit, "backbone", info = v)
+  }
+  # CONTROL: the same shape with a REAL shared class does form that node, so
+  # the assertions above distinguish "placeholder suppressed" from "no node
+  # could ever form here".
+  ctl <- suppressMessages(posterior_consensus(
+    .placeholder_node_df("Mammalia"), rank_system = rs, consensus_method = "credible_node"))
+  expect_equal(ctl$consensus_taxon, "Mammalia")
+  expect_equal(ctl$consensus_rank, "class")
+})
