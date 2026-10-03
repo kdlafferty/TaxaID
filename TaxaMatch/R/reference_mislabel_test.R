@@ -170,6 +170,24 @@ utils::globalVariables(character(0))
   by_q <- split(hits[, c("s", "pid")], hits$q)
   q_all <- names(by_q)
   memo <- new.env(hash = TRUE)
+  # each query's best identity to each group (independent batches, excluded
+  # subjects dropped), computed once: d looks these up instead of rescanning
+  # every member's hits for every (A, B) -- the cost at coarse ranks, where a
+  # group can have thousands of members
+  # (integer indices: named lookups of millions of accessions are the slow part)
+  si <- match(hits$s, dep$acc); qi0 <- match(hits$q, dep$acc)
+  gv <- unname(grp); bv <- unname(bat)
+  keep <- !is.na(gv[si]) & !(hits$s %in% exclude) & bv[si] != bv[qi0]
+  best_qg <- list()
+  if (any(keep)) {
+    qk <- qi0[keep]; sk <- si[keep]; pk <- hits$pid[keep]
+    gl <- unique(gv[sk]); gi <- match(gv[sk], gl)
+    key <- (qk - 1) * length(gl) + gi
+    o <- order(key, -pk)                           # best first within (query, group)
+    first <- o[!duplicated(key[o])]
+    # split by group, so each lookup searches one group's queries only
+    best_qg <- lapply(split(first, gl[gi[first]]), function(f) stats::setNames(pk[f], dep$acc[qk[f]]))
+  }
 
   # median over batches of the best identity per batch
   med_batch <- function(h) {
@@ -210,11 +228,8 @@ utils::globalVariables(character(0))
     if (is.null(best)) {
       qa <- q_all[grp[q_all] %in% A & !(q_all %in% exclude)]
       if (!is.null(fin)) qa <- qa[!(fin[qa] %in% fin[[a]])]
-      best <- vapply(qa, function(q) {
-        h <- by_q[[q]]
-        h <- h[inB(h$s) & bat[h$s] != bat[[q]], , drop = FALSE]
-        if (nrow(h)) max(h$pid) else NA_real_
-      }, numeric(1))
+      bB <- best_qg[[B]]
+      best <- if (is.null(bB)) stats::setNames(rep(NA_real_, length(qa)), qa) else stats::setNames(unname(bB[qa]), qa)
       best <- best[!is.na(best)]
       memo[[key]] <- best
     }
