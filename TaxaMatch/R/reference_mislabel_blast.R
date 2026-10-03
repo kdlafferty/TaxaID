@@ -195,6 +195,8 @@ utils::globalVariables(character(0))
 #'   \item between-group: for each distinct (rank, A, B), the tested
 #'     references of A plus one deposit from each of up to
 #'     `max_query_batches` of A's batches, against the members of B -- y and d.
+#'     Only deposits in `d_queries` serve as A's queries for d, so that d is
+#'     measured over the same stretch of the marker as x and y.
 #' }
 #' The split-group guard needs every batch of A compared with A and B; that
 #' is done only for the few selected groups, by `.mislabel_split_hits()`.
@@ -208,7 +210,7 @@ utils::globalVariables(character(0))
 #' @noRd
 .mislabel_pair_hits <- function(pool, neighbours, blast_bin, rank_system = c("species", "genus", "family"),
                                 qcov = 80, threads = 8L, db_min_subjects = 200L,
-                                max_query_batches = 50L,
+                                max_query_batches = 50L, d_queries = NULL,
                                 checkpoint = NULL, checkpoint_every = 100L, verbose = TRUE) {
   dep <- pool$deposits
   bat <- stats::setNames(dep$batch, dep$acc)
@@ -216,8 +218,13 @@ utils::globalVariables(character(0))
   # chosen deterministically (evenly spaced over the sorted batch ids). d is a
   # median over A's batches, which this estimates without searching every
   # deposit of a very large group.
+  # d must be measured over the same stretch of the marker as x and y. Where
+  # the marker cannot be primer-trimmed (18S), deposits are partial genes of
+  # many regions, so only those in d_queries (the caller's marker-length
+  # deposits) may serve as A's queries for d.
+  if (is.null(d_queries)) d_queries <- names(pool$amp)
   rep_queries <- function(acc) {
-    acc <- sort(intersect(acc, names(pool$amp)))
+    acc <- sort(intersect(acc, intersect(names(pool$amp), d_queries)))
     one <- acc[!duplicated(bat[acc])]
     if (length(one) > max_query_batches) {
       one <- one[unique(round(seq(1, length(one), length.out = max_query_batches)))]
@@ -309,14 +316,15 @@ utils::globalVariables(character(0))
 #' @return data.frame(q, s, pid).
 #' @noRd
 .mislabel_split_hits <- function(pool, groups, blast_bin, qcov = 80, threads = 8L,
-                                 db_min_subjects = 200L) {
+                                 db_min_subjects = 200L, d_queries = NULL) {
+  if (is.null(d_queries)) d_queries <- names(pool$amp)
   dep <- pool$deposits
   bat <- stats::setNames(dep$batch, dep$acc)
   res <- lapply(seq_len(nrow(groups)), function(i) {
     r <- groups$rank[i]
     inA <- dep$acc[dep[[r]] %in% groups$A[i]]
     inB <- dep$acc[dep[[r]] %in% groups$B[i]]
-    q <- sort(intersect(inA, names(pool$amp)))
+    q <- sort(intersect(inA, intersect(names(pool$amp), d_queries)))
     q <- q[!duplicated(bat[q])]
     subj <- intersect(c(inA, inB), names(pool$seq))
     if (!length(q) || !length(subj)) return(NULL)
