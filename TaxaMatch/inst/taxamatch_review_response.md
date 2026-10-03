@@ -621,3 +621,34 @@ on functions this document already covers above.
   attempts with a 2 to 16 second backoff as the taxonomy fetch above it. The server
   errors that motivated that change reach both paths, so the two had no reason to
   differ.
+
+### 2026-10-02: maternal-parent proxy gated on a maternally inherited marker
+
+`TaxaTools::clean_taxon_names()` no longer reduces a hybrid formula to its first parent (see
+TaxaTools' entry of this date). The two TaxaMatch functions that relied on that behaviour are
+changed as follows (decision: package review, option (a)):
+- `evaluate_reference_accessions()` parses the first-listed parent itself (internal
+  `.maternal_parent_name()`) and applies the maternal proxy only under a THIRD gate: `barcode_term`
+  must name a maternally inherited marker (internal constant `.MATERNAL_MARKER_KEYS`: mitochondrial
+  MiFish/Teleo/12S/16S/COI/cytb/ND genes/control region; chloroplast rbcL/matK/trnL/psbA). A
+  nuclear marker (18S, ITS) or `barcode_term = NULL` gives the new stamp
+  `"hybrid_marker_not_maternal"` and the accession keeps its own lineage; absence of a marker is
+  not evidence of a mitochondrial one. Before this change an 18S hybrid accession with an
+  unresolvable family took a maternal lineage. `"hybrid_maternal_proxy"` still marks every proxied
+  lineage, so a reader can see it is a proxy rather than a resolution. The proxied name is still
+  re-verified against NCBI before its ranks are used.
+- `convert_taxonomy_backbone()` has no marker argument, so it applies the generic rule: a
+  congeneric formula gives the genus (rank corrected to genus via `collapsed_to_genus`, now
+  tested), an intergeneric one gives NA. The NC_025590 defect (a hybrid label emitting the
+  variant "Ctenopharyngodon idellus" beside the accepted "Ctenopharyngodon idella", splitting one
+  species into two competing candidates and costing a Lamar-confirmed grass carp detection) cannot
+  recur by this path: the hybrid label no longer becomes a parent binomial at all. The second-pass
+  re-verification stays for every other name cleaning changes. Consequence: an intergeneric
+  hybrid REFERENCE now carries no species name in this function (GreatLakes NC_025590 among them).
+
+CAVEAT FOR THE MAINTAINER: the maternal reading assumes the label lists the female parent first,
+which is the GenBank convention and not always followed, AND a maternally inherited marker.
+TaxaMatch documents it "in fish". Both assumptions are now explicit and gated; neither is
+verifiable per accession. Open for the maintainer: the marker -> genome mapping is an internal
+constant next to the gate (package review's recommendation), not an exported registry. 16S is
+treated as mitochondrial because a hybrid label implies a eukaryote.

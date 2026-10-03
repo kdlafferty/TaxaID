@@ -125,6 +125,24 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   reason <- rep(NA_character_, n)
   force_genus <- rep(FALSE, n)
 
+  # --- Strip a single leading breeding/ploidy-manipulation modifier word,
+  # before the hybrid, subgenus and capital-letter steps, (seen on real GenBank hybrid-cross
+  # records: "androgenetic Carassius auratus red var. x Megalobrama
+  # amblycephala" etc.) -- these terms describe a real,
+  # confirmed genetic/breeding state, not uncertainty, so removing them is
+  # safe in the same sense bracket-stripping is: it reveals the genuinely
+  # intended name underneath, rather than rescuing a name that SHOULD stay
+  # rejected. Matched case-insensitively against the FIRST token only, and
+  # only ever stripped once (not a repeated run) -- deliberately narrow, to
+  # avoid ever consuming a second, unrelated leading word (e.g. a genuinely
+  # unidentified/unnamed first parent in a hybrid cross) and silently
+  # treating the wrong taxon as intended.
+  if (length(strip_modifiers) > 0L) {
+    modifier_pattern <- paste0("^(", paste(strip_modifiers, collapse = "|"), ")\\s+")
+    x <- sub(modifier_pattern, "", x, ignore.case = TRUE, perl = TRUE)
+  }
+
+
   # --- Hybrid formulae: "Genus a x Genus b" (a capitalised second parent) ---
   # One parent is not the organism, so neither is returned as if it were:
   # parents sharing a genus give that genus; intergeneric crosses give NA. A
@@ -132,11 +150,12 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # formula and is left to the abbreviation rule below.
   # Only a name that itself starts with a capitalised genus: a hedge or other
   # lower-case lead ("possible X x Y") must keep failing the capital filter.
-  hyb <- !is.na(x) & grepl("^\\[?[A-Z]", x, perl = TRUE) &
+  hyb <- !is.na(x) & grepl("^[\\[(]*[A-Z]", x, perl = TRUE) &
     grepl("\\s[x\u00d7]\\s+[A-Z\\[]", x, perl = TRUE)
   if (any(hyb)) {
     parts <- strsplit(x[hyb], "\\s[x\u00d7]\\s+", perl = TRUE)
-    g_of <- function(p) sub("^\\[?([A-Za-z-]+)\\]?.*$", "\\1", stringr::str_squish(p))
+    # parents may be nested formulae: "((A a x A b) x A c) x A c"
+    g_of <- function(p) sub("^[\\[(]*([A-Za-z-]+).*$", "\\1", stringr::str_squish(p))
     hyb_gen <- vapply(parts, function(p) {
       g <- unique(vapply(p, g_of, character(1)))
       if (length(g) == 1L) g else NA_character_
@@ -171,23 +190,6 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # capital-letter check below. Re-squish after removal.
   x <- gsub("\\[|\\]|[()]", "", x, perl = TRUE)
   x <- stringr::str_squish(x)
-
-  # --- Strip a single leading breeding/ploidy-manipulation modifier word,
-  # ALSO before the capital-letter filter (seen on real GenBank hybrid-cross
-  # records: "androgenetic Carassius auratus red var. x Megalobrama
-  # amblycephala" etc.) -- these terms describe a real,
-  # confirmed genetic/breeding state, not uncertainty, so removing them is
-  # safe in the same sense bracket-stripping is: it reveals the genuinely
-  # intended name underneath, rather than rescuing a name that SHOULD stay
-  # rejected. Matched case-insensitively against the FIRST token only, and
-  # only ever stripped once (not a repeated run) -- deliberately narrow, to
-  # avoid ever consuming a second, unrelated leading word (e.g. a genuinely
-  # unidentified/unnamed first parent in a hybrid cross) and silently
-  # treating the wrong taxon as intended.
-  if (length(strip_modifiers) > 0L) {
-    modifier_pattern <- paste0("^(", paste(strip_modifiers, collapse = "|"), ")\\s+")
-    x <- sub(modifier_pattern, "", x, ignore.case = TRUE, perl = TRUE)
-  }
 
   # --- Set non-conforming names to NA (preserves vector length) ---
   # Names that are NA, empty, or do not begin with a capital letter become NA.

@@ -250,7 +250,9 @@ test_that("strips a real leading breeding/ploidy modifier word (default list)", 
     "gynogenetic Carassius auratus", "allotriploid Cyprinus carpio",
     "tetraploid Cyprinus carpio", "polyploid Cyprinus carpio"
   ))
-  expect_equal(out, c(rep("Carassius auratus", 4L), rep("Cyprinus carpio", 3L)), ignore_attr = c("collapsed_to_genus", "name_qualifier", "clean_reason"))
+  # the three intergeneric crosses are NA under the hybrid rule (2026-10-02);
+  # their maternal reading for mitochondrial markers lives in TaxaMatch
+  expect_equal(out, c(rep(NA, 3L), "Carassius auratus", rep("Cyprinus carpio", 3L)), ignore_attr = c("collapsed_to_genus", "name_qualifier", "clean_reason"))
 })
 
 test_that("strip_modifiers matching is case-insensitive on the first token only", {
@@ -281,7 +283,7 @@ test_that("strip_modifiers does not rescue an uncertainty-hedge word", {
 })
 
 test_that("strip_modifiers is a no-op for a name that already starts with a capital letter", {
-  out <- clean_taxon_names("Ctenopharyngodon idella x Megalobrama amblycephala")
+  out <- clean_taxon_names("Ctenopharyngodon idella")
   expect_equal(out, "Ctenopharyngodon idella", ignore_attr = c("collapsed_to_genus", "name_qualifier", "clean_reason"))
 })
 
@@ -380,4 +382,20 @@ test_that("real CalIntertidal labels: voucher codes and strain labels", {
   r <- clean_taxon_names(c("Chone magna CMC01", "Corallina sp. 4frondescens", "Melobesia sp. 2BC"))
   expect_equal(as.character(r), c("Chone magna", "Corallina", "Melobesia"))
   expect_equal(attr(r, "collapsed_to_genus"), c(FALSE, TRUE, TRUE))
+})
+
+test_that("nested hybrid formulae are read parent by parent", {
+  r <- clean_taxon_names(c(
+    "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata",
+    "Ctenopharyngodon idellus x Elopichthys bambusa"
+  ))
+  expect_equal(as.character(r), c("Citrus", NA))
+  expect_equal(attr(r, "clean_reason"), c("hybrid_congeneric", "hybrid_intergeneric"))
+})
+
+test_that("a modifier-prefixed hybrid formula still follows the hybrid rule", {
+  r <- clean_taxon_names(c("androgenetic Carassius auratus red var. x Megalobrama amblycephala",
+    "autotetraploid Carassius auratus x Carassius cuvieri"))
+  expect_equal(as.character(r), c(NA, "Carassius"))
+  expect_equal(attr(r, "clean_reason"), c("hybrid_intergeneric", "hybrid_congeneric"))
 })

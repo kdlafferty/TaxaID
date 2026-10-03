@@ -301,8 +301,12 @@ Three changes, each with a test that fails on the previous code:
   distinguishable from an asserted one.
 - A3. A hybrid formula returned its first parent as if it were the organism. Congeneric parents
   now give the genus; intergeneric parents give NA ("Carassius auratus red var. x Megalobrama
-  amblycephala", which `strip_modifiers` documentation cites, is now NA). A named nothospecies
-  ("Mentha x piperita") is not a formula and is unchanged.
+  amblycephala", which `strip_modifiers` documentation cites, is now NA), including nested
+  formulae and modifier-prefixed ones (modifier stripping now runs first, so a prefix cannot slip
+  a formula past the rule). A named nothospecies ("Mentha x piperita") is not a formula and is
+  unchanged. The first-parent reading was relied on by TaxaMatch's maternal-parent proxy; that
+  reading now lives in TaxaMatch behind a marker gate (see TaxaMatch's entry of this date),
+  because a generic cleaner must not call one parent the organism: wrong for a nuclear marker.
 New attribute `clean_reason` ("subgenus_dropped", "qualifier", "hybrid_congeneric",
 "hybrid_intergeneric", else NA). Tests comparing cleaned vectors with
 `ignore_attr = "collapsed_to_genus"` now ignore all three attributes (33 TaxaTools, 3 TaxaExpect).

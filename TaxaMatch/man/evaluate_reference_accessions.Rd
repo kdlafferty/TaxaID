@@ -312,7 +312,10 @@ rather than recomputed this call.}
 \item{\code{taxonomy_resolution_source}}{\code{"direct"} (the accession's own
 NCBI taxonomy, the normal case), \code{"hybrid_maternal_proxy"} (a
 hybrid-labeled accession whose coarser-rank lineage was resolved
-from its maternal parent species instead -- see \verb{@section Hybrid-labeled accessions} below), \code{"hybrid_unresolved"} (detected
+from its maternal parent species instead -- see \verb{@section Hybrid-labeled accessions} below), \code{"hybrid_marker_not_maternal"}
+(hybrid-labeled with an unresolvable lineage, but \code{barcode_term}
+is not a maternally inherited marker or is \code{NULL}, so no proxy),
+\code{"hybrid_unresolved"} (detected
 as hybrid-labeled but no usable parent species name could be
 extracted from the label, so the accession's own -- structurally
 incomplete -- NCBI lineage is used as-is), or \code{NA} for a fetch
@@ -591,18 +594,22 @@ lineage instead, for every rank coarser than species: since mtDNA is
 maternally inherited in fish, a hybrid's barcode sequence genuinely IS
 its maternal parent's lineage at kingdom through genus, even though it
 is (correctly) not literally the same SPECIES as that parent. The
-maternal parent's name is extracted from \code{listed_taxon} via
-\code{TaxaTools::clean_taxon_names()}'s existing 3-token simplification (it
-already keeps only the first genus + epithet, discarding everything
-from \code{" x ..."} onward -- the same simplification this ecosystem
-already applies to hybrid-formula names elsewhere), then resolved via
+maternal parent's name is the first-listed parent of the formula (the
+GenBank convention lists the female parent first; not always followed),
+cleaned with \code{TaxaTools::clean_taxon_names()}, then resolved via
 \code{TaxaTools::verify_taxon_names(backbone_id = 4L)} (NCBI, the same
 authority every other taxonomy resolution in this function uses).
 \code{species.x} (the finest rank) is deliberately left as the accession's
 own real listed hybrid label, never replaced by the proxy -- a hybrid
 genuinely is not the same species as its maternal parent, so a spurious
 species-level agreement would be biologically wrong in the opposite
-direction. Detection requires BOTH \code{listed_taxon} containing a
+direction. The proxy requires a maternally inherited marker:
+\code{barcode_term} must name a mitochondrial (12S/MiFish/Teleo, 16S, COI,
+cytb, ND genes, control region) or chloroplast (rbcL, matK, trnL, psbA)
+marker. A nuclear marker (18S, ITS) carries both parents, and with
+\code{barcode_term = NULL} the genome cannot be established; such accessions
+are stamped \code{"hybrid_marker_not_maternal"} and keep their own lineage.
+Detection also requires BOTH \code{listed_taxon} containing a
 standalone \code{" x "} token (the standard nomenclatural hybrid marker) AND
 the accession's own resolved \code{family} being unresolvable -- so an
 ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage

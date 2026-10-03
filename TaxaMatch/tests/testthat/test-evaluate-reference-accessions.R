@@ -800,7 +800,8 @@ test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession v
   )
   local_mocked_bindings(verify_taxon_names = mock_verify_ncbi, .package = "TaxaTools")
 
-  out <- evaluate_reference_accessions("ACC_HYBRID", cache_dir = NULL, verbose = FALSE)
+  # 12S: mitochondrial, maternally inherited, so the proxy applies
+  out <- evaluate_reference_accessions("ACC_HYBRID", cache_dir = NULL, verbose = FALSE, barcode_term = "12S")
 
   expect_equal(out$taxonomy_resolution_source, "hybrid_maternal_proxy")
   # Without the proxy, this would read "incongruent" (no family/genus on the
@@ -808,6 +809,12 @@ test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession v
   # mode this fix closes.
   expect_equal(out$hierarchy_flag, "congruent")
   expect_equal(out$finest_common_rank, "genus")
+
+  # a nuclear marker (both parents' genomes) or an unknown marker: no proxy
+  for (bt in list("18S", NULL)) {
+    o2 <- evaluate_reference_accessions("ACC_HYBRID", cache_dir = NULL, verbose = FALSE, barcode_term = bt)
+    expect_equal(o2$taxonomy_resolution_source, "hybrid_marker_not_maternal")
+  }
 })
 
 test_that("evaluate_reference_accessions() resolves a real breeding/ploidy-modifier-prefixed hybrid label (2026-08-11)", {
@@ -873,7 +880,7 @@ test_that("evaluate_reference_accessions() resolves a real breeding/ploidy-modif
   )
   local_mocked_bindings(verify_taxon_names = mock_verify_ncbi, .package = "TaxaTools")
 
-  out <- evaluate_reference_accessions("ACC_ANDROGENETIC", cache_dir = NULL, verbose = FALSE)
+  out <- evaluate_reference_accessions("ACC_ANDROGENETIC", cache_dir = NULL, verbose = FALSE, barcode_term = "12S")
   expect_equal(out$taxonomy_resolution_source, "hybrid_maternal_proxy")
   expect_equal(out$hierarchy_flag, "congruent")
 })
@@ -924,7 +931,7 @@ test_that("evaluate_reference_accessions() falls back to 'hybrid_unresolved' whe
     .resolve_taxonomy_by_acc = mock_resolve_taxonomy, .package = "TaxaMatch"
   )
 
-  out <- evaluate_reference_accessions("ACC_HYBRID_UNPARSEABLE", cache_dir = NULL, verbose = FALSE)
+  out <- evaluate_reference_accessions("ACC_HYBRID_UNPARSEABLE", cache_dir = NULL, verbose = FALSE, barcode_term = "12S")
   expect_equal(out$taxonomy_resolution_source, "hybrid_unresolved")
 })
 
