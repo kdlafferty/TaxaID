@@ -891,3 +891,27 @@ there would have let a node reach the threshold that does not reach it alone), "
 (the plain rule would have called finer), "threshold" (mass spread across named alternatives).
 A hypothesis named at a coarser rank (a ring row) lacks finer ranks by design and does not count
 as a lineage gap. `rank_system` may run to phylum and kingdom when those columns exist.
+
+### 2026-10-02: robust_prior_s takes N from the site's records, never from pseudo-counts
+
+DEFECT FIX. `robust_prior_s` sets eps = s / (N + s) with N the occurrence prior's record
+concentration. N was the median alpha + beta of the observation's kernel-estimated rows and, when
+the observation had none, of ALL its rows. On current main those rows are floor and per-clade
+dark-diversity priors, whose alpha + beta are pseudo-counts (dark diversity: 2 x the clade's
+missing-species count), so N was a few units and eps ~ 0.05-0.3, coarsening nearly every call in
+an observation whose candidates are all unrecorded locally: 3,572 of 5,616 18S and 6,608 of 13,029
+COI CalIntertidal observations have no kernel-estimated candidate. (The workflow peer's
+measurement used the 2026-09-27 priors, whose non-kernel rows carried large concentrations, so it
+did not show this.) `join_priors()` now stamps `prior_site_records`, the site x habitat's median
+kernel alpha + beta (CalIntertidal: 26 sites, median 137,000), on every row; the robust check uses
+it, else the observation's kernel rows, and with neither it is not applied (plain credible node).
+The test fails 3 of 4 checks on the previous code.
+
+Also corrected: the documentation said a call must survive one more record "of a better-matching
+taxon". The bound's worst case is the best-fitting taxon OUTSIDE the node, which may fit worse.
+Measured on the 09-27 posteriors, of calls the rule coarsened the outside taxon fit worse in 156 of
+179 (18S) and 456 of 561 (COI), and the plain share was 0.90-0.95 in 111 and 385: the rule
+coarsens marginal calls whose candidates carry priors worth only a few records, where one record
+moves the prior noticeably. That is the imprecise-Dirichlet model's own behaviour, not an
+aggregation artefact, and it is the evaluation the maintainer asked to see before keeping the
+default.

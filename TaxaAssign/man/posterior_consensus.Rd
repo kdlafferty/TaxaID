@@ -210,12 +210,18 @@ from finitely many records, so a node is reported only if its posterior
 stays at or above \code{cumulative_threshold} for every prior within an
 imprecise-Dirichlet neighbourhood of the estimated one: \code{s} additional
 records of unknown species (Walley 1996; Walley's recommended range is
-1-2), against the prior's own concentration \code{N} (median \code{alpha + beta}
-of the observation's kernel-estimated rows). Calls the sequence decides
-are unaffected; a call that rests on the prior is kept only if it would
-survive \code{s} further records of a better-matching taxon. The bound is
-reported as \code{robust_lower_posterior}. Skipped when \code{score_likelihood},
-\code{prior_mean}, \code{prior_alpha} or \code{prior_beta} is missing.}
+1-2), against the site's record concentration \code{N}: the
+\code{prior_site_records} column from \code{\link[=join_priors]{join_priors()}} when present, else the
+median \code{alpha + beta} of the observation's kernel-estimated rows (never
+floor or dark-diversity rows, whose \code{alpha + beta} are pseudo-counts). A
+call is kept only if it survives \code{s} further records of the best-fitting
+taxon outside it. A call the sequence decides by a wide margin is
+unaffected; a marginal call whose candidates carry priors worth only a
+few records is coarsened even when the outside taxon fits somewhat
+worse, because one record then moves the prior noticeably. The bound is
+reported as \code{robust_lower_posterior}. Skipped (plain credible node) when
+\code{score_likelihood}, \code{prior_mean}, \code{prior_alpha} or \code{prior_beta} is
+missing, or when no record count is available.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:

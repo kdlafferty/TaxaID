@@ -120,7 +120,11 @@ A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, wi
 \code{prior_mean}, \code{prior_alpha}, and \code{prior_beta} added. All input columns are
 preserved. Additional columns from \code{taxaexpect_priors}
 (e.g. \code{alpha}, \code{beta}, \code{model_tier}) are included from the
-join.
+join. \code{prior_site_records}: the site x habitat's kernel prior
+concentration (median \code{alpha + beta} of its kernel-estimated rows), the
+record count \code{\link[=posterior_consensus]{posterior_consensus()}}'s \code{robust_prior_s} check uses; \code{NA}
+when \code{taxaexpect_priors} has no \code{prior_branch} or the site has no
+kernel-estimated rows.
 }
 \description{
 Bridges the gap between TaxaLikely likelihoods and
