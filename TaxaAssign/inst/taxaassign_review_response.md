@@ -872,3 +872,22 @@ corrected likelihood model, s = 1 vs off: F6 (rare species vs a close, 136x comm
 wrong 12S 70 -> 35%, 18S 95 -> 71%; T3 (unrecorded species vs a common congener) wrong 11 -> 3%,
 36 -> 7%; cost on the legitimate case C-1, species calls 89 -> 80%, 85 -> 78%. The margin scales
 with the records behind the prior, so sparsely recorded sites coarsen most.
+
+### 2026-10-02: credible node on per-row (rank, name) ancestry; consensus_limit
+
+Spec from the workflow peer and package review, under the maintainer's sequencing (generic
+missing-rank rule and rank ceiling first, backbone decision after). `.credible_node()` now takes
+every row of the observation: each named row adds its posterior to the (rank, name) nodes its own
+lineage carries, a row with no value at a rank joins no node there but stays in the
+denominator, no rank is imputed, and rows with no `taxon_name` count in the denominator only
+(their rank columns are not trusted as a position). Under `"credible_node"` the denominator is
+now always every row; `unnamed_in_threshold` governs `"lca"` only (with its default TRUE the
+result was already the same). The plain and robust rules share one implementation. Most of the
+ancestry behaviour was already true of the per-rank aggregation; the new tests pin it,
+including a ragged case (row A has order without class, row B class without order: neither node
+borrows the other's mass). New column `consensus_limit` says why a call is coarser than the
+finest rank: "backbone" (at a finer rank, rows resolved to that rank or finer but with no value
+there would have let a node reach the threshold that does not reach it alone), "robust_prior"
+(the plain rule would have called finer), "threshold" (mass spread across named alternatives).
+A hypothesis named at a coarser rank (a ring row) lacks finer ranks by design and does not count
+as a lineage gap. `rank_system` may run to phylum and kingdom when those columns exist.

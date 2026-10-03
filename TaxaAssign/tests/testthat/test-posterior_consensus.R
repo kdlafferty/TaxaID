@@ -1618,3 +1618,69 @@ test_that("a prior from many records survives the robust rule", {
 test_that("robust_prior_s is validated", {
   expect_error(.rb(.rb_df(c(1, 1), c(0.5, 0.5), 10), robust_prior_s = -1), "non-negative")
 })
+
+# ---- credible node on per-row (rank, name) ancestry ---------------------------
+.anc <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("phylum", "class", "order", "family", "genus", "species"),
+  consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0, ...)))
+.anc_df <- function(post, class, order, family = c("F1", "F2", "F3"), genus = c("G1", "G2", "G3")) {
+  data.frame(observation_id = "E1", taxon_name = paste(genus, c("a", "b", "c")),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    phylum = "Chordata", class = class, order = order, family = family, genus = genus,
+    posterior_point_est = post, stringsAsFactors = FALSE)
+}
+
+test_that("a row lacking a rank stays in the denominator as a non-member", {
+  # class known for 0.6 of the mass, missing for 0.4: Actinopteri holds 0.6,
+  # not 0.6 / 0.6, so no class call; the phylum carries every row
+  df <- .anc_df(c(0.3, 0.3, 0.4), class = c("Actinopteri", "Actinopteri", NA),
+    order = c("O1", "O2", "O3"))
+  out <- .anc(df)
+  expect_equal(out$consensus_taxon, "Chordata")
+  expect_equal(out$consensus_rank, "phylum")
+  expect_equal(out$consensus_limit, "backbone")
+  # unnamed rows count too
+  df2 <- rbind(.anc_df(c(0.5, 0.45, 0), class = "C1", order = "O1"),
+    transform(.anc_df(0.05, "C1", "O1")[1, ], taxon_name = NA, taxon_name_rank = NA))
+  expect_equal(.anc(df2)$consensus_rank, "order") # 0.95 named / 1.0 total, genus split
+  df2$posterior_point_est[4] <- 0.2
+  df2$posterior_point_est[1:2] <- c(0.4, 0.4)
+  expect_true(is.na(.anc(df2)$consensus_taxon)) # 0.8 of 1.0: nothing credible
+})
+
+test_that("ragged lineages: each row feeds only the ancestors it carries", {
+  # row A: order O1, no class. row B: class C1, no order. Neither is
+  # imputed from the other, so neither order O1 nor class C1 holds A + B.
+  df <- .anc_df(c(0.5, 0.45, 0.05), class = c(NA, "C1", "C1"), order = c("O1", NA, "O1"))
+  out <- .anc(df)
+  expect_equal(out$consensus_rank, "phylum")
+  expect_equal(out$consensus_limit, "backbone")
+  # the same posteriors with complete lineages give the order call
+  full <- .anc_df(c(0.5, 0.45, 0.05), class = "C1", order = "O1")
+  expect_equal(.anc(full)$consensus_taxon, "O1")
+  expect_equal(.anc(full)$consensus_limit, "threshold")
+})
+
+test_that("consensus_limit separates threshold-limited from backbone-limited calls", {
+  # complete lineages, mass spread across two genera: threshold-limited
+  spread <- .anc_df(c(0.5, 0.48, 0.02), class = "C1", order = "O1", family = "F1")
+  out <- .anc(spread)
+  expect_equal(out$consensus_taxon, "F1")
+  expect_equal(out$consensus_limit, "threshold")
+  # a species call is not coarse
+  sp <- .anc_df(c(0.97, 0.02, 0.01), class = "C1", order = "O1")
+  expect_true(is.na(.anc(sp)$consensus_limit))
+  # a hypothesis named at family has no genus by design, not a lineage gap
+  ring <- .anc_df(c(0.5, 0.48, 0.02), class = "C1", order = "O1", family = "F1")
+  ring$taxon_name[2] <- "F1"; ring$taxon_name_rank[2] <- "family"; ring$genus[2] <- NA
+  ring$hypothesis_type[2] <- "unreferenced_genus"
+  expect_equal(.anc(ring)$consensus_limit, "threshold")
+  # lca method leaves the column NA
+  expect_true(is.na(suppressWarnings(suppressMessages(posterior_consensus(spread,
+    rank_system = c("family", "genus", "species"), likelihood_consensus = FALSE)))$consensus_limit))
+})
+
+test_that("the robust rule stamps a call it coarsened", {
+  df <- .rb_df(c(1, 1), c(0.0097, 0.0003), N = 30)
+  expect_equal(.rb(df)$consensus_limit, "robust_prior")
+})

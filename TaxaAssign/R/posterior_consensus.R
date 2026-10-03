@@ -100,17 +100,25 @@
 #'   hypotheses cannot reach the threshold of the total is reported
 #'   unresolved (`consensus_reason = "unnamed_mass"`). `FALSE` measures the
 #'   threshold against named mass only. `unnamed_mass` is reported either way.
+#'   Applies to `consensus_method = "lca"`; `"credible_node"` always keeps
+#'   every row in the denominator.
 #' @param consensus_method `"lca"` (default) or `"credible_node"`. `"lca"`
 #'   takes the smallest top set of hypotheses reaching `cumulative_threshold`
 #'   and reports their lowest common taxon. `"credible_node"` sums the
 #'   posterior of every hypothesis under each taxon, rank by rank from the
 #'   finest, and reports the finest taxon holding at least
-#'   `cumulative_threshold` of the total (unnamed mass included when
-#'   `unnamed_in_threshold = TRUE`); no hypothesis is dropped below
-#'   `min_posterior`, and a hypothesis named at a coarser rank (an
-#'   unsequenced genus of a family, say) counts toward that taxon and its
-#'   ancestors. Unresolved (`consensus_reason = "no_credible_node"`) when no
-#'   taxon at any rank in `rank_system` holds the threshold.
+#'   `cumulative_threshold` of the total posterior of ALL rows; no hypothesis
+#'   is dropped below `min_posterior`, and a hypothesis named at a coarser
+#'   rank (an unsequenced genus of a family, say) counts toward that taxon and
+#'   its ancestors. Each row counts toward the (rank, name) nodes its own
+#'   lineage carries: a row with no value at a rank (a backbone with no class
+#'   for ray-finned fishes, say) joins no node there but stays in the
+#'   denominator, and no rank is ever imputed. Rows with no `taxon_name` count
+#'   in the denominator only. `rank_system` may run up to `"phylum"` and
+#'   `"kingdom"` when those columns are present. Unresolved
+#'   (`consensus_reason = "no_credible_node"`) when no node at any rank in
+#'   `rank_system` holds the threshold. Why a call is coarser than the finest
+#'   rank is reported in `consensus_limit`.
 #' @param likelihood_consensus Logical (default `TRUE`). Also compute the
 #'   consensus the likelihoods support when the prior is flattened among the
 #'   named candidates (each gets the mean of their priors; generic
@@ -360,6 +368,15 @@
 #'       named hypothesis).}
 #'     \item{`tail_mass`}{Summed posterior of the hypotheses below
 #'       `min_posterior`: how much mass sat in the tail block.}
+#'     \item{`consensus_limit`}{With `consensus_method = "credible_node"`:
+#'       why the call is coarser than the finest rank in `rank_system` (NA when
+#'       it is not coarser). `"backbone"`: at some finer rank, rows resolved
+#'       to that rank or finer but with no value there (a gap in their
+#'       lineage) hold enough posterior that a node could have reached the
+#'       threshold had their lineage been complete. `"robust_prior"`: the
+#'       call would be finer without the robust-prior check
+#'       (`robust_prior_s`). `"threshold"`: the posterior is spread across
+#'       named alternatives at every finer rank.}
 #'     \item{`robust_lower_posterior`}{With `consensus_method =
 #'       "credible_node"` and `robust_prior_s > 0`: the lower bound of the
 #'       reported taxon's posterior over the imprecise-prior neighbourhood
@@ -887,27 +904,78 @@ posterior_consensus <- function(posterior_df,
 #' compute_posterior()). Consolidates a pattern repeated ~8 times below for
 #' the winner_* pass-through columns.
 #' @noRd
-# Deepest credible node: for each rank from finest to coarsest, sum the
-# posterior of every hypothesis under each taxon at that rank (a hypothesis
-# named at a coarser rank, e.g. an unsequenced genus of family X, counts
-# toward X and its ancestors only) and return the first taxon holding at least
-# `threshold` of `total`. NA when no taxon at any rank does.
-.credible_node <- function(named_all, posterior_col, rank_system, total, threshold) {
-  post <- named_all[[posterior_col]]
-  post[is.na(post)] <- 0
-  if (!is.finite(total) || total <= 0) {
-    return(list(taxon = NA_character_, rank = NA_character_))
+# Deepest credible node, on each row's own (rank, name) ancestry. A node is a
+# (rank, name) pair; a row adds its weight to every node it actually carries
+# (a hypothesis named at a coarser rank, e.g. an unsequenced genus of family X,
+# counts toward X and its ancestors only) and to none at a rank where its
+# lineage has no value. No rank is imputed, and a row lacking a rank stays in
+# the denominator as a non-member of every node at that rank. Rows without a
+# name have no defined place in the tree: they count in the denominator only.
+# The first node, finest rank first, holding at least `threshold` of the total
+# is returned. With eps > 0 a node's share is its lower posterior over the
+# eps-contamination class around the prior (see .credible_node_robust()).
+#
+# `limit` says why a call is not at the finest rank of `rank_system` (NA when
+# it is): "backbone" when, at some finer rank, the best node plus the weight of
+# rows that are resolved to that rank or finer but carry no value there would
+# reach the threshold although the node alone does not (a complete lineage
+# could have given a finer call); "robust_prior" takes precedence when the
+# plain rule (eps = 0) would have called a finer node; otherwise "threshold"
+# (the weight is spread across named alternatives).
+.credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL) {
+  out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_)
+  w[is.na(w) | w < 0] <- 0
+  tot <- sum(w)
+  if (!is.finite(tot) || tot <= 0) return(out)
+  if (eps > 0) L[is.na(L) | L < 0] <- 0
+  named <- !is.na(chunk$taxon_name)
+  row_depth <- if ("taxon_name_rank" %in% names(chunk)) match(chunk$taxon_name_rank, rank_system) else rep(NA_integer_, nrow(chunk))
+  share <- function(inn, e) {
+    if (e <= 0) return(sum(w[inn]) / tot)
+    Ls <- if (any(!inn)) max(L[!inn]) else 0
+    (1 - e) * sum(w[inn]) / ((1 - e) * tot + e * Ls)
   }
-  for (r in rev(rank_system)) {
-    vals <- .extract_rank_values(named_all, r)
-    if (is.null(vals) || all(is.na(vals))) next
-    mass <- tapply(post[!is.na(vals)], vals[!is.na(vals)], sum)
-    best <- which.max(mass)
-    if (length(best) && mass[best] / total >= threshold) {
-      return(list(taxon = names(mass)[best], rank = r))
+  vals <- lapply(rank_system, function(r) {
+    v <- .extract_rank_values(chunk, r)
+    if (is.null(v)) v <- rep(NA_character_, nrow(chunk))
+    v[!named] <- NA_character_
+    v
+  })
+  best_at <- function(i, e) {
+    v <- vals[[i]]
+    nodes <- unique(v[!is.na(v)])
+    if (!length(nodes)) return(list(node = NA_character_, p = 0))
+    p <- vapply(nodes, function(nd) share(!is.na(v) & v == nd, e), numeric(1))
+    b <- which.max(p)
+    list(node = nodes[b], p = unname(p[b]))
+  }
+  call_i <- NA_integer_
+  for (i in rev(seq_along(rank_system))) {
+    b <- best_at(i, eps)
+    if (b$p >= threshold) {
+      call_i <- i
+      out$taxon <- b$node
+      out$rank <- rank_system[i]
+      if (eps > 0) out$lower <- b$p
+      break
     }
   }
-  list(taxon = NA_character_, rank = NA_character_)
+  finer <- if (is.na(call_i)) seq_along(rank_system) else seq_len(length(rank_system))[-seq_len(call_i)]
+  if (!length(finer)) return(out)
+  plain <- lapply(finer, best_at, e = 0)
+  backbone <- vapply(seq_along(finer), function(k) {
+    i <- finer[k]
+    gap <- named & is.na(vals[[i]]) & (is.na(row_depth) | row_depth >= i)
+    plain[[k]]$p < threshold && any(gap) && plain[[k]]$p + sum(w[gap]) / tot >= threshold
+  }, logical(1))
+  out$limit <- if (eps > 0 && any(vapply(plain, function(b) b$p >= threshold, logical(1)))) {
+    "robust_prior"
+  } else if (any(backbone)) {
+    "backbone"
+  } else {
+    "threshold"
+  }
+  out
 }
 
 # Likelihood-only consensus and the prior's role in the reported call.
@@ -1032,31 +1100,9 @@ posterior_consensus <- function(posterior_df,
   N <- suppressWarnings(stats::median(conc[kern & is.finite(conc)]))
   if (!is.finite(N)) N <- suppressWarnings(stats::median(conc[is.finite(conc)]))
   if (!is.finite(N) || N <= 0) {
-    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_))
+    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_))
   }
-  eps <- s / (N + s)
-  w <- L * pi
-  tot <- sum(w)
-  if (!is.finite(tot) || tot <= 0) {
-    return(list(taxon = NA_character_, rank = NA_character_, lower = NA_real_))
-  }
-  for (r in rev(rank_system)) {
-    v <- .extract_rank_values(chunk, r)
-    if (is.null(v) || all(is.na(v))) next
-    best <- NA_character_
-    bestp <- -1
-    for (nd in unique(v[!is.na(v)])) {
-      inn <- !is.na(v) & v == nd
-      Ls <- if (any(!inn)) max(L[!inn]) else 0
-      pl <- (1 - eps) * sum(w[inn]) / ((1 - eps) * tot + eps * Ls)
-      if (pl > bestp) {
-        bestp <- pl
-        best <- nd
-      }
-    }
-    if (bestp >= threshold) return(list(taxon = best, rank = r, lower = bestp))
-  }
-  list(taxon = NA_character_, rank = NA_character_, lower = NA_real_)
+  .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L)
 }
 
 .row_col_or <- function(row, col, default = NA_real_) {
@@ -1228,19 +1274,22 @@ posterior_consensus <- function(posterior_df,
     lca$consensus_reason <- "unnamed_mass"
   }
   robust_lower <- NA_real_
+  consensus_limit <- NA_character_
   if (consensus_method == "credible_node") {
     can_robust <- robust_prior_s > 0 &&
       all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
     node <- if (can_robust) {
       .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold)
     } else {
-      total <- named_total + extra_denom
-      .credible_node(named_all, posterior_col, rank_system, total, cumulative_threshold)
+      # every row is in the denominator, named or not (unnamed_in_threshold
+      # governs the "lca" method only)
+      .credible_node(chunk, chunk[[posterior_col]], rank_system, cumulative_threshold)
     }
     lca$taxon <- node$taxon
     lca$rank <- node$rank
     lca$consensus_reason <- if (is.na(node$taxon)) "no_credible_node" else "credible_node"
     if (can_robust) robust_lower <- node$lower
+    consensus_limit <- node$limit
   }
 
   # --- Discrimination diagnostics ------------------------------------------
@@ -1484,6 +1533,7 @@ posterior_consensus <- function(posterior_df,
     tail_pooled = tail_pooled,
     unnamed_mass = unnamed_mass,
     robust_lower_posterior = robust_lower,
+    consensus_limit = consensus_limit,
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
     winner_likelihood = winner_likelihood,
@@ -1667,6 +1717,7 @@ posterior_consensus <- function(posterior_df,
     tail_pooled = NA,
     unnamed_mass = NA_real_,
     robust_lower_posterior = NA_real_,
+    consensus_limit = NA_character_,
     winner_prior = NA_real_,
     winner_theta_mean = NA_real_,
     winner_likelihood = NA_real_,
