@@ -652,3 +652,25 @@ TaxaMatch documents it "in fish". Both assumptions are now explicit and gated; n
 verifiable per accession. Open for the maintainer: the marker -> genome mapping is an internal
 constant next to the gate (package review's recommendation), not an exported registry. 16S is
 treated as mitochondrial because a hybrid label implies a eukaryote.
+
+### 2026-10-03: a skipped item in a long loop is announced as it happens
+
+`warning()` is DEFERRED to the end of the run under `Rscript`, so a failure
+inside a long loop that CATCHES the error, SKIPS the item and continues is
+invisible until the script exits -- the run looks healthy and quietly returns a
+smaller result. A real audit nearly read a silent log as a clean bill of health
+across 22,080 NCBI lookups for exactly this reason. Each such site now also
+`message()`s. The `warning()` calls are unchanged, so anything programmatic that
+depends on them is unaffected; and a caller's `suppressWarnings()` no longer
+hides the operator-facing line, which was a second silent-failure route.
+
+Five sites in `blast_sequences.R`, all PER BATCH (tens to hundreds per run, and
+only on failure): submission failed, no results retrieved, and the taxonomy,
+accession and location fetches for a batch. Tests in `test-blast.R` assert that
+`.blast_remote()` both messages and still warns on a submission failure, and
+messages on an empty poll result, with `.blast_submit`/`.blast_poll` mocked.
+
+NOT changed: failure paths that warn at call time with the user present (input
+validation), and single-shot failures that abort rather than continue. The
+maintainer's condition was that this must not produce thousands of repeat lines,
+so the choice of sites is deliberate -- see the volume note where it applies.

@@ -969,6 +969,7 @@ verify_taxon_names <- function(name_list,
         }
       },
       error = function(e) {
+        message("NCBI summary batch failed: ", conditionMessage(e))
         warning("NCBI summary batch failed: ", conditionMessage(e), call. = FALSE)
       }
     )

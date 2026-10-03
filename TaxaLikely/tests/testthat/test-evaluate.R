@@ -969,3 +969,57 @@ test_that("evaluate_likelihoods: a coarse top hit with blank ranks does not anch
   expect_equal(h3$taxon_name, "Leuciscidae")
   expect_false(any(is.na(liks$taxon_name[liks$hypothesis_type != "specific_candidate"])))
 })
+
+# A failure inside the per-observation loop is caught, the observation is
+# skipped, and the run continues with a quietly smaller result. warning() is
+# DEFERRED to exit under Rscript, so on a long production run the operator
+# learns nothing until it ends. These tests pin the two halves of the fix:
+# the failure is announced mid-run, and it is announced ONCE however many
+# observations fail -- this loop runs once per observation_id, tens of
+# thousands on a real dataset, so one message per failure would bury the
+# console and is exactly what the maintainer ruled out.
+test_that("evaluate_likelihoods announces the first per-observation failure mid-run", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df <- .make_match_df()
+  testthat::local_mocked_bindings(
+    .evaluate_one_query = function(...) stop("injected failure")
+  )
+  expect_message(
+    suppressWarnings(evaluate_likelihoods(df, params, c("family", "genus", "species"))),
+    "produced no usable likelihoods; further failures are counted, not printed"
+  )
+})
+
+test_that("evaluate_likelihoods announces a per-observation failure ONCE, not per observation", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df <- .make_match_df()
+  # The shipped fixture has ONE observation, which cannot demonstrate a
+  # per-observation volume guarantee at all -- a skip here would leave the
+  # guarantee untested while looking covered. Build a multi-observation frame.
+  df2 <- df
+  df2$observation_id <- paste0(df2$observation_id, "_b")
+  df3 <- df
+  df3$observation_id <- paste0(df3$observation_id, "_c")
+  df <- rbind(df, df2, df3)
+  n_obs <- length(unique(df$observation_id))
+  expect_gte(n_obs, 3L)
+  testthat::local_mocked_bindings(
+    .evaluate_one_query = function(...) stop("injected failure")
+  )
+  msgs <- character(0)
+  withCallingHandlers(
+    suppressWarnings(evaluate_likelihoods(df, params, c("family", "genus", "species"))),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  per_query <- grep("further failures are counted, not printed", msgs, fixed = TRUE)
+  expect_length(per_query, 1L)
+  # the total is reported once, after the loop, however many failed
+  total <- grep("observation_id\\(s\\) produced no usable likelihoods\\.$", trimws(msgs))
+  expect_length(total, 1L)
+  expect_true(grepl(sprintf("%d of %d", n_obs, n_obs), msgs[total]))
+})

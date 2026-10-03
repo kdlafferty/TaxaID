@@ -1166,3 +1166,38 @@ ring. Its variance already includes the between-group spread, so a heterogeneous
 (weak) likelihood rather than a falsely precise one; no fallback threshold is added. Tests: a
 six-rank fixture builds order, class and phylum rings and no kingdom ring (one group); the phylum
 ring row is named by the anchor's phylum. Both fail on the previous code.
+
+### 2026-10-03: a skipped item in a long loop is announced as it happens
+
+`warning()` is DEFERRED to the end of the run under `Rscript`, so a failure
+inside a long loop that CATCHES the error, SKIPS the item and continues is
+invisible until the script exits -- the run looks healthy and quietly returns a
+smaller result. A real audit nearly read a silent log as a clean bill of health
+across 22,080 NCBI lookups for exactly this reason. Each such site now also
+`message()`s. The `warning()` calls are unchanged, so anything programmatic that
+depends on them is unaffected; and a caller's `suppressWarnings()` no longer
+hides the operator-facing line, which was a second silent-failure route.
+
+Two sites, and they needed different treatment because the loop granularity
+differs -- which is the whole of the maintainer's volume condition:
+
+- `fetch.R` taxonomy resolution, per TAXON. That loop already prints one line
+  per taxon ("resolving taxonomy for N unique taxids"), so a failure line adds
+  no new class of output. Plain `message()`.
+- `evaluate.R` per OBSERVATION, which is tens of thousands on a real run
+  (CalIntertidal 12S has 13,735). One message per failure would bury the
+  console, so the FIRST failure is announced -- naming the observation and
+  saying that further failures are counted, not printed -- and the existing
+  end-of-loop total is promoted to a `message()` as well, since that total was
+  itself a deferred `warning()`. At most two lines however many observations
+  fail. Two tests in `test-evaluate.R` pin both halves: the first-failure
+  message, and that it appears EXACTLY ONCE across a three-observation fixture
+  where every observation fails. The shipped fixture has one observation and
+  could not demonstrate the guarantee at all, so the volume test builds its own
+  multi-observation frame rather than skipping -- a skipped test would have left
+  the guarantee untested while looking covered.
+
+NOT changed: failure paths that warn at call time with the user present (input
+validation), and single-shot failures that abort rather than continue. The
+maintainer's condition was that this must not produce thousands of repeat lines,
+so the choice of sites is deliberate -- see the volume note where it applies.

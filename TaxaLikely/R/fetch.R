@@ -2021,6 +2021,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
         tax_map <- .fetch_taxonomy_map(unique_taxids, desired_ranks)
 
         if (is.null(tax_map) || nrow(tax_map) == 0L) {
+          message(sprintf("Taxonomy resolution failed for '%s'", taxa[i]))
           warning(sprintf("Taxonomy resolution failed for '%s'", taxa[i]),
             call. = FALSE
           )

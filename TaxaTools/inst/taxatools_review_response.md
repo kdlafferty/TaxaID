@@ -316,3 +316,24 @@ code too. Those strain labels reached species calls (COI 698 of 5,918, 18S 175 o
 the workflow never called this function on the match rows' `species`, not because it mis-cleaned.
 Name-keyed caches will re-resolve the changed names on first run: slower, not wrong. In
 CalIntertidal these are `gbif_rank_lookup.rds` and the sampling-group harmonise caches.
+
+### 2026-10-03: a skipped item in a long loop is announced as it happens
+
+`warning()` is DEFERRED to the end of the run under `Rscript`, so a failure
+inside a long loop that CATCHES the error, SKIPS the item and continues is
+invisible until the script exits -- the run looks healthy and quietly returns a
+smaller result. A real audit nearly read a silent log as a clean bill of health
+across 22,080 NCBI lookups for exactly this reason. Each such site now also
+`message()`s. The `warning()` calls are unchanged, so anything programmatic that
+depends on them is unaffected; and a caller's `suppressWarnings()` no longer
+hides the operator-facing line, which was a second silent-failure route.
+
+One site: `.ncbi_batch_summary()`, per batch of 100 taxids. This is the site a
+lineage audit hit -- it warned correctly and the operator saw nothing for the
+duration of the run. Test in `test-verify_taxon_names.R` mocks
+`rentrez::entrez_summary` to fail and asserts both the message and the warning.
+
+NOT changed: failure paths that warn at call time with the user present (input
+validation), and single-shot failures that abort rather than continue. The
+maintainer's condition was that this must not produce thousands of repeat lines,
+so the choice of sites is deliberate -- see the volume note where it applies.

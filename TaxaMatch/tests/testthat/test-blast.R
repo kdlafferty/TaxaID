@@ -1159,3 +1159,52 @@ test_that(".resolve_taxonomy_by_acc() retries a failed accession lookup five tim
   expect_identical(n_calls, 5L)
   expect_setequal(attr(out, "failed_accessions"), c("ACC1", "ACC2"))
 })
+
+# A batch whose submission or polling fails is SKIPPED and the run continues
+# with fewer hits. warning() is deferred to exit under Rscript, so on a long
+# remote BLAST the operator could not tell a partial run from a complete one
+# until it ended. Both failures are now announced as they happen; the warnings
+# are unchanged, so anything programmatic that depends on them still works.
+test_that(".blast_remote() announces a skipped batch as it happens, and still warns", {
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) NULL, # submission failure
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+  expect_message(
+    suppressWarnings(TaxaMatch:::.blast_remote(
+      .cb_seq_df(2L),
+      database = "nt", program = "blastn", megablast = FALSE,
+      max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+      verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 99L
+    )),
+    "BLAST submission failed. Skipping."
+  )
+  expect_warning(
+    suppressMessages(TaxaMatch:::.blast_remote(
+      .cb_seq_df(2L),
+      database = "nt", program = "blastn", megablast = FALSE,
+      max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+      verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 99L
+    )),
+    "BLAST submission failed. Skipping."
+  )
+})
+
+test_that(".blast_remote() announces an empty poll result as it happens", {
+  testthat::local_mocked_bindings(
+    .blast_submit = function(...) "RID_FAKE",
+    .blast_poll = function(...) NULL, # no results retrieved
+    .blast_rate_limit_sleep = function(...) invisible(NULL),
+    .package = "TaxaMatch"
+  )
+  expect_message(
+    suppressWarnings(TaxaMatch:::.blast_remote(
+      .cb_seq_df(2L),
+      database = "nt", program = "blastn", megablast = FALSE,
+      max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
+      verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 99L
+    )),
+    "No results retrieved"
+  )
+})

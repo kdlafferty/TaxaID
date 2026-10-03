@@ -905,6 +905,7 @@ blast_sequences <- function(seq_df,
     failure_weight <- 0
 
     if (is.null(rid)) {
+      message(sprintf("Batch %d/%d: BLAST submission failed. Skipping.", i, length(batches)))
       warning(sprintf("Batch %d/%d: BLAST submission failed. Skipping.", i, length(batches)))
       failed_batches <- c(failed_batches, i)
       failure_weight <- 1
@@ -915,7 +916,8 @@ blast_sequences <- function(seq_df,
       result_text <- .blast_poll(base_url, rid, verbose, max_wait = max_wait)
 
       if (is.null(result_text)) {
-        warning(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
+        message(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
+      warning(sprintf("Batch %d/%d: No results retrieved (RID: %s). Skipping.", i, length(batches), rid))
         failed_batches <- c(failed_batches, i)
         failure_weight <- 1
       } else if (.blast_server_rejected(result_text)) {
@@ -1767,7 +1769,8 @@ blast_sequences <- function(seq_df,
             # returned as 400) rather than giving up after 6 s.
             .blast_rate_limit_sleep(2^attempt)
           } else {
-            warning(sprintf("Taxonomy fetch failed for batch %d: %s", i, e$message))
+            message(sprintf("Taxonomy fetch failed for batch %d: %s", i, e$message))
+        warning(sprintf("Taxonomy fetch failed for batch %d: %s", i, e$message))
           }
           FALSE
         }
@@ -1902,7 +1905,8 @@ blast_sequences <- function(seq_df,
           if (attempt < 5L) {
             .blast_rate_limit_sleep(2^attempt)
           } else if (verbose) {
-            warning(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
+            message(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
+        warning(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
           }
         }
       )
@@ -2078,7 +2082,8 @@ blast_sequences <- function(seq_df,
           if (attempt < 3L) {
             Sys.sleep(attempt * 2)
           } else if (verbose) {
-            warning(sprintf("Location fetch failed for batch %d: %s", i, e$message))
+            message(sprintf("Location fetch failed for batch %d: %s", i, e$message))
+        warning(sprintf("Location fetch failed for batch %d: %s", i, e$message))
           }
         }
       )

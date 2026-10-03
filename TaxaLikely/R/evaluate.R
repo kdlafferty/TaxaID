@@ -1678,6 +1678,16 @@ evaluate_likelihoods <- function(match_df,
     )
     if (is.null(result)) {
       n_failed <- n_failed + 1L
+      # Deliberately only the FIRST failure, and never one per query: this loop
+      # runs once per observation_id (tens of thousands on a real run), so a
+      # message each time would bury the console. The first tells the operator
+      # mid-run that something is failing; the total is reported after the loop.
+      if (n_failed == 1L) {
+        message(sprintf(
+          "evaluate_likelihoods: observation_id '%s' produced no usable likelihoods; further failures are counted, not printed.",
+          sid
+        ))
+      }
     } else if (nrow(result) == 0L) {
       zero_row_sids <- c(zero_row_sids, sid)
     } else {
@@ -1691,6 +1701,10 @@ evaluate_likelihoods <- function(match_df,
   message(sprintf("Evaluation complete in %.1f seconds.", elapsed))
 
   if (n_failed > 0L) {
+    message(sprintf(
+      "evaluate_likelihoods: %d of %d observation_id(s) produced no usable likelihoods.",
+      n_failed, length(query_groups)
+    ))
     warning(sprintf(
       "evaluate_likelihoods: %d of %d observation_id(s) produced no usable likelihoods.",
       n_failed, length(query_groups)

@@ -294,3 +294,24 @@ test_that("a response with no 'names' field is reported as malformed, not as a r
   expect_false(any(result$verified))
   expect_true(all(is.na(result$matched_name)))
 })
+
+# A failed NCBI summary batch is caught, the batch is skipped, and the caller
+# continues with fewer records. warning() is DEFERRED to exit under Rscript, so
+# on a long run (22,080 names at ~15 min per 2,000 in one real audit) the
+# operator sees nothing until it ends and a quiet log reads as a clean run.
+# The failure is now also announced immediately. The warning is kept so that
+# anything programmatic depending on it is unaffected.
+test_that(".ncbi_batch_summary announces a failed batch immediately, and still warns", {
+  testthat::local_mocked_bindings(
+    entrez_summary = function(...) stop("injected NCBI failure"),
+    .package = "rentrez"
+  )
+  expect_message(
+    suppressWarnings(.ncbi_batch_summary(c("1", "2"), delay = 0)),
+    "NCBI summary batch failed: injected NCBI failure"
+  )
+  expect_warning(
+    suppressMessages(.ncbi_batch_summary(c("1", "2"), delay = 0)),
+    "NCBI summary batch failed: injected NCBI failure"
+  )
+})
