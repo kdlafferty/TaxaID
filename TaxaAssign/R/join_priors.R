@@ -1672,7 +1672,7 @@ join_priors <- function(likelihoods,
       is.finite(taxaexpect_priors$alpha + taxaexpect_priors$beta), , drop = FALSE]
     if (nrow(kp) > 0L) {
       site_n <- tapply(kp$alpha + kp$beta, paste(kp$grid_id, kp$main_habitat, sep = "\r"), stats::median)
-      result$prior_site_records <- unname(site_n[paste(result$grid_id, result$main_habitat, sep = "\r")])
+      result$prior_site_records <- as.numeric(site_n[paste(result$grid_id, result$main_habitat, sep = "\r")])
     }
   }
 

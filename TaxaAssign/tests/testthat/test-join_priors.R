@@ -808,5 +808,6 @@ test_that("join_priors stamps the site's kernel record concentration on every ro
   out <- suppressWarnings(suppressMessages(join_priors(lk, pr,
     site = list(grid_id = "G1", main_habitat = "Marine"), backbone_id = 11L)))
   # median of 1000, 1000, 2000 over kernel rows only; the floor row is ignored
-  expect_true(all(out$prior_site_records == 1000))
+  expect_true("prior_site_records" %in% names(out))
+  expect_equal(unname(out$prior_site_records), rep(1000, nrow(out)))
 })

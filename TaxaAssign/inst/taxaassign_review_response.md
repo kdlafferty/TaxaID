@@ -921,5 +921,18 @@ default.
 Found by the workflow peer: at ESV grain a combined row inherited one site's `prior_site_records`,
 so the robust check would use an arbitrary site's record count. The combined prior pools the
 sites' precision (its concentration is at least the sum of theirs), so the record count behind it
-is now the sum over the combined sites, consistent with the prior it accompanies. (The test fails
-on the previous code, which returned the first site's 1,000 instead of 4,000.)
+is now the sum over the combined sites. The rule is derived from an invariant the function already
+guarantees, `phi_combined >= sum(phi_i)`, so the robust check sees the same evidence base the
+combined prior itself claims and cannot drift out of step with it as a chosen constant could. (The
+test fails on the previous code, which returned the first site's 1,000 instead of 4,000.)
+
+The join_priors test for `prior_site_records` first asserted `all(out$prior_site_records == 1000)`,
+which is TRUE on old code (absent column: `all(logical(0))`), the third vacuous assertion found in
+this screen. Rewritten as a presence check plus `expect_equal()` on the values, it fails on the old
+code and also caught a real defect: the column carried tapply()'s `dim` attribute, now stripped.
+Named case checked (18S_ESV_140800, Antithamnionella spirographidis, posterior 0.993, no call under
+robust_prior_s = 1): it is NOT this defect. The best-matching reference is Gelidium sesquipedale
+(likelihood 1.26x the winner's, floor prior), the winner's 0.993 comes from a ~1,800x prior, and
+at San Juanico (262 records) that prior is worth ~1.5 records; one more record of Gelidium flips
+it. No call (on family/genus/species) is the intended robust outcome, under the site's N and the
+kernel rows' N alike.
