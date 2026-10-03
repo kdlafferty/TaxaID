@@ -171,19 +171,27 @@ the LCA but is mass the call does not hold. \code{TRUE} counts it in the
 denominator of \code{cumulative_threshold}, and an observation whose named
 hypotheses cannot reach the threshold of the total is reported
 unresolved (\code{consensus_reason = "unnamed_mass"}). \code{FALSE} measures the
-threshold against named mass only. \code{unnamed_mass} is reported either way.}
+threshold against named mass only. \code{unnamed_mass} is reported either way.
+Applies to \code{consensus_method = "lca"}; \code{"credible_node"} always keeps
+every row in the denominator.}
 
 \item{consensus_method}{\code{"lca"} (default) or \code{"credible_node"}. \code{"lca"}
 takes the smallest top set of hypotheses reaching \code{cumulative_threshold}
 and reports their lowest common taxon. \code{"credible_node"} sums the
 posterior of every hypothesis under each taxon, rank by rank from the
 finest, and reports the finest taxon holding at least
-\code{cumulative_threshold} of the total (unnamed mass included when
-\code{unnamed_in_threshold = TRUE}); no hypothesis is dropped below
-\code{min_posterior}, and a hypothesis named at a coarser rank (an
-unsequenced genus of a family, say) counts toward that taxon and its
-ancestors. Unresolved (\code{consensus_reason = "no_credible_node"}) when no
-taxon at any rank in \code{rank_system} holds the threshold.}
+\code{cumulative_threshold} of the total posterior of ALL rows; no hypothesis
+is dropped below \code{min_posterior}, and a hypothesis named at a coarser
+rank (an unsequenced genus of a family, say) counts toward that taxon and
+its ancestors. Each row counts toward the (rank, name) nodes its own
+lineage carries: a row with no value at a rank (a backbone with no class
+for ray-finned fishes, say) joins no node there but stays in the
+denominator, and no rank is ever imputed. Rows with no \code{taxon_name} count
+in the denominator only. \code{rank_system} may run up to \code{"phylum"} and
+\code{"kingdom"} when those columns are present. Unresolved
+(\code{consensus_reason = "no_credible_node"}) when no node at any rank in
+\code{rank_system} holds the threshold. Why a call is coarser than the finest
+rank is reported in \code{consensus_limit}.}
 
 \item{likelihood_consensus}{Logical (default \code{TRUE}). Also compute the
 consensus the likelihoods support when the prior is flattened among the
@@ -260,6 +268,15 @@ including the members of a pooled tail block (0 when there is no
 named hypothesis).}
 \item{\code{tail_mass}}{Summed posterior of the hypotheses below
 \code{min_posterior}: how much mass sat in the tail block.}
+\item{\code{consensus_limit}}{With \code{consensus_method = "credible_node"}:
+why the call is coarser than the finest rank in \code{rank_system} (NA when
+it is not coarser). \code{"backbone"}: at some finer rank, rows resolved
+to that rank or finer but with no value there (a gap in their
+lineage) hold enough posterior that a node could have reached the
+threshold had their lineage been complete. \code{"robust_prior"}: the
+call would be finer without the robust-prior check
+(\code{robust_prior_s}). \code{"threshold"}: the posterior is spread across
+named alternatives at every finer rank.}
 \item{\code{robust_lower_posterior}}{With \code{consensus_method = "credible_node"} and \code{robust_prior_s > 0}: the lower bound of the
 reported taxon's posterior over the imprecise-prior neighbourhood
 (see \code{robust_prior_s}). \code{NA} otherwise.}
