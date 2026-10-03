@@ -50,6 +50,22 @@ itself -- see \code{\link[TaxaMatch]{convert_taxonomy_backbone}}'s own
 not-found fallback path for the motivating real bug this closes (a
 restored candidate's \code{taxon_name_rank} silently staying
 \code{"species"} after its name was correctly collapsed to genus-only).
+
+Two further attributes, same length: \code{name_qualifier} is
+\code{"cf."} or \code{"aff."} when the name carried that
+open-nomenclature qualifier (leading, as in \code{"cf. Laternula"}, or
+after the genus, as in \code{"Laternula cf. marilina"}), else \code{NA}.
+A qualified name returns its GENUS, with \code{collapsed_to_genus =
+  TRUE}: the qualifier means the species is not asserted, and the
+attribute keeps a qualified genus distinguishable from an asserted one.
+\code{clean_reason} names a structural change, else \code{NA}:
+\code{"subgenus_dropped"} (a parenthesised subgenus after the genus,
+\code{"Allodia (Brachycampta) lugens"} -> \code{"Allodia lugens"}; the
+subgenus is never returned as an epithet), \code{"qualifier"},
+\code{"hybrid_congeneric"} (a hybrid formula whose parents share a
+genus returns that genus) or \code{"hybrid_intergeneric"} (parents in
+different genera return \code{NA}: neither parent is the organism). A
+named nothospecies (\code{"Mentha x piperita"}) is not a formula.
 }
 \description{
 Cleans a character vector of taxon names by normalising whitespace,

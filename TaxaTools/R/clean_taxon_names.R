@@ -63,6 +63,23 @@
 #'   restored candidate's \code{taxon_name_rank} silently staying
 #'   \code{"species"} after its name was correctly collapsed to genus-only).
 #'
+#'
+#'   Two further attributes, same length: \code{name_qualifier} is
+#'   \code{"cf."} or \code{"aff."} when the name carried that
+#'   open-nomenclature qualifier (leading, as in \code{"cf. Laternula"}, or
+#'   after the genus, as in \code{"Laternula cf. marilina"}), else \code{NA}.
+#'   A qualified name returns its GENUS, with \code{collapsed_to_genus =
+#'   TRUE}: the qualifier means the species is not asserted, and the
+#'   attribute keeps a qualified genus distinguishable from an asserted one.
+#'   \code{clean_reason} names a structural change, else \code{NA}:
+#'   \code{"subgenus_dropped"} (a parenthesised subgenus after the genus,
+#'   \code{"Allodia (Brachycampta) lugens"} -> \code{"Allodia lugens"}; the
+#'   subgenus is never returned as an epithet), \code{"qualifier"},
+#'   \code{"hybrid_congeneric"} (a hybrid formula whose parents share a
+#'   genus returns that genus) or \code{"hybrid_intergeneric"} (parents in
+#'   different genera return \code{NA}: neither parent is the organism). A
+#'   named nothospecies (\code{"Mentha x piperita"}) is not a formula.
+#'
 #' @seealso \code{\link{create_taxon_names}} to generate the \code{taxon_name}
 #'   column that is typically passed to this function.
 #'
@@ -103,6 +120,51 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # --- Normalise whitespace; coerce any "NA" string to real NA ---
   x <- stringr::str_squish(as.character(name_vec))
   x[x %in% c("NA", "<NA>")] <- NA_character_
+  n <- length(x)
+  qualifier <- rep(NA_character_, n)
+  reason <- rep(NA_character_, n)
+  force_genus <- rep(FALSE, n)
+
+  # --- Hybrid formulae: "Genus a x Genus b" (a capitalised second parent) ---
+  # One parent is not the organism, so neither is returned as if it were:
+  # parents sharing a genus give that genus; intergeneric crosses give NA. A
+  # named nothospecies ("Mentha x piperita", lower-case after the x) is not a
+  # formula and is left to the abbreviation rule below.
+  # Only a name that itself starts with a capitalised genus: a hedge or other
+  # lower-case lead ("possible X x Y") must keep failing the capital filter.
+  hyb <- !is.na(x) & grepl("^\\[?[A-Z]", x, perl = TRUE) &
+    grepl("\\s[x\u00d7]\\s+[A-Z\\[]", x, perl = TRUE)
+  if (any(hyb)) {
+    parts <- strsplit(x[hyb], "\\s[x\u00d7]\\s+", perl = TRUE)
+    g_of <- function(p) sub("^\\[?([A-Za-z-]+)\\]?.*$", "\\1", stringr::str_squish(p))
+    hyb_gen <- vapply(parts, function(p) {
+      g <- unique(vapply(p, g_of, character(1)))
+      if (length(g) == 1L) g else NA_character_
+    }, character(1))
+    reason[hyb] <- ifelse(is.na(hyb_gen), "hybrid_intergeneric", "hybrid_congeneric")
+    x[hyb] <- hyb_gen
+    force_genus[hyb] <- TRUE
+  }
+
+  # --- Parenthesised subgenus: "Allodia (Brachycampta) ..." ---
+  # Dropped before brackets are stripped below, which would otherwise turn
+  # the subgenus into a fake capitalised epithet ("Allodia Brachycampta").
+  subg <- !is.na(x) & grepl("^[A-Z][a-z-]+\\s+\\([A-Z][a-z-]+\\)", x, perl = TRUE)
+  x[subg] <- sub("^([A-Z][a-z-]+)\\s+\\([A-Z][a-z-]+\\)", "\\1", x[subg], perl = TRUE)
+  reason[subg] <- "subgenus_dropped"
+
+  # --- Open-nomenclature qualifiers "cf." / "aff." ---
+  # A qualified identification asserts the genus only: return the genus and
+  # keep the qualifier, so a qualified genus is distinguishable from an
+  # asserted one. Leading ("cf. Laternula ...") or after the genus
+  # ("Laternula cf. marilina").
+  lead_q <- !is.na(x) & grepl("^(cf|aff)\\.?\\s+(?=[A-Z\\[])", x, perl = TRUE)
+  qualifier[lead_q] <- paste0(sub("^(cf|aff).*$", "\\1", x[lead_q], perl = TRUE), ".")
+  x[lead_q] <- sub("^(cf|aff)\\.?\\s+", "", x[lead_q], perl = TRUE)
+  mid_q <- !is.na(x) & !lead_q & grepl("^\\S+\\s+(cf|aff)\\.?(\\s|$)", x, perl = TRUE)
+  qualifier[mid_q] <- paste0(sub("^\\S+\\s+(cf|aff).*$", "\\1", x[mid_q], perl = TRUE), ".")
+  force_genus[lead_q | mid_q] <- TRUE
+  reason[lead_q | mid_q] <- "qualifier"
 
   # --- Strip bracket artefacts BEFORE the capital-letter filter ---
   # e.g. "[Bacillus] subtilis" -> "Bacillus subtilis" so it passes the
@@ -155,7 +217,7 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # --- Reduce to genus-only if the epithet is an abbreviation or absent ---
   # Single-character epithets are abbreviations (e.g., "P." for a species),
   # not valid species names; require at least 2 characters.
-  keep_epithet <- nchar(epithet) >= 2 & !(epithet %in% remove_abbr)
+  keep_epithet <- nchar(epithet) >= 2 & !(epithet %in% remove_abbr) & !force_genus
   cleaned <- ifelse(keep_epithet, paste0(genus, " ", epithet), genus)
 
   # Names that were bad get NA (genus from split of NA is "NA" string; fix that)
@@ -164,8 +226,11 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # collapsed_to_genus: TRUE only when a real second token was present and
   # dropped -- NOT for input that was already genus-only, and NOT for
   # rejected (NA) input. See @return above.
-  collapsed_to_genus <- !bad & !keep_epithet & nzchar(epithet)
+  # A hybrid or qualified name returned as a genus claimed something finer.
+  collapsed_to_genus <- !bad & !keep_epithet & (nzchar(epithet) | hyb)
 
   attr(cleaned, "collapsed_to_genus") <- collapsed_to_genus
+  attr(cleaned, "name_qualifier") <- qualifier
+  attr(cleaned, "clean_reason") <- reason
   cleaned
 }

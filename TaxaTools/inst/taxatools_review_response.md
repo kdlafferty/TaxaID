@@ -286,3 +286,29 @@ on functions this document already covers above.
   `fallback_backbone_id` and `decisions` by content (a decisions file by its
   contents); `batch_size`/`timeout_sec` are excluded. `taxatools_clear_cache()`
   now also covers `_verified_name.rds`. Tests: test-verify_taxon_names_cache.R.
+
+### 2026-10-02: clean_taxon_names() -- subgenus, cf./aff., hybrid formulae
+
+Spec decided by package review at the maintainer's request (clean subspecies and strain labels).
+Three changes, each with a test that fails on the previous code:
+- A1 BUG FIX. A parenthesised subgenus became a fake binomial: bracket stripping turned
+  "Allodia (Brachycampta) sp. TTMDI642-10" into "Allodia Brachycampta". The subgenus is now
+  dropped before brackets are stripped: that name gives "Allodia" with `collapsed_to_genus = TRUE`,
+  and "Allodia (Brachycampta) lugens" gives the species "Allodia lugens".
+- A2. A LEADING "cf."/"aff." ("cf. Laternula", "aff. Cyrtona sp. 1") returned NA because of the
+  capital-letter filter. Qualified names now return the genus whether the qualifier leads or
+  follows the genus; the new attribute `name_qualifier` ("cf." / "aff.") keeps a qualified genus
+  distinguishable from an asserted one.
+- A3. A hybrid formula returned its first parent as if it were the organism. Congeneric parents
+  now give the genus; intergeneric parents give NA ("Carassius auratus red var. x Megalobrama
+  amblycephala", which `strip_modifiers` documentation cites, is now NA). A named nothospecies
+  ("Mentha x piperita") is not a formula and is unchanged.
+New attribute `clean_reason` ("subgenus_dropped", "qualifier", "hybrid_congeneric",
+"hybrid_intergeneric", else NA). Tests comparing cleaned vectors with
+`ignore_attr = "collapsed_to_genus"` now ignore all three attributes (33 TaxaTools, 3 TaxaExpect).
+A fourth test pins existing behaviour on real CalIntertidal labels ("Chone magna CMC01" ->
+"Chone magna"; "Corallina sp. 4frondescens", "Melobesia sp. 2BC" -> genus); it passes on the old
+code too. Those strain labels reached species calls (COI 698 of 5,918, 18S 175 of 1,562) because
+the workflow never called this function on the match rows' `species`, not because it mis-cleaned.
+Name-keyed caches will re-resolve the changed names on first run: slower, not wrong. In
+CalIntertidal these are `gbif_rank_lookup.rds` and the sampling-group harmonise caches.

@@ -118,7 +118,7 @@ test_that("domestic_animal_taxa gets a row even with zero local iNat evidence", 
     known_cultivar_taxa = character(0)
   )
   expect_equal(nrow(out), 1L)
-  expect_equal(out$taxon_name, "Felis catus", ignore_attr = "collapsed_to_genus")
+  expect_equal(out$taxon_name, "Felis catus", ignore_attr = c("collapsed_to_genus", "name_qualifier", "clean_reason"))
   expect_equal(out$prior_source_type, "domestic_animal")
   expect_true(is.na(out$cultivar_evidence_source))
   expect_equal(out$model_tier, "tier_domestic_food")
@@ -323,7 +323,7 @@ test_that("match_list_taxa restricts fixed-list candidates to the intersection",
     match_list_taxa = "Felis catus" # Canis lupus never detected this run
   )
   expect_equal(nrow(out), 1L)
-  expect_equal(out$taxon_name, "Felis catus", ignore_attr = "collapsed_to_genus")
+  expect_equal(out$taxon_name, "Felis catus", ignore_attr = c("collapsed_to_genus", "name_qualifier", "clean_reason"))
 })
 
 test_that("match_list_taxa with no taxonomy skips the open-discovery step with a message, not a warning", {
@@ -660,7 +660,7 @@ test_that("a subspecies trinomial candidate is normalized to a binomial before j
     domestic_animal_taxa = "Sus scrofa domesticus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
-  expect_equal(out$taxon_name, "Sus scrofa", ignore_attr = "collapsed_to_genus")
+  expect_equal(out$taxon_name, "Sus scrofa", ignore_attr = c("collapsed_to_genus", "name_qualifier", "clean_reason"))
 })
 
 test_that("a hybrid-formula candidate name is normalized the same way clean_taxon_names() normalizes it elsewhere", {
