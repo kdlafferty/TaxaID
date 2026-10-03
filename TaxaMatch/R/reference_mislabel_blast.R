@@ -188,7 +188,8 @@ utils::globalVariables(character(0))
 #' Two kinds of search, together exhaustive for every pair a statistic needs:
 #' \itemize{
 #'   \item within-group: each family's query-capable deposits against all of
-#'     that family's deposits, ONCE per family. Every species- and genus-rank
+#'     that family's deposits, ONCE per family, for the families that contain
+#'     a reference under test (the accessions in `neighbours`). Every species- and genus-rank
 #'     within-group comparison lies inside a family, so this covers x and the
 #'     split guard at all three ranks. Deposits with no family are searched
 #'     within their genus, or failing that their species.
@@ -226,8 +227,12 @@ utils::globalVariables(character(0))
     fill <- is.na(unit) & !is.na(dep[[r]])
     unit[fill] <- dep[[r]][fill]; unit_rank[fill] <- r
   }
+  # only the units that contain a reference under test: a family with no
+  # tested reference contributes nothing (its members can still be a B)
+  tested <- unique(unlist(lapply(neighbours, function(z) z$accession)))
+  keep_unit <- unique(paste(unit_rank, unit)[dep$acc %in% tested])
   within <- unique(data.frame(rank = unit_rank, A = unit, stringsAsFactors = FALSE))
-  within <- within[!is.na(within$A), ]
+  within <- within[!is.na(within$A) & paste(within$rank, within$A) %in% keep_unit, ]
   tasks <- rbind(data.frame(kind = "within", rank = within$rank, A = within$A, B = NA_character_),
                  data.frame(kind = "between", rank = between$rank, A = between$A, B = between$B))
   if (verbose) message(sprintf("mislabel searches: %d within-group, %d between-group", nrow(within), nrow(between)))
