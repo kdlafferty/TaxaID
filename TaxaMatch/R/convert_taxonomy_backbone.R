@@ -424,9 +424,12 @@ convert_taxonomy_backbone <- function(
   # ---------------------------------------------------------------------------
   # Second-pass verification of names that CLEANING CHANGED.
   #
-  # clean_taxon_names() reduces a GenBank hybrid-formula label to its maternal
-  # parent. That parent binomial has never itself been looked up, so it keeps
-  # whatever spelling the submitting author used -- and NCBI carries taxon
+  # Cleaning can change a name (a subgenus dropped, a qualified name reduced
+  # to its genus). Until 2026-10-02 it also reduced a GenBank hybrid-formula
+  # label to its first (maternal) parent; it no longer does (congeneric
+  # parents give the genus, intergeneric give NA), but the case below is why
+  # this pass exists. A changed name has never itself been looked up, so it
+  # keeps whatever spelling the submitting author used -- and NCBI carries taxon
   # records for the hybrids themselves, so this is NOT confined to the
   # unresolved path: "Ctenopharyngodon idellus x Elopichthys bambusa" verifies
   # with score 1, and only afterwards becomes "Ctenopharyngodon idellus" at

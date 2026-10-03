@@ -1103,7 +1103,14 @@ utils::globalVariables(c(
     query_meta$taxonomy_resolution_source <- rep("direct", nrow(query_meta))
     if ("family" %in% rank_system) {
       is_hybrid_labeled <- grepl("(?<=\\s)x(?=\\s)", query_meta$organism, perl = TRUE)
-      needs_proxy <- is_hybrid_labeled & is.na(query_meta[["family.x"]])
+      # Third gate: the maternal parent's lineage is the sequence's lineage
+      # only for a maternally inherited genome (mitochondrial or
+      # chloroplast). A nuclear marker (18S, ITS) carries both parents, and
+      # with no barcode_term the genome is unknown, so no proxy.
+      maternal_marker <- .is_maternal_marker(barcode_term)
+      unresolved_hybrid <- is_hybrid_labeled & is.na(query_meta[["family.x"]])
+      needs_proxy <- unresolved_hybrid & maternal_marker
+      query_meta$taxonomy_resolution_source[unresolved_hybrid & !maternal_marker] <- "hybrid_marker_not_maternal"
 
       if (any(needs_proxy)) {
         # TaxaTools::clean_taxon_names() already strips
@@ -1119,7 +1126,7 @@ utils::globalVariables(c(
         # of-truth behavior available to every other caller in the
         # ecosystem, not just this one mechanism.
         proxy_name <- rep(NA_character_, nrow(query_meta))
-        proxy_name[needs_proxy] <- TaxaTools::clean_taxon_names(query_meta$organism[needs_proxy])
+        proxy_name[needs_proxy] <- .maternal_parent_name(query_meta$organism[needs_proxy])
         has_proxy <- needs_proxy & !is.na(proxy_name)
 
         if (any(has_proxy)) {
@@ -1824,7 +1831,10 @@ utils::globalVariables(c(
 #'       NCBI taxonomy, the normal case), `"hybrid_maternal_proxy"` (a
 #'       hybrid-labeled accession whose coarser-rank lineage was resolved
 #'       from its maternal parent species instead -- see `@section
-#'       Hybrid-labeled accessions` below), `"hybrid_unresolved"` (detected
+#'       Hybrid-labeled accessions` below), `"hybrid_marker_not_maternal"`
+#'       (hybrid-labeled with an unresolvable lineage, but `barcode_term`
+#'       is not a maternally inherited marker or is `NULL`, so no proxy),
+#'       `"hybrid_unresolved"` (detected
 #'       as hybrid-labeled but no usable parent species name could be
 #'       extracted from the label, so the accession's own -- structurally
 #'       incomplete -- NCBI lineage is used as-is), or `NA` for a fetch
@@ -1894,18 +1904,22 @@ utils::globalVariables(c(
 #' maternally inherited in fish, a hybrid's barcode sequence genuinely IS
 #' its maternal parent's lineage at kingdom through genus, even though it
 #' is (correctly) not literally the same SPECIES as that parent. The
-#' maternal parent's name is extracted from `listed_taxon` via
-#' `TaxaTools::clean_taxon_names()`'s existing 3-token simplification (it
-#' already keeps only the first genus + epithet, discarding everything
-#' from `" x ..."` onward -- the same simplification this ecosystem
-#' already applies to hybrid-formula names elsewhere), then resolved via
+#' maternal parent's name is the first-listed parent of the formula (the
+#' GenBank convention lists the female parent first; not always followed),
+#' cleaned with `TaxaTools::clean_taxon_names()`, then resolved via
 #' `TaxaTools::verify_taxon_names(backbone_id = 4L)` (NCBI, the same
 #' authority every other taxonomy resolution in this function uses).
 #' `species.x` (the finest rank) is deliberately left as the accession's
 #' own real listed hybrid label, never replaced by the proxy -- a hybrid
 #' genuinely is not the same species as its maternal parent, so a spurious
 #' species-level agreement would be biologically wrong in the opposite
-#' direction. Detection requires BOTH `listed_taxon` containing a
+#' direction. The proxy requires a maternally inherited marker:
+#' `barcode_term` must name a mitochondrial (12S/MiFish/Teleo, 16S, COI,
+#' cytb, ND genes, control region) or chloroplast (rbcL, matK, trnL, psbA)
+#' marker. A nuclear marker (18S, ITS) carries both parents, and with
+#' `barcode_term = NULL` the genome cannot be established; such accessions
+#' are stamped `"hybrid_marker_not_maternal"` and keep their own lineage.
+#' Detection also requires BOTH `listed_taxon` containing a
 #' standalone `" x "` token (the standard nomenclatural hybrid marker) AND
 #' the accession's own resolved `family` being unresolvable -- so an
 #' ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage
@@ -3033,4 +3047,36 @@ remove_incongruent_references <- function(match_df,
   ))
 
   result
+}
+
+
+# Maternally inherited barcode markers, matched like
+# TaxaTools::resolve_barcode_lengths() matches its registry (lower-case,
+# substring). Mitochondrial: MiFish/Teleo/12S/16S (as used for eukaryotes;
+# a hybrid label implies one), COI, cytb, ND genes, control region.
+# Chloroplast: rbcL, matK, trnL, psbA. Anything else, including 18S/28S/ITS
+# (nuclear) and an unknown marker, is not maternal.
+.MATERNAL_MARKER_KEYS <- c(
+  "mifish", "teleo", "12s", "16s", "coi", "co1", "cox1", "cytb", "cyt b",
+  "nd1", "nd2", "nd4", "nd5", "nd6", "d-loop", "control region",
+  "rbcl", "matk", "trnl", "psba"
+)
+
+.is_maternal_marker <- function(barcode_term) {
+  if (is.null(barcode_term) || !length(barcode_term)) return(FALSE)
+  key <- tolower(trimws(as.character(barcode_term)))
+  all(vapply(key, function(k) any(vapply(.MATERNAL_MARKER_KEYS, grepl, logical(1), x = k, fixed = TRUE)), logical(1)))
+}
+
+# The first-listed (by GenBank convention, maternal) parent of a hybrid
+# formula, cleaned: "androgenetic Carassius auratus red var. x Megalobrama
+# amblycephala" -> "Carassius auratus". Nested formulae take the first
+# parent at the outermost level's left side. TaxaTools::clean_taxon_names()
+# no longer does this itself: a generic cleaner must not call one parent the
+# organism (wrong for nuclear markers), so the maternal reading lives here,
+# behind the marker gate.
+.maternal_parent_name <- function(organism) {
+  left <- vapply(strsplit(organism, "\\s[x\u00d7]\\s+", perl = TRUE), `[`, character(1), 1L)
+  left <- gsub("^[\\[(]+", "", left, perl = TRUE)
+  as.character(TaxaTools::clean_taxon_names(left))
 }

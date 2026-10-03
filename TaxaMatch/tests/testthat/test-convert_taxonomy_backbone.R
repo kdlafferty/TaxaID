@@ -279,7 +279,17 @@ test_that("not-found taxon_col value is cleaned, not passed through raw", {
     rank_system = c("genus", "species"),
     verify_fn = .mock_verify_gbif
   ))
-  expect_equal(result$taxon_name, "Citrus unshiu")
+  # a congeneric hybrid formula gives its genus (clean_taxon_names, 2026-10-02),
+  # and the rank follows the name
+  expect_equal(result$taxon_name, "Citrus")
+  ranked <- .hybrid_match_df
+  ranked$taxon_name_rank <- "species"
+  r2 <- suppressWarnings(convert_taxonomy_backbone(ranked,
+    target_backbone_id = 11, source_backbone_id = 4,
+    rank_system = c("genus", "species"), verify_fn = .mock_verify_gbif
+  ))
+  expect_true("taxon_name_rank" %in% names(r2))
+  expect_equal(r2$taxon_name_rank, "genus")
   expect_equal(
     result$taxon_name_original,
     "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"
@@ -294,7 +304,7 @@ test_that("not-found rank column value is cleaned, not passed through raw", {
     rank_system = c("genus", "species"),
     verify_fn = .mock_verify_gbif
   ))
-  expect_equal(result$species, "Citrus unshiu")
+  expect_equal(result$species, "Citrus")
 })
 
 test_that("cleaning the fallback does not change which rows count as found", {
@@ -972,10 +982,13 @@ test_that("a cleaned hybrid parent name is re-verified to the accepted spelling"
     rank_system = c("family", "genus", "species"),
     verify_fn = .mock_verify_hybrid, verbose = FALSE
   )
-  # one species, not two competing candidates
-  expect_equal(unique(out$taxon_name), "Ctenopharyngodon idella")
-  # taxon_name and species must not disagree about the spelling
-  expect_equal(out$taxon_name, out$species)
+  # one species, not two competing candidates: since 2026-10-02 the
+  # intergeneric hybrid label is not reduced to a parent binomial at all
+  # (this function has no marker, so it cannot assume a maternal genome; the
+  # gated maternal proxy lives in evaluate_reference_accessions()), so the
+  # variant spelling "Ctenopharyngodon idellus" can never be emitted
+  expect_equal(out$taxon_name, c(NA, "Ctenopharyngodon idella"))
+  expect_false("Ctenopharyngodon idellus" %in% c(out$taxon_name, out$species))
   # provenance is preserved
   expect_equal(out$taxon_name_original[1], "Ctenopharyngodon idellus x Elopichthys bambusa")
 })
