@@ -185,17 +185,19 @@ utils::globalVariables(character(0))
 
 #' Targeted searches that measure x, y and d
 #'
-#' Two kinds of search, together exhaustive for every pair a statistic needs:
+#' Two kinds of search:
 #' \itemize{
-#'   \item within-group: each family's query-capable deposits against all of
-#'     that family's deposits, ONCE per family, for the families that contain
-#'     a reference under test (the accessions in `neighbours`). Every species- and genus-rank
-#'     within-group comparison lies inside a family, so this covers x and the
-#'     split guard at all three ranks. Deposits with no family are searched
-#'     within their genus, or failing that their species.
-#'   \item between-group: for each distinct (rank, A, B), every query-capable
-#'     member of A against the members of B only -- y and d.
+#'   \item within-group: the tested references (the accessions in
+#'     `neighbours`) against every deposit of their family, ONCE per family.
+#'     Every species- and genus-rank within-group comparison lies inside a
+#'     family, so this gives x at all three ranks. Deposits with no family are
+#'     searched within their genus, or failing that their species.
+#'   \item between-group: for each distinct (rank, A, B), the tested
+#'     references of A plus one deposit from each of up to
+#'     `max_query_batches` of A's batches, against the members of B -- y and d.
 #' }
+#' The split-group guard needs every batch of A compared with A and B; that
+#' is done only for the few selected groups, by `.mislabel_split_hits()`.
 #' The earlier design searched A against A and B together for every pair, so
 #' a large group was re-searched against itself once per neighbour (an 18S
 #' family of 5,351 deposits, many times over). Subjects are whole sequences,
@@ -206,8 +208,22 @@ utils::globalVariables(character(0))
 #' @noRd
 .mislabel_pair_hits <- function(pool, neighbours, blast_bin, rank_system = c("species", "genus", "family"),
                                 qcov = 80, threads = 8L, db_min_subjects = 200L,
+                                max_query_batches = 50L,
                                 checkpoint = NULL, checkpoint_every = 100L, verbose = TRUE) {
   dep <- pool$deposits
+  bat <- stats::setNames(dep$batch, dep$acc)
+  # One query deposit per submission batch, at most max_query_batches batches,
+  # chosen deterministically (evenly spaced over the sorted batch ids). d is a
+  # median over A's batches, which this estimates without searching every
+  # deposit of a very large group.
+  rep_queries <- function(acc) {
+    acc <- sort(intersect(acc, names(pool$amp)))
+    one <- acc[!duplicated(bat[acc])]
+    if (length(one) > max_query_batches) {
+      one <- one[unique(round(seq(1, length(one), length.out = max_query_batches)))]
+    }
+    one
+  }
   jobs <- do.call(rbind, lapply(rank_system, function(r) {
     nb <- neighbours[[r]]
     nb$A <- dep[[r]][match(nb$accession, dep$acc)]
@@ -252,13 +268,16 @@ utils::globalVariables(character(0))
   if (start <= nrow(tasks)) for (i in start:nrow(tasks)) {
     r <- tasks$rank[i]
     if (tasks$kind[i] == "within") {
-      inA <- dep$acc[!is.na(unit) & unit == tasks$A[i] & unit_rank == r]
-      subj <- inA
+      # x needs only the tested references against their own group
+      subj <- dep$acc[!is.na(unit) & unit == tasks$A[i] & unit_rank == r]
+      q <- intersect(subj, tested)
     } else {
       inA <- dep$acc[dep[[r]] %in% tasks$A[i]]
       subj <- dep$acc[dep[[r]] %in% tasks$B[i]]
+      # y needs the tested references; d needs A's batches (sampled)
+      q <- unique(c(intersect(inA, tested), rep_queries(inA)))
     }
-    q <- intersect(inA, names(pool$amp))
+    q <- intersect(q, names(pool$amp))
     subj <- intersect(subj, names(pool$seq))
     if (length(q) && length(subj)) {
       # -subject mode is single-threaded; a large subject set runs far faster
@@ -277,6 +296,34 @@ utils::globalVariables(character(0))
                       as.numeric(difftime(Sys.time(), t0, units = "mins"))))
     }
   }
+  h <- do.call(rbind, res)
+  if (is.null(h) || !nrow(h)) return(data.frame(q = character(0), s = character(0), pid = numeric(0)))
+  stats::aggregate(pid ~ q + s, data = h, FUN = max)
+}
+
+#' Searches for the split-group guard, only for the groups that need it
+#'
+#' One deposit per batch of A (every batch) against all deposits of A and B,
+#' for each (rank, A, B) in `groups`. Run after the test, for the groups with
+#' selections, and appended to the hits.
+#' @return data.frame(q, s, pid).
+#' @noRd
+.mislabel_split_hits <- function(pool, groups, blast_bin, qcov = 80, threads = 8L,
+                                 db_min_subjects = 200L) {
+  dep <- pool$deposits
+  bat <- stats::setNames(dep$batch, dep$acc)
+  res <- lapply(seq_len(nrow(groups)), function(i) {
+    r <- groups$rank[i]
+    inA <- dep$acc[dep[[r]] %in% groups$A[i]]
+    inB <- dep$acc[dep[[r]] %in% groups$B[i]]
+    q <- sort(intersect(inA, names(pool$amp)))
+    q <- q[!duplicated(bat[q])]
+    subj <- intersect(c(inA, inB), names(pool$seq))
+    if (!length(q) || !length(subj)) return(NULL)
+    big <- length(subj) >= db_min_subjects
+    .mislabel_blastn(pool$amp[q], pool$seq[subj], blast_bin, qcov = qcov,
+                     threads = if (big) threads else 1L, use_db = big)
+  })
   h <- do.call(rbind, res)
   if (is.null(h) || !nrow(h)) return(data.frame(q = character(0), s = character(0), pid = numeric(0)))
   stats::aggregate(pid ~ q + s, data = h, FUN = max)
