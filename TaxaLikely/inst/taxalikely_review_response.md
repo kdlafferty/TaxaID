@@ -1212,6 +1212,36 @@ validation), and single-shot failures that abort rather than continue. The
 maintainer's condition was that this must not produce thousands of repeat lines,
 so the choice of sites is deliberate -- see the volume note where it applies.
 
+### 2026-10-04: `build_sequence_matrix()` extracts pairs in row blocks
+
+No output change. The pair table is now built from the distance matrix one
+block of rows at a time (new internal `.pairs_from_distance()`). It no longer
+calls `which(dist < max_dist & row(dist) != col(dist))` over the whole matrix,
+which allocated several n x n temporaries at once. That step was the final
+memory spike that stopped a CalIntertidal COI build (about 12,000 genus
+representatives) at 19 GB.
+
+Blocks are cut on the query (row) side. `pair_retention = "best_per_partner"`
+picks survivors within groups of (query row, partner class), and ties are
+broken by value, so cutting by row reproduces the whole-matrix result exactly.
+The original row order is restored afterwards.
+
+`test-pairs-row-blocked.R` checks this against a verbatim copy of the old
+extraction. It uses 47 real 12S references, so no tested block size divides the
+row count, and runs block sizes 1 to 48 (up to 47 blocks) with and without
+`pair_filter` and retention. It also compares the full `build_sequence_matrix()`
+output and attributes, and confirms that an off-by-one at the block boundary is
+caught.
+
+Measured on a 10,000 x 10,000 matrix:
+- peak RSS 2.86 -> 2.37 GB;
+- gc max-used 2,531 -> 2,022 MB, of which 962 MB is the inputs.
+
+The saving grows with n squared. The block temporaries are capped by the
+existing 3.2e7-cell budget, so they stay about the same size as n grows.
+NOT changed: the representative alignment itself (about 12.5 GB at COI scale),
+and the bind of per-genus pair tables.
+
 ### 2026-10-01 -- `.estimate_score_quantum()` / `.smooth_comb()` have a copy in TaxaMatch
 
 - `R/bimodality.R`'s `.estimate_score_quantum()` and `.smooth_comb()` are copied, math

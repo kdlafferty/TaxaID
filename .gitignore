@@ -30,6 +30,9 @@
 # curated subsets of production checkpoints, needed for the root README's
 # "confirm your installation works" step and TaxaWizard's own tests.
 !TaxaWizard/inst/fast_workflows/*.rds
+# TaxaLikely test fixtures -- small real reference subsets (a few KB) that
+# tests read via test_path(); the tests cannot run without them.
+!TaxaLikely/tests/testthat/fixtures/*.csv
 
 
 # ── Stray plot/output files ──────────────────────
