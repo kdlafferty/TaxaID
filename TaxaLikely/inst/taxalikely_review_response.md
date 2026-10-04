@@ -1294,6 +1294,11 @@ pairs. The extraction fix saves about 0.5 GB at 10k sequences.
   - At 1,200 genera the stage falls from 1,214 MB to 755 MB with 0.5M-row
     chunks: about 245 B per row in the current chunk, plus about 60 B per pair
     of fixed overhead.
+  - Chunks hold equal numbers of distinct `id_x` values, not equal numbers of
+    rows, so the chunk size is a target, not a hard cap: a query id with many
+    pairs can push its chunk past it. The lever is a smaller
+    `options(TaxaLikely.retention_chunk_rows = )` (0.5M rows: 755 MB; the 2M
+    default: 1,037 MB, at 1,200 genera).
 - **One bind** of the per-genus and representative pair tables, instead of
   two. A row-count assertion runs before the pieces are freed. The only
   difference: when no genus produced any pairs, the old two-step bind returned
