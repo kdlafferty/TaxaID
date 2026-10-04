@@ -1173,22 +1173,33 @@ test_that(".blast_remote() announces a skipped batch as it happens, and still wa
   )
   expect_message(
     suppressWarnings(TaxaMatch:::.blast_remote(
-      .cb_seq_df(2L),
+      .cb_seq_df(1L),
       database = "nt", program = "blastn", megablast = FALSE,
       max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
       verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 99L
     )),
     "BLAST submission failed. Skipping."
   )
-  expect_warning(
+  # A failing batch emits TWO warnings -- the per-batch one and the post-loop
+  # recovery summary -- so a single expect_warning() consumes one and the other
+  # escapes the test and is reported by testthat. Capture every warning and
+  # assert both: a test that leaks warnings makes later runs noisier and can
+  # mask a real one, and asserting the summary is worth having anyway.
+  ws <- character(0)
+  withCallingHandlers(
     suppressMessages(TaxaMatch:::.blast_remote(
-      .cb_seq_df(2L),
+      .cb_seq_df(1L),
       database = "nt", program = "blastn", megablast = FALSE,
       max_target_seqs = 100L, batch_size = 1L, email = NULL, ncbi_api_key = NULL,
       verbose = FALSE, max_wait = 5, max_consecutive_batch_failures = 99L
     )),
-    "BLAST submission failed. Skipping."
+    warning = function(w) {
+      ws <<- c(ws, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
   )
+  expect_true(any(grepl("BLAST submission failed. Skipping.", ws, fixed = TRUE)))
+  expect_true(any(grepl("could not be recovered", ws, fixed = TRUE)))
 })
 
 test_that(".blast_remote() announces an empty poll result as it happens", {
