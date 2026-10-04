@@ -161,8 +161,10 @@ matching without that step.
 The added accessions came to the reference set because the queries matched
 them, so pairs between two of them are tighter than pairs between fetched
 references (within-species variance about 60\% as large in that study). They
-were 4.7\% of within-species pairs there; keep the share small, or drop
-pairs whose two references both came from the match object.
+were 4.7\% of within-species pairs there. A guard that drops such a pair
+only when its species also has a pair involving a fetched reference keeps
+every species trainable; the remaining bias then sits in low-coverage
+species, whose only pairs come from added accessions.
 }
 
 \section{Batch dependence}{

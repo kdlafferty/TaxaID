@@ -903,6 +903,12 @@ on functions this document already covers above.
   coverage returned and the result was no worse than the unmatched set (12%). The function's
   roxygen now carries this as a section, with the circularity note: pairs between two
   added accessions are tighter than fetched pairs.
+  The guard adopted for those pairs drops a pair between two added accessions only when
+  its species also has a within-species pair involving a fetched reference, so no species
+  loses its within-species data; the residual bias is therefore concentrated in
+  low-coverage species, those whose only pairs come from added accessions (143 species
+  for 18S, 587 for COI on CalIntertidal), which is why the stricter rule of dropping every
+  such pair was not used.
 
 - `.bimodality_check()` (recorded by `train_likelihood_model()` in `Stats$h1_bimodality`
   and consulted by `calibrate_query_noise()`) now recognises a flagged split whose
