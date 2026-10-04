@@ -1648,8 +1648,94 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   `repositoryURL` must match the repository the release is published from
   (see the remote check). All nine `DESCRIPTION` `Version:` -> 1.0.0.
 
+## 7c. Merge ledger -- 2026-10-04 (memory work for the COI retrain)
+
+All verified on the MERGE, not the branch: suite + CI-equivalent
+`rcmdcheck(args = c("--no-manual","--as-cran"))` + README inventory recomputed
+from the tree. TaxaLikely installed after each merge that changed `R/`.
+
+| merge | branch @ tip | what |
+|---|---|---|
+| `629b40e` | `region-match` @ `100c1f4` | NEW EXPORT `match_reference_region()` -- maintainer approved directly |
+| `0584354` | `rowblock-pairs` @ `38a0a3c` | row-blocked pair extraction, internal |
+| `7e772f1` | `region-match-pair` @ `5da0492` | docs only: matching and augmentation are a PAIR |
+| `b3acd7f` | `bind-ranks` @ `b61e4cb` | chunked retention, single bind, `match()` ranks, duplicate-id check |
+| `1ffe11d` | `bind-ranks-note` @ `ec9c342` | docs only: chunk size is a target, not a cap |
+
+**Why the first memory fix was not enough, and what found the real cost.** The
+retrain died at 19 GB against an 18 GB watcher. Row-blocking `which(dist < max
+& row != col)` saved only ~0.7 GB at 12k representatives. The owner's
+**stage breakdown** -- not the fix -- located the cost in the final
+`best_per_partner` pass (~245 B/pair, ~9-11 GB projected at full COI). Record
+this ordering: measuring the stages was worth more than the first optimisation.
+
+**Chunking a retention pass is exact only when cut on the grouping key.**
+`best_per_partner` decides within each `(x, stratum)` group where `x` is the
+QUERY side, so chunks cut between `id_x` VALUES keep every group whole and
+reproduce the one-pass result exactly; ties resolve on coverage then the tie
+vector, by value rather than encounter order, so chunk order cannot change the
+outcome either. A cut at ROW COUNTS splits a group and silently drops the
+global best two -- no error, just different training pairs. The test asserts a
+naive row cut at 13 gives a DIFFERENT, WRONG answer, which is the right shape:
+aim the test at the silent failure, not at the correct answer.
+
+**`chunk_rows` is a target, not a hard cap** -- chunks hold equal numbers of
+distinct `id_x`, not equal rows, so a query id with many pairs overshoots it.
+Lever: `options(TaxaLikely.retention_chunk_rows = 5e5)` (755 MB vs 1,037 at the
+2M default, 1,200 genera). The CalIntertidal full run launched 09:16 PDT with
+5e5 set up front.
+
+**Measured, 1,200-genus real COI subset, 3.49M pairs:** stage heap max 1,214 MB
+unchunked / 1,037 at 2M / 755 at 0.5M; identical sorted-table digests old vs
+new at 300 and 1,200 genera.
+
+**The duplicate-`composite_id` thread, and a claim I withdrew.** I asked for a
+duplicate-key test case because `match()` keeps only the first match where
+`left_join` duplicates rows. A peer reported that duplicates reach the
+alignment and fabricate `p_match = 1` within-species pairs; I built a
+three-part bias synthesis on that WITHOUT opening the file and had to withdraw
+it. `build_sequence.R:526` already runs
+`distinct(composite_id, .keep_all = TRUE)` in step 1, before alignment at step
+3, so no production matrix was ever affected. The real defect is narrower and
+sharper: `distinct()` keeps the FIRST row, so when copies DISAGREE the
+surviving values depended on the ROW ORDER of `reference_df` rather than its
+content -- the "a result must depend only on its inputs" family. Now an error
+on disagreement, a message on agreement; 12S 4 agreeing ids, COI 314, 18S none,
+so no real output changes. **Lesson: "check the thing, not a proxy" applies to
+a teammate's description of code exactly as it does to a test's name.**
+
+**Verification timings, measured** (one package, TaxaLikely at 34 test files /
+1,810 assertions): full verify 4-5 min with the `rcmdcheck` as the long pole;
+`R CMD INSTALL --no-docs -l` **2 seconds**; post-install behaviour check plus
+TaxaWizard's pack guard 2-3 min; SHA to merged-and-installed ~12 min, achieved
+in 7. The install being 2 s is the useful fact: there is never a speed reason
+to jump the reinstall gate.
+
 ## 8. Findings to carry into the manuscript (not to fix)
 
+- **18S V9's poor species discrimination is a property of the marker, not a
+  training artifact** -- MEASURED, 2026-10-04, no longer assumed. A/B over
+  untrimmed / region-matched / augmented+region-matched training: single
+  competitive species within 10:1 at 27.4 / 31.1 / 27.6%, median top-two
+  likelihood ratio 1.12 / 1.17 / 1.14. Region-matching the references does not
+  improve species-level resolution, so the limit is the molecule.
+- **Region matching and reference augmentation are a PAIR; neither works
+  alone.** On CalIntertidal 18S the name-and-marker fetch returned mostly
+  non-V9 records, so matching alone discarded most of the usable set and took
+  the share of observations won by a referenced species from 10% to 1.6%
+  (zeroed rows 11.7% to 30.7%). With the match object's own accessions added
+  first, coverage returned (12%). Report them together or not at all.
+- **Two measured biases still deflate within-species spread**, both in the same
+  direction (making the model overconfident): match-object pairs carry ~60% of
+  fetched-pair variance (4.7% of within-species pairs; now guarded by dropping
+  them only where the species also has a fetched pair, so no species loses its
+  estimate -- the strict rule would have stripped 143 18S and 587 COI species),
+  and region mislocation, where 34% of 12S and ~73% of 18S training references
+  were off the query region. The `h1-spread` defaults were fitted on data
+  containing both, so **re-measure the spread and the calibration offset before
+  publishing anything downstream of them**. A third candidate -- duplicate
+  accessions fabricating perfect pairs -- was investigated and is VOID; the
+  dedupe is upstream of alignment.
 - The Axis-1 `expected`/`unexpected` boundary is
   `median(taxaexpect_priors$theta_mean)` of the table being classified, so it
   **floats with the data** (11.7x shift at GreatLakes from refreshing evidence
