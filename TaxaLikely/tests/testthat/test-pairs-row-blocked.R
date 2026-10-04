@@ -78,6 +78,31 @@
   )
 }
 
+# The two steps that followed extraction, also as they were.
+.oracle_bind <- function(pieces) {
+  n <- length(pieces)
+  dplyr::bind_rows(dplyr::bind_rows(pieces[-n]), pieces[[n]])
+}
+.oracle_ranks <- function(dist_tbl, lookup, rank_cols) {
+  dist_tbl |>
+    dplyr::left_join(lookup, by = c("id_x" = "composite_id")) |>
+    dplyr::rename_with(~ paste0(., ".x"), dplyr::all_of(rank_cols)) |>
+    dplyr::left_join(lookup, by = c("id_y" = "composite_id")) |>
+    dplyr::rename_with(~ paste0(., ".y"), dplyr::all_of(rank_cols))
+}
+
+.oracle_retention <- function(dist_tbl, retain, chunk_rows = NULL) {
+  .lab <- function(v, k) if (is.null(v)) NULL else unname(v[k])
+  .best_per_partner_keep(
+    x = dist_tbl$id_x,
+    sp_x = .lab(retain$species, dist_tbl$id_x), sp_y = .lab(retain$species, dist_tbl$id_y),
+    gn_x = .lab(retain$genus, dist_tbl$id_x), gn_y = .lab(retain$genus, dist_tbl$id_y),
+    fam_x = .lab(retain$family, dist_tbl$id_x), fam_y = .lab(retain$family, dist_tbl$id_y),
+    p_match = dist_tbl$p_match, coverage = dist_tbl$coverage, tie = dist_tbl$id_y,
+    min_pair_coverage = retain$min_pair_coverage, by = retain$by
+  )
+}
+
 .rb_fixture <- function() utils::read.csv(test_path("fixtures", "rowblock_12S.csv"), stringsAsFactors = FALSE)
 
 .rb_aligned <- function() {
@@ -149,10 +174,82 @@ test_that("an empty result keeps the empty-table shape", {
   expect_equal(nrow(got), 0L)
 })
 
-test_that("build_sequence_matrix() output and attributes are unchanged by row blocking", {
+test_that("rank columns by match() equal the two left_joins, including NA and missing ids", {
+  pt <- data.frame(
+    id_x = c("a", "b", "zz", NA, "c", "a"),
+    id_y = c("b", "zz", "a", "c", NA, "c"),
+    p_match = c(.9, .8, .7, .6, .5, .4), coverage = c(1, 1, NA, .5, 1, 1),
+    stringsAsFactors = FALSE
+  )
+  pt <- pt[c(6, 2, 3, 1, 4, 5), ] # non-default row names, as after subsetting
+  lk <- data.frame(
+    composite_id = c("a", "b", "c", NA),
+    family = c("F1", NA, "F2", "Fna"),
+    genus = factor(c("G1", "G1", NA, "Gna")),
+    species = c("s1", "s2", NA, NA),
+    stringsAsFactors = FALSE
+  )
+  rk <- c("family", "genus", "species")
+  expect_identical(.attach_rank_columns(pt, lk, rk), .oracle_ranks(pt, lk, rk))
+  # Factor id columns on either side.
+  pt_f <- pt
+  pt_f$id_x <- factor(pt_f$id_x)
+  lk_f <- lk
+  lk_f$composite_id <- factor(lk_f$composite_id)
+  expect_identical(
+    suppressWarnings(.attach_rank_columns(pt, lk_f, rk)),
+    suppressWarnings(.oracle_ranks(pt, lk_f, rk))
+  )
+  # Empty table, and no rank columns at all.
+  expect_identical(.attach_rank_columns(pt[0, ], lk, rk), .oracle_ranks(pt[0, ], lk, rk))
+  # (The old joins errored with no rank columns; the new code returns the table.)
+  no_rk <- pt
+  rownames(no_rk) <- NULL
+  expect_identical(.attach_rank_columns(pt, lk["composite_id"], character(0)), no_rk)
+    # The lookup comes from the deduplicated reference table; a duplicate key
+  # would make the old joins add rows, so it is an internal error here.
+  lk_dup <- rbind(lk, data.frame(composite_id = "a", family = "F9", genus = "G9", species = "s9"))
+  expect_gt(nrow(suppressWarnings(.oracle_ranks(pt, lk_dup, rk))), nrow(pt))
+  expect_error(.attach_rank_columns(pt, lk_dup, rk), "duplicated composite_id")
+})
+
+test_that("the single bind equals the two-step bind", {
+  mk <- function(ids) {
+    data.frame(id_x = ids, id_y = rev(ids), p_match = seq_along(ids) / 10,
+      coverage = rep(1, length(ids)), stringsAsFactors = FALSE)
+  }
+  cases <- list(
+    list(mk(c("a", "b")), NULL, mk("c"), mk(c("d", "e"))),
+    list(NULL, NULL, mk("c")),
+    list(mk("a"), mk(character(0))),
+    list(NULL, mk(character(0)))
+  )
+  for (k in seq_along(cases)) {
+    got <- .bind_pair_pieces(cases[[k]])
+    want <- .oracle_bind(cases[[k]])
+    # When every per-genus piece was NULL the old two-step bind returned a
+    # tibble (bind_rows() of NULLs is a 0-column tibble); everywhere else it
+    # returned a data.frame. The single bind returns a data.frame throughout.
+    if (all(vapply(utils::head(cases[[k]], -1L), is.null, NA))) {
+      expect_s3_class(want, "tbl_df")
+      want <- as.data.frame(want)
+    }
+    expect_s3_class(got, "data.frame", exact = TRUE)
+    expect_identical(got, want, info = as.character(k))
+    # Order is the pieces' order: no reliance on the oracle for that.
+    expect_identical(got$id_x, unlist(lapply(cases[[k]], `[[`, "id_x")), info = as.character(k))
+  }
+  # A bind that loses rows is refused.
+  testthat::local_mocked_bindings(bind_rows = function(...) data.frame(id_x = "a"), .package = "dplyr")
+  expect_error(.bind_pair_pieces(cases[[1]]), "Internal error: binding pair tables")
+})
+
+test_that("build_sequence_matrix() output and attributes are unchanged by the new extraction, bind and rank columns", {
   skip_if_not_installed("DECIPHER")
   skip_if_not_installed("Biostrings")
   ref <- .rb_fixture()
+  # NA ranks reach the rank-column step: three references lose their family.
+  ref$family[c(2, 17, 40)] <- NA
   .canon <- function(x) {
     x <- x[order(x$id_x, x$id_y), , drop = FALSE]
     rownames(x) <- NULL
@@ -180,19 +277,102 @@ test_that("build_sequence_matrix() output and attributes are unchanged by row bl
       .pairs_from_distance = function(dist_m, aligned, max_dist, retain = NULL,
                                       pair_filter = NULL, block_rows = NULL) {
         .oracle_pairs(dist_m, aligned, max_dist, retain, pair_filter)
-      }
+      },
+      .bind_pair_pieces = .oracle_bind,
+      .attach_rank_columns = .oracle_ranks,
+      .retention_keep_chunked = .oracle_retention
     )
+    expect_true(anyNA(old$family.x), info = nm)
     for (b in c(2L, 5L, 7L)) {
       new <- local({
-        op <- options(TaxaLikely.pair_block_rows = b)
+        op <- options(TaxaLikely.pair_block_rows = b, TaxaLikely.retention_chunk_rows = b)
         on.exit(options(op))
         do.call(.build, configs[[nm]])
       })
+      expect_identical(new, old, info = sprintf("%s, block_rows = %d (as returned)", nm, b))
       expect_identical(.canon(new), .canon(old), info = sprintf("%s, block_rows = %d", nm, b))
       expect_identical(.attrs(new), .attrs(old), info = sprintf("%s attributes, block_rows = %d", nm, b))
     }
-    if (configs[[nm]]$pair_retention != "all") {
-      expect_identical(attr(old, "pair_retention")$policy, configs[[nm]]$pair_retention)
+    expect_identical(attr(old, "pair_retention")$policy, configs[[nm]]$pair_retention)
+  }
+})
+
+test_that("memory reporting is silent by default", {
+  expect_silent(.mem_stage("x", verbose = TRUE))
+  expect_silent(.mem_stage("x", verbose = FALSE))
+  op <- options(TaxaLikely.report_memory = TRUE)
+  on.exit(options(op))
+  expect_message(.mem_stage("x", verbose = TRUE), "\\[memory\\] x: heap")
+  expect_silent(.mem_stage("x", verbose = FALSE))
+})
+
+test_that("the chunked final retention pass equals one pass, with chunks cut between id_x values", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  a <- .rb_aligned()
+  ref <- a$ref
+  all_pairs <- .pairs_from_distance(a$dist_m, a$aligned, 0.25)
+  # Mimic the bound table: the same pair can arrive from two alignments with
+  # different values, and one id_x's rows are scattered through the table.
+  set.seed(7)
+  extra <- all_pairs[sample(nrow(all_pairs), 400), ]
+  extra$coverage <- pmax(0, extra$coverage - 0.3)
+  tied <- all_pairs[sample(nrow(all_pairs), 50), ] # fully tied duplicates
+  tbl <- rbind(all_pairs, extra, tied)
+  tbl <- tbl[sample(nrow(tbl)), ]
+  rownames(tbl) <- NULL
+  n <- nrow(tbl)
+  for (by in c("best_per_partner", "best_per_class")) {
+    retain <- .retention_context(ref, c("family", "genus", "species"), 0.8, by)
+    want <- .oracle_retention(tbl, retain)
+    xc <- match(tbl$id_x, unique(tbl$id_x))
+    for (cr in c(1, 2, 3, 7, 11, 13, 101, n, 2e6)) {
+      n_chunks <- length(unique((xc - 1L) %/% ceiling(max(xc) / max(1, ceiling(n / cr)))))
+      if (cr <= 101) expect_gt(n_chunks, 1L)
+      expect_identical(.retention_keep_chunked(tbl, retain, chunk_rows = cr), want,
+        info = sprintf("%s, chunk_rows = %s (%d chunks)", by, cr, n_chunks)
+      )
     }
   }
+  # The fixture does have id_x values whose rows straddle a naive row cut ...
+  cut <- 13
+  straddle <- vapply(split(seq_len(n), tbl$id_x), function(r) length(unique((r - 1L) %/% cut)) > 1L, NA)
+  expect_true(any(straddle))
+  # ... and chunking by row ranges would get the answer wrong there.
+  retain <- .retention_context(ref, c("family", "genus", "species"), 0.8, "best_per_partner")
+  naive <- logical(n)
+  for (rows in split(seq_len(n), (seq_len(n) - 1L) %/% cut)) {
+    naive[rows] <- .oracle_retention(tbl[rows, , drop = FALSE], retain)
+  }
+  expect_false(identical(naive, .oracle_retention(tbl, retain)))
+})
+
+test_that("duplicated reference ids: identical copies are announced and kept once, differing copies are refused", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  ref <- .rb_fixture()
+  dup <- rbind(ref, ref[c(3, 20), ])
+  .build <- function(x) {
+    build_sequence_matrix(x,
+      rank_system = c("family", "genus", "species"),
+      min_seq_len = 1L, max_seq_len = 1000L, seed = 1L, verbose = FALSE
+    )
+  }
+  expect_message(got <- .build(dup), "2 composite_id\\(s\\) appear more than once with identical sequence")
+  ref_ids <- ref$composite_id[c(3, 20)]
+  # No self-pair from a duplicated id, and the same matrix as without the copies.
+  expect_false(any(got$id_x == got$id_y))
+  expect_identical(got, suppressMessages(.build(ref)))
+  # Copies that disagree are an error, naming the id.
+  bad_seq <- dup
+  bad_seq$sequence[nrow(bad_seq)] <- paste0(bad_seq$sequence[nrow(bad_seq)], "A")
+  expect_error(suppressMessages(.build(bad_seq)), ref_ids[2])
+  bad_rank <- dup
+  bad_rank$genus[nrow(bad_rank)] <- "Othergenus"
+  expect_error(suppressMessages(.build(bad_rank)), "different sequence or different sequence/family/genus/species")
+  # A column the matrix does not use may differ (the real case: queried_taxon).
+  extra_col <- dup
+  extra_col$queried_taxon <- "a"
+  extra_col$queried_taxon[nrow(extra_col)] <- "b"
+  expect_message(.build(extra_col), "kept one copy")
 })

@@ -1258,6 +1258,82 @@ existing 3.2e7-cell budget, so they stay about the same size as n grows.
 NOT changed: the representative alignment itself (about 12.5 GB at COI scale),
 and the bind of per-genus pair tables.
 
+### 2026-10-04 (later): where `build_sequence_matrix()` actually spends its memory
+
+**No real matrix changes.** On every CalIntertidal reference set (12S, 18S and
+COI, untrimmed and region-matched or augmented), the output is identical. The
+only new output is a message when duplicate ids are found.
+
+**The stage breakdown found the real cost, not the earlier fix.** The row-block
+fix above was aimed at the extraction step, which looked like the culprit in a
+COI build killed at 19 GB. A new stage-by-stage memory report (see below) was
+run on real COI subsets. At 1,200 genera (48k sequences, 3.49M pairs), the R
+heap high-water mark per stage was:
+
+| Stage | Heap high-water |
+|---|---|
+| Per-genus alignments | 1,105 MB |
+| Representative alignment and extraction | 810 MB |
+| Bind | 475 MB |
+| **Final `best_per_partner` pass** | **1,214 MB** |
+| Rank columns | 630 MB |
+
+The final pass is the largest. It builds a string key for every pair, costing
+about 245 B per pair, so it would need about 9 GB at the full COI build's ~38M
+pairs. The extraction fix saves about 0.5 GB at 10k sequences.
+
+**Changes (output identical to the previous code):**
+
+- **Final pass in chunks of query ids** (new `.retention_keep_chunked()`).
+  Chunks are cut between `id_x` values, never at row counts. Each row's chunk
+  comes from its `id_x` index, so all of one query's rows land in the same
+  chunk even when they are scattered through the bound table. Survivors are
+  chosen within (`id_x`, stratum) groups, and rows keep their relative order
+  inside a chunk. So the result is the same as one pass, even for fully tied
+  duplicate pairs.
+  - At 1,200 genera the stage falls from 1,214 MB to 755 MB with 0.5M-row
+    chunks: about 245 B per row in the current chunk, plus about 60 B per pair
+    of fixed overhead.
+- **One bind** of the per-genus and representative pair tables, instead of
+  two. A row-count assertion runs before the pieces are freed. The only
+  difference: when no genus produced any pairs, the old two-step bind returned
+  a tibble, and the new one returns a data.frame like every other case.
+- **Rank columns attached with `match()`** instead of two `left_join()`s. NA
+  ranks, ids absent from the lookup and NA ids behave as in the joins. The
+  lookup's ids must be unique: a duplicate is an internal error, because the
+  joins would have added rows.
+
+**Duplicate ids.** Step 1 already ran `distinct(composite_id, .keep_all =
+TRUE)` before alignment, so duplicates never reached the alignment or the
+lookup.
+- The defect was an order dependence. `distinct()` keeps the first row, so when
+  copies disagreed, which sequence or taxonomy survived depended on the row
+  order of `reference_df`, not its content.
+- Copies that disagree in sequence or in the rank columns the matrix uses now
+  stop the build, naming them. That removes the order dependence.
+- Copies that agree are still reduced to one, now with a message. Columns the
+  matrix does not use (e.g. `queried_taxon`) may differ.
+- Real sets: 12S has 4 duplicated ids and COI has 314, all one accession
+  fetched under two homonymous genus names, with identical sequence and ranks.
+  18S has none. So the change adds a message and changes no output.
+
+**Memory report.** `options(TaxaLikely.report_memory = TRUE)` together with
+`verbose = TRUE` prints, at each stage boundary:
+- heap in use;
+- the heap high-water mark for that stage (reset at each boundary);
+- process RSS.
+
+It is silent by default (`verbose` itself defaults to `TRUE`).
+
+**Tests** (`test-pairs-row-blocked.R`) compare against verbatim copies of the
+old bind, joins and retention pass, at helper level and at full-build level
+(pair table and attributes), with several forced chunks. They also cover:
+- a table whose `id_x` rows straddle naive row cuts, together with proof that
+  row-range chunking would get it wrong;
+- the duplicate-id message;
+- both error cases;
+- the absence of self-pairs.
+
 ### 2026-10-01 -- `.estimate_score_quantum()` / `.smooth_comb()` have a copy in TaxaMatch
 
 - `R/bimodality.R`'s `.estimate_score_quantum()` and `.smooth_comb()` are copied, math
