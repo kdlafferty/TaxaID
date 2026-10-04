@@ -1748,3 +1748,27 @@ test_that("a non-standard rank in rank_system orders the rank masking", {
   expect_equal(out$consensus_taxon, "Aaa")
   expect_equal(out$consensus_rank, "genus")
 })
+
+# ---- consensus_limit = "rank_not_supplied" (2026-10-03) ---------------------
+test_that("a rank no row carries is 'rank_not_supplied'; a rank some lineages lack stays 'backbone'", {
+  rs <- c("phylum", "class", "order", "family", "genus", "species")
+  base <- data.frame(observation_id = "E1", taxon_name = c("Aaa x", "Bbb y", "Ccc z"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate", phylum = "Chordata",
+    order = c("Perciformes", "Perciformes", "Gadiformes"), family = c("F1", "F2", "F3"),
+    genus = c("Aaa", "Bbb", "Ccc"), posterior_point_est = c(0.45, 0.4, 0.15), stringsAsFactors = FALSE)
+  pc <- function(df) suppressWarnings(posterior_consensus(df, rank_system = rs,
+    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0))
+  # A: class column absent from the input
+  expect_message(a <- pc(base), "\"class\".*no row of posterior_df carries")
+  expect_equal(a$consensus_taxon, "Chordata")
+  expect_equal(a$consensus_limit, "rank_not_supplied")
+  # B: class supplied in the input, but missing from these rows' lineages
+  b <- rbind(transform(base, class = NA_character_),
+    transform(base[1, ], observation_id = "E2", class = "Actinopteri", posterior_point_est = 1))
+  bo <- suppressMessages(pc(b))
+  expect_equal(bo$consensus_limit[bo$observation_id == "E1"], "backbone")
+  # C: class supplied on these rows
+  co <- suppressMessages(pc(transform(base, class = "Actinopteri")))
+  expect_equal(co$consensus_taxon, "Actinopteri")
+  expect_equal(co$consensus_limit, "threshold")
+})

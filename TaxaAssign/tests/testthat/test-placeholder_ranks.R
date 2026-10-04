@@ -161,11 +161,21 @@ test_that("a placeholder rank value never forms a credible node", {
   rs <- c("phylum", "class", "order", "family", "genus", "species")
   for (v in c("incertae sedis", "Incertae Sedis", "incertae_sedis",
               "unclassified Eukaryota", "unk_class", "unknown")) {
+    # a second observation supplies a real class, as a real dataset does, so
+    # class is present in the input and missing only from O1's lineages
+    # (otherwise the input supplies no class at all: "rank_not_supplied")
+    df <- rbind(.placeholder_node_df(v),
+      transform(.placeholder_node_df("Mammalia")[1, ], observation_id = "O2"))
     out <- suppressMessages(posterior_consensus(
-      .placeholder_node_df(v), rank_system = rs, consensus_method = "credible_node"))
+      df, rank_system = rs, consensus_method = "credible_node"))
+    out <- out[out$observation_id == "O1", ]
     expect_true(is.na(out$consensus_taxon), info = v)
     expect_equal(out$consensus_limit, "backbone", info = v)
   }
+  # with no real class anywhere in the input, the rank was never supplied
+  only <- suppressMessages(posterior_consensus(
+    .placeholder_node_df("incertae sedis"), rank_system = rs, consensus_method = "credible_node"))
+  expect_equal(only$consensus_limit, "rank_not_supplied")
   # CONTROL: the same shape with a REAL shared class does form that node, so
   # the assertions above distinguish "placeholder suppressed" from "no node
   # could ever form here".

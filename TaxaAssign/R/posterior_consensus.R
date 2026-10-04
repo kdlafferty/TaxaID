@@ -394,7 +394,12 @@
 #'       threshold had their lineage been complete. `"robust_prior"`: the
 #'       call would be finer without the robust-prior check
 #'       (`robust_prior_s`). `"threshold"`: the posterior is spread across
-#'       named alternatives at every finer rank.}
+#'       named alternatives at every finer rank. `"rank_not_supplied"`: the
+#'       only finer rank that could have given a call is one no row of
+#'       `posterior_df` carries at all (the column is absent or empty
+#'       throughout); the rank was never provided, which differs from
+#'       `"backbone"`, where it is missing from some lineages (e.g. a backbone
+#'       with no class for ray-finned fishes). A message names such ranks.}
 #'     \item{`robust_lower_posterior`}{With `consensus_method =
 #'       "credible_node"` and `robust_prior_s > 0`: the lower bound of the
 #'       reported taxon's posterior over the imprecise-prior neighbourhood
@@ -743,6 +748,20 @@ posterior_consensus <- function(posterior_df,
     # Linnaean ranking, since that would silently swap "coarsest" and "finest".
     .check_rank_system_order(rank_system_eff, "posterior_consensus")
   }
+  # Ranks in rank_system that no row of the input carries (the column is
+  # absent or empty throughout): no call can resolve there, and a call held
+  # coarse by such a rank is stamped "rank_not_supplied", not "backbone".
+  # message(), not a warning: Rscript defers warnings to exit.
+  unsupplied <- rank_system_eff[vapply(rank_system_eff, function(r) {
+    v <- .extract_rank_values(posterior_df, r, rank_system_eff)
+    is.null(v) || all(is.na(v))
+  }, logical(1))]
+  if (length(unsupplied) > 0L) {
+    message(sprintf(
+      "posterior_consensus: rank_system includes %s, but no row of posterior_df carries a value there; no call can resolve at that rank, and calls held coarse by it are stamped consensus_limit = \"rank_not_supplied\".",
+      paste(sprintf("\"%s\"", unsupplied), collapse = ", ")
+    ))
+  }
   if (length(rank_system_eff) == 0L) {
     # detect_ranks() correctly returns character(0) when posterior_df has no
     # rank COLUMNS at all (e.g. TaxaLikely::evaluate_likelihoods()'s own
@@ -870,7 +889,7 @@ posterior_consensus <- function(posterior_df,
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
       group_priors, min_effective_records, pool_tail, unnamed_in_threshold,
-      consensus_method, robust_prior_s
+      consensus_method, robust_prior_s, unsupplied
     )
   })
 
@@ -942,9 +961,12 @@ posterior_consensus <- function(posterior_df,
 # rows that are resolved to that rank or finer but carry no value there would
 # reach the threshold although the node alone does not (a complete lineage
 # could have given a finer call); "robust_prior" takes precedence when the
-# plain rule (eps = 0) would have called a finer node; otherwise "threshold"
-# (the weight is spread across named alternatives).
-.credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL) {
+# plain rule (eps = 0) would have called a finer node; "rank_not_supplied"
+# when the only such ranks are in `unsupplied` (ranks no row of the whole
+# input carries: the rank was never provided, so no lineage is incomplete);
+# otherwise "threshold" (the weight is spread across named alternatives).
+.credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
+                           unsupplied = character(0)) {
   out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_)
   w[is.na(w) | w < 0] <- 0
   tot <- sum(w)
@@ -990,10 +1012,13 @@ posterior_consensus <- function(posterior_df,
     gap <- named & is.na(vals[[i]]) & (is.na(row_depth) | row_depth >= i)
     plain[[k]]$p < threshold && any(gap) && plain[[k]]$p + sum(w[gap]) / tot >= threshold
   }, logical(1))
+  not_supplied <- rank_system[finer] %in% unsupplied
   out$limit <- if (eps > 0 && any(vapply(plain, function(b) b$p >= threshold, logical(1)))) {
     "robust_prior"
-  } else if (any(backbone)) {
+  } else if (any(backbone & !not_supplied)) {
     "backbone"
+  } else if (any(backbone & not_supplied)) {
+    "rank_not_supplied"
   } else {
     "threshold"
   }
@@ -1143,7 +1168,7 @@ posterior_consensus <- function(posterior_df,
 # puts all of eps on the best-fitting hypothesis outside the node:
 #   lower(v) = (1 - eps) A_v / ((1 - eps) sum(L pi) + eps max_{h not in v} L_h).
 # Returns the finest node whose lower posterior reaches the threshold.
-.credible_node_robust <- function(chunk, rank_system, s, threshold) {
+.credible_node_robust <- function(chunk, rank_system, s, threshold, unsupplied = character(0)) {
   L <- chunk$score_likelihood
   L[is.na(L) | L < 0] <- 0
   pi <- chunk$prior_mean
@@ -1165,7 +1190,7 @@ posterior_consensus <- function(posterior_df,
   if (!is.finite(N) || N <= 0) {
     return(NULL)
   }
-  .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L)
+  .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied)
 }
 
 .row_col_or <- function(row, col, default = NA_real_) {
@@ -1181,7 +1206,8 @@ posterior_consensus <- function(posterior_df,
                                        pool_tail = FALSE,
                                        unnamed_in_threshold = TRUE,
                                        consensus_method = "lca",
-                                       robust_prior_s = 0) {
+                                       robust_prior_s = 0,
+                                       unsupplied = character(0)) {
   # credible_node sums every hypothesis, so no hypothesis is dropped below
   # min_posterior: the tail is always part of the plausible set.
   if (consensus_method == "credible_node") pool_tail <- TRUE
@@ -1341,14 +1367,14 @@ posterior_consensus <- function(posterior_df,
   if (consensus_method == "credible_node") {
     can_robust <- robust_prior_s > 0 &&
       all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
-    node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold)
+    node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold, unsupplied)
     if (is.null(node)) can_robust <- FALSE
     node <- if (can_robust) {
       node
     } else {
       # every row is in the denominator, named or not (unnamed_in_threshold
       # governs the "lca" method only)
-      .credible_node(chunk, chunk[[posterior_col]], rank_system, cumulative_threshold)
+      .credible_node(chunk, chunk[[posterior_col]], rank_system, cumulative_threshold, unsupplied = unsupplied)
     }
     lca$taxon <- node$taxon
     lca$rank <- node$rank
