@@ -64,6 +64,10 @@ utils::globalVariables(c(
 #'   comparability, and does not by itself close this gap. See
 #'   the `sebastes_chromis_confirmation.R` diagnostic (TaxaID_dev repository) for the case this was
 #'   found in.
+#'
+#'   A `reference_df` returned by [match_reference_region()] (it carries a
+#'   `trim_path` column) is exempt from this window: its sequences are already
+#'   cut to the ESVs' own span, and their own length range is used instead.
 #' @param filter_unnamed Logical (default `TRUE`).  If `TRUE`, sequences whose
 #'   finest-rank taxonomy column (the last element of `rank_system`, typically
 #'   `species`) is blank (`""`) or `NA` are removed before alignment.  Blank
@@ -402,7 +406,22 @@ build_sequence_matrix <- function(reference_df,
     }
     max_foreign_reps_per_genus <- as.integer(max_foreign_reps_per_genus)
   }
-  if (!is.null(barcode_term)) {
+  # A region-matched reference set (match_reference_region()) has already been
+  # cut to the ESVs' own span, so barcode_term's DEPOSIT-length window no longer
+  # describes it: a 250 bp Leray region would fail COI's 300-900 bp window. Its
+  # length bounds come from the sequences themselves instead.
+  region_matched <- is.data.frame(reference_df) && "trim_path" %in% names(reference_df) &&
+    any(reference_df$trim_path %in% .REGION_PLACED_PATHS)
+  if (!is.null(barcode_term) && region_matched &&
+    missing(min_seq_len) && missing(max_seq_len)) {
+    widths <- nchar(reference_df$sequence)
+    min_seq_len <- min(widths, na.rm = TRUE)
+    max_seq_len <- max(widths, na.rm = TRUE)
+    message(sprintf(
+      "build_sequence_matrix: reference_df is region-matched (trim_path); barcode_term's deposit-length window is not applied -- using the matched sequences' own range [%d, %d] bp.",
+      min_seq_len, max_seq_len
+    ))
+  } else if (!is.null(barcode_term)) {
     if (missing(min_seq_len) && missing(max_seq_len)) {
       len_bounds <- TaxaTools::resolve_barcode_lengths(barcode_term)
       min_seq_len <- len_bounds[["min_bp"]]
