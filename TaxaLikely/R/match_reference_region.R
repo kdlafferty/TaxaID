@@ -69,6 +69,28 @@ utils::globalVariables(c("trim_path"))
 #' model, so the query-noise calibration and every likelihood computed from
 #' the old matrix must be recomputed.
 #'
+#' @section Region matching needs the study's own matched references:
+#' Region matching removes every reference that does not cover the ESV span,
+#' so it is only as good as the reference set's coverage of that span. A
+#' fetch by taxon name and marker term can return mostly other stretches of
+#' the gene: on an 18S V9 study, 73% of the fetched references lacked V9, and
+#' only 950 of the 6,902 accessions the ESVs actually matched had been fetched
+#' at all. Region matching that set alone cut the trained species from 5,347 to
+#' 2,098 and the share of observations won by a referenced species from 10% to
+#' 1.6%. Adding the match object's own accessions (they cover the span by
+#' construction, since the ESVs matched them) before calling this function
+#' restored coverage, and training on the result did no worse than training on
+#' the unmatched set (12% won by a referenced species). Do not adopt region
+#' matching without that step.
+#'
+#' The added accessions came to the reference set because the queries matched
+#' them, so pairs between two of them are tighter than pairs between fetched
+#' references (within-species variance about 60% as large in that study). They
+#' were 4.7% of within-species pairs there. A guard that drops such a pair
+#' only when its species also has a pair involving a fetched reference keeps
+#' every species trainable; the remaining bias then sits in low-coverage
+#' species, whose only pairs come from added accessions.
+#'
 #' @section Batch dependence:
 #' The homology threshold is the largest null score in the call, so it rises
 #' slowly with the number of references, and with only a handful of

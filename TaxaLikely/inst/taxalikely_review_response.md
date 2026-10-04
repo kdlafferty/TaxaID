@@ -894,6 +894,22 @@ on functions this document already covers above.
   own length range is used instead, with a message. Explicit `min_seq_len`/`max_seq_len`
   still override. Any other `reference_df` is unaffected.
 
+- `match_reference_region()` and adding the study's own matched accessions to the
+  reference set are a PAIR, and neither should be adopted alone. Region matching only
+  removes references that miss the ESV span; on CalIntertidal 18S that removed most of the
+  fetched set (the name-and-marker fetch returned mostly non-V9 records) and dropped the
+  share of observations won by a referenced species from 10% to 1.6%. With the match
+  object's own accessions added first (sequences from a local core_nt, no NCBI calls),
+  coverage returned and the result was no worse than the unmatched set (12%). The function's
+  roxygen now carries this as a section, with the circularity note: pairs between two
+  added accessions are tighter than fetched pairs.
+  The guard adopted for those pairs drops a pair between two added accessions only when
+  its species also has a within-species pair involving a fetched reference, so no species
+  loses its within-species data; the residual bias is therefore concentrated in
+  low-coverage species, those whose only pairs come from added accessions (143 species
+  for 18S, 587 for COI on CalIntertidal), which is why the stricter rule of dropping every
+  such pair was not used.
+
 - `.bimodality_check()` (recorded by `train_likelihood_model()` in `Stats$h1_bimodality`
   and consulted by `calibrate_query_noise()`) now recognises a flagged split whose
   higher component is a point mass, many identical values with near-zero spread over
