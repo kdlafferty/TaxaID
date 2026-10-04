@@ -522,8 +522,9 @@ build_sequence_matrix <- function(reference_df,
 
   # ---- 1. CLEAN & DEDUPLICATE -----------------------------------------------
   ref_seqs <- reference_df |>
-    dplyr::filter(!is.na(sequence), nchar(sequence) > 0L) |>
-    dplyr::distinct(composite_id, .keep_all = TRUE)
+    dplyr::filter(!is.na(sequence), nchar(sequence) > 0L)
+  .check_duplicate_ids(ref_seqs, intersect(rank_cols, names(ref_seqs)))
+  ref_seqs <- dplyr::distinct(ref_seqs, composite_id, .keep_all = TRUE)
 
   if (nrow(ref_seqs) < 2L) {
     stop("Fewer than 2 valid sequences in reference_df after deduplication")
@@ -663,6 +664,7 @@ build_sequence_matrix <- function(reference_df,
   } else {
     NULL
   }
+  .mem_stage("inputs ready", verbose)
   if (isTRUE(by_genus)) {
     dist_tbl <- .align_pairs_by_genus(
       dna, ref_seqs, rank_cols, max_dist, verbose, max_foreign_reps_per_genus,
@@ -673,6 +675,7 @@ build_sequence_matrix <- function(reference_df,
     message("Aligning sequences with DECIPHER...")
     dist_tbl <- .decipher_align_pairs(dna, max_dist, verbose, retain = retain)
     message(sprintf("Alignment complete (%.1fs)", proc.time()[["elapsed"]] - t0))
+    .mem_stage("whole-set alignment and pair extraction", verbose)
   }
 
   # A (sequence, stratum) group can be fed by more than one alignment under
@@ -682,27 +685,19 @@ build_sequence_matrix <- function(reference_df,
   # union is exact but can exceed two per group; one final pass over the
   # already-thinned table restores the documented "at most two" shape.
   if (!is.null(retain) && nrow(dist_tbl) > 0L) {
-    .lab <- function(v, k) if (is.null(v)) NULL else unname(v[k])
-    keep <- .best_per_partner_keep(
-      x = dist_tbl$id_x,
-      sp_x = .lab(retain$species, dist_tbl$id_x), sp_y = .lab(retain$species, dist_tbl$id_y),
-      gn_x = .lab(retain$genus, dist_tbl$id_x), gn_y = .lab(retain$genus, dist_tbl$id_y),
-      fam_x = .lab(retain$family, dist_tbl$id_x), fam_y = .lab(retain$family, dist_tbl$id_y),
-      p_match = dist_tbl$p_match, coverage = dist_tbl$coverage, tie = dist_tbl$id_y,
-      min_pair_coverage = retain$min_pair_coverage, by = retain$by
-    )
+    keep <- .retention_keep_chunked(dist_tbl, retain)
     dist_tbl <- dist_tbl[keep, , drop = FALSE]
+    rm(keep)
   }
+  .mem_stage("final retention pass", verbose)
 
   # ---- 4. MERGE TAXONOMY METADATA --------------------------------------------
   present_rank_cols <- intersect(rank_cols, names(ref_seqs))
   lookup <- dplyr::select(ref_seqs, composite_id, dplyr::all_of(present_rank_cols))
 
-  out <- dist_tbl |>
-    dplyr::left_join(lookup, by = c("id_x" = "composite_id")) |>
-    dplyr::rename_with(~ paste0(., ".x"), dplyr::all_of(present_rank_cols)) |>
-    dplyr::left_join(lookup, by = c("id_y" = "composite_id")) |>
-    dplyr::rename_with(~ paste0(., ".y"), dplyr::all_of(present_rank_cols))
+  out <- .attach_rank_columns(dist_tbl, lookup, present_rank_cols)
+  rm(dist_tbl)
+  .mem_stage("rank columns attached", verbose)
 
   # Recorded so train_likelihood_model() can tell that a thinned table was
   # built under a different coverage floor than the one it is about to apply
@@ -1218,7 +1213,7 @@ build_sequence_matrix <- function(reference_df,
       ))
     }
   }
-  augmented_tbl <- dplyr::bind_rows(augmented)
+  .mem_stage("per-genus alignments", verbose)
 
   # Cross-genus representative sample: one representative sequence per genus,
   # aligned together in a single small pass -- the sole source of
@@ -1251,7 +1246,177 @@ build_sequence_matrix <- function(reference_df,
     )
   }
 
-  dplyr::bind_rows(augmented_tbl, cross_genus_tbl)
+  .mem_stage("representative alignment and pair extraction", verbose)
+
+  # One bind over the per-genus pieces and the representative pairs. Binding
+  # the pieces first and then binding that table to the representative pairs
+  # held the pieces, their bound copy and the final copy at once.
+  pieces <- c(augmented, list(cross_genus_tbl))
+  rm(augmented, cross_genus_tbl)
+  out <- .bind_pair_pieces(pieces)
+  rm(pieces)
+  .mem_stage("pair tables bound", verbose)
+  out
+}
+
+#' Bind per-alignment pair tables into one table
+#'
+#' Equivalent to binding the per-genus pieces and then binding the result to
+#' the representative pairs, which is what the pair table was before.
+#'
+#' @param pieces List of pair tables (`NULL` entries allowed); the last is the
+#'   representative-alignment table.
+#' @return One data frame.
+#' @noRd
+.bind_pair_pieces <- function(pieces) {
+  n_in <- sum(vapply(pieces, function(p) if (is.null(p)) 0L else nrow(p), 0L))
+  out <- dplyr::bind_rows(pieces)
+  # The pieces are freed after this returns, so check here that every
+  # alignment's pairs arrived.
+  if (nrow(out) != n_in) {
+    stop(sprintf(
+      "Internal error: binding pair tables gave %d rows from %d input rows.",
+      nrow(out), n_in
+    ), call. = FALSE)
+  }
+  out
+}
+
+#' Add `<rank>.x` / `<rank>.y` columns to a pair table
+#'
+#' Looks each pair's two ids up in `lookup` by `match()` and copies the rank
+#' columns across, instead of two `dplyr::left_join()` calls (each of which
+#' copies the whole table). Same rows, order, columns and NA handling as the
+#' joins: an id absent from `lookup` gets `NA` ranks, an NA id matches an NA
+#' `composite_id` as `left_join()`'s default `na_matches = "na"` does.
+#' `composite_id` must be unique in `lookup`.
+#'
+#' @param dist_tbl Pair table with `id_x`, `id_y`.
+#' @param lookup Data frame with `composite_id` and the rank columns.
+#' @param rank_cols Rank column names present in `lookup`.
+#' @return `dist_tbl` with the rank columns appended, row names reset.
+#' @noRd
+.attach_rank_columns <- function(dist_tbl, lookup, rank_cols) {
+  # The lookup comes from the deduplicated reference table, so its ids are
+  # unique; a duplicate here would make the joins this replaces add rows.
+  if (anyDuplicated(lookup$composite_id) > 0L) {
+    stop("Internal error: duplicated composite_id in the rank lookup.", call. = FALSE)
+  }
+  key <- as.character(lookup$composite_id)
+  ix <- match(as.character(dist_tbl$id_x), key)
+  iy <- match(as.character(dist_tbl$id_y), key)
+  out <- dist_tbl
+  rownames(out) <- NULL
+  for (rk in rank_cols) out[[paste0(rk, ".x")]] <- lookup[[rk]][ix]
+  for (rk in rank_cols) out[[paste0(rk, ".y")]] <- lookup[[rk]][iy]
+  out
+}
+
+#' Announce, or refuse, duplicated reference ids
+#'
+#' A reference set can list one accession twice, e.g. when the same record is
+#' fetched under two homonymous genus names. Copies that agree in sequence and
+#' in the rank columns the matrix uses are reduced to one (the caller's
+#' `distinct()`), with a message. Copies that disagree are an error: keeping
+#' the first would silently pick one sequence or one taxonomy.
+#'
+#' @param ref_seqs Reference table with `composite_id`, `sequence`.
+#' @param rank_cols Rank columns the matrix carries.
+#' @return `NULL`, invisibly.
+#' @noRd
+.check_duplicate_ids <- function(ref_seqs, rank_cols) {
+  id <- as.character(ref_seqs$composite_id)
+  dup_ids <- unique(id[duplicated(id)])
+  if (length(dup_ids) == 0L) {
+    return(invisible(NULL))
+  }
+  sub <- unique(as.data.frame(ref_seqs[id %in% dup_ids, c("composite_id", "sequence", rank_cols), drop = FALSE]))
+  conflict <- unique(as.character(sub$composite_id[duplicated(as.character(sub$composite_id))]))
+  if (length(conflict) > 0L) {
+    stop(sprintf(
+      paste0(
+        "%d composite_id(s) appear more than once with a different sequence or ",
+        "different %s (e.g. %s). Resolve them in reference_df before building."
+      ),
+      length(conflict), paste(c("sequence", rank_cols), collapse = "/"),
+      paste(utils::head(conflict, 5L), collapse = ", ")
+    ), call. = FALSE)
+  }
+  message(sprintf(
+    paste0(
+      "build_sequence_matrix: %d composite_id(s) appear more than once with ",
+      "identical sequence and %s; kept one copy of each (e.g. %s)."
+    ),
+    length(dup_ids), if (length(rank_cols)) paste(rank_cols, collapse = "/") else "no rank columns",
+    paste(utils::head(dup_ids, 5L), collapse = ", ")
+  ))
+  invisible(NULL)
+}
+
+#' Final best_per_partner pass, in chunks of query ids
+#'
+#' Same result as one `.best_per_partner_keep()` call over the whole table.
+#' Survivors are chosen within (id_x, stratum) groups, every row of an id_x
+#' falls in one chunk, and rows keep their original relative order inside a
+#' chunk, so even fully tied rows resolve as they would in one pass. Holding
+#' the stratum keys for one chunk at a time is what bounds the memory; for
+#' the whole table they cost about 245 B per pair.
+#'
+#' @param dist_tbl Pair table with `id_x`, `id_y`, `p_match`, `coverage`.
+#' @param retain List from `.retention_context()`.
+#' @param chunk_rows Target rows per chunk (default
+#'   `getOption("TaxaLikely.retention_chunk_rows")`, else 2e6; the option is a
+#'   test hook).
+#' @return Logical keep vector, one per row of `dist_tbl`.
+#' @noRd
+.retention_keep_chunked <- function(dist_tbl, retain, chunk_rows = NULL) {
+  chunk_rows <- chunk_rows %||% getOption("TaxaLikely.retention_chunk_rows") %||% 2e6
+  n <- nrow(dist_tbl)
+  xc <- match(dist_tbl$id_x, unique(dist_tbl$id_x))
+  per <- ceiling(max(xc) / max(1, ceiling(n / chunk_rows)))
+  .lab <- function(v, k) if (is.null(v)) NULL else unname(v[k])
+  keep <- logical(n)
+  for (rows in split(seq_len(n), (xc - 1L) %/% per)) {
+    ix <- dist_tbl$id_x[rows]
+    iy <- dist_tbl$id_y[rows]
+    keep[rows] <- .best_per_partner_keep(
+      x = ix,
+      sp_x = .lab(retain$species, ix), sp_y = .lab(retain$species, iy),
+      gn_x = .lab(retain$genus, ix), gn_y = .lab(retain$genus, iy),
+      fam_x = .lab(retain$family, ix), fam_y = .lab(retain$family, iy),
+      p_match = dist_tbl$p_match[rows], coverage = dist_tbl$coverage[rows], tie = iy,
+      min_pair_coverage = retain$min_pair_coverage, by = retain$by
+    )
+  }
+  keep
+}
+
+#' Report memory at a build stage boundary
+#'
+#' Silent unless `verbose` and `options(TaxaLikely.report_memory = TRUE)`.
+#' Reports R heap in use, the heap high-water mark during the stage just
+#' finished (the mark is reset at each boundary, so each figure belongs to one
+#' stage), and the process resident set size (NA where `ps` is unavailable).
+#'
+#' @param stage Label for the stage just finished.
+#' @param verbose The caller's `verbose`.
+#' @return `NULL`, invisibly.
+#' @noRd
+.mem_stage <- function(stage, verbose) {
+  if (!isTRUE(verbose) || !isTRUE(getOption("TaxaLikely.report_memory", FALSE))) {
+    return(invisible(NULL))
+  }
+  g <- gc()
+  rss_gb <- tryCatch(
+    as.numeric(system2("ps", c("-o", "rss=", "-p", Sys.getpid()), stdout = TRUE)) / 1048576,
+    error = function(e) NA_real_, warning = function(w) NA_real_
+  )
+  message(sprintf(
+    "build_sequence_matrix [memory] %s: heap %.0f MB, stage heap max %.0f MB, RSS %.2f GB",
+    stage, sum(g[, 2L]), sum(g[, ncol(g)]), rss_gb[1L]
+  ))
+  invisible(gc(reset = TRUE))
+  invisible(NULL)
 }
 
 #' How Much Does the Random Cross-Genus Draw Move the Estimate?
