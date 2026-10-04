@@ -412,6 +412,19 @@ build_sequence_matrix <- function(reference_df,
   # length bounds come from the sequences themselves instead.
   region_matched <- is.data.frame(reference_df) && "trim_path" %in% names(reference_df) &&
     any(reference_df$trim_path %in% .REGION_PLACED_PATHS)
+  if (region_matched && any(!reference_df$trim_path %in% .REGION_PLACED_PATHS)) {
+    stop(sprintf(
+      paste0(
+        "build_sequence_matrix: %d row(s) of reference_df were not placed on the ESV region ",
+        "(match_reference_region(keep_unplaced = TRUE)). Those sequences are as deposited and ",
+        "would be compared over a different stretch of the gene. Drop them first: ",
+        "reference_df[reference_df$trim_path %%in%% c(\"esv_aligned\", ",
+        "\"esv_aligned_reverse_complement\", \"primer_anchored\", ",
+        "\"primer_anchored_reverse_complement\"), ]."
+      ),
+      sum(!reference_df$trim_path %in% .REGION_PLACED_PATHS)
+    ), call. = FALSE)
+  }
   if (!is.null(barcode_term) && region_matched &&
     missing(min_seq_len) && missing(max_seq_len)) {
     widths <- nchar(reference_df$sequence)

@@ -98,8 +98,9 @@ utils::globalVariables(c("trim_path"))
 #'   primer positions allowed to mismatch in the primer fallback, as in
 #'   [trim_to_amplicon()].
 #' @param keep_unplaced Logical (default `FALSE`). `TRUE` keeps unplaced rows,
-#'   with their sequence as deposited, so they can be inspected; never pass
-#'   such a data frame to [build_sequence_matrix()].
+#'   with their sequence as deposited, so they can be inspected.
+#'   [build_sequence_matrix()] refuses such a data frame until they are
+#'   dropped.
 #' @param n_candidates Integer (default `3L`). Candidate ESVs aligned per
 #'   reference.
 #' @param n_cores Integer (default `1L`). Forked worker processes

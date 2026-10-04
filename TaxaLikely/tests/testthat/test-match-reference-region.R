@@ -196,3 +196,12 @@ test_that("build_sequence_matrix() does not apply the deposit window to a region
   )
   expect_true(nrow(sm) > 0L)
 })
+
+test_that("build_sequence_matrix() refuses a region-matched set that still holds unplaced rows", {
+  skip_if_not_installed("Biostrings")
+  skip_if_not_installed("pwalign")
+  skip_if_not_installed("Matrix")
+  fx <- .rr_fixture()
+  kept <- suppressMessages(match_reference_region(fx$ref, fx$esvs, keep_unplaced = TRUE))
+  expect_error(build_sequence_matrix(kept, rank_system = "species"), "were not placed on the ESV region")
+})

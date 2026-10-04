@@ -44,8 +44,9 @@ primer positions allowed to mismatch in the primer fallback, as in
 \code{\link[=trim_to_amplicon]{trim_to_amplicon()}}.}
 
 \item{keep_unplaced}{Logical (default \code{FALSE}). \code{TRUE} keeps unplaced rows,
-with their sequence as deposited, so they can be inspected; never pass
-such a data frame to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.}
+with their sequence as deposited, so they can be inspected.
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}} refuses such a data frame until they are
+dropped.}
 
 \item{n_candidates}{Integer (default \code{3L}). Candidate ESVs aligned per
 reference.}
