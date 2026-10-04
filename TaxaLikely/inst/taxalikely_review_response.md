@@ -19,6 +19,7 @@ the reasoning recorded for a future dedicated session).
 | `check_cross_genus_sampling_noise()` | `R/build_sequence.R` | How Much Does the Random Cross-Genus Draw Move the Estimate? | test-build.R |
 | `taxalikely_clear_cache()` | `R/taxalikely_clear_cache.R` | Report and clear TaxaLikely's on-disk cache | test-fetch-cache-eviction.R, test-taxalikely_clear_cache.R |
 | `estimate_sequence_matrix_size()` | `R/matrix_size.R` | Predict the memory a sequence matrix will need, for a grid of caps | test-matrix-size.R |
+| `match_reference_region()` | `R/match_reference_region.R` | Trim every reference to the stretch of the gene the study's ESVs cover, marker-agnostic, before `build_sequence_matrix()` | test-match-reference-region.R |
 
 43 new internal helper functions have also been added since the review (mostly in
 `fetch.R`'s reference-cache internals, `bimodality.R` and `matrix_size.R`; 3 of the 43 are
@@ -883,6 +884,15 @@ longer accurate; kept as a record of the review response, not amended in place.
 
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
+
+- `build_sequence_matrix()` no longer applies `barcode_term`'s deposit-length window to a
+  `reference_df` returned by `match_reference_region()` (recognised by its `trim_path`
+  column). Those sequences are already cut to the ESVs' own span, so a deposit-length
+  window is the wrong test for them: a 250 bp partial Leray region would fail COI's
+  300-900 bp window, and every 169 bp MiFish region would pass `"12S"`'s 100-600 bp
+  window whether or not it was on the right stretch of the gene. The matched sequences'
+  own length range is used instead, with a message. Explicit `min_seq_len`/`max_seq_len`
+  still override. Any other `reference_df` is unaffected.
 
 - `.bimodality_check()` (recorded by `train_likelihood_model()` in `Stats$h1_bimodality`
   and consulted by `calibrate_query_noise()`) now recognises a flagged split whose
