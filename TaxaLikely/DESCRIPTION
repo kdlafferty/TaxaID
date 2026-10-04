@@ -22,6 +22,7 @@ Imports:
     utils,
     tibble,
     mvtnorm,
+    parallel,
     rlang,
     TaxaTools
 Suggests:
@@ -29,6 +30,7 @@ Suggests:
     Biostrings,
     knitr,
     lme4,
+    Matrix,
     pwalign,
     rentrez,
     rmarkdown,
