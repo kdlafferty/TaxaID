@@ -858,27 +858,38 @@ build_sequence_matrix <- function(reference_df,
     verbose              = verbose
   )
 
+  .pairs_from_distance(dist_m, aligned, max_dist, retain = retain, pair_filter = pair_filter)
+}
+
+#' Sparse pair table from one alignment's distance matrix, in row blocks
+#'
+#' Extracts every off-diagonal pair with distance below `max_dist`, with its
+#' `p_match` and `coverage`, then applies `pair_filter` and `retain` -- one
+#' block of query rows at a time, so no whole-matrix temporary (a logical
+#' mask, `row()`/`col()` index matrices, or the full pair list before
+#' thinning) is ever formed. Exact, not approximate: `pair_filter` is
+#' per pair, and `.best_per_partner_keep()` groups by query row, so every
+#' group lies inside one block. The result is returned in the order
+#' `which(..., arr.ind = TRUE)` on the whole matrix would give (column-major:
+#' partner index, then query index).
+#'
+#' @param dist_m Square distance matrix from `DECIPHER::DistanceMatrix()`.
+#' @param aligned The aligned `DNAStringSet` the matrix was computed from.
+#' @param block_rows Rows per block; `NULL` sizes blocks to ~256 MB of
+#'   doubles. Exposed for tests, which force tiny blocks to exercise every
+#'   boundary.
+#' @noRd
+.pairs_from_distance <- function(dist_m, aligned, max_dist, retain = NULL,
+                                 pair_filter = NULL, block_rows = NULL) {
   empty <- data.frame(
     id_x = character(0L), id_y = character(0L),
     p_match = numeric(0L), coverage = numeric(0L),
     stringsAsFactors = FALSE
   )
-
-  # Sparse extraction: only materialise pairs within max_dist (avoids an N^2 intermediate)
-  idx <- which(dist_m < max_dist & row(dist_m) != col(dist_m), arr.ind = TRUE)
-  if (nrow(idx) == 0L) {
-    return(empty)
-  }
-  i <- idx[, 1L]
-  j <- idx[, 2L]
-  p_match <- 1 - dist_m[idx]
-  rm(idx)
-
   # Coverage = number of positions where both sequences contribute a non-gap
   # character, divided by the shorter unaligned sequence length. The overlap
-  # count for every pair is one 0/1 matrix product (rows = sequences, columns
-  # = alignment positions), taken in row blocks so the transient block never
-  # exceeds a few hundred MB regardless of alignment size; the count is an
+  # count for a block of query rows against every sequence is one 0/1 matrix
+  # product (rows = sequences, columns = alignment positions); the count is an
   # exact integer, so this is the same number a per-pair mask intersection
   # gives, at a small fraction of the cost.
   aln_str <- as.character(aligned)
@@ -889,62 +900,87 @@ build_sequence_matrix <- function(reference_df,
     nrow = n_seq, byrow = TRUE
   )
   orig_widths <- as.integer(rowSums(gap_mat))
+  # The option is a test hook only: tests force tiny blocks through the whole
+  # build_sequence_matrix() path to exercise every block boundary.
+  if (is.null(block_rows)) block_rows <- getOption("TaxaLikely.pair_block_rows")
+  block <- if (is.null(block_rows)) {
+    max(1L, as.integer(floor(3.2e7 / n_seq))) # ~256 MB of doubles per block
+  } else {
+    as.integer(block_rows)
+  }
 
-  overlap <- numeric(length(i))
-  block <- max(1L, as.integer(floor(3.2e7 / n_seq))) # ~256 MB of doubles per block
-  ord_i <- order(i)
-  i_sorted <- i[ord_i]
-  starts <- seq.int(1L, n_seq, by = block)
-  for (s in starts) {
+  out_i <- list()
+  out_j <- list()
+  out_p <- list()
+  out_c <- list()
+  for (s in seq.int(1L, n_seq, by = block)) {
     e <- min(s + block - 1L, n_seq)
-    sel <- ord_i[i_sorted >= s & i_sorted <= e]
-    if (length(sel) == 0L) next
+    blk <- dist_m[s:e, , drop = FALSE]
+    idx <- which(blk < max_dist, arr.ind = TRUE)
+    if (nrow(idx) == 0L) next
+    i <- idx[, 1L] + s - 1L
+    j <- idx[, 2L]
+    off <- i != j
+    if (!any(off)) next
+    idx <- idx[off, , drop = FALSE]
+    i <- i[off]
+    j <- j[off]
+    p_match <- 1 - blk[idx]
     ov_block <- tcrossprod(gap_mat[s:e, , drop = FALSE], gap_mat)
-    overlap[sel] <- ov_block[cbind(i[sel] - s + 1L, j[sel])]
-  }
-  rm(gap_mat, ord_i, i_sorted)
-  min_len <- pmin(orig_widths[i], orig_widths[j])
-  coverage <- ifelse(min_len == 0L, NA_real_, overlap / min_len)
+    overlap <- ov_block[idx]
+    rm(blk, ov_block, idx)
+    min_len <- pmin(orig_widths[i], orig_widths[j])
+    coverage <- ifelse(min_len == 0L, NA_real_, overlap / min_len)
 
-  # A caller-supplied eligibility rule (the per-genus path drops pairs that
-  # another alignment is responsible for) must run BEFORE retention, so that
-  # retention never spends a stratum's two slots on rows that are about to be
-  # discarded.
-  if (!is.null(pair_filter)) {
-    elig <- pair_filter(seq_names[i], seq_names[j])
-    if (!any(elig)) {
-      return(empty)
+    # A caller-supplied eligibility rule (the per-genus path drops pairs that
+    # another alignment is responsible for) must run BEFORE retention, so that
+    # retention never spends a stratum's two slots on rows that are about to be
+    # discarded.
+    if (!is.null(pair_filter)) {
+      elig <- pair_filter(seq_names[i], seq_names[j])
+      if (!any(elig)) next
+      i <- i[elig]
+      j <- j[elig]
+      p_match <- p_match[elig]
+      coverage <- coverage[elig]
     }
-    i <- i[elig]
-    j <- j[elig]
-    p_match <- p_match[elig]
-    coverage <- coverage[elig]
-  }
-
-  if (!is.null(retain)) {
-    .lab <- function(v, k) if (is.null(v)) NULL else unname(v[seq_names[k]])
-    keep <- .best_per_partner_keep(
-      x = i,
-      sp_x = .lab(retain$species, i), sp_y = .lab(retain$species, j),
-      gn_x = .lab(retain$genus, i), gn_y = .lab(retain$genus, j),
-      fam_x = .lab(retain$family, i), fam_y = .lab(retain$family, j),
-      p_match = p_match, coverage = coverage, tie = j,
-      min_pair_coverage = retain$min_pair_coverage, by = retain$by
-    )
-    if (!any(keep)) {
-      return(empty)
+    if (!is.null(retain)) {
+      .lab <- function(v, k) if (is.null(v)) NULL else unname(v[seq_names[k]])
+      keep <- .best_per_partner_keep(
+        x = i,
+        sp_x = .lab(retain$species, i), sp_y = .lab(retain$species, j),
+        gn_x = .lab(retain$genus, i), gn_y = .lab(retain$genus, j),
+        fam_x = .lab(retain$family, i), fam_y = .lab(retain$family, j),
+        p_match = p_match, coverage = coverage, tie = j,
+        min_pair_coverage = retain$min_pair_coverage, by = retain$by
+      )
+      if (!any(keep)) next
+      i <- i[keep]
+      j <- j[keep]
+      p_match <- p_match[keep]
+      coverage <- coverage[keep]
     }
-    i <- i[keep]
-    j <- j[keep]
-    p_match <- p_match[keep]
-    coverage <- coverage[keep]
+    k <- length(out_i) + 1L
+    out_i[[k]] <- i
+    out_j[[k]] <- j
+    out_p[[k]] <- p_match
+    out_c[[k]] <- coverage
   }
-
+  rm(gap_mat)
+  if (length(out_i) == 0L) {
+    return(empty)
+  }
+  i <- unlist(out_i, use.names = FALSE)
+  j <- unlist(out_j, use.names = FALSE)
+  p_match <- unlist(out_p, use.names = FALSE)
+  coverage <- unlist(out_c, use.names = FALSE)
+  rm(out_i, out_j, out_p, out_c)
+  o <- order(j, i) # the column-major order of the whole-matrix which()
   data.frame(
-    id_x = seq_names[i],
-    id_y = seq_names[j],
-    p_match = p_match,
-    coverage = coverage,
+    id_x = seq_names[i[o]],
+    id_y = seq_names[j[o]],
+    p_match = p_match[o],
+    coverage = coverage[o],
     stringsAsFactors = FALSE
   )
 }
