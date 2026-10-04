@@ -255,7 +255,7 @@ match_reference_region <- function(reference_df,
   counts <- table(factor(row_path, levels = c(.REGION_PLACED_PATHS, .REGION_UNPLACED_PATHS)))
   if (verbose) {
     message(sprintf(
-      "match_reference_region: homology threshold %.0f (largest reversed-sequence null score); %s of %s row(s) placed. trim_path: %s.",
+      "match_reference_region: homology threshold %.0f (largest no-homology null score); %s of %s row(s) placed. trim_path: %s.",
       threshold, format(sum(is_placed), big.mark = ","), format(nrow(res), big.mark = ","),
       paste(sprintf("%s=%s", names(counts), format(as.integer(counts), big.mark = ",")), collapse = ", ")
     ))
