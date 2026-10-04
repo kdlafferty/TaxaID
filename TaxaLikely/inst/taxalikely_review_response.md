@@ -1201,3 +1201,12 @@ NOT changed: failure paths that warn at call time with the user present (input
 validation), and single-shot failures that abort rather than continue. The
 maintainer's condition was that this must not produce thousands of repeat lines,
 so the choice of sites is deliberate -- see the volume note where it applies.
+
+### 2026-10-01 -- `.estimate_score_quantum()` / `.smooth_comb()` have a copy in TaxaMatch
+
+- `R/bimodality.R`'s `.estimate_score_quantum()` and `.smooth_comb()` are copied, math
+  unchanged, into `TaxaMatch/R/reference_mislabel_test.R` for the reference mislabel
+  test's density estimates. TaxaMatch cannot call TaxaLikely internals. If either function
+  is corrected here, correct the copy too: `TaxaMatch/tests/testthat/test-reference-mislabel-test.R`
+  pins the copy's behaviour on a fixture so a divergence fails a test. No change to
+  TaxaLikely code.
