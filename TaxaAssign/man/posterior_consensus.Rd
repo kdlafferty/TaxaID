@@ -294,7 +294,12 @@ lineage) hold enough posterior that a node could have reached the
 threshold had their lineage been complete. \code{"robust_prior"}: the
 call would be finer without the robust-prior check
 (\code{robust_prior_s}). \code{"threshold"}: the posterior is spread across
-named alternatives at every finer rank.}
+named alternatives at every finer rank. \code{"rank_not_supplied"}: the
+only finer rank that could have given a call is one no row of
+\code{posterior_df} carries at all (the column is absent or empty
+throughout); the rank was never provided, which differs from
+\code{"backbone"}, where it is missing from some lineages (e.g. a backbone
+with no class for ray-finned fishes). A message names such ranks.}
 \item{\code{robust_lower_posterior}}{With \code{consensus_method = "credible_node"} and \code{robust_prior_s > 0}: the lower bound of the
 reported taxon's posterior over the imprecise-prior neighbourhood
 (see \code{robust_prior_s}). \code{NA} otherwise.}

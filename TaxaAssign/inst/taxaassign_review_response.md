@@ -983,3 +983,19 @@ Maintainer's decisions (review of the rank-ancestry work, items 1a-1c, and the r
 - Rank masking (a row never reports a rank finer than its own) orders ranks by the standard
   ladder with the caller's non-standard ranks inserted (internal `.rank_order()`), so a row named
   at e.g. subgenus no longer counts toward the species its anchor carries.
+
+### 2026-10-03: consensus_limit gains "rank_not_supplied"
+
+Maintainer's approval (relayed by the peer coordinator; scope as proposed). A rank in
+`rank_system` that no row of `posterior_df` carries (the column absent, or empty throughout after
+placeholder normalisation) used to stamp any call held coarse by it as "backbone", the same stamp
+as a rank missing from SOME lineages (e.g. GBIF has no class for ray-finned fishes). The two now
+differ: such a rank is "rank_not_supplied", decided at dataset level, with one entry `message()`
+naming it; "backbone" is kept for ranks the input supplies but these rows' lineages lack. Calls
+are unchanged; only the label. Motivating case: on the 2026-09-27 CalIntertidal 18S objects, which
+had no usable class column, 4,203 no-calls were stamped "backbone" (benchmark session's count).
+Internal to posterior_consensus(); no new export, argument or column. Test covers absent / missing
+from these lineages / supplied (the absent case fails on the previous code). Package review's
+placeholder test now adds a second observation carrying a real class, so its "backbone"
+expectation still describes a supplied-but-missing rank; a single-observation, all-placeholder
+input is now "rank_not_supplied", asserted alongside.
