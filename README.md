@@ -916,7 +916,7 @@ describe each in full.
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 18                 | 12         | Yes      |
 | TaxaMatch   | 31                 | 24         | Yes      |
-| TaxaLikely  | 32                 | 32         | Yes      |
+| TaxaLikely  | 33                 | 33         | Yes      |
 | TaxaExpect  | 18                 | 18         | Yes      |
 | TaxaAssign  | 16                 | 20         | Yes      |
 | TaxaFlag    | 15                 | 17         | Yes      |

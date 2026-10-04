@@ -129,12 +129,33 @@ utils::globalVariables(c("trim_path"))
 #' @seealso [build_sequence_matrix()], [trim_to_amplicon()]
 #'
 #' @examples
+#' if (requireNamespace("Biostrings", quietly = TRUE) &&
+#'   requireNamespace("pwalign", quietly = TRUE) &&
+#'   requireNamespace("Matrix", quietly = TRUE)) {
+#'   set.seed(1)
+#'   gene <- paste(sample(c("A", "C", "G", "T"), 600, replace = TRUE), collapse = "")
+#'   # the study's ESVs cover positions 201-350 of the gene
+#'   esvs <- substring(gene, 201, 350)
+#'   reference_df <- data.frame(
+#'     composite_id = c("long_deposit", "other_stretch"),
+#'     sequence = c(
+#'       substring(gene, 101, 500), # contains the ESV span
+#'       substring(gene, 400, 600) # a different stretch of the same gene
+#'     )
+#'   )
+#'   out <- match_reference_region(reference_df, esvs, keep_unplaced = TRUE)
+#'   out[, c("composite_id", "trim_path", "len_submitted", "region_coverage")]
+#'   nchar(out$sequence[1]) # 150: cut to the ESV span
+#'   attr(out, "trim_path_counts")
+#' }
+#'
 #' \dontrun{
+#' # In a workflow, between the reference fetch and the matrix build:
 #' reference_df <- match_reference_region(reference_df,
 #'   esv_sequences = unique(match_df$sequence), barcode_term = "COI-Leray",
 #'   n_cores = 4L
 #' )
-#' attr(reference_df, "trim_path_counts")
+#' seq_matrix <- build_sequence_matrix(reference_df, barcode_term = "COI-Leray")
 #' }
 #'
 #' @export
