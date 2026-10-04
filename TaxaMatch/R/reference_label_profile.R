@@ -10,7 +10,7 @@
 
 #' Bare accession from a BLAST sequence id
 #'
-#' With `makeblastdb -parse_seqids`, `sseqid` can come back in legacy form
+#' With `makeblastdb -parse_seqids`, `sseqid` can come back in its database-id form
 #' (`"dbj|AB033668|"`), which matches no deposit accession. Keeps the
 #' accession between the bars and drops the version.
 #' @noRd
