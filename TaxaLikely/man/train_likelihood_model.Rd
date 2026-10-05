@@ -277,9 +277,12 @@ pair, and the confusion-risk curves' per-reference best match) are
 computed in blocks of whole references and bound, so their temporaries
 scale with the block rather than the whole pair table (a 32.6-million-pair
 COI matrix otherwise exceeded 17 GB). The output is identical for any block
-size. Statistics that span references (species pair counts, the rate
-curves by species, genus and family) are computed once on the combined
-per-reference results. Block size: \code{options(TaxaLikely.train_block_ids =)},
+size. The rate curves by species, genus and family span references and are
+computed once, on the combined per-reference results. The species pair
+counts (\code{N_Obs}) are counted per block and summed: exact because they are
+row counts, and row counts add over disjoint blocks (a distinct count, of
+partners say, would not add: a partner seen from two blocks would be
+counted twice). Block size: \code{options(TaxaLikely.train_block_ids =)},
 references per block, default 5000.
 }
 

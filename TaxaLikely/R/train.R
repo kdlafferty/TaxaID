@@ -233,8 +233,10 @@ utils::globalVariables(c(
   # the sorted id order dplyr groups by) and the per-block results are bound:
   # identical output, with full-matrix temporaries replaced by block-sized
   # ones (the full COI matrix otherwise needed > 17 GB here). The one quantity
-  # that spans references, species_counts (N_Obs), is summed across blocks and
-  # joined after. Block size: getOption("TaxaLikely.train_block_ids"), default
+  # that spans references, species_counts (N_Obs), is counted per block and
+  # summed, then joined: exact because N_Obs is a ROW count, additive over
+  # disjoint blocks. A DISTINCT count (e.g. n_distinct(partner)) would not be:
+  # a partner reached from two blocks would be counted twice. Block size: getOption("TaxaLikely.train_block_ids"), default
   # 5000 references; the output does not depend on it.
   .one_block <- function(df_logit) {
     # ---- STEP 3: FOREIGN STATS (max cross-species logit score per id_x) -------
@@ -578,9 +580,12 @@ utils::globalVariables(c(
 #' computed in blocks of whole references and bound, so their temporaries
 #' scale with the block rather than the whole pair table (a 32.6-million-pair
 #' COI matrix otherwise exceeded 17 GB). The output is identical for any block
-#' size. Statistics that span references (species pair counts, the rate
-#' curves by species, genus and family) are computed once on the combined
-#' per-reference results. Block size: `options(TaxaLikely.train_block_ids =)`,
+#' size. The rate curves by species, genus and family span references and are
+#' computed once, on the combined per-reference results. The species pair
+#' counts (`N_Obs`) are counted per block and summed: exact because they are
+#' row counts, and row counts add over disjoint blocks (a distinct count, of
+#' partners say, would not add: a partner seen from two blocks would be
+#' counted twice). Block size: `options(TaxaLikely.train_block_ids =)`,
 #' references per block, default 5000.
 #'
 #' @section Marker validation scope:

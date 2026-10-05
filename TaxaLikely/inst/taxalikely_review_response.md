@@ -1374,3 +1374,14 @@ block and at 997: 12S (186,591 pairs), 18S (4,092,915) and a fixed 8% COI refere
 4.44 -> 1.90 GB (heap 4.53 -> 1.42), run time unchanged (+/- 5%). Full COI (32.6M pairs, from a
 temporary-library install): curves heap max 6.81 GB (was 10.08), prep heap max 7.03 GB (was
 killed at 17.2 GB RSS), total training 980 s, process peak 7.66 GB maximum resident.
+
+### 2026-10-05: species_counts in blocks -- wording correction
+
+The 2026-10-05 blocking entry and the Memory section of `train_likelihood_model()` should say
+precisely how `species_counts` (`N_Obs`, key species) is handled: it is counted per block (n()
+over each block's conspecific pairs) and SUMMED across blocks before the join, not computed once
+on the combined pairs. That is exact because `N_Obs` is a row count and row counts are additive
+over disjoint blocks (every pair belongs to exactly one block, the block of its id_x). A
+DISTINCT count would not be additive: changing it to e.g. `n_distinct(partner)` would double-count
+partners reached from references in two blocks, so such a statistic must be computed once on the
+combined rows instead. Docs-only; the code and output are unchanged (found by package review).
