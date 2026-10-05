@@ -129,61 +129,82 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
   }
   score_col <- "p_match"
 
-  sp_x <- as.character(raw_df[[paste0(species_col, ".x")]])
-  sp_y <- as.character(raw_df[[paste0(species_col, ".y")]])
-  gn_x <- as.character(raw_df[[paste0(genus_col, ".x")]])
-  gn_y <- as.character(raw_df[[paste0(genus_col, ".y")]])
-
   has_family <- !is.na(family_col) &&
     all(c(paste0(family_col, ".x"), paste0(family_col, ".y")) %in% names(raw_df))
-  fam_x <- if (has_family) {
-    as.character(raw_df[[paste0(family_col, ".x")]])
-  } else {
-    rep(NA_character_, nrow(raw_df))
+
+  # Normalised once over the whole column (its scale may be inferred from all
+  # scores), then subset per block.
+  pct_all <- .normalize_scores(raw_df[[score_col]]) * 100
+
+  # STAGE 1 -- key (id_x, pair_type): each reference's best match per pair
+  # type. id_x-local, so it is computed per block of whole references
+  # (.id_blocks(); blocks contiguous in the sorted id order dplyr groups by,
+  # rows in original order) and the collapsed rows bound: identical to the
+  # unblocked result, row for row, with block-sized temporaries. STAGE 2
+  # below (rate curves keyed by species / genus / family, which span
+  # references) runs ONCE on the combined `collapsed`.
+  .collapse_block <- function(ix) {
+    sp_x <- as.character(raw_df[[paste0(species_col, ".x")]][ix])
+    sp_y <- as.character(raw_df[[paste0(species_col, ".y")]][ix])
+    gn_x <- as.character(raw_df[[paste0(genus_col, ".x")]][ix])
+    gn_y <- as.character(raw_df[[paste0(genus_col, ".y")]][ix])
+    fam_x <- if (has_family) {
+      as.character(raw_df[[paste0(family_col, ".x")]][ix])
+    } else {
+      rep(NA_character_, length(ix))
+    }
+    fam_y <- if (has_family) {
+      as.character(raw_df[[paste0(family_col, ".y")]][ix])
+    } else {
+      rep(NA_character_, length(ix))
+    }
+    pct_identity <- pct_all[ix]
+    id_x <- raw_df$id_x[ix]
+
+    same_species <- !is.na(sp_x) & !is.na(sp_y) & sp_x == sp_y
+    same_genus <- !is.na(gn_x) & !is.na(gn_y) & gn_x == gn_y
+    same_family <- if (has_family) {
+      (!is.na(fam_x) & !is.na(fam_y) & fam_x == fam_y)
+    } else {
+      rep(FALSE, length(sp_x))
+    }
+
+    pair_type <- rep("cross-family", length(sp_x))
+    pair_type[!same_species & same_genus] <- "congeneric"
+    pair_type[!same_genus & has_family & same_family] <- "confamilial"
+    pair_type[same_species] <- "within-species"
+
+    keep <- !is.na(sp_x) & nzchar(sp_x) & !is.na(id_x)
+    if (!any(keep)) {
+      return(NULL)
+    }
+
+    df <- data.frame(
+      id_x = id_x[keep],
+      species = sp_x[keep],
+      genus = gn_x[keep],
+      family = fam_x[keep],
+      pair_type = pair_type[keep],
+      pct_identity = pct_identity[keep],
+      stringsAsFactors = FALSE
+    )
+
+    # Per-sequence best-match collapse within each pair_type -- mirrors
+    # .prep_training_data()'s own h1_data/max_congener_score convention (see
+    # this file's header for the rationale).
+    dplyr::ungroup(dplyr::slice_max(
+      dplyr::group_by(df, id_x, pair_type), pct_identity,
+      n = 1L, with_ties = FALSE
+    ))
   }
-  fam_y <- if (has_family) {
-    as.character(raw_df[[paste0(family_col, ".y")]])
-  } else {
-    rep(NA_character_, nrow(raw_df))
-  }
-
-  pct_identity <- .normalize_scores(raw_df[[score_col]]) * 100
-
-  same_species <- !is.na(sp_x) & !is.na(sp_y) & sp_x == sp_y
-  same_genus <- !is.na(gn_x) & !is.na(gn_y) & gn_x == gn_y
-  same_family <- if (has_family) {
-    (!is.na(fam_x) & !is.na(fam_y) & fam_x == fam_y)
-  } else {
-    rep(FALSE, length(sp_x))
-  }
-
-  pair_type <- rep("cross-family", length(sp_x))
-  pair_type[!same_species & same_genus] <- "congeneric"
-  pair_type[!same_genus & has_family & same_family] <- "confamilial"
-  pair_type[same_species] <- "within-species"
-
-  keep <- !is.na(sp_x) & nzchar(sp_x) & !is.na(raw_df$id_x)
-  if (!any(keep)) {
+  blocks <- .id_blocks(raw_df$id_x)
+  pieces <- lapply(blocks, .collapse_block)
+  pieces <- pieces[!vapply(pieces, is.null, logical(1))]
+  if (length(pieces) == 0L) {
     return(NULL)
   }
-
-  df <- data.frame(
-    id_x = raw_df$id_x[keep],
-    species = sp_x[keep],
-    genus = gn_x[keep],
-    family = fam_x[keep],
-    pair_type = pair_type[keep],
-    pct_identity = pct_identity[keep],
-    stringsAsFactors = FALSE
-  )
-
-  # Per-sequence best-match collapse within each pair_type -- mirrors
-  # .prep_training_data()'s own h1_data/max_congener_score convention (see
-  # this file's header for the rationale).
-  collapsed <- dplyr::ungroup(dplyr::slice_max(
-    dplyr::group_by(df, id_x, pair_type), pct_identity,
-    n = 1L, with_ties = FALSE
-  ))
+  collapsed <- if (length(pieces) == 1L) pieces[[1L]] else dplyr::bind_rows(pieces)
+  rm(pieces, pct_all)
 
   # Jeffreys posterior mean, (k + 1/2) / (n + 1), alongside the raw proportion
   # k/n -- the standard non-informative Beta(1/2, 1/2) reference prior for a
