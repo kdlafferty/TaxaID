@@ -1347,3 +1347,30 @@ old bind, joins and retention pass, at helper level and at full-build level
   is corrected here, correct the copy too: `TaxaMatch/tests/testthat/test-reference-mislabel-test.R`
   pins the copy's behaviour on a fixture so a divergence fails a test. No change to
   TaxaLikely code.
+
+### 2026-10-05: training passes in blocks of references (memory), identical output
+
+Maintainer-approved (peer coordinator relaying "y"); exact output, no method change. On the
+real COI matrix (32.6M pairs, 2.49 GB) train_likelihood_model() was killed at 17.2 GB RSS
+and still climbing inside .prep_training_data(), after .compute_rank_score_curves() had reached
+a 10.08 GB R heap. Both passes now process the pairs in blocks of whole references
+(internal .id_blocks(); option TaxaLikely.train_block_ids, default 5000 references per block):
+- Grouping key per stage, and why blocking is exact. Curves stage 1, key (id_x, pair_type): each
+  reference's best match per pair type, blocked. Curves stage 2, keys species / genus / family
+  (rate curves, Jeffreys smoothing, equal-weighted pooling, EB shrinkage): run ONCE on the
+  combined stage-1 rows, never per block. .prep_training_data: keys id_x (foreign, congener,
+  confamilial and ring maxima; best conspecific pair; singletons) and (id_x, partner species)
+  (gap draws), blocked; species_counts (key: species, spans references) is summed across blocks
+  and joined after. Every block holds all rows of its references, blocks are contiguous in the
+  sorted (C-locale) id order dplyr groups by, and rows keep their original order inside a block,
+  so first-row-on-ties choices and the bound row order equal the unblocked ones.
+- Column selection: each statistics filter selects only the columns it needs.
+Evidence. Fixture (192 references, species straddling block boundaries, tied maxima):
+expect_identical at block sizes 7 and 11 against one block for the curves, the training frame and
+the trained model; a mutation (row blocks splitting a reference) changes the result. Real data,
+old main 90c19dd vs new, identical() TRUE for curves, training frame and model at the default
+block and at 997: 12S (186,591 pairs), 18S (4,092,915) and a fixed 8% COI reference subset
+(2,820,686). Memory: 18S process-tree peak 6.86 -> 2.37 GB (heap 5.17 -> 2.06), COI subset
+4.44 -> 1.90 GB (heap 4.53 -> 1.42), run time unchanged (+/- 5%). Full COI (32.6M pairs, from a
+temporary-library install): curves heap max 6.81 GB (was 10.08), prep heap max 7.03 GB (was
+killed at 17.2 GB RSS), total training 980 s, process peak 7.66 GB maximum resident.
