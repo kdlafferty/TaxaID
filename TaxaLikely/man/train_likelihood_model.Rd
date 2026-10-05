@@ -269,6 +269,20 @@ delta shrinkage" section below.
 }
 }
 
+\section{Memory}{
+
+The per-reference training passes (each reference's best foreign,
+congener, confamilial and ring match, its gap draws, its best conspecific
+pair, and the confusion-risk curves' per-reference best match) are
+computed in blocks of whole references and bound, so their temporaries
+scale with the block rather than the whole pair table (a 32.6-million-pair
+COI matrix otherwise exceeded 17 GB). The output is identical for any block
+size. Statistics that span references (species pair counts, the rate
+curves by species, genus and family) are computed once on the combined
+per-reference results. Block size: \code{options(TaxaLikely.train_block_ids =)},
+references per block, default 5000.
+}
+
 \section{Marker validation scope}{
 
 The continuous bivariate-normal form above (as opposed to a discrete

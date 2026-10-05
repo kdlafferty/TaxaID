@@ -851,3 +851,61 @@ test_that("evaluate_likelihoods: the phylum ring row is named by the anchor's ph
   expect_equal(cls$taxon_name_rank, "phylum")
   expect_false(any(liks$hypothesis_type == "unreferenced_phylum")) # no kingdom ring
 })
+
+# ---- training passes in blocks of references: identical output -------------
+test_that(".id_blocks puts every row of a reference in one block, in order", {
+  ids <- c("b", "a", "c", "a", "d", "b", "e", NA, "c")
+  bl <- TaxaLikely:::.id_blocks(ids, block_size = 2L)
+  expect_equal(sort(unlist(bl)), seq_along(ids))
+  for (b in bl) expect_false(is.unsorted(b)) # original row order kept
+  owner <- integer(length(ids))
+  for (k in seq_along(bl)) owner[bl[[k]]] <- k
+  expect_true(all(tapply(owner, ids, function(v) length(unique(v))) == 1L))
+  expect_length(TaxaLikely:::.id_blocks(ids, block_size = 100L), 1L)
+})
+
+.block_fixture <- function() .make_ring_raw_df6() # 192 refs, 2 per species, many tied scores
+.train_with_block <- function(raw, rs, b, what = c("prep", "curves", "model")) {
+  what <- match.arg(what)
+  old <- options(TaxaLikely.train_block_ids = b)
+  on.exit(options(old), add = TRUE)
+  switch(what,
+    prep = TaxaLikely:::.prep_training_data(raw, rs, score_transform = "sqrt_mismatch"),
+    curves = TaxaLikely:::.compute_rank_score_curves(raw, rs),
+    model = suppressWarnings(suppressMessages(train_likelihood_model(raw, rank_system = rs)))
+  )
+}
+
+test_that("training output is identical in blocks of references (two block sizes)", {
+  raw <- .block_fixture()
+  rs <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  # the fixture straddles: some species' two references fall in different blocks
+  u <- sort(unique(raw$id_x), method = "radix")
+  sp <- raw$species.x[match(u, raw$id_x)]
+  blk <- (seq_along(u) - 1L) %/% 7L
+  expect_true(any(tapply(blk, sp, function(v) length(unique(v))) > 1L))
+  # ties: groups with a tied maximum exist (many partners at the same identity)
+  expect_true(any(duplicated(raw[raw$species.x != raw$species.y, c("id_x", "p_match")])))
+  for (what in c("prep", "curves", "model")) {
+    one <- .train_with_block(raw, rs, 1e6L, what)
+    expect_identical(.train_with_block(raw, rs, 7L, what), one, info = what)
+    expect_identical(.train_with_block(raw, rs, 11L, what), one, info = what)
+  }
+})
+
+test_that("a block boundary inside a reference changes the result (the identity check is not vacuous)", {
+  raw <- .block_fixture()
+  rs <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  one <- .train_with_block(raw, rs, 1e6L, "prep")
+  # mutation: blocks of ROWS, which split references across blocks
+  local_mocked_bindings(.id_blocks = function(ids, block_size = 7L) {
+    unname(split(seq_along(ids), (seq_along(ids) - 1L) %/% 97L))
+  })
+  expect_false(identical(TaxaLikely:::.prep_training_data(raw, rs, score_transform = "sqrt_mismatch"), one))
+})
+
+test_that("option TaxaLikely.train_block_ids is validated", {
+  old <- options(TaxaLikely.train_block_ids = 0)
+  on.exit(options(old), add = TRUE)
+  expect_error(TaxaLikely:::.train_block_size(), "positive integer")
+})

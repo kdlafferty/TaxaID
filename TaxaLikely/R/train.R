@@ -89,6 +89,28 @@ utils::globalVariables(c(
 #'   }
 #'
 #' @noRd
+# References per block for the training-data passes; see .id_blocks().
+.train_block_size <- function() {
+  b <- getOption("TaxaLikely.train_block_ids") %||% 5000L
+  b <- suppressWarnings(as.integer(b))
+  if (length(b) != 1L || is.na(b) || b < 1L) {
+    stop("option TaxaLikely.train_block_ids must be a positive integer (references per block).", call. = FALSE)
+  }
+  b
+}
+
+# Row indices of a pair table in blocks of whole references: every row of an
+# id_x falls in exactly one block, blocks follow the ids' sorted (C-locale,
+# NA last) order, and rows keep their original order inside a block, so
+# per-reference group-wise results bound across blocks equal the unblocked
+# ones row for row (including first-row-on-ties choices).
+.id_blocks <- function(ids, block_size = .train_block_size()) {
+  u <- sort(unique(ids), method = "radix", na.last = TRUE)
+  if (length(u) <= block_size) return(list(seq_along(ids)))
+  b <- (match(ids, u) - 1L) %/% block_size
+  unname(split(seq_along(ids), b))
+}
+
 .prep_training_data <- function(raw_df,
                                 rank_system,
                                 score_bounds = NULL,
@@ -203,288 +225,321 @@ utils::globalVariables(c(
       score_logit = .transform_p(p_norm, score_transform, logit_epsilon)
     )
 
-  # ---- STEP 3: FOREIGN STATS (max cross-species logit score per id_x) -------
-  foreign_stats <- df_logit |>
-    dplyr::filter(
-      !is.na(.data[["rank_code_a.x"]]),
-      !is.na(.data[["rank_code_a.y"]])
-    ) |>
-    dplyr::group_by(id_x) |>
-    dplyr::summarise(
-      # Only a pair passing the coverage floor may define the best foreign
-      # match. A reference whose every cross-species pair is a short overlap
-      # has NO usable foreign comparison and falls to the noise floor below --
-      # exactly as a reference with no foreign pair at all always has. It does
-      # NOT fall back to the unfiltered maximum, which would reinstate the
-      # very artifact the floor removes.
-      max_foreign_score = suppressWarnings(
-        max(
-          score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] & pair_ok],
-          -Inf
-        )
-      ),
-      n_foreign_unqualified = as.integer(
-        is.infinite(max(score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] & pair_ok], -Inf)) &
-          any(.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]])
-      ),
-      .groups = "drop"
-    ) |>
-    dplyr::mutate(
-      max_foreign_score = ifelse(
-        is.infinite(max_foreign_score), noise_floor_transformed, max_foreign_score
-      )
-    )
-
-  # ---- STEP 3B: CONGENER STATS (best same-genus, different-species match) ---
-  # max_foreign_score above is the best match to ANY other species, in any
-  # genus. That mixes true congeners in with distant, unrelated matches, so it
-  # cannot tell "this genus has tight congeneric divergence" apart from "this
-  # sequence's closest relative in the whole database happens to be distant."
-  # max_congener_score restricts to real congeners (same genus, different
-  # species) and is left NA -- not floored -- when the query's genus has no
-  # other referenced species at all, so train_likelihood_model() can tell
-  # "no local congener data exists for this genus" apart from "a real
-  # congener match was observed and it was distant." Used to estimate a
-  # genus-specific H2 delta (see H2_Lookup below); requires rank_code_b to be
-  # present.
-  #
-  # rank_code_b is PURELY POSITIONAL, not semantic: rank_code_a is always
-  # rank_system's LAST (finest) element, rank_code_b its second-to-last, and
-  # so on (.generalize_ranks() above renames by position via rev(present)).
-  # "Genus" here is a documented CONVENTION, not an enforced guarantee --
-  # true whenever rank_system's finest two elements are ("...", "genus",
-  # "species"), which is this ecosystem's own standard rank_system and how
-  # every real production workflow calls this package. A
-  # caller supplying a non-standard rank_system whose second-finest rank
-  # ISN'T genus (e.g. one ending "...genus, species, subspecies", finest =
-  # subspecies) would silently get max_congener_score/H2_Lookup keyed on
-  # THAT rank instead (e.g. same-species-different-subspecies) with no
-  # error or warning -- there is no runtime check enforcing "genus"
-  # specifically, by design (this package's rank_system is deliberately
-  # flexible, not hardcoded to a fixed taxonomic ladder).
-  has_genus_code <- all(c("rank_code_b.x", "rank_code_b.y") %in% names(df_logit))
-  congener_stats <- if (has_genus_code) {
-    df_logit |>
+  # ---- STEPS 3-5 PER BLOCK OF REFERENCES ------------------------------------
+  # Every statistic below is a property of one reference (id_x): its best
+  # foreign / congener / confamilial / ring match, its gap draws, its best
+  # conspecific pair, its singleton row. So the pairs are processed in blocks
+  # of references (all of a reference's rows in one block, blocks contiguous in
+  # the sorted id order dplyr groups by) and the per-block results are bound:
+  # identical output, with full-matrix temporaries replaced by block-sized
+  # ones (the full COI matrix otherwise needed > 17 GB here). The one quantity
+  # that spans references, species_counts (N_Obs), is summed across blocks and
+  # joined after. Block size: getOption("TaxaLikely.train_block_ids"), default
+  # 5000 references; the output does not depend on it.
+  .one_block <- function(df_logit) {
+    # ---- STEP 3: FOREIGN STATS (max cross-species logit score per id_x) -------
+    foreign_stats <- df_logit |>
+      dplyr::select(dplyr::any_of(c("id_x", "score_logit", "pair_ok", "rank_code_a.x", "rank_code_a.y"))) |>
       dplyr::filter(
-        !is.na(.data[["rank_code_a.x"]]), !is.na(.data[["rank_code_a.y"]]),
-        !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]])
+        !is.na(.data[["rank_code_a.x"]]),
+        !is.na(.data[["rank_code_a.y"]])
       ) |>
       dplyr::group_by(id_x) |>
       dplyr::summarise(
-        max_congener_score = suppressWarnings(
-          max(score_logit[
-            .data[["rank_code_b.x"]] == .data[["rank_code_b.y"]] &
-              .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] &
-              pair_ok
-          ], -Inf)
+        # Only a pair passing the coverage floor may define the best foreign
+        # match. A reference whose every cross-species pair is a short overlap
+        # has NO usable foreign comparison and falls to the noise floor below --
+        # exactly as a reference with no foreign pair at all always has. It does
+        # NOT fall back to the unfiltered maximum, which would reinstate the
+        # very artifact the floor removes.
+        max_foreign_score = suppressWarnings(
+          max(
+            score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] & pair_ok],
+            -Inf
+          )
+        ),
+        n_foreign_unqualified = as.integer(
+          is.infinite(max(score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] & pair_ok], -Inf)) &
+            any(.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]])
         ),
         .groups = "drop"
       ) |>
       dplyr::mutate(
-        max_congener_score = ifelse(is.infinite(max_congener_score),
-          NA_real_, max_congener_score
+        max_foreign_score = ifelse(
+          is.infinite(max_foreign_score), noise_floor_transformed, max_foreign_score
         )
       )
-  } else {
-    NULL
-  }
 
-  # ---- STEP 3C: CONFAMILIAL STATS (best same-family, different-genus match) --
-  # The H3 analogue of max_congener_score: the closest match to a species of
-  # ANOTHER genus in the SAME family (rank_code_c is the third-finest rank,
-  # conventionally family). Measures how well an unsequenced genus of the
-  # family would score, which the H3 likelihood needs. NA when the sequence's
-  # family has no other referenced genus.
-  has_family_code <- has_genus_code &&
-    all(c("rank_code_c.x", "rank_code_c.y") %in% names(df_logit))
-  confamilial_stats <- if (has_family_code) {
-    df_logit |>
-      dplyr::filter(
-        !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]]),
-        !is.na(.data[["rank_code_c.x"]]), !is.na(.data[["rank_code_c.y"]])
-      ) |>
-      dplyr::group_by(id_x) |>
-      dplyr::summarise(
-        max_confamilial_score = suppressWarnings(
-          max(score_logit[
-            .data[["rank_code_c.x"]] == .data[["rank_code_c.y"]] &
-              .data[["rank_code_b.x"]] != .data[["rank_code_b.y"]] &
-              pair_ok
-          ], -Inf)
-        ),
-        .groups = "drop"
-      ) |>
-      dplyr::mutate(
-        max_confamilial_score = ifelse(is.infinite(max_confamilial_score),
-          NA_real_, max_confamilial_score
-        )
-      )
-  } else {
-    NULL
-  }
-
-  # ---- STEP 3E: OUTER RINGS (every rank coarser than family) -----------------
-  # For each rank coarser than the third-finest (rank_code_d = order,
-  # rank_code_e = class, rank_code_f = phylum, ... under the standard
-  # rank_system; as many as the rank_system carries), the best match to a
-  # partner in the same group at that rank but a different group one rank
-  # finer: e.g. another family of the same order. Measures how an unsequenced
-  # family (order) would score, for the outer rings. Which rings exist is left
-  # to the data (see OUTER RINGS below), not to a fixed list of ranks.
-  ring_codes <- if (length(rank_system) >= 4L) letters[4:length(rank_system)] else character(0)
-  ring_stats <- NULL
-  for (L in ring_codes) {
-    prevL <- letters[match(L, letters) - 1L]
-    cx <- paste0("rank_code_", L, c(".x", ".y"))
-    px <- paste0("rank_code_", prevL, c(".x", ".y"))
-    if (!all(c(cx, px) %in% names(df_logit))) next
-    rs_L <- df_logit |>
-      dplyr::filter(
-        !is.na(.data[[cx[1]]]), !is.na(.data[[cx[2]]]),
-        !is.na(.data[[px[1]]]), !is.na(.data[[px[2]]])
-      ) |>
-      dplyr::group_by(id_x) |>
-      dplyr::summarise(
-        v = suppressWarnings(max(score_logit[
-          .data[[cx[1]]] == .data[[cx[2]]] & .data[[px[1]]] != .data[[px[2]]] & pair_ok
-        ], -Inf)),
-        .groups = "drop"
-      ) |>
-      dplyr::mutate(v = ifelse(is.infinite(v), NA_real_, v))
-    names(rs_L)[2] <- paste0("max_ring_", L, "_score")
-    ring_stats <- if (is.null(ring_stats)) rs_L else dplyr::full_join(ring_stats, rs_L, by = "id_x")
-  }
-
-  # ---- STEP 3D: UNSEQUENCED-RELATIVE GAPS -------------------------------------
-  # The query feature `gap` is (best match) - (second-best match). If the
-  # source were an unsequenced congener (H2), its candidates would be every
-  # referenced species except its own: so for each reference, drop its own
-  # species and take the best and second-best partner species. When the best
-  # is a congener, top1 - top2 is an H2 gap draw. Dropping the reference's own
-  # genus the same way gives an H3 (unsequenced-genus) draw when the best
-  # remaining partner is confamilial. Capped like the H1 gap.
-  gap_stats <- NULL
-  if (has_family_code) {
-    per_partner <- df_logit |>
-      dplyr::filter(
-        pair_ok,
-        !is.na(.data[["rank_code_a.x"]]), !is.na(.data[["rank_code_a.y"]]),
-        .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]
-      ) |>
-      dplyr::group_by(id_x, partner_species = .data[["rank_code_a.y"]]) |>
-      dplyr::summarise(
-        best_p = max(score_logit),
-        top1_genus = .data[["rank_code_b.y"]][1L],
-        top1_family = .data[["rank_code_c.y"]][1L],
-        own_genus = .data[["rank_code_b.x"]][1L],
-        own_family = .data[["rank_code_c.x"]][1L],
-        .groups = "drop"
-      )
-    .top2_gap <- function(pp) {
-      pp |>
+    # ---- STEP 3B: CONGENER STATS (best same-genus, different-species match) ---
+    # max_foreign_score above is the best match to ANY other species, in any
+    # genus. That mixes true congeners in with distant, unrelated matches, so it
+    # cannot tell "this genus has tight congeneric divergence" apart from "this
+    # sequence's closest relative in the whole database happens to be distant."
+    # max_congener_score restricts to real congeners (same genus, different
+    # species) and is left NA -- not floored -- when the query's genus has no
+    # other referenced species at all, so train_likelihood_model() can tell
+    # "no local congener data exists for this genus" apart from "a real
+    # congener match was observed and it was distant." Used to estimate a
+    # genus-specific H2 delta (see H2_Lookup below); requires rank_code_b to be
+    # present.
+    #
+    # rank_code_b is PURELY POSITIONAL, not semantic: rank_code_a is always
+    # rank_system's LAST (finest) element, rank_code_b its second-to-last, and
+    # so on (.generalize_ranks() above renames by position via rev(present)).
+    # "Genus" here is a documented CONVENTION, not an enforced guarantee --
+    # true whenever rank_system's finest two elements are ("...", "genus",
+    # "species"), which is this ecosystem's own standard rank_system and how
+    # every real production workflow calls this package. A
+    # caller supplying a non-standard rank_system whose second-finest rank
+    # ISN'T genus (e.g. one ending "...genus, species, subspecies", finest =
+    # subspecies) would silently get max_congener_score/H2_Lookup keyed on
+    # THAT rank instead (e.g. same-species-different-subspecies) with no
+    # error or warning -- there is no runtime check enforcing "genus"
+    # specifically, by design (this package's rank_system is deliberately
+    # flexible, not hardcoded to a fixed taxonomic ladder).
+    has_genus_code <- all(c("rank_code_b.x", "rank_code_b.y") %in% names(df_logit))
+    congener_stats <- if (has_genus_code) {
+      df_logit |>
+        dplyr::select(dplyr::any_of(c("id_x", "score_logit", "pair_ok", paste0("rank_code_", rep(c("a", "b"), each = 2), c(".x", ".y"))))) |>
+        dplyr::filter(
+          !is.na(.data[["rank_code_a.x"]]), !is.na(.data[["rank_code_a.y"]]),
+          !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]])
+        ) |>
         dplyr::group_by(id_x) |>
-        dplyr::arrange(dplyr::desc(best_p), .by_group = TRUE) |>
         dplyr::summarise(
-          top1 = best_p[1L],
-          top2 = if (dplyr::n() > 1L) best_p[2L] else NA_real_,
-          same_genus = top1_genus[1L] == own_genus[1L],
-          same_family = top1_family[1L] == own_family[1L],
+          max_congener_score = suppressWarnings(
+            max(score_logit[
+              .data[["rank_code_b.x"]] == .data[["rank_code_b.y"]] &
+                .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] &
+                pair_ok
+            ], -Inf)
+          ),
           .groups = "drop"
         ) |>
-        dplyr::mutate(gap = pmin(ifelse(is.na(top2), max_gap_ceiling, top1 - top2), max_gap_ceiling))
+        dplyr::mutate(
+          max_congener_score = ifelse(is.infinite(max_congener_score),
+            NA_real_, max_congener_score
+          )
+        )
+    } else {
+      NULL
     }
-    g2 <- .top2_gap(per_partner)
-    g3 <- .top2_gap(per_partner[!is.na(per_partner$top1_genus) &
-      per_partner$top1_genus != per_partner$own_genus, , drop = FALSE])
-    gap_stats <- dplyr::full_join(
-      g2 |> dplyr::transmute(id_x, h2_gap_obs = ifelse(same_genus %in% TRUE, gap, NA_real_)),
-      g3 |> dplyr::transmute(id_x, h3_gap_obs = ifelse(same_family %in% TRUE, gap, NA_real_)),
-      by = "id_x"
-    )
+
+    # ---- STEP 3C: CONFAMILIAL STATS (best same-family, different-genus match) --
+    # The H3 analogue of max_congener_score: the closest match to a species of
+    # ANOTHER genus in the SAME family (rank_code_c is the third-finest rank,
+    # conventionally family). Measures how well an unsequenced genus of the
+    # family would score, which the H3 likelihood needs. NA when the sequence's
+    # family has no other referenced genus.
+    has_family_code <- has_genus_code &&
+      all(c("rank_code_c.x", "rank_code_c.y") %in% names(df_logit))
+    confamilial_stats <- if (has_family_code) {
+      df_logit |>
+        dplyr::select(dplyr::any_of(c("id_x", "score_logit", "pair_ok", paste0("rank_code_", rep(c("b", "c"), each = 2), c(".x", ".y"))))) |>
+        dplyr::filter(
+          !is.na(.data[["rank_code_b.x"]]), !is.na(.data[["rank_code_b.y"]]),
+          !is.na(.data[["rank_code_c.x"]]), !is.na(.data[["rank_code_c.y"]])
+        ) |>
+        dplyr::group_by(id_x) |>
+        dplyr::summarise(
+          max_confamilial_score = suppressWarnings(
+            max(score_logit[
+              .data[["rank_code_c.x"]] == .data[["rank_code_c.y"]] &
+                .data[["rank_code_b.x"]] != .data[["rank_code_b.y"]] &
+                pair_ok
+            ], -Inf)
+          ),
+          .groups = "drop"
+        ) |>
+        dplyr::mutate(
+          max_confamilial_score = ifelse(is.infinite(max_confamilial_score),
+            NA_real_, max_confamilial_score
+          )
+        )
+    } else {
+      NULL
+    }
+
+    # ---- STEP 3E: OUTER RINGS (every rank coarser than family) -----------------
+    # For each rank coarser than the third-finest (rank_code_d = order,
+    # rank_code_e = class, rank_code_f = phylum, ... under the standard
+    # rank_system; as many as the rank_system carries), the best match to a
+    # partner in the same group at that rank but a different group one rank
+    # finer: e.g. another family of the same order. Measures how an unsequenced
+    # family (order) would score, for the outer rings. Which rings exist is left
+    # to the data (see OUTER RINGS below), not to a fixed list of ranks.
+    ring_codes <- if (length(rank_system) >= 4L) letters[4:length(rank_system)] else character(0)
+    ring_stats <- NULL
+    for (L in ring_codes) {
+      prevL <- letters[match(L, letters) - 1L]
+      cx <- paste0("rank_code_", L, c(".x", ".y"))
+      px <- paste0("rank_code_", prevL, c(".x", ".y"))
+      if (!all(c(cx, px) %in% names(df_logit))) next
+      rs_L <- df_logit |>
+        dplyr::select(dplyr::all_of(c("id_x", "score_logit", "pair_ok", cx, px))) |>
+        dplyr::filter(
+          !is.na(.data[[cx[1]]]), !is.na(.data[[cx[2]]]),
+          !is.na(.data[[px[1]]]), !is.na(.data[[px[2]]])
+        ) |>
+        dplyr::group_by(id_x) |>
+        dplyr::summarise(
+          v = suppressWarnings(max(score_logit[
+            .data[[cx[1]]] == .data[[cx[2]]] & .data[[px[1]]] != .data[[px[2]]] & pair_ok
+          ], -Inf)),
+          .groups = "drop"
+        ) |>
+        dplyr::mutate(v = ifelse(is.infinite(v), NA_real_, v))
+      names(rs_L)[2] <- paste0("max_ring_", L, "_score")
+      ring_stats <- if (is.null(ring_stats)) rs_L else dplyr::full_join(ring_stats, rs_L, by = "id_x")
+    }
+
+    # ---- STEP 3D: UNSEQUENCED-RELATIVE GAPS -------------------------------------
+    # The query feature `gap` is (best match) - (second-best match). If the
+    # source were an unsequenced congener (H2), its candidates would be every
+    # referenced species except its own: so for each reference, drop its own
+    # species and take the best and second-best partner species. When the best
+    # is a congener, top1 - top2 is an H2 gap draw. Dropping the reference's own
+    # genus the same way gives an H3 (unsequenced-genus) draw when the best
+    # remaining partner is confamilial. Capped like the H1 gap.
+    gap_stats <- NULL
+    if (has_family_code) {
+      per_partner <- df_logit |>
+        dplyr::select(dplyr::any_of(c("id_x", "score_logit", "pair_ok", paste0("rank_code_", rep(c("a", "b", "c"), each = 2), c(".x", ".y"))))) |>
+        dplyr::filter(
+          pair_ok,
+          !is.na(.data[["rank_code_a.x"]]), !is.na(.data[["rank_code_a.y"]]),
+          .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]
+        ) |>
+        dplyr::group_by(id_x, partner_species = .data[["rank_code_a.y"]]) |>
+        dplyr::summarise(
+          best_p = max(score_logit),
+          top1_genus = .data[["rank_code_b.y"]][1L],
+          top1_family = .data[["rank_code_c.y"]][1L],
+          own_genus = .data[["rank_code_b.x"]][1L],
+          own_family = .data[["rank_code_c.x"]][1L],
+          .groups = "drop"
+        )
+      .top2_gap <- function(pp) {
+        pp |>
+          dplyr::group_by(id_x) |>
+          dplyr::arrange(dplyr::desc(best_p), .by_group = TRUE) |>
+          dplyr::summarise(
+            top1 = best_p[1L],
+            top2 = if (dplyr::n() > 1L) best_p[2L] else NA_real_,
+            same_genus = top1_genus[1L] == own_genus[1L],
+            same_family = top1_family[1L] == own_family[1L],
+            .groups = "drop"
+          ) |>
+          dplyr::mutate(gap = pmin(ifelse(is.na(top2), max_gap_ceiling, top1 - top2), max_gap_ceiling))
+      }
+      g2 <- .top2_gap(per_partner)
+      g3 <- .top2_gap(per_partner[!is.na(per_partner$top1_genus) &
+        per_partner$top1_genus != per_partner$own_genus, , drop = FALSE])
+      gap_stats <- dplyr::full_join(
+        g2 |> dplyr::transmute(id_x, h2_gap_obs = ifelse(same_genus %in% TRUE, gap, NA_real_)),
+        g3 |> dplyr::transmute(id_x, h3_gap_obs = ifelse(same_family %in% TRUE, gap, NA_real_)),
+        by = "id_x"
+      )
+    }
+
+    # ---- STEP 4: H1 PAIRS (same taxon, different sequence IDs) ----------------
+    h1_pairs <- df_logit |>
+      dplyr::filter(
+        !is.na(.data[["rank_code_a.x"]]),
+        !is.na(.data[["rank_code_a.y"]]),
+        .data[["rank_code_a.x"]] == .data[["rank_code_a.y"]],
+        id_x != id_y
+      ) |>
+      dplyr::left_join(foreign_stats, by = "id_x")
+
+    h1_pairs <- if (!is.null(congener_stats)) {
+      dplyr::left_join(h1_pairs, congener_stats, by = "id_x")
+    } else {
+      dplyr::mutate(h1_pairs, max_congener_score = NA_real_)
+    }
+    h1_pairs <- if (!is.null(confamilial_stats)) {
+      dplyr::left_join(h1_pairs, confamilial_stats, by = "id_x")
+    } else {
+      dplyr::mutate(h1_pairs, max_confamilial_score = NA_real_)
+    }
+    if (!is.null(ring_stats)) h1_pairs <- dplyr::left_join(h1_pairs, ring_stats, by = "id_x")
+    h1_pairs <- if (!is.null(gap_stats)) {
+      dplyr::left_join(h1_pairs, gap_stats, by = "id_x")
+    } else {
+      dplyr::mutate(h1_pairs, h2_gap_obs = NA_real_, h3_gap_obs = NA_real_)
+    }
+
+    h1_pairs <- h1_pairs |>
+      dplyr::mutate(
+        raw_gap       = score_logit - max_foreign_score,
+        gap_logit     = pmin(raw_gap, max_gap_ceiling),
+        rank_category = "1_Known_Species"
+      )
+
+    species_counts <- h1_pairs |>
+      dplyr::group_by(rank_code_a.x) |>
+      dplyr::summarise(N_Obs = dplyr::n(), .groups = "drop")
+
+    # Self side: prefer a conspecific pair that passes the coverage floor; when
+    # a reference has none, fall back to its best conspecific pair regardless
+    # (self_fallback = TRUE), so a species is NEVER dropped from training by the
+    # floor -- the cost the archived whole-matrix coverage filter paid.
+    df_h1 <- h1_pairs |>
+      dplyr::group_by(id_x) |>
+      dplyr::mutate(has_ok = any(pair_ok)) |>
+      dplyr::filter(!has_ok | pair_ok) |>
+      dplyr::mutate(self_fallback = !has_ok) |>
+      dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
+      dplyr::ungroup() |>
+      dplyr::select(-has_ok)
+
+    # ---- STEP 5: SINGLETONS ---------------------------------------------------
+    trained_ids <- unique(h1_pairs$id_x)
+    all_ids <- unique(df_logit$id_x)
+    missing_ids <- setdiff(all_ids, trained_ids)
+
+    # Singletons are sequences absent from h1_pairs (no within-species
+    # neighbours). No matrix builder in this ecosystem emits self-match rows
+    # (id_x == id_y): .decipher_align_pairs() drops the diagonal unconditionally.
+    # Each singleton takes its best cross-species row; the
+    # mutate() below then anchors max_foreign_score to the noise-floor global
+    # and the gap to max_gap_ceiling (rank_category "Singleton").
+    df_singletons <- df_logit |>
+      dplyr::filter(id_x %in% missing_ids) |>
+      dplyr::group_by(id_x) |>
+      dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
+      dplyr::ungroup()
+
+    df_singletons <- df_singletons |>
+      dplyr::mutate(
+        max_foreign_score  = noise_floor_transformed,
+        max_congener_score = NA_real_,
+        max_confamilial_score = NA_real_,
+        h2_gap_obs = NA_real_,
+        h3_gap_obs = NA_real_,
+        gap_logit          = max_gap_ceiling,
+        rank_category      = "Singleton",
+        N_Obs              = 1L,
+        self_fallback      = FALSE,
+        n_foreign_unqualified = 0L
+      )
+
+    list(h1 = df_h1, counts = species_counts, single = df_singletons)
   }
 
-  # ---- STEP 4: H1 PAIRS (same taxon, different sequence IDs) ----------------
-  h1_pairs <- df_logit |>
-    dplyr::filter(
-      !is.na(.data[["rank_code_a.x"]]),
-      !is.na(.data[["rank_code_a.y"]]),
-      .data[["rank_code_a.x"]] == .data[["rank_code_a.y"]],
-      id_x != id_y
-    ) |>
-    dplyr::left_join(foreign_stats, by = "id_x")
-
-  h1_pairs <- if (!is.null(congener_stats)) {
-    dplyr::left_join(h1_pairs, congener_stats, by = "id_x")
+  blocks <- .id_blocks(df_logit$id_x)
+  parts <- if (length(blocks) == 1L) {
+    list(.one_block(df_logit))
   } else {
-    dplyr::mutate(h1_pairs, max_congener_score = NA_real_)
+    lapply(blocks, function(ix) .one_block(df_logit[ix, , drop = FALSE]))
   }
-  h1_pairs <- if (!is.null(confamilial_stats)) {
-    dplyr::left_join(h1_pairs, confamilial_stats, by = "id_x")
-  } else {
-    dplyr::mutate(h1_pairs, max_confamilial_score = NA_real_)
-  }
-  if (!is.null(ring_stats)) h1_pairs <- dplyr::left_join(h1_pairs, ring_stats, by = "id_x")
-  h1_pairs <- if (!is.null(gap_stats)) {
-    dplyr::left_join(h1_pairs, gap_stats, by = "id_x")
-  } else {
-    dplyr::mutate(h1_pairs, h2_gap_obs = NA_real_, h3_gap_obs = NA_real_)
-  }
-
-  h1_pairs <- h1_pairs |>
-    dplyr::mutate(
-      raw_gap       = score_logit - max_foreign_score,
-      gap_logit     = pmin(raw_gap, max_gap_ceiling),
-      rank_category = "1_Known_Species"
-    )
-
-  species_counts <- h1_pairs |>
+  species_counts <- dplyr::bind_rows(lapply(parts, `[[`, "counts")) |>
     dplyr::group_by(rank_code_a.x) |>
-    dplyr::summarise(N_Obs = dplyr::n(), .groups = "drop")
-
-  # Self side: prefer a conspecific pair that passes the coverage floor; when
-  # a reference has none, fall back to its best conspecific pair regardless
-  # (self_fallback = TRUE), so a species is NEVER dropped from training by the
-  # floor -- the cost the archived whole-matrix coverage filter paid.
-  df_h1 <- h1_pairs |>
-    dplyr::group_by(id_x) |>
-    dplyr::mutate(has_ok = any(pair_ok)) |>
-    dplyr::filter(!has_ok | pair_ok) |>
-    dplyr::mutate(self_fallback = !has_ok) |>
-    dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
-    dplyr::ungroup() |>
-    dplyr::select(-has_ok) |>
+    dplyr::summarise(N_Obs = sum(N_Obs), .groups = "drop")
+  df_h1 <- dplyr::bind_rows(lapply(parts, `[[`, "h1")) |>
     dplyr::left_join(species_counts, by = "rank_code_a.x")
-
-  # ---- STEP 5: SINGLETONS ---------------------------------------------------
-  trained_ids <- unique(h1_pairs$id_x)
-  all_ids <- unique(df_logit$id_x)
-  missing_ids <- setdiff(all_ids, trained_ids)
-
-  # Singletons are sequences absent from h1_pairs (no within-species
-  # neighbours). No matrix builder in this ecosystem emits self-match rows
-  # (id_x == id_y): .decipher_align_pairs() drops the diagonal unconditionally.
-  # Each singleton takes its best cross-species row; the
-  # mutate() below then anchors max_foreign_score to the noise-floor global
-  # and the gap to max_gap_ceiling (rank_category "Singleton").
-  df_singletons <- df_logit |>
-    dplyr::filter(id_x %in% missing_ids) |>
-    dplyr::group_by(id_x) |>
-    dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
-    dplyr::ungroup()
-
-  df_singletons <- df_singletons |>
-    dplyr::mutate(
-      max_foreign_score  = noise_floor_transformed,
-      max_congener_score = NA_real_,
-      max_confamilial_score = NA_real_,
-      h2_gap_obs = NA_real_,
-      h3_gap_obs = NA_real_,
-      gap_logit          = max_gap_ceiling,
-      rank_category      = "Singleton",
-      N_Obs              = 1L,
-      self_fallback      = FALSE,
-      n_foreign_unqualified = 0L
-    )
+  df_singletons <- dplyr::bind_rows(lapply(parts, `[[`, "single"))
+  rm(parts)
 
   # ---- COMBINE + STRIP .x SUFFIXES ------------------------------------------
   dplyr::bind_rows(df_h1, df_singletons) |>
@@ -515,6 +570,18 @@ utils::globalVariables(c(
 #'   `evaluate_likelihoods()` prefers when available. See the "Per-genus
 #'   delta shrinkage" section below.
 #' * **H3 (missing genus):** H1 mean shifted further left by `H3$delta`.
+#'
+#' @section Memory:
+#' The per-reference training passes (each reference's best foreign,
+#' congener, confamilial and ring match, its gap draws, its best conspecific
+#' pair, and the confusion-risk curves' per-reference best match) are
+#' computed in blocks of whole references and bound, so their temporaries
+#' scale with the block rather than the whole pair table (a 32.6-million-pair
+#' COI matrix otherwise exceeded 17 GB). The output is identical for any block
+#' size. Statistics that span references (species pair counts, the rate
+#' curves by species, genus and family) are computed once on the combined
+#' per-reference results. Block size: `options(TaxaLikely.train_block_ids =)`,
+#' references per block, default 5000.
 #'
 #' @section Marker validation scope:
 #' The continuous bivariate-normal form above (as opposed to a discrete
