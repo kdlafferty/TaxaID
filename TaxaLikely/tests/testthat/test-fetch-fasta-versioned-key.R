@@ -211,7 +211,7 @@ test_that("a RefSeq accession's underscore cannot collide with a version key", {
 # costs no extra NCBI round trip.
 
 test_that(".fetch_summaries_batched() carries the versioned accession", {
-  fake_summary <- function(db, web_history, retstart, retmax) {
+  fake_summary <- function(db, web_history, retstart, retmax, ...) {
     list(
       list(
         uid = "1816411", caption = "AB000667", accessionversion = "AB000667.1",
@@ -245,7 +245,7 @@ test_that(".fetch_summaries_batched() carries the versioned accession", {
 })
 
 test_that(".fetch_summaries_batched() tolerates a record with no version", {
-  fake_summary <- function(db, web_history, retstart, retmax) {
+  fake_summary <- function(db, web_history, retstart, retmax, ...) {
     list(list(
       uid = "1", caption = "AB000667", title = "x", taxid = "1",
       slen = 100, organism = "y", createdate = "2000/01/01"

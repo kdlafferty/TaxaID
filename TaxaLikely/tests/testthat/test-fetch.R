@@ -516,3 +516,76 @@ test_that("a MiFish term's cache key changes with its broader query; 12S keys do
     NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
   expect_match(f, TaxaLikely:::.ref_cache_grammar())
 })
+
+# ---- network abort rules (2026-10-05) ---------------------------------------
+test_that("every rentrez call passes config = .net_config() and every httr2 request goes through .net_req()", {
+  files <- list.files(test_path("..", "..", "R"), pattern = "\\.R$", full.names = TRUE)
+  skip_if(length(files) == 0L, "package R/ sources not available (installed-package check)")
+  n_rentrez <- 0L; bad <- character(0); n_perform <- 0L; bad2 <- character(0)
+  walk <- function(e, f) {
+    if (is.call(e)) {
+      fn <- e[[1]]
+      if (is.call(fn) && identical(fn[[1]], as.name("::")) && identical(fn[[2]], as.name("rentrez")) &&
+        as.character(fn[[3]]) %in% c("entrez_search", "entrez_summary", "entrez_fetch")) {
+        n_rentrez <<- n_rentrez + 1L
+        if (!"config" %in% names(as.list(e))) bad <<- c(bad, paste(basename(f), deparse(e)[1]))
+      }
+      if (is.call(fn) && identical(fn[[1]], as.name("::")) && identical(fn[[2]], as.name("httr2")) &&
+        identical(as.character(fn[[3]]), "req_perform")) {
+        n_perform <<- n_perform + 1L
+        a1 <- e[[2]]
+        if (!(is.call(a1) && identical(a1[[1]], as.name(".net_req")))) bad2 <<- c(bad2, paste(basename(f), deparse(e)[1]))
+      }
+      for (k in as.list(e)[-1]) if (!missing(k)) walk(k, f)
+    }
+  }
+  for (f in files) for (e in parse(f, keep.source = FALSE)) walk(e, f)
+  expect_gt(n_rentrez, 0L) # the check is not vacuous
+  expect_gt(n_perform, 0L)
+  expect_identical(bad, character(0))
+  expect_identical(bad2, character(0))
+})
+
+test_that("the network limits come from options and are validated", {
+  old <- options(TaxaLikely.net_connect_timeout = 7, TaxaLikely.net_low_speed_time = 9,
+    TaxaLikely.net_low_speed_limit = 512, TaxaLikely.net_timeout = 99)
+  on.exit(options(old), add = TRUE)
+  cfg <- TaxaLikely:::.net_config()
+  expect_equal(cfg$options$connecttimeout, 7)
+  expect_equal(cfg$options$low_speed_time, 9)
+  expect_equal(cfg$options$low_speed_limit, 512)
+  expect_equal(cfg$options$timeout_ms, 99000)
+  options(TaxaLikely.net_timeout = 0)
+  expect_error(TaxaLikely:::.net_config(), "positive number")
+})
+
+test_that("a connection that never answers is aborted quickly, and the retry fires", {
+  skip_if_not(exists("serverSocket", mode = "function"))
+  port <- NA
+  for (p in sample(40000:60000, 20)) {
+    s <- tryCatch(serverSocket(p), error = function(e) NULL)
+    if (!is.null(s)) { port <- p; break }
+  }
+  skip_if(is.na(port), "no free local port")
+  on.exit(close(s), add = TRUE)
+  # sub-second-scale settings: the stall rule (below 1 KB/s for 1 s) must fire
+  old <- options(TaxaLikely.net_connect_timeout = 1, TaxaLikely.net_low_speed_time = 1,
+    TaxaLikely.net_low_speed_limit = 1024, TaxaLikely.net_timeout = 10)
+  on.exit(options(old), add = TRUE)
+  url <- sprintf("http://127.0.0.1:%d/", port)
+  # built OUTSIDE expect_error(): only the transfer itself may raise, and the
+  # error must be curl's own abort, so a missing helper cannot pass the test
+  cfg <- TaxaLikely:::.net_config()
+  req <- TaxaLikely:::.net_req(httr2::request(url))
+  abort_re <- "too slow|[Tt]imeout|timed out"
+  t0 <- Sys.time()
+  expect_error(httr::GET(url, cfg), abort_re)
+  expect_lt(as.numeric(difftime(Sys.time(), t0, units = "secs")), 8)
+  t0 <- Sys.time()
+  expect_error(httr2::req_perform(req), abort_re)
+  expect_lt(as.numeric(difftime(Sys.time(), t0, units = "secs")), 8)
+  n <- 0L
+  r <- TaxaLikely:::.retry_fetch(function() { n <<- n + 1L; httr::GET(url, cfg) }, max_attempts = 2L)
+  expect_false(r$success)
+  expect_equal(n, 2L) # a stalled call now errors, so the retry runs
+})

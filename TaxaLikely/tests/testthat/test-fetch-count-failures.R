@@ -16,7 +16,7 @@ test_that("a transient count failure is retried and then succeeds", {
   skip_if_not_installed("rentrez")
 
   calls <- 0L
-  fake_search <- function(db, term, retmax) {
+  fake_search <- function(db, term, retmax, ...) {
     calls <<- calls + 1L
     if (calls == 1L) stop("subscript out of bounds")
     list(count = "0") # second attempt succeeds, zero hits -> early return
@@ -41,12 +41,12 @@ test_that("a persistent count failure is named, and its consequence stated", {
   skip_if_not_installed("rentrez")
 
   testthat::local_mocked_bindings(
-    entrez_search = function(db, term, retmax) stop("subscript out of bounds"),
+    entrez_search = function(db, term, retmax, ...) stop("subscript out of bounds"),
     .package = "rentrez"
   )
 
   # All taxa failing is the pre-existing hard stop, so give one that succeeds.
-  succeed_for <- function(db, term, retmax) {
+  succeed_for <- function(db, term, retmax, ...) {
     if (grepl("Sebastes", term)) list(count = "5") else stop("subscript out of bounds")
   }
   testthat::local_mocked_bindings(
@@ -75,7 +75,7 @@ test_that("on_count_failure = 'error' refuses a degraded reference database", {
   skip_if_not_installed("rentrez")
 
   testthat::local_mocked_bindings(
-    entrez_search = function(db, term, retmax) {
+    entrez_search = function(db, term, retmax, ...) {
       if (grepl("Sebastes", term)) list(count = "5") else stop("boom")
     },
     .package = "rentrez"

@@ -475,7 +475,7 @@
   )
   for (attempt in seq_len(3L)) {
     res <- tryCatch(
-      rentrez::entrez_search(db = "nuccore", term = term, retmax = 0L),
+      rentrez::entrez_search(config = .net_config(), db = "nuccore", term = term, retmax = 0L),
       error = function(e) NULL
     )
     if (!is.null(res) && !is.null(res$count)) {

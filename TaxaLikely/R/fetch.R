@@ -196,6 +196,49 @@ utils::globalVariables(c(
 #'   (`NULL` if every attempt failed); `success` is `TRUE` only if some
 #'   attempt succeeded.
 #' @noRd
+# Network abort rules for every remote call in this package (NCBI via rentrez,
+# BOLD, iNaturalist, xeno-canto). A connection that opens but never answers
+# otherwise hangs forever: no error, so .retry_fetch() never fires. Progress-
+# based aborts, not one total time (which would either kill healthy large
+# transfers or let dead sockets hang): fail a connect after
+# TaxaLikely.net_connect_timeout s (default 30); abort a transfer that stays
+# below TaxaLikely.net_low_speed_limit bytes/s (default 1024) for
+# TaxaLikely.net_low_speed_time s (default 60); and a total backstop of
+# TaxaLikely.net_timeout s (default 1800). A slow but progressing transfer
+# completes. The largest real payload is .fetch_locations_batched(): 100 full
+# GBSeq XML records per request, ~10 MB with mitogenome-length references,
+# which completes within the backstop at any rate above ~6 KB/s.
+.net_opt <- function(name, default) {
+  v <- suppressWarnings(as.numeric(getOption(paste0("TaxaLikely.", name)) %||% default))
+  if (length(v) != 1L || is.na(v) || v <= 0) {
+    stop(sprintf("option TaxaLikely.%s must be a positive number.", name), call. = FALSE)
+  }
+  v
+}
+.net_limits <- function() {
+  list(
+    connecttimeout = .net_opt("net_connect_timeout", 30),
+    low_speed_limit = .net_opt("net_low_speed_limit", 1024),
+    low_speed_time = .net_opt("net_low_speed_time", 60),
+    total = .net_opt("net_timeout", 1800)
+  )
+}
+# httr config for rentrez's `config =` argument.
+.net_config <- function() {
+  l <- .net_limits()
+  c(
+    httr::config(connecttimeout = l$connecttimeout, low_speed_limit = l$low_speed_limit, low_speed_time = l$low_speed_time),
+    httr::timeout(l$total)
+  )
+}
+# The same limits on an httr2 request.
+.net_req <- function(req) {
+  l <- .net_limits()
+  req |>
+    httr2::req_timeout(l$total) |>
+    httr2::req_options(connecttimeout = l$connecttimeout, low_speed_limit = l$low_speed_limit, low_speed_time = l$low_speed_time)
+}
+
 .retry_fetch <- function(fn, max_attempts = 3L) {
   attempt <- 0L
   success <- FALSE
@@ -327,7 +370,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(starts)) {
     result <- .retry_fetch(function() {
-      summ <- rentrez::entrez_summary(
+      summ <- rentrez::entrez_summary(config = .net_config(), 
         db          = "nucleotide",
         web_history = search_obj$web_history,
         retstart    = starts[i],
@@ -392,7 +435,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
-      xml_raw <- rentrez::entrez_fetch(
+      xml_raw <- rentrez::entrez_fetch(config = .net_config(), 
         db = "taxonomy", id = batches[[i]], rettype = "xml"
       )
       xml_doc <- xml2::read_xml(xml_raw)
@@ -727,7 +770,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
-      rentrez::entrez_fetch(
+      rentrez::entrez_fetch(config = .net_config(), 
         db = "nucleotide", id = batches[[i]],
         rettype = "fasta", retmode = "text"
       )
@@ -952,7 +995,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
-      xml_raw <- rentrez::entrez_fetch(
+      xml_raw <- rentrez::entrez_fetch(config = .net_config(), 
         db = "nucleotide", id = batches[[i]], rettype = "gb", retmode = "xml"
       )
       xml_doc <- xml2::read_xml(xml_raw)
@@ -1582,7 +1625,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
     for (attempt in seq_len(count_attempts)) {
       ok <- tryCatch(
         {
-          res <- rentrez::entrez_search(
+          res <- rentrez::entrez_search(config = .net_config(), 
             db = "nucleotide", term = term, retmax = 0L
           )
           counts[i] <- as.integer(res$count)
@@ -1748,7 +1791,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
           tryCatch(
             {
               sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
-              res <- rentrez::entrez_search(
+              res <- rentrez::entrez_search(config = .net_config(), 
                 db = "nucleotide", term = sp_term,
                 retmax = 0L
               )
@@ -1856,7 +1899,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
       tryCatch(
         {
           sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
-          search_obj <- rentrez::entrez_search(
+          search_obj <- rentrez::entrez_search(config = .net_config(), 
             db = "nucleotide", term = sp_term,
             retmax = min(priority_counts[[sp]], 9999L), use_history = TRUE
           )
@@ -1936,7 +1979,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
         term <- .build_search_term(taxa[i], barcode_term, min_date, max_date,
           taxid = resolved_taxids[i]
         )
-        search_obj <- rentrez::entrez_search(
+        search_obj <- rentrez::entrez_search(config = .net_config(), 
           db = "nucleotide", term = term,
           retmax = min(fetch_n, 9999L), use_history = TRUE
         )
@@ -2526,7 +2569,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
     httr2::req_url_query(query = taxon) |>
     httr2::req_error(is_error = function(resp) FALSE)
 
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  resp <- tryCatch(httr2::req_perform(.net_req(req)), error = function(e) NULL)
   if (is.null(resp) || httr2::resp_status(resp) != 200L) {
     return(NA_character_)
   }
@@ -2557,7 +2600,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
     httr2::req_url_query(query = triplet, extent = extent) |>
     httr2::req_error(is_error = function(resp) FALSE)
 
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  resp <- tryCatch(httr2::req_perform(.net_req(req)), error = function(e) NULL)
   if (is.null(resp) || httr2::resp_status(resp) != 200L) {
     return(NA_character_)
   }
@@ -2582,7 +2625,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
     httr2::req_url_query(format = "tsv") |>
     httr2::req_error(is_error = function(resp) FALSE)
 
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  resp <- tryCatch(httr2::req_perform(.net_req(req)), error = function(e) NULL)
   if (is.null(resp) || httr2::resp_status(resp) != 200L) {
     return(NULL)
   }

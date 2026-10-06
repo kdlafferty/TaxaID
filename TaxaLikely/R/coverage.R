@@ -184,7 +184,7 @@ audit_reference_coverage <- function(reference_df,
 
         if (!is.na(genus_uid)) {
           # Step 2: find all species-rank taxa in this genus's NCBI subtree
-          sp_res <- rentrez::entrez_search(
+          sp_res <- rentrez::entrez_search(config = .net_config(), 
             db     = "taxonomy",
             term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
             retmax = 10000L
@@ -192,7 +192,7 @@ audit_reference_coverage <- function(reference_df,
 
           true_sp <- character(0L)
           if (length(sp_res$ids) > 0L) {
-            sp_summ <- rentrez::entrez_summary(db = "taxonomy", id = sp_res$ids)
+            sp_summ <- rentrez::entrez_summary(config = .net_config(), db = "taxonomy", id = sp_res$ids)
             # entrez_summary returns a single esummary or a list of them
             if (inherits(sp_summ, "esummary")) {
               true_sp <- sp_summ$scientificname
@@ -537,7 +537,7 @@ audit_barcode_coverage <- function(match_df,
   # We classify experimental vs. predicted from the Title field in Step 2,
   # so a single search covers both categories without an extra API call.
   nuc_res <- tryCatch(
-    rentrez::entrez_search(
+    rentrez::entrez_search(config = .net_config(), 
       db = "nuccore",
       term = sprintf(
         "txid%s[Organism:exp] AND %s AND %d:%d[SLEN]%s",
@@ -560,7 +560,7 @@ audit_barcode_coverage <- function(match_df,
   nuc_batches <- split(nuc_res$ids, ceiling(seq_along(nuc_res$ids) / 200L))
   nuc_summ_flat <- unlist(lapply(nuc_batches, function(batch) {
     Sys.sleep(.ncbi_delay())
-    s <- tryCatch(rentrez::entrez_summary(db = "nuccore", id = batch),
+    s <- tryCatch(rentrez::entrez_summary(config = .net_config(), db = "nuccore", id = batch),
       error = function(e) NULL
     )
     if (is.null(s)) {
@@ -604,7 +604,7 @@ audit_barcode_coverage <- function(match_df,
   tax_batches <- split(all_taxids, ceiling(seq_along(all_taxids) / 200L))
   tax_summ_flat <- unlist(lapply(tax_batches, function(batch) {
     Sys.sleep(.ncbi_delay())
-    s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = batch),
+    s <- tryCatch(rentrez::entrez_summary(config = .net_config(), db = "taxonomy", id = batch),
       error = function(e) NULL
     )
     if (is.null(s)) {
@@ -648,7 +648,7 @@ audit_barcode_coverage <- function(match_df,
   }
   tryCatch(
     {
-      sp_res <- rentrez::entrez_search(
+      sp_res <- rentrez::entrez_search(config = .net_config(), 
         db     = "taxonomy",
         term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
         retmax = 10000L
@@ -660,7 +660,7 @@ audit_barcode_coverage <- function(match_df,
         batches <- split(sp_res$ids, ceiling(seq_along(sp_res$ids) / 200L))
         sp_flat <- unlist(lapply(batches, function(b) {
           Sys.sleep(.ncbi_delay())
-          s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = b),
+          s <- tryCatch(rentrez::entrez_summary(config = .net_config(), db = "taxonomy", id = b),
             error = function(e) NULL
           )
           if (is.null(s)) {
@@ -1381,7 +1381,7 @@ apply_coverage_constraints <- function(likelihood_df,
     ) |>
     httr2::req_error(is_error = function(resp) FALSE)
 
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  resp <- tryCatch(httr2::req_perform(.net_req(req)), error = function(e) NULL)
   if (is.null(resp) || httr2::resp_status(resp) != 200L) {
     return(NULL)
   }
@@ -1554,7 +1554,7 @@ fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
     req <- req |> httr2::req_headers(Authorization = paste("Bearer", api_token))
   }
 
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  resp <- tryCatch(httr2::req_perform(.net_req(req)), error = function(e) NULL)
   if (is.null(resp)) {
     return(empty)
   }

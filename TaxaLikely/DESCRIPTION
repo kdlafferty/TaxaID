@@ -16,6 +16,7 @@ Roxygen: list(markdown = TRUE)
 Imports:
     cli,
     dplyr,
+    httr,
     httr2,
     jsonlite,
     stats,
