@@ -982,3 +982,24 @@ test_that(".merge_rows_with() falls back to merge() where it would differ (tibbl
   tb <- dplyr::as_tibble(r[, c("observation_id", "v")])
   expect_identical(TaxaAssign:::.merge_rows_with(tb, 1:3, y), merge(tb, y, by = "observation_id", all.x = TRUE))
 })
+
+test_that(".merge_rows_with() matches merge() with NA keys and with keys repeated on BOTH sides", {
+  set.seed(5)
+  r <- data.frame(observation_id = sample(c("o1", "o2", NA, "o3"), 30, TRUE),
+    v = 1:30, w = sample(letters, 30, TRUE), stringsAsFactors = FALSE)
+  # NA key in x and in y: merge() pairs NA with NA (match() treats NA as matchable)
+  y_na <- data.frame(observation_id = c("o2", NA, "o1"), consensus_taxon_v1 = c("B", "N", "A"),
+    stringsAsFactors = FALSE)
+  for (idx in list(seq_len(30), which(is.na(r$observation_id)), sample(30, 12))) {
+    expect_identical(TaxaAssign:::.merge_rows_with(r, idx, y_na),
+      merge(r[idx, , drop = FALSE], y_na, by = "observation_id", all.x = TRUE))
+  }
+  # keys repeated on both sides: a cartesian block per key, ordered by the pairing of match indices
+  y_dup <- data.frame(observation_id = c("o1", "o2", "o1", "o3", "o2", "o1"),
+    consensus_taxon_v1 = c("A1", "B1", "A2", "C1", "B2", "A3"), stringsAsFactors = FALSE)
+  for (idx in list(seq_len(30), sample(30, 17))) {
+    got <- TaxaAssign:::.merge_rows_with(r, idx, y_dup)
+    expect_identical(got, merge(r[idx, , drop = FALSE], y_dup, by = "observation_id", all.x = TRUE))
+    expect_gt(nrow(got), length(idx)) # the cartesian expansion really happened
+  }
+})

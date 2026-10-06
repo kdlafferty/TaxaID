@@ -1018,8 +1018,12 @@ including two base `merge()` calls on full-width tables just to add `consensus_t
   suffix it).
 Evidence: `.merge_rows_with()` is `expect_identical` to `merge()` on shuffled rows with several
 rows per observation, unmatched observations and mixed column types (character, logical with
-NA, factor, Date), for full, partial and empty row sets; a test asserts the narrow path is
-the one taken; both fallbacks are tested. The whole function, old (main 6c83ced) vs new, on a
+NA, factor, Date), for full, partial and empty row sets; with NA KEYS (merge() pairs NA with NA)
+and with keys repeated on BOTH sides (the cartesian block, ordered by the pairing of match indices;
+the expansion is asserted) -- both raised by package review; a test asserts the narrow path is
+the one taken; both fallbacks are tested. Scope of the claim: identity holds between the two paths
+on one machine; merge()'s character-key order follows the locale identically in both, so this
+does not address cross-machine reproducibility of merge() itself. The whole function, old (main 6c83ced) vs new, on a
 synthetic 6-site fixture (400 observations, 1,603 rows, ties, 620 priors raised, a site without
 theta_mean exercising the ceiling fallback, shuffled rows, n_sims = 50 under one seed):
 identical() TRUE. The real CalIntertidal Section 8 input check (identical() + peak RSS, old vs
