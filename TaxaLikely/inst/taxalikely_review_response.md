@@ -1385,3 +1385,35 @@ over disjoint blocks (every pair belongs to exactly one block, the block of its 
 DISTINCT count would not be additive: changing it to e.g. `n_distinct(partner)` would double-count
 partners reached from references in two blocks, so such a statistic must be computed once on the
 combined rows instead. Docs-only; the code and output are unchanged (found by package review).
+
+### 2026-10-05: network abort rules on every remote call (a dead socket no longer hangs)
+
+Found by package review (no remote call in TaxaLikely had a timeout; a connection that opens but
+never answers hangs instead of erroring, so `.retry_fetch()` never fires). Requested under the
+maintainer's direction via the peer coordinator, outside this session's usual scope. Every remote
+call now carries progress-based abort rules (package review's design), all options:
+`TaxaLikely.net_connect_timeout` (default 30 s), `TaxaLikely.net_low_speed_limit` (1024 bytes/s) for
+`TaxaLikely.net_low_speed_time` (60 s), and a total backstop `TaxaLikely.net_timeout` (1800 s).
+A dead connect fails in 30 s and a stalled transfer after 60 s, while a slow but progressing
+transfer completes. Defaults against the largest real payload: `.fetch_locations_batched()`
+requests 100 full GBSeq XML records (~10 MB with mitogenome-length references), which completes
+within the backstop above ~6 KB/s and never falls below 1 KB/s for 60 s while it progresses.
+Call sites (internal helpers `.net_config()` for rentrez's `config =`, `.net_req()` for httr2):
+- rentrez, R/fetch.R: `.fetch_summaries_batched()` entrez_summary; `.fetch_taxonomy_map()`,
+  `.fetch_fasta_batched()`, `.fetch_locations_batched()` entrez_fetch; four entrez_search count /
+  search sites in `fetch_ncbi_reference_sequences()` and its helpers (8 in all; a ninth
+  occurrence is text inside a message and is unchanged).
+- rentrez, R/coverage.R: `audit_reference_coverage()` (entrez_search, entrez_summary),
+  `.reverse_barcode_check()` (entrez_search, 2 entrez_summary), `.ncbi_species_enumerate()`
+  (entrez_search, entrez_summary): 7 sites.
+- rentrez, R/suggest_unreferenced_species.R: `.count_barcode_seqs()` entrez_search.
+- httr2, R/fetch.R: `.bold_resolve_taxon()`, `.bold_submit_query()`, `.bold_fetch_documents()`;
+  R/coverage.R: `.xc_recordings_raw()` (Xeno-canto) and `.inat_species_info()` (iNaturalist) (they already
+  tryCatch to NULL; a stall now becomes that NULL instead of a hang).
+`httr` is added to Imports (it was already installed as a rentrez dependency). Tests (no live
+network): a parse-tree check that every rentrez call passes `config` and every `req_perform()`
+goes through `.net_req()` (with non-vacuity counts); the options reach the config and are
+validated; a local socket that accepts and never answers is aborted by curl ("too slow" /
+timeout) in seconds under sub-second-scale settings, for httr and httr2, and `.retry_fetch()`
+retries it. All three fail on the previous code. Test mocks of rentrez functions now accept
+`...`, as the real functions do (5 mocks in two files).
