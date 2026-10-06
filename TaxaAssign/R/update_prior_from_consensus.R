@@ -322,7 +322,16 @@ update_prior_from_consensus <- function(result,
   # observation mass by a0 is its counting equivalent here. The default
   # a0 = 0.25 treats ~4 correlated observations as worth 1 independent one.
   post_col <- if ("posterior_point_est" %in% names(result)) "posterior_point_est" else "posterior_mean"
-  support_pool <- result[!is.na(result$taxon_name) & !is.na(result[[post_col]]), , drop = FALSE]
+  # Only the three columns the support evidence uses (not a full-width copy of
+  # result): identical values in identical order.
+  keep_sp <- !is.na(result$taxon_name) & !is.na(result[[post_col]])
+  support_pool <- data.frame(
+    observation_id = result$observation_id[keep_sp],
+    taxon_name = result$taxon_name[keep_sp],
+    stringsAsFactors = FALSE
+  )
+  support_pool[[post_col]] <- result[[post_col]][keep_sp]
+  rm(keep_sp)
   if (nrow(support_pool) == 0L) {
     cli::cli_inform("No named posterior support anywhere; returning result unchanged.")
     return(result)
@@ -380,13 +389,13 @@ update_prior_from_consensus <- function(result,
   ))
 
   # --- Split result -----------------------------------------------------------
-  resolved_rows <- result[!result$observation_id %in% unresolved_ids, ]
-  unresolved_rows <- result[result$observation_id %in% unresolved_ids, ]
+  is_unres <- result$observation_id %in% unresolved_ids
 
   v1 <- consensus[, c("observation_id", "consensus_taxon", "consensus_rank")]
   names(v1)[2:3] <- c("consensus_taxon_v1", "consensus_rank_v1")
-  resolved_rows <- merge(resolved_rows, v1, by = "observation_id", all.x = TRUE)
-  unresolved_rows <- merge(unresolved_rows, v1, by = "observation_id", all.x = TRUE)
+  resolved_rows <- .merge_rows_with(result, which(!is_unres), v1)
+  unresolved_rows <- .merge_rows_with(result, which(is_unres), v1)
+  rm(is_unres)
   # rep() guards the all-unresolved case: a scalar assignment onto a 0-row
   # base data frame errors ("replacement has 1 row, data has 0")
   resolved_rows$prior_updated <- rep(FALSE, nrow(resolved_rows))
@@ -907,4 +916,32 @@ update_prior_from_consensus <- function(result,
     ), collapse = "\n"))
   }
   invisible(NULL)
+}
+
+
+# merge(result[idx, ], y, by = "observation_id", all.x = TRUE), without copying
+# result twice. merge()'s row order depends only on the key column and the row
+# order of x, so merging a NARROW (observation_id, row index) table gives the
+# same permutation and the same y columns; the full-width rows are then taken
+# once, in merge()'s own layout (key column first, x's other columns in order,
+# then y's other columns; compact row names). Falls back to merge() itself
+# where its behaviour is not reproduced here: a non-data.frame result (e.g. a
+# tibble) or a y column whose name result already has (merge would suffix it).
+.merge_rows_with <- function(result, idx, y) {
+  y_cols <- setdiff(names(y), "observation_id")
+  if (!identical(class(result), "data.frame") || any(y_cols %in% names(result)) ||
+    ".upfc_row" %in% names(y)) {
+    return(merge(result[idx, , drop = FALSE], y, by = "observation_id", all.x = TRUE))
+  }
+  key <- data.frame(observation_id = result$observation_id[idx], .upfc_row = idx,
+    stringsAsFactors = FALSE)
+  m <- merge(key, y, by = "observation_id", all.x = TRUE)
+  rows <- m$.upfc_row
+  rest <- setdiff(names(result), "observation_id")
+  cols <- c(
+    list(observation_id = m$observation_id),
+    lapply(result[rest], function(v) v[rows]),
+    lapply(m[y_cols], function(v) v)
+  )
+  structure(cols, class = "data.frame", row.names = .set_row_names(length(rows)))
 }
