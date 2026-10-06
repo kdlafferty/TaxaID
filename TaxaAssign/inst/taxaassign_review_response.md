@@ -999,3 +999,28 @@ from these lineages / supplied (the absent case fails on the previous code). Pac
 placeholder test now adds a second observation carrying a real class, so its "backbone"
 expectation still describes a supplied-but-missing rank; a single-observation, all-placeholder
 input is now "rank_not_supplied", asserted alongside.
+
+### 2026-10-05: update_prior_from_consensus memory (exact; no method change)
+
+Approved under the maintainer's standing instruction for exact memory fixes (relayed by the peer
+coordinator). CalIntertidal attempt 6 was killed at 19.04 GB in Section 8 inside this function: the
+soft-confirmation step made whole-table copies of `result` (~4.7M posterior rows at ESV x site),
+including two base `merge()` calls on full-width tables just to add `consensus_taxon_v1` /
+`consensus_rank_v1`. There is no observation x species matrix. Changes:
+- The support pool takes the three columns it uses (observation_id, taxon_name, posterior),
+  not a full-width copy of `result`.
+- The resolved / unresolved rows are built by `.merge_rows_with()`: `merge()` runs on a NARROW
+  (observation_id, row index) table, whose row permutation and y columns are the same as merging
+  the full rows (merge's ordering depends only on the key and the row order of x), and the
+  full-width rows are taken once in merge's own layout (key column first, x's other columns in
+  order, then y's columns; compact row names). It falls back to `merge()` itself for a
+  non-data.frame `result` (a tibble) or a y column name `result` already has (merge would
+  suffix it).
+Evidence: `.merge_rows_with()` is `expect_identical` to `merge()` on shuffled rows with several
+rows per observation, unmatched observations and mixed column types (character, logical with
+NA, factor, Date), for full, partial and empty row sets; a test asserts the narrow path is
+the one taken; both fallbacks are tested. The whole function, old (main 6c83ced) vs new, on a
+synthetic 6-site fixture (400 observations, 1,603 rows, ties, 620 priors raised, a site without
+theta_mean exercising the ceiling fallback, shuffled rows, n_sims = 50 under one seed):
+identical() TRUE. The real CalIntertidal Section 8 input check (identical() + peak RSS, old vs
+new) is reported below when run.

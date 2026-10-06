@@ -979,6 +979,6 @@ test_that(".merge_rows_with() falls back to merge() where it would differ (tibbl
   r <- data.frame(observation_id = c("o2", "o1", "o2"), consensus_taxon_v1 = "old", v = 1:3, stringsAsFactors = FALSE)
   y <- data.frame(observation_id = c("o1", "o2"), consensus_taxon_v1 = c("A", "B"), stringsAsFactors = FALSE)
   expect_identical(TaxaAssign:::.merge_rows_with(r, 1:3, y), merge(r, y, by = "observation_id", all.x = TRUE))
-  tb <- tibble::as_tibble(r[, c("observation_id", "v")])
+  tb <- dplyr::as_tibble(r[, c("observation_id", "v")])
   expect_identical(TaxaAssign:::.merge_rows_with(tb, 1:3, y), merge(tb, y, by = "observation_id", all.x = TRUE))
 })
