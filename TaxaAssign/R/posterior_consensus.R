@@ -883,8 +883,16 @@ posterior_consensus <- function(posterior_df,
     "Computing consensus taxonomy for {length(observation_ids)} observation(s)..."
   )
 
-  results <- lapply(observation_ids, function(sid) {
-    chunk <- posterior_df[posterior_df$observation_id == sid, ]
+  # Each observation's rows, found ONCE by splitting the row indices (original
+  # row order kept) instead of scanning every row per observation: the same
+  # chunk, in O(N) rather than O(N x observations). NA ids keep the original
+  # path, where `==` selects differently.
+  row_idx <- if (anyNA(observation_ids)) NULL else
+    split(seq_len(nrow(posterior_df)), factor(posterior_df$observation_id, levels = observation_ids))
+  results <- lapply(seq_along(observation_ids), function(i) {
+    sid <- observation_ids[[i]]
+    chunk <- if (is.null(row_idx)) posterior_df[posterior_df$observation_id == sid, ] else
+      posterior_df[row_idx[[i]], ]
     .consensus_one_observation(
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
@@ -1060,10 +1068,17 @@ posterior_consensus <- function(posterior_df,
   }
   tot <- stats::ave(w, posterior_df$observation_id, FUN = sum)
   posterior_df$.lik_post <- ifelse(tot > 0, w / tot, 0)
-  chunks <- split(posterior_df, posterior_df$observation_id)
+  # split.data.frame() is lapply(split(seq_len(n), f), function(i) x[i, , drop = FALSE]):
+  # keep the index split and take each chunk when it is used, the same object
+  # without a full-width copy of posterior_df held in memory.
+  chunk_idx <- split(seq_len(nrow(posterior_df)), posterior_df$observation_id)
+  chunk_of <- function(sid) {
+    i <- chunk_idx[[sid]]
+    if (is.null(i)) NULL else posterior_df[i, , drop = FALSE]
+  }
   ids <- as.character(result$observation_id)
   lik_rows <- suppressWarnings(lapply(ids, function(sid) {
-    ch <- chunks[[sid]]
+    ch <- chunk_of(sid)
     if (is.null(ch)) return(.empty_consensus_row(sid))
     .consensus_one_observation(
       ch, sid, rank_system, cumulative_threshold, min_posterior,
@@ -1074,7 +1089,7 @@ posterior_consensus <- function(posterior_df,
   result$likelihood_consensus_rank <- vapply(lik_rows, function(r) as.character(r$consensus_rank[[1L]]), character(1))
   result$prior_role <- vapply(seq_along(ids), function(i) {
     .prior_role_one(
-      chunks[[ids[i]]], rank_system,
+      chunk_of(ids[i]), rank_system,
       result$consensus_taxon[i], result$consensus_rank[i],
       result$likelihood_consensus_taxon[i], result$likelihood_consensus_rank[i]
     )
@@ -1082,7 +1097,7 @@ posterior_consensus <- function(posterior_df,
   # Share of the baseline (sequence, named priors flattened) held by the
   # reported taxon: the magnitude behind prior_role.
   result$likelihood_support <- vapply(seq_along(ids), function(i) {
-    ch <- chunks[[ids[i]]]
+    ch <- chunk_of(ids[i])
     tx <- result$consensus_taxon[i]
     rk <- result$consensus_rank[i]
     if (is.null(ch) || is.na(tx) || is.na(rk)) return(NA_real_)
