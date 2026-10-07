@@ -175,9 +175,11 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
   expect_equal(s1$consensus_taxon, "Sp_A")
 
   # Step 3: empirical Bayes refinement
-  result_updated <- update_prior_from_consensus(result, con,
-    n_sims = 100
-  )
+  # this fixture's priors are not occurrence-based (no theta_mean), so the
+  # receiver guards are turned off explicitly
+  result_updated <- suppressMessages(update_prior_from_consensus(result, con,
+    n_sims = 100, require_support_columns = FALSE
+  ))
   expect_s3_class(result_updated, "data.frame")
 
   # Step 4: final consensus

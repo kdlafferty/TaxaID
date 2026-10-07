@@ -163,7 +163,9 @@ result <- assign_taxa_llm(
 
 # Consensus + refinement
 consensus <- posterior_consensus(result, cumulative_threshold = 0.90)
-result_updated <- update_prior_from_consensus(result, consensus)
+# LLM priors are not occurrence-based (no theta_mean), so Round 2's support
+# columns cannot be supplied: transitional opt-out (see ?update_prior_from_consensus)
+result_updated <- update_prior_from_consensus(result, consensus, require_support_columns = FALSE)
 consensus_final <- posterior_consensus(result_updated)
 ```
 

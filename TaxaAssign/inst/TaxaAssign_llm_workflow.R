@@ -260,7 +260,10 @@ result_updated <- update_prior_from_consensus(
   result, consensus,
   confirmation_quantile = 0.9,
   confirmation_discount = 0.25,
-  n_sims = 1000
+  n_sims = 1000,
+  # LLM priors are not occurrence-based (no theta_mean), so Round 2's support
+  # columns cannot be supplied: transitional opt-out (see ?update_prior_from_consensus)
+  require_support_columns = FALSE
 )
 
 consensus_final <- posterior_consensus(

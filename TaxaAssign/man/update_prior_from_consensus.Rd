@@ -13,7 +13,8 @@ update_prior_from_consensus(
   detections = NULL,
   group_cols = "sample_id",
   marker_col = "marker",
-  spatial_group_map = NULL
+  spatial_group_map = NULL,
+  require_support_columns = TRUE
 )
 }
 \arguments{
@@ -29,7 +30,9 @@ from if \code{n_sims > 0}.}
 
 \item{consensus}{Dataframe. Output of \code{\link[=posterior_consensus]{posterior_consensus()}} run on \code{result}.
 Must contain: \code{observation_id}, \code{consensus_taxon}, \code{is_resolved},
-\code{consensus_posterior}.}
+\code{consensus_posterior}. \code{likelihood_consensus_taxon} and
+\code{likelihood_consensus_rank} (present by default) enable the
+likelihood-node guard (see \emph{Receiver guards}).}
 
 \item{confirmation_quantile}{Numeric in (0, 1]. Quantile of confirming
 observations' \code{consensus_posterior} used as the candidate new
@@ -73,12 +76,24 @@ evidence is pooled within each spatial group only, so two sites in
 different spatial groups donate nothing to each other. Membership is
 binary (same group or not), with no distance decay within a group. Supply
 this or \code{detections}, not both.}
+
+\item{require_support_columns}{Logical (default \code{TRUE}). The receiver
+guards (see \emph{Receiver guards}) need \code{likelihood_consensus_taxon} and
+\code{likelihood_consensus_rank} in \code{consensus} (from \code{\link[=posterior_consensus]{posterior_consensus()}}'s
+likelihood-only pass) and \code{theta_mean} in \code{result} (from the TaxaExpect
+prior table); with \code{TRUE} the function stops, naming any that is missing.
+\code{FALSE} is a TRANSITIONAL shim for callers not yet migrated, not a
+supported mode: it skips both guards and raises without
+likelihood-consensus support (a message says so), so its results are not
+comparable to a guarded run. Within this package it is used only for the
+LLM pathway, whose priors are not occurrence-based.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},
-plus one new column, \code{confirmed_without_occurrence_record} (logical,
-\code{FALSE} unless set \code{TRUE} -- see @section Confirmed without an
-occurrence record). Resolved observations are returned unchanged.
+plus one new column, \code{confirmed_without_occurrence_record} (logical; kept
+for compatibility and \code{FALSE} whenever \code{theta_mean} is present, since such
+rows are no longer raised -- see \emph{Confirmed without an occurrence
+record}). Resolved observations are returned unchanged.
 Unresolved observations that share at least one group with another
 observation have updated \code{prior_mean} and freshly computed posterior
 columns (\code{posterior_point_est}, \code{posterior_mean}, \code{posterior_sd},
@@ -254,22 +269,42 @@ instead -- the units mismatch this section fixes is specific to
 occurrence-model-sourced priors.
 }
 
+\section{Receiver guards}{
+
+A raise may choose among candidates the sequence cannot separate; it may
+never pick one the sequence argues against, nor manufacture presence. Two
+guards apply to the rows that would be raised (donor support is unchanged):
+\itemize{
+\item \strong{Likelihood node.} Only rows inside their observation's
+likelihood-only credible node are raised: the node is
+\code{likelihood_consensus_taxon} at \code{likelihood_consensus_rank} in
+\code{consensus} (from \code{\link[=posterior_consensus]{posterior_consensus()}} with
+\code{likelihood_consensus = TRUE}, its default), so it reflects the
+sequence evidence before any raise. An observation with no such node
+has no row raised. Measured on CalIntertidal (2026-10-07): raising a
+row outside its node let a rare recorded brown alga (likelihood 0.016)
+overturn a red-alga match (likelihood 1.0) once its prior was raised
+about 300-fold.
+\item \strong{Occurrence record.} A row with no occurrence record
+(\code{theta_mean} \code{NA}) is never raised.
+}
+A message counts the supported rows each guard held back. Both guards need
+their input columns and stop if one is missing; \code{require_support_columns = FALSE} is a transitional shim that turns them off.
+}
+
 \section{Confirmed without an occurrence record}{
 
-A taxon can be confidently identified elsewhere in the dataset while
-having no occurrence record at all (\code{theta_mean} \code{NA} for every row
-naming it) -- e.g. a real Mugu case, \emph{Oncorhynchus mykiss}, which has no
-row in \code{taxaexpect_priors} at all (a known, separate upstream join gap,
-not a sign the species is
-actually rare). Such a row still gets boosted (the confirmation is real
-identification evidence, worth keeping) but is flagged via a new
-\code{confirmed_without_occurrence_record} column rather than silently
-presented as occurrence-grounded. Boosting is \emph{not} suppressed for these
-rows: gating on occurrence-record presence would currently punish
-exactly the taxa the join gap affects (whole families, in the Mugu
-salmonid case), which are neither rare nor implausible -- only
-undercounted by an unrelated bug. Revisit suppression once that join gap
-is fixed.
+Until 2026-10-07 a row with no occurrence record (\code{theta_mean} \code{NA}) was
+still raised and only flagged in \code{confirmed_without_occurrence_record}.
+Measured on CalIntertidal, such raises produced most of the confident new
+species calls whose Round 1 support was weak (131 of 176 reviewed winners:
+sibling sequence variants of one organism, matching a reference at a
+mediocre identity, confirmed each other). The maintainer chose to suppress
+them (error-first): such rows are now never raised (see
+\emph{Receiver guards}). The column is kept for compatibility and is
+\code{FALSE} whenever \code{theta_mean} is present. A taxon missing from the
+occurrence priors through an upstream join gap is therefore not raised
+either; that gap must be fixed upstream.
 }
 
 \examples{

@@ -292,3 +292,38 @@ test_that("run_llm_pipeline: data_type reaches suggest_unreferenced_species()", 
   )
   expect_equal(seen, "eDNA")
 })
+
+# =============================================================================
+# E. Round 2 receiver guards in the shared pipeline helper (2026-10-07)
+# =============================================================================
+# The LLM pathway's priors are not occurrence-based (no theta_mean), so the
+# helper turns the support-column requirement off for workflow = "llm"; the
+# Bayesian pathway keeps it, and stops naming the missing column.
+.helper_result <- function() {
+  data.frame(
+    observation_id = c("s1", "s1", "s2", "s2"), taxon_name = c("Sp A", "Sp B", "Sp A", "Sp B"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    family = "Fam1", genus = "Gen1",
+    score_likelihood = c(0.95, 0.05, 0.5, 0.5), score_likelihood_mean = c(0.95, 0.05, 0.5, 0.5),
+    score_likelihood_sd = 0, prior_mean = 0.5, prior_alpha = 5, prior_beta = 5,
+    posterior_point_est = c(0.95, 0.05, 0.5, 0.5), posterior_mean = c(0.95, 0.05, 0.5, 0.5),
+    posterior_sd = 0, confidence_score = c(0.95, 0.05, 0.5, 0.5), stringsAsFactors = FALSE)
+}
+.run_helper <- function(result, workflow) {
+  .run_consensus_and_report(result, species_reference = NULL, cumulative_threshold = 0.9, min_posterior = 0.05,
+    posterior_col = "posterior_point_est", lookup_missing_taxonomy = FALSE, backbone_id = 11L,
+    rank_system = c("family", "genus", "species"), confirmation_quantile = 0.9, confirmation_discount = 0.25,
+    n_sims = 0, generate_report_flag = FALSE, report_params = list(), unreferenced_result = NULL,
+    llm_fn = NULL, verbose = FALSE, .msg = function(...) invisible(NULL), stage_prefix = "test", workflow = workflow)
+}
+
+test_that("pipeline helper: the LLM workflow runs through Round 2 without theta_mean", {
+  out <- suppressMessages(.run_helper(.helper_result(), "llm"))
+  expect_true(is.list(out))
+})
+
+test_that("pipeline helper: the Bayesian workflow requires the support columns and names the missing one", {
+  expect_error(suppressMessages(.run_helper(.helper_result(), "bayesian")), "theta_mean")
+  r <- .helper_result(); r$theta_mean <- 0.1
+  expect_true(is.list(suppressMessages(.run_helper(r, "bayesian"))))
+})

@@ -7,6 +7,12 @@ library(dplyr)
 
 # ---- Shared test data --------------------------------------------------------
 
+# The tests above the receiver-guard section exercise the raise mechanics
+# themselves, so they run with the guards off (their fixtures carry no
+# likelihood-only consensus and mostly no theta_mean). The guards are tested
+# in their own section below and in the occurrence-record test.
+.upf <- function(...) update_prior_from_consensus(..., require_support_columns = FALSE)
+
 .make_result <- function() {
   bind_rows(
     tibble(
@@ -70,7 +76,7 @@ test_that("update_prior_from_consensus returns data frame with expected columns"
   result <- .make_result()
   consensus <- .make_consensus()
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   expect_s3_class(out, "data.frame")
   expect_true("prior_updated" %in% names(out))
   expect_true(nrow(out) >= nrow(result))
@@ -80,7 +86,7 @@ test_that("update_prior_from_consensus boosts confirmed species in unresolved sa
   result <- .make_result()
   consensus <- .make_consensus()
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
 
   # Soft design (2026-08-28): support for Sp_A = S1's 0.8 + S2's own 0.5;
   # leave-one-out mass for S2 = 0.8; discounted m = 0.25*0.8 = 0.2;
@@ -97,7 +103,7 @@ test_that("report_params from the input `result` survive the call, merged with t
   attr(result, "report_params") <- list(score_sharpness = 0.77, top_n = 4L)
   consensus <- .make_consensus()
 
-  out <- update_prior_from_consensus(result, consensus,
+  out <- .upf(result, consensus,
     n_sims = 0,
     confirmation_quantile = 0.85
   )
@@ -120,7 +126,7 @@ test_that("soft update still operates when no observation is resolved", {
   consensus <- .make_consensus()
   consensus$is_resolved <- FALSE
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   expect_s3_class(out, "data.frame")
   # S1's Sp_A gets S2's 0.5 support: m = 0.125, s = 1/9, target 0.8 ->
   # 0.5 + 0.3/9; S2's Sp_A gets S1's 0.8: 0.55 as elsewhere.
@@ -134,7 +140,7 @@ test_that("consensus confidence no longer gates the update (soft design, 2026-08
   result <- .make_result()
   consensus <- .make_consensus(s1_posterior = 0.6) # weakly resolved donor
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
 
   # Support now comes from the posteriors table itself, not the consensus
   # confidence, so the outcome is identical to the 0.9-confidence case: 0.55.
@@ -147,7 +153,7 @@ test_that("confirmation_discount = 0 disables the update entirely", {
   result <- .make_result()
   consensus <- .make_consensus()
 
-  out <- update_prior_from_consensus(result, consensus,
+  out <- .upf(result, consensus,
     n_sims = 0,
     confirmation_discount = 0
   )
@@ -162,7 +168,7 @@ test_that("the update is continuous in the support (no cliff at any threshold)",
     result <- .make_result()
     result$posterior_point_est[result$observation_id == "S1" &
       result$taxon_name == "Sp_A"] <- p1
-    out <- suppressMessages(update_prior_from_consensus(result, .make_consensus(), n_sims = 0))
+    out <- suppressMessages(.upf(result, .make_consensus(), n_sims = 0))
     out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
   }, numeric(1))
   expect_true(all(diff(news) > 0)) # monotone in support
@@ -176,7 +182,7 @@ test_that("never-demote: an existing prior above the confirmation quantile is le
   result$prior_mean[result$observation_id == "S2" & result$taxon_name == "Sp_A"] <- 0.95
   consensus <- .make_consensus(s1_posterior = 0.9) # would only raise to 0.9
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
 
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   # 0.9 < 0.95, so prior_mean must stay at 0.95 (not lowered)
@@ -221,7 +227,7 @@ test_that("confirmation_quantile combines multiple donor observations correctly"
     )
   )
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   s3_sp_a <- out[out$observation_id == "S3" & out$taxon_name == "Sp_A", ]
 
   # Soft design: support for Sp_A across the posteriors table = S1 0.8 +
@@ -233,7 +239,7 @@ test_that("confirmation_quantile combines multiple donor observations correctly"
 
   # A consensus-only donor (S4 has no rows in `result`) contributes nothing
   # under the soft design -- support is sourced from the posteriors table.
-  out2 <- update_prior_from_consensus(result,
+  out2 <- .upf(result,
     consensus[consensus$observation_id != "S4", ],
     n_sims = 0
   )
@@ -250,7 +256,7 @@ test_that("prior_alpha/prior_beta are recomputed consistently with a boosted pri
   result <- .make_result()
   consensus <- .make_consensus(s1_posterior = 0.9)
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
 
   phi <- 5 + 5 # original prior_alpha + prior_beta for this row
@@ -273,7 +279,7 @@ test_that("even maximal support keeps the prior strictly inside (0, 1) with a va
   result <- .make_result()
   result$posterior_point_est[result$observation_id == "S1" &
     result$taxon_name == "Sp_A"] <- 1.0
-  out <- suppressMessages(update_prior_from_consensus(result, .make_consensus(), n_sims = 0))
+  out <- suppressMessages(.upf(result, .make_consensus(), n_sims = 0))
   s2_sp_a <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
 
   # mass = 1.0 (S1) ; m = 0.25 ; s = 0.2 ; target = 1.0 ; new = 0.5 + 0.5*0.2
@@ -281,7 +287,7 @@ test_that("even maximal support keeps the prior strictly inside (0, 1) with a va
   expect_true(s2_sp_a$prior_mean < 1)
   expect_true(is.finite(s2_sp_a$prior_alpha) && s2_sp_a$prior_alpha > 0)
   expect_true(is.finite(s2_sp_a$prior_beta) && s2_sp_a$prior_beta > 0)
-  expect_no_error(update_prior_from_consensus(result, .make_consensus(), n_sims = 100))
+  expect_no_error(.upf(result, .make_consensus(), n_sims = 100))
 })
 
 # ---- spatial_group_map: multi-member vs. single-observation spatial groups ---
@@ -298,7 +304,7 @@ test_that("spatial_group_map blocks the boost when the confirming observation is
     spatial_group_id = c("spatial_group_1", "spatial_group_2")
   )
 
-  out <- update_prior_from_consensus(result, consensus,
+  out <- .upf(result, consensus,
     n_sims = 0,
     spatial_group_map = spatial_group_map
   )
@@ -318,7 +324,7 @@ test_that("spatial_group_map allows the boost when S1 and S2 share a spatial gro
     spatial_group_id = c("spatial_group_1", "spatial_group_1")
   )
 
-  out <- update_prior_from_consensus(result, consensus,
+  out <- .upf(result, consensus,
     n_sims = 0,
     spatial_group_map = spatial_group_map
   )
@@ -365,7 +371,7 @@ test_that("an unresolved observation in a single-observation spatial group is sk
     spatial_group_id = c("spatial_group_1", "spatial_group_1", "spatial_group_2")
   )
 
-  out <- update_prior_from_consensus(result, consensus,
+  out <- .upf(result, consensus,
     n_sims = 0,
     spatial_group_map = spatial_group_map
   )
@@ -382,7 +388,7 @@ test_that("spatial_group_map missing required columns errors", {
   bad_map <- tibble(observation_id = c("S1", "S2"))
 
   expect_error(
-    update_prior_from_consensus(result, consensus, spatial_group_map = bad_map),
+    .upf(result, consensus, spatial_group_map = bad_map),
     "spatial_group_map missing required column"
   )
 })
@@ -395,7 +401,7 @@ test_that("consensus missing consensus_posterior errors", {
   consensus$consensus_posterior <- NULL
 
   expect_error(
-    update_prior_from_consensus(result, consensus),
+    .upf(result, consensus),
     "consensus_posterior"
   )
 })
@@ -405,11 +411,11 @@ test_that("confirmation_quantile must be in (0, 1]", {
   consensus <- .make_consensus()
 
   expect_error(
-    update_prior_from_consensus(result, consensus, confirmation_quantile = 0),
+    .upf(result, consensus, confirmation_quantile = 0),
     "confirmation_quantile"
   )
   expect_error(
-    update_prior_from_consensus(result, consensus, confirmation_quantile = 1.5),
+    .upf(result, consensus, confirmation_quantile = 1.5),
     "confirmation_quantile"
   )
 })
@@ -419,11 +425,11 @@ test_that("confirmation_discount must be in [0, 1]", {
   consensus <- .make_consensus()
 
   expect_error(
-    update_prior_from_consensus(result, consensus, confirmation_discount = -0.1),
+    .upf(result, consensus, confirmation_discount = -0.1),
     "confirmation_discount"
   )
   expect_error(
-    update_prior_from_consensus(result, consensus, confirmation_discount = 1.1),
+    .upf(result, consensus, confirmation_discount = 1.1),
     "confirmation_discount"
   )
 })
@@ -510,7 +516,7 @@ test_that("boost is rescaled onto the occurrence-scale ceiling, not used directl
   theta_ceiling <- max(result$theta_mean, na.rm = TRUE) # 0.05
   expect_equal(theta_ceiling, 0.05)
 
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
 
   # Soft design: support for Sp_A = S1 0.95 + S2 0.5; leave-one-out mass for
@@ -525,25 +531,54 @@ test_that("boost is rescaled onto the occurrence-scale ceiling, not used directl
   expect_false(isTRUE(all.equal(sp_a_s2, 0.95)))
 })
 
-test_that("confirmed_without_occurrence_record flags a boosted taxon with NA theta_mean", {
+test_that("the raise arithmetic is the same on the guarded (default) path", {
+  # The mechanics tests above run through the guards-off shim (.upf); this one
+  # runs the production configuration: both support columns supplied, guards
+  # ON. Every candidate shares one likelihood node, so only Sp_D (theta NA) is
+  # held back, and Sp_A's raise must be the occurrence-scale value exactly.
   result <- .make_result_theta()
+  result$phylum <- "P1"
   consensus <- .make_consensus_theta()
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  consensus$likelihood_consensus_taxon <- "P1"
+  consensus$likelihood_consensus_rank <- "phylum"
+  out <- suppressMessages(update_prior_from_consensus(result, consensus, n_sims = 0))
+  sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
+  m <- 0.25 * 0.95
+  expect_equal(sp_a_s2, 0.001 + (0.95 * 0.05 - 0.001) * m / (1 + m), tolerance = 1e-8)
+  shim <- .upf(result, consensus, n_sims = 0)
+  expect_equal(sp_a_s2, shim$prior_mean[shim$observation_id == "S2" & shim$taxon_name == "Sp_A"])
+  # alpha/beta follow the new mean with the concentration preserved, as on the shim path
+  r <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_equal(r$prior_alpha + r$prior_beta, 10)
+  expect_equal(r$prior_alpha / (r$prior_alpha + r$prior_beta), sp_a_s2)
+})
 
+test_that("a supported row with no occurrence record (theta_mean NA) is never raised", {
+  # 2026-10-07 (maintainer, error-first): previously raised and only flagged.
+  result <- .make_result_theta()
+  result$phylum <- "P1" # one node holds every candidate, so only the record guard decides
+  consensus <- .make_consensus_theta()
+  consensus$likelihood_consensus_taxon <- "P1"
+  consensus$likelihood_consensus_rank <- "phylum"
+  out <- suppressMessages(update_prior_from_consensus(result, consensus, n_sims = 0))
   sp_d_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_D", ]
   sp_a_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
-
-  expect_true("confirmed_without_occurrence_record" %in% names(out))
-  expect_true(sp_d_s2$confirmed_without_occurrence_record)
+  # Sp_D has support (S3 resolves it at 0.95) but no record: kept at its prior
+  expect_equal(sp_d_s2$prior_mean, 0.0005)
+  expect_false(sp_d_s2$confirmed_without_occurrence_record)
+  # control: Sp_A in the SAME observation has a record and IS raised
+  expect_gt(sp_a_s2$prior_mean, 0.001)
   expect_false(sp_a_s2$confirmed_without_occurrence_record)
-  # boosting is NOT suppressed for the no-record taxon -- it still gets raised
-  expect_gt(sp_d_s2$prior_mean, 0.0005)
+  expect_true("confirmed_without_occurrence_record" %in% names(out))
+  # the message counts the row the guard held back
+  expect_message(update_prior_from_consensus(result, consensus, n_sims = 0),
+    "1 not raised because they have no occurrence record")
 })
 
 test_that("confirmed_without_occurrence_record defaults FALSE for resolved/unboosted rows", {
   result <- .make_result_theta()
   consensus <- .make_consensus_theta()
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
 
   resolved <- out[out$observation_id %in% c("S1", "S3"), ]
   expect_true(all(!resolved$confirmed_without_occurrence_record))
@@ -552,7 +587,7 @@ test_that("confirmed_without_occurrence_record defaults FALSE for resolved/unboo
 test_that("falls back to unscaled substitution when result has no theta_mean column", {
   result <- .make_result() # no theta_mean column
   consensus <- .make_consensus()
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   expect_false("theta_mean" %in% names(result))
   # no occurrence scale: the support-weighted target (0.8) is used directly;
   # soft move: 0.5 + (0.8 - 0.5) * (1/6) = 0.55
@@ -564,7 +599,7 @@ test_that("never-demote still holds under rescaling", {
   result <- .make_result_theta()
   result$prior_mean[result$observation_id == "S2" & result$taxon_name == "Sp_A"] <- 0.9
   consensus <- .make_consensus_theta()
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
+  out <- .upf(result, consensus, n_sims = 0)
   sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
   expect_equal(sp_a_s2, 0.9) # already well above q*ceiling (0.0475) -- untouched
 })
@@ -582,7 +617,7 @@ test_that("a presence-mixture row has prior_mix_w updated (not cleared) by soft 
   res$prior_mix_p_conc <- ifelse(mixify, 1, NA_real_)
 
   out <- suppressMessages(suppressWarnings(
-    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+    .upf(res, .make_consensus(), n_sims = 50)
   ))
   boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   # leave-one-out mass = S1's 0.8; m = 0.25*0.8 = 0.2;
@@ -625,7 +660,7 @@ test_that("mixture re-moment-match includes prior_mix_var_present/_absent when s
   res$prior_mix_var_absent <- ifelse(mixify, 2e-6, NA_real_)
 
   out <- suppressMessages(suppressWarnings(
-    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+    .upf(res, .make_consensus(), n_sims = 50)
   ))
   boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
 
@@ -658,7 +693,7 @@ test_that("mixture w-update is capped at prior_mix_veto_bound, never exceeds it 
   res$prior_mix_veto_bound <- ifelse(mixify, 0.52, NA_real_)
 
   out <- suppressMessages(suppressWarnings(
-    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+    .upf(res, .make_consensus(), n_sims = 50)
   ))
   boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   expect_equal(boosted$prior_mix_w, 0.52, tolerance = 1e-8)
@@ -668,7 +703,7 @@ test_that("mixture w-update is capped at prior_mix_veto_bound, never exceeds it 
   )
 
   msgs <- capture_messages(suppressWarnings(
-    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+    .upf(res, .make_consensus(), n_sims = 50)
   ))
   expect_true(any(grepl("veto bound", msgs, ignore.case = TRUE)))
 })
@@ -687,7 +722,7 @@ test_that("mixture w-update is NOT capped when prior_mix_veto_bound is NA or the
   # No prior_mix_veto_bound column at all -- backward compatible, uncapped.
 
   out <- suppressMessages(suppressWarnings(
-    update_prior_from_consensus(res, .make_consensus(), n_sims = 50)
+    .upf(res, .make_consensus(), n_sims = 50)
   ))
   boosted <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   w1 <- (1 * 0.5 + 0.2) / 1.2
@@ -749,7 +784,7 @@ test_that("isolation: support in group A never raises a hypothesis in group B (s
     observation_id   = c("S1", "S3", "S2", "S4"),
     spatial_group_id = c("A", "A", "B", "B")
   )
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+  out <- suppressMessages(.upf(fx$result, fx$consensus,
     n_sims = 0, spatial_group_map = map
   ))
   expect_equal(.prior_of(out, "S2", "Sp_X"), 0.1)
@@ -758,7 +793,7 @@ test_that("isolation: support in group A never raises a hypothesis in group B (s
 test_that("isolation: support in group A never raises a hypothesis in group B (detections)", {
   fx <- .two_group_fixture()
   det <- tibble(observation_id = c("S1", "S3", "S2", "S4"), site = c("A", "A", "B", "B"))
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+  out <- suppressMessages(.upf(fx$result, fx$consensus,
     n_sims = 0, detections = det, group_cols = "site"
   ))
   expect_equal(.prior_of(out, "S2", "Sp_X"), 0.1)
@@ -767,7 +802,7 @@ test_that("isolation: support in group A never raises a hypothesis in group B (d
 test_that("within-group donation: the same observation placed in group A is raised", {
   fx <- .two_group_fixture()
   det <- tibble(observation_id = c("S1", "S3", "S2", "S4"), site = c("A", "A", "A", "B"))
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+  out <- suppressMessages(.upf(fx$result, fx$consensus,
     n_sims = 0, detections = det, group_cols = "site"
   ))
   expect_gt(.prior_of(out, "S2", "Sp_X"), 0.1)
@@ -784,7 +819,7 @@ test_that("cross-marker: observations from two markers sharing a sample id donat
     sample_id = c("tube_1", "tube_1"),
     marker = c("COI", "12S")
   )
-  out <- suppressMessages(update_prior_from_consensus(result, consensus,
+  out <- suppressMessages(.upf(result, consensus,
     n_sims = 0, detections = det
   ))
   expect_gt(.prior_of(out, "12S_ESV1", "Sp_X"), 0.1)
@@ -794,7 +829,7 @@ test_that("cross-marker: observations from two markers sharing a sample id donat
   det_bad <- det
   det_bad$sample_id <- c("tube_1", "TUBE_1")
   expect_message(
-    out_bad <- update_prior_from_consensus(result, consensus,
+    out_bad <- .upf(result, consensus,
       n_sims = 0, detections = det_bad
     ),
     "every group holds a single marker"
@@ -821,7 +856,7 @@ test_that("multi-group observation: per-group gains are averaged (hand-computed)
   )
   consensus <- .cons(c("O1", "O2", "U"), c(TRUE, TRUE, FALSE))
   det <- tibble(observation_id = c("O1", "U", "O2", "U"), sample_id = c("A", "A", "B", "B"))
-  out <- suppressMessages(update_prior_from_consensus(result, consensus,
+  out <- suppressMessages(.upf(result, consensus,
     n_sims = 0, detections = det
   ))
   expected <- 0.1 + ((0.8 - 0.1) / 6 + (0.5 - 0.1) / 11) / 2
@@ -844,14 +879,14 @@ test_that("leave-one-out per group: an observation never confirms itself", {
   )
   consensus <- .cons(c("O1", "O3", "U"), c(TRUE, TRUE, FALSE))
   det <- tibble(observation_id = c("O1", "U", "O3", "U"), sample_id = c("A", "A", "B", "B"))
-  out <- suppressMessages(update_prior_from_consensus(result, consensus,
+  out <- suppressMessages(.upf(result, consensus,
     n_sims = 0, detections = det
   ))
   expect_equal(.prior_of(out, "U", "Sp_X"), 0.1 + (0.8 / 6) / 2, tolerance = 1e-12)
 
   # U only in group B, where it is the sole Sp_X supporter: unchanged.
   det_b <- tibble(observation_id = c("O1", "U", "O3"), sample_id = c("A", "B", "B"))
-  out_b <- suppressMessages(update_prior_from_consensus(result, consensus,
+  out_b <- suppressMessages(.upf(result, consensus,
     n_sims = 0, detections = det_b
   ))
   expect_equal(.prior_of(out_b, "U", "Sp_X"), 0.1)
@@ -869,12 +904,12 @@ test_that("composite key: group_cols = c('site', 'season') separates seasons", {
     site = "Reef",
     season = c("spring", "fall", "fall")
   )
-  out_both <- suppressMessages(update_prior_from_consensus(result, consensus,
+  out_both <- suppressMessages(.upf(result, consensus,
     n_sims = 0, detections = det, group_cols = c("site", "season")
   ))
   expect_equal(.prior_of(out_both, "U", "Sp_X"), 0.1)
 
-  out_site <- suppressMessages(update_prior_from_consensus(result, consensus,
+  out_site <- suppressMessages(.upf(result, consensus,
     n_sims = 0, detections = det, group_cols = "site"
   ))
   expect_gt(.prior_of(out_site, "U", "Sp_X"), 0.1)
@@ -883,7 +918,7 @@ test_that("composite key: group_cols = c('site', 'season') separates seasons", {
 test_that("per-group report is attached with eligible/updated/raised counts", {
   fx <- .two_group_fixture()
   det <- tibble(observation_id = c("S1", "S3", "S2", "S4"), site = c("A", "A", "A", "B"))
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+  out <- suppressMessages(.upf(fx$result, fx$consensus,
     n_sims = 0, detections = det, group_cols = "site"
   ))
   rep <- attr(out, "prior_update_groups")
@@ -900,7 +935,7 @@ test_that("all-singleton grouping says so and updates nothing", {
   fx <- .two_group_fixture()
   det <- tibble(observation_id = c("S1", "S2", "S3", "S4"), sample_id = c("t1", "t2", "t3", "t4"))
   expect_message(
-    out <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, detections = det),
+    out <- .upf(fx$result, fx$consensus, n_sims = 0, detections = det),
     "Every group is a singleton"
   )
   expect_equal(.prior_of(out, "S2", "Sp_X"), 0.1)
@@ -910,7 +945,7 @@ test_that("NULL detections on multi-site combined priors is refused", {
   fx <- .two_group_fixture()
   fx$result$n_sites_combined <- c(1L, 1L, 3L, 3L, 1L, 1L, 1L, 1L)
   expect_error(
-    suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0)),
+    suppressMessages(.upf(fx$result, fx$consensus, n_sims = 0)),
     "combined across"
   )
 })
@@ -918,7 +953,7 @@ test_that("NULL detections on multi-site combined priors is refused", {
 test_that("NULL detections pools the whole result and says so", {
   fx <- .two_group_fixture()
   expect_message(
-    out <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+    out <- .upf(fx$result, fx$consensus, n_sims = 0),
     "pooled across ALL"
   )
   expect_gt(.prior_of(out, "S2", "Sp_X"), 0.1)
@@ -929,19 +964,19 @@ test_that("detections and spatial_group_map together is an error; bad inputs are
   det <- tibble(observation_id = c("S1", "S2"), sample_id = c("t1", "t1"))
   map <- tibble(observation_id = c("S1", "S2"), spatial_group_id = c("g", "g"))
   expect_error(
-    update_prior_from_consensus(fx$result, fx$consensus,
+    .upf(fx$result, fx$consensus,
       detections = det, spatial_group_map = map
     ),
     "not both"
   )
   expect_error(
-    update_prior_from_consensus(fx$result, fx$consensus,
+    .upf(fx$result, fx$consensus,
       detections = det, group_cols = "site"
     ),
     "detections missing required column"
   )
   expect_error(
-    update_prior_from_consensus(fx$result, fx$consensus,
+    .upf(fx$result, fx$consensus,
       detections = tibble(observation_id = "nope", sample_id = "t1")
     ),
     "None of"
@@ -1008,17 +1043,105 @@ test_that(".merge_rows_with() matches merge() with NA keys and with keys repeate
 test_that("an unreferenced-relative row is never raised by the soft confirmation", {
   r <- .make_result()
   r$hypothesis_type[r$observation_id == "S2" & r$taxon_name == "Sp_A"] <- "unreferenced_species"
-  out <- suppressMessages(update_prior_from_consensus(r, .make_consensus()))
+  out <- suppressMessages(.upf(r, .make_consensus()))
   row <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   expect_equal(row$prior_mean, 0.5) # unchanged, although S1 confirms Sp_A
   # control: the same row as a referenced candidate IS raised
-  out0 <- suppressMessages(update_prior_from_consensus(.make_result(), .make_consensus()))
+  out0 <- suppressMessages(.upf(.make_result(), .make_consensus()))
   expect_gt(out0$prior_mean[out0$observation_id == "S2" & out0$taxon_name == "Sp_A"], 0.5)
 })
 
 test_that("an unreferenced-relative row's posterior does not confirm a species elsewhere", {
   r <- .make_result()
   r$hypothesis_type[r$observation_id == "S1" & r$taxon_name == "Sp_A"] <- "unreferenced_species"
-  out <- suppressMessages(update_prior_from_consensus(r, .make_consensus()))
+  out <- suppressMessages(.upf(r, .make_consensus()))
   expect_equal(out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"], 0.5)
+})
+
+
+# ---- Receiver guards (2026-10-07): likelihood node (G3), occurrence record (G1) ----
+.g_rows <- function(id, taxa, phylum, L, prior = 1e-3, theta = 0.01) {
+  tibble(observation_id = id, taxon_name = taxa, taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate", phylum = phylum, genus = sub(" .*", "", taxa),
+    score_likelihood = L, score_likelihood_mean = L, score_likelihood_sd = 0.01,
+    prior_mean = prior, prior_alpha = prior * 100, prior_beta = (1 - prior) * 100, theta_mean = theta,
+    posterior_point_est = L / sum(L), posterior_mean = L / sum(L), posterior_sd = 0.01, confidence_score = L / sum(L))
+}
+.g_cons <- function(ids, resolved, taxon, lik_taxon, lik_rank) {
+  tibble(observation_id = ids, consensus_taxon = ifelse(resolved, taxon, NA_character_),
+    consensus_rank = ifelse(resolved, "species", NA_character_), is_resolved = resolved,
+    consensus_posterior = ifelse(resolved, 0.95, NA_real_),
+    likelihood_consensus_taxon = lik_taxon, likelihood_consensus_rank = lik_rank)
+}
+# S1 and S3 resolve Dictyota dichotoma (donor support); S2 is a red-alga sequence: Neoporphyra
+# haitanensis fits (L 1.0), Dictyota does not (L 0.016). S2's likelihood node is the red-alga species.
+.dictyota_fixture <- function() {
+  list(
+    result = bind_rows(
+      .g_rows("S1", "Dictyota dichotoma", "Ochrophyta", 1),
+      .g_rows("S3", "Dictyota dichotoma", "Ochrophyta", 1),
+      .g_rows("S2", c("Neoporphyra haitanensis", "Dictyota dichotoma"), c("Rhodophyta", "Ochrophyta"), c(1, 0.016))
+    ),
+    consensus = .g_cons(c("S1", "S3", "S2"), c(TRUE, TRUE, FALSE), "Dictyota dichotoma",
+      c("Dictyota dichotoma", "Dictyota dichotoma", "Neoporphyra haitanensis"), "species")
+  )
+}
+
+test_that("G3: a supported row OUTSIDE its observation's likelihood node is never raised (Dictyota)", {
+  fx <- .dictyota_fixture()
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Dictyota dichotoma"), 1e-3)
+  expect_message(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+    "1 supported row\\(s\\) not raised because they lie outside")
+  # CONTROL: the same row IS raised with the guards explicitly off ...
+  expect_message(off <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = FALSE),
+    "require_support_columns = FALSE")
+  expect_gt(.prior_of(off, "S2", "Dictyota dichotoma"), 1e-3)
+  # ... and when S2's node contains it (a node at the phylum Ochrophyta)
+  inside <- fx$consensus
+  inside$likelihood_consensus_taxon[3] <- "Ochrophyta"; inside$likelihood_consensus_rank[3] <- "phylum"
+  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(fx$result, inside, n_sims = 0)), "S2", "Dictyota dichotoma"), 1e-3)
+})
+
+test_that("G3: an observation with no likelihood node has no row raised", {
+  fx <- .dictyota_fixture()
+  fx$consensus$likelihood_consensus_taxon[3] <- NA; fx$consensus$likelihood_consensus_rank[3] <- NA
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Dictyota dichotoma"), 1e-3)
+  expect_equal(.prior_of(out, "S2", "Neoporphyra haitanensis"), 1e-3)
+})
+
+test_that("G1: an unrecorded row INSIDE the likelihood node is not raised; a recorded one is (Aplanochytrium)", {
+  # S2's node is the phylum Bigyra; both candidates are inside it. Aplanochytrium has no
+  # occurrence record (theta NA); Thraustochytrium has one. Both have donor support.
+  res <- bind_rows(
+    .g_rows("S1", "Aplanochytrium stocchinoi", "Bigyra", 1, theta = NA),
+    .g_rows("S3", "Thraustochytrium kinnei", "Bigyra", 1),
+    .g_rows("S2", c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei"), "Bigyra", c(0.378, 0.3), theta = c(NA, 0.01))
+  )
+  cons <- tibble(observation_id = c("S1", "S3", "S2"),
+    consensus_taxon = c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei", NA),
+    consensus_rank = c("species", "species", NA), is_resolved = c(TRUE, TRUE, FALSE),
+    consensus_posterior = c(0.95, 0.95, NA),
+    likelihood_consensus_taxon = c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei", "Bigyra"),
+    likelihood_consensus_rank = c("species", "species", "phylum"))
+  out <- suppressMessages(update_prior_from_consensus(res, cons, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Aplanochytrium stocchinoi"), 1e-3)
+  expect_gt(.prior_of(out, "S2", "Thraustochytrium kinnei"), 1e-3)
+  expect_false(any(out$confirmed_without_occurrence_record))
+  # CONTROL: with the guards off the unrecorded row IS raised
+  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(res, cons, n_sims = 0, require_support_columns = FALSE)),
+    "S2", "Aplanochytrium stocchinoi"), 1e-3)
+})
+
+test_that("the receiver guards stop, naming the column, when their inputs are missing", {
+  fx <- .dictyota_fixture()
+  no_lik <- fx$consensus[, setdiff(names(fx$consensus), c("likelihood_consensus_taxon", "likelihood_consensus_rank"))]
+  expect_error(update_prior_from_consensus(fx$result, no_lik, n_sims = 0), "likelihood_consensus_taxon")
+  expect_error(update_prior_from_consensus(fx$result[, setdiff(names(fx$result), "theta_mean")], fx$consensus, n_sims = 0),
+    "theta_mean")
+  expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = NA), "require_support_columns")
+  # with the guards off, neither column is needed
+  expect_s3_class(suppressMessages(update_prior_from_consensus(fx$result[, setdiff(names(fx$result), "theta_mean")], no_lik,
+    n_sims = 0, require_support_columns = FALSE)), "data.frame")
 })

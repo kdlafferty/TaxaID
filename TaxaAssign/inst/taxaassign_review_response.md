@@ -1092,3 +1092,58 @@ compute gain, not avoided paging; the machine was idle); R heap max 3.10 -> 2.07
 resident set 3.85 -> 2.30 GB. The O(N x observations) scan grows faster than N, so the gain
 should be larger at the full CalIntertidal scale (6.15M rows, 49,262 observations), where Round 2's
 consensus took ~2 h at ~14 GB; that full-scale before/after was not run here.
+
+### 2026-10-07: update_prior_from_consensus receiver guards (likelihood node, occurrence record)
+
+Approved by the maintainer (2026-10-07, relayed by the peer coordinator: "go ahead and implement C1 + G3, and
+G1"); the argument's name and its transitional status follow package review.
+Problem (measured on the 2026-10-07 CalIntertidal run): Round 2 raised one referenced row's prior from the
+floor by three to four orders of magnitude toward a support-weighted quantile of OTHER observations' posteriors
+(scaled to the group's occurrence ceiling). Of 176 reviewed new confident species calls, 174 winners had been
+raised, with Round 1 posteriors of median 0.03-0.15; 131 had no occurrence record. The support came largely
+from sibling sequence variants of one organism matching a reference at a mediocre identity. Once item b
+stopped the circular ring boosts, the raised referenced row stood alone. A raise could also OVERTURN the
+sequence: a rare recorded brown alga (likelihood 0.016) beat a red-alga match (likelihood 1.0) once its prior
+was raised about 300-fold.
+Change (receivers only; donor support unchanged): (G3) only rows inside their observation's likelihood-only
+credible node (consensus$likelihood_consensus_taxon at likelihood_consensus_rank, i.e. Round 1's, matched
+with the same .extract_rank_values the node was built with) are raised; an observation with no node has no
+row raised. (G1) a row with no occurrence record (theta_mean NA) is never raised; the old "flag, don't
+suppress" behaviour is reversed and confirmed_without_occurrence_record is kept for compatibility (always
+FALSE when theta_mean is present). A message counts the rows each guard held back.
+API: require_support_columns = TRUE stops, naming the missing column and where it comes from, when consensus
+lacks likelihood_consensus_taxon/_rank or result lacks theta_mean. FALSE is a TRANSITIONAL shim for callers
+not yet migrated, not a supported mode; it raises without the guards and says the results are not comparable
+to a guarded run.
+In-package callers: the shared pipeline helper (.run_consensus_and_report) passes FALSE for the LLM workflow
+only (its priors are not occurrence-based, so there is no theta_mean) and TRUE for the Bayesian workflow;
+inst/ workflows, vignettes and the example are updated.
+OUT-OF-PACKAGE callers to migrate (for their owners; they stop until they supply the columns or pass FALSE):
+the generic template TaxaID/inst/TaxaID_Workflow_Template.R (line 786); TaxaWizard
+inst/graph/snippets/post_to_consensus.R (line 64); eDNA/PtConception (TaxaID_eDNA_Workflow_Template.R,
+PtConceptionWorkflow_12S_multi_site_FAST.R, PtConception12S_regression_test.R); diagnostics scripts in
+TaxaID_dev. (TaxaFlag add_posthoc_assessment, TaxaExpect apply_undetected_evidence and TaxaMatch
+group_observations_by_bbox only mention the function in comments.) CalIntertidal supplies both columns.
+Tests: the Dictyota case (outside the node: not raised; raised with the guards off and when the node contains
+it); an observation with no node (nothing raised); the Aplanochytrium case (unrecorded inside the node: not
+raised; a recorded sibling is); the occurrence-record test rewritten; the stop names the missing column; the
+pipeline helper runs the LLM workflow without theta_mean and requires it for the Bayesian one. The
+mechanics tests run with the guards off through a local wrapper (their fixtures carry neither column); one
+arithmetic test runs the guarded default path with both columns and checks the same occurrence-scale value
+and Beta shape as the shim path. The four guard tests fail on main 01feb65.
+Real data (r2g_before_after.R, TaxaID_dev diagnostics): today's saved Section 8 update input (6,120,500
+rows), the update run one Site at a time (the update is Site-local; the full input does not fit in memory)
+with n_sims = 0 (calls use posterior_point_est, which does not depend on the simulations), then the
+workflow's Section 8c consensus. BASELINE IS PRODUCTION: main 01feb65's code reproduces the stored Round 2
+priors and point posteriors exactly (max difference 0 over all 6,120,500 rows), so the comparison below is
+against what the run actually produced, not a re-derivation. With the guards, 1,291,613 rows change in
+17,126 observations. Of the 184 flagged new confident species calls, 159 are touched and 148 change: back to
+the 2026-10-06 call 35, no call 33, coarser (phylum 21, class 12, order 3, family 5, genus 39); 11 unchanged.
+HEADLINE: across the changed observations, species calls 2,241 -> 810 (1,545 withheld), with 114 new species
+calls and 35 species -> other species. Those 35 are NOT a broad effect: 34 are ONE congeneric pair,
+Acrochaetium humile -> A. catenulatum (the unrecorded humile is no longer raised; the recorded catenulatum
+wins), plus one other (Artedius lateralis -> A. harringtoni). The built code
+matches the earlier measurement on 17,124 of 17,126 calls. The 2 that differ, plus 35 observations changed
+only in the measurement, come from the built code testing node membership with .extract_rank_values (the
+helper the node is built with, which derives genus/species from the binomial) where the measurement read
+raw columns.
