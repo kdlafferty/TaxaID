@@ -8,3 +8,7 @@
   aligns the candidate's reference to the anchor's reference; the query only
   locates the anchor range), so they are used only as an imputed fallback,
   `anchor - (100 - ref_ref)`, which never exceeds the anchor.
+* `restore_suppressed_candidates(dropped_matches =)` offers a dropped hit's
+  species back through its kept references, scored by the same direct
+  alignment, so dropping one accession does not drop a species that has other
+  good references.

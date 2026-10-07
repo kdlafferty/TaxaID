@@ -1486,3 +1486,31 @@ Tests: `test-restore-measure.R` covers the following.
 
 Two fixtures in `test-score-collapse.R` moved their anchor from 95 to 99.5, so that the imputed
 congener still sits beside the anchor under the new formula.
+
+### 2026-10-06: dropped-hit replacement (`restore_suppressed_candidates(dropped_matches =)`)
+
+This is a separate commit from the measured-first change above, so it can be reviewed or dropped on
+its own. A reference drop list is applied to the match object BEFORE restoration. Removing an
+accession therefore removes every hit on it, and with it the species, even when that species has
+other kept references that match the query. On CalIntertidal this left 41 12S ESVs with no
+candidate at all. For 32 of them a kept same-species reference matches at >= 99%. The 18S count is
+4 (2 with such a reference) and the COI count is 1 (0).
+
+**How it works.**
+- Pass the removed rows as `dropped_matches`.
+- For each (observation, species) among them that `match_obj` no longer holds, the species' kept
+  references (only placed ones, when region-matched) are aligned to the query by the same rule as
+  the measured restored score: best PID1 over references covering `>= min_query_coverage`.
+- A row is added only on a measured score, with `restoration_basis = "dropped_hit_replacement"`
+  and `restored_reason = "replaced_dropped_hit"`. The dropped row is its template, so an
+  observation with no row left still gets one.
+- Requires `sequence_col`. It never duplicates a species the observation already holds or that the
+  congener path restored.
+- The workflow must pass the dropped rows; nothing changes until it does.
+
+Tests: in `test-restore-measure.R`.
+- A dropped-only-hit ESV gains its kept reference.
+- No row is added below the coverage rule, without a kept reference, or with only unplaced
+  references.
+- A species the observation already holds is not duplicated.
+- `dropped_matches` is validated.

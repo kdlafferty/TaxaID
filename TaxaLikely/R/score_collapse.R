@@ -396,6 +396,19 @@ detect_suppressed_candidates <- function(match_obj,
 #'   (\code{@section Measured restored scores}); a reference counts only if
 #'   its local alignment covers at least this share of the query -- the same
 #'   share BLAST's query-coverage filter asks of the match data's own scores.
+#' @param dropped_matches Data frame or \code{NULL} (default). Match rows
+#'   removed from \code{match_obj} before this call because their reference
+#'   accession was dropped (e.g. a reference-screen drop list), with the same
+#'   columns as \code{match_obj}, including \code{sequence_col}. For each
+#'   (observation, species) among them that \code{match_obj} no longer holds,
+#'   the species' KEPT references in \code{reference_df} are offered as a
+#'   candidate, scored by the same direct alignment
+#'   (\code{@section Measured restored scores}) and added only when a kept
+#'   reference covers at least \code{min_query_coverage} of the query
+#'   (\code{restoration_basis = "dropped_hit_replacement"}). Dropping an
+#'   accession then no longer drops a species that has other good
+#'   references -- including from an observation whose every hit was dropped.
+#'   Requires \code{sequence_col}.
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
 #'
 #' @section Measured restored scores:
@@ -624,6 +637,7 @@ restore_suppressed_candidates <- function(match_obj,
                                           budget_ratio_cap = 19,
                                           max_level4_per_anchor = 10L,
                                           min_query_coverage = 0.8,
+                                          dropped_matches = NULL,
                                           verbose = TRUE) {
   # ---- validate ---------------------------------------------------------------
   if (!is.data.frame(match_obj)) {
@@ -669,6 +683,23 @@ restore_suppressed_candidates <- function(match_obj,
     stop("restore_suppressed_candidates: 'min_query_coverage' must be a single number in (0, 1].",
       call. = FALSE
     )
+  }
+
+  if (!is.null(dropped_matches)) {
+    if (!is.data.frame(dropped_matches) || !observation_id_col %in% names(dropped_matches)) {
+      stop(sprintf(
+        "restore_suppressed_candidates: 'dropped_matches' must be a data frame with column '%s'.",
+        observation_id_col
+      ), call. = FALSE)
+    }
+    if (is.null(sequence_col) || !sequence_col %in% names(dropped_matches) ||
+      !"sequence" %in% names(reference_df)) {
+      stop("restore_suppressed_candidates: 'dropped_matches' requires 'sequence_col' (present in ",
+        "dropped_matches) and a 'sequence' column in reference_df -- a replacement is only ",
+        "ever added on a measured score.",
+        call. = FALSE
+      )
+    }
   }
 
   max_per_obs <- as.integer(max_per_obs)
@@ -1087,6 +1118,33 @@ restore_suppressed_candidates <- function(match_obj,
   }
 
   restored_df <- dplyr::bind_rows(restored_list)
+
+  # ---- dropped-hit replacement --------------------------------------------------
+  if (!is.null(dropped_matches) && !no_score_path && nrow(dropped_matches) > 0L) {
+    repl <- .replace_dropped_hits(
+      dropped_matches = dropped_matches, match_obj = match_obj, restored_df = restored_df,
+      reference_df = reference_df, observation_id_col = observation_id_col,
+      genus_col = genus_col, species_col = species_col, rank_system = rank_system,
+      score_col = score_col, sequence_col = sequence_col, scale_100 = scale_100,
+      max_dist = max_dist, min_query_coverage = min_query_coverage,
+      region_matched = region_matched, align_cache = align_cache
+    )
+    if (!is.null(repl)) {
+      if (verbose) {
+        message(sprintf(
+          paste0(
+            "restore_suppressed_candidates: dropped-hit replacement added %d candidate row(s) ",
+            "across %d observation(s) (%d of them had no row left in match_obj)."
+          ),
+          nrow(repl), length(unique(repl[[observation_id_col]])),
+          sum(!unique(repl[[observation_id_col]]) %in% match_obj[[observation_id_col]])
+        ))
+      }
+      restored_df <- dplyr::bind_rows(restored_df, repl)
+      n_restored_rows <- n_restored_rows + nrow(repl)
+    }
+  }
+
   restoration_skipped_df <- if (length(restoration_skipped_list) > 0L) {
     dplyr::bind_rows(restoration_skipped_list)
   } else {
@@ -1154,6 +1212,62 @@ restore_suppressed_candidates <- function(match_obj,
   attr(result, "regional_unreferenced") <- regional_unreferenced_df
   attr(result, "restoration_skipped") <- restoration_skipped_df
   result
+}
+
+#' Offer a dropped hit's species back through its kept references
+#'
+#' One row per (observation, species) in `dropped_matches` that neither
+#' `match_obj` nor `restored_df` already holds, when a kept reference of that
+#' species measures against the query at the coverage rule. The dropped row
+#' itself is the template, so an observation with no row left in `match_obj`
+#' still gets one.
+#'
+#' @return Data frame of restored rows, or `NULL`.
+#' @noRd
+.replace_dropped_hits <- function(dropped_matches, match_obj, restored_df, reference_df,
+                                  observation_id_col, genus_col, species_col, rank_system,
+                                  score_col, sequence_col, scale_100, max_dist,
+                                  min_query_coverage, region_matched, align_cache) {
+  dm <- dropped_matches[!is.na(dropped_matches[[species_col]]) &
+    !is.na(dropped_matches[[sequence_col]]), , drop = FALSE]
+  if (nrow(dm) == 0L) return(NULL)
+  key <- function(df) paste(df[[observation_id_col]], df[[species_col]], sep = "\r")
+  held <- c(key(match_obj), if (!is.null(restored_df) && nrow(restored_df)) key(restored_df))
+  dm <- dm[!key(dm) %in% held & !duplicated(key(dm)), , drop = FALSE]
+  if (nrow(dm) == 0L) return(NULL)
+
+  ref <- reference_df[!is.na(reference_df[[species_col]]), , drop = FALSE]
+  if (region_matched) ref <- ref[ref$trim_path %in% .REGION_PLACED_PATHS, , drop = FALSE]
+  ref_by_species <- split(ref, ref[[species_col]])
+
+  rows <- list()
+  for (k in seq_len(nrow(dm))) {
+    tmpl <- dm[k, , drop = FALSE]
+    sp <- tmpl[[species_col]]
+    cand <- ref_by_species[[sp]]
+    if (is.null(cand) || nrow(cand) == 0L) next
+    q <- tmpl[[sequence_col]]
+    mkey <- paste0("measure::", sp, "::", q)
+    measured <- align_cache[[mkey]]
+    if (is.null(measured)) {
+      measured <- .measure_query_identity(q, cand$sequence, min_query_coverage = min_query_coverage)
+      assign(mkey, measured, envir = align_cache)
+    }
+    if (is.na(measured)) next
+    score <- if (scale_100) measured else measured / 100
+    if (!"hypothesis_type" %in% names(tmpl)) tmpl$hypothesis_type <- "specific_candidate"
+    new_row <- .build_restored_row(
+      tmpl, cand, sp, rank_system, species_col,
+      score_col = score_col, imputed_score = score,
+      restoration_basis = "dropped_hit_replacement"
+    )
+    new_row[["restored_score_source"]] <- "measured"
+    new_row[["restored_reason"]] <- "replaced_dropped_hit"
+    new_row[["restored_below_floor"]] <- (if (scale_100) score / 100 else score) < (1 - max_dist)
+    rows[[length(rows) + 1L]] <- new_row
+  }
+  if (length(rows) == 0L) return(NULL)
+  dplyr::bind_rows(rows)
 }
 
 #' One attr(result, "regional_unreferenced") row

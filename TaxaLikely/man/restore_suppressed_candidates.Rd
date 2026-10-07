@@ -29,6 +29,7 @@ restore_suppressed_candidates(
   budget_ratio_cap = 19,
   max_level4_per_anchor = 10L,
   min_query_coverage = 0.8,
+  dropped_matches = NULL,
   verbose = TRUE
 )
 }
@@ -184,6 +185,20 @@ scored by aligning the query directly to the candidate's own references
 (\code{@section Measured restored scores}); a reference counts only if
 its local alignment covers at least this share of the query -- the same
 share BLAST's query-coverage filter asks of the match data's own scores.}
+
+\item{dropped_matches}{Data frame or \code{NULL} (default). Match rows
+removed from \code{match_obj} before this call because their reference
+accession was dropped (e.g. a reference-screen drop list), with the same
+columns as \code{match_obj}, including \code{sequence_col}. For each
+(observation, species) among them that \code{match_obj} no longer holds,
+the species' KEPT references in \code{reference_df} are offered as a
+candidate, scored by the same direct alignment
+(\code{@section Measured restored scores}) and added only when a kept
+reference covers at least \code{min_query_coverage} of the query
+(\code{restoration_basis = "dropped_hit_replacement"}). Dropping an
+accession then no longer drops a species that has other good
+references -- including from an observation whose every hit was dropped.
+Requires \code{sequence_col}.}
 
 \item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
 }

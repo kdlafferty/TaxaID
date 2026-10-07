@@ -193,3 +193,87 @@ test_that("min_query_coverage is validated", {
     "min_query_coverage"
   )
 })
+
+# ---- dropped-hit replacement ---------------------------------------------------
+
+.rm_dropped <- function(obs_id = "obs_gone", species = "simplicidens", score = 100) {
+  d <- .rm_match(obs_id = obs_id, score = score, species = species)
+  d$accession <- "DROPPED_ACC"
+  d
+}
+
+test_that("an ESV whose only hit was dropped gains its species' kept reference", {
+  m <- .rm_match(obs_id = "obs_other", score = 99)
+  m$accession <- "KEPT_ACC"
+  ref <- .rm_ref(c(simplicidens = .q_seq))
+  res <- restore_suppressed_candidates(
+    m, ref,
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(), verbose = FALSE
+  )
+  r <- res[res$observation_id == "obs_gone", ]
+  expect_equal(nrow(r), 1L)
+  expect_true(r$is_restored)
+  expect_equal(r$species, "simplicidens")
+  expect_equal(r$score_original, 100)
+  expect_equal(r$restoration_basis, "dropped_hit_replacement")
+  expect_equal(r$restored_reason, "replaced_dropped_hit")
+  expect_equal(r$accession, "RESTORED_ACC_simplicidens")
+})
+
+test_that("dropped-hit replacement needs a kept reference covering the query", {
+  m <- .rm_match(obs_id = "obs_other", score = 99)
+  half <- substr(.q_seq, 1, floor(nchar(.q_seq) / 2))
+  res <- restore_suppressed_candidates(
+    m, .rm_ref(c(simplicidens = half)),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(), verbose = FALSE
+  )
+  expect_false("obs_gone" %in% res$observation_id)
+  # No kept reference of the species at all: nothing added either.
+  res2 <- restore_suppressed_candidates(
+    m, .rm_ref(c(nigricans = .q_seq)),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(), verbose = FALSE
+  )
+  expect_false("obs_gone" %in% res2$observation_id)
+})
+
+test_that("dropped-hit replacement never duplicates a species the observation already holds", {
+  m <- .rm_match(obs_id = "obs1", score = 99, species = "simplicidens")
+  res <- restore_suppressed_candidates(
+    m, .rm_ref(c(simplicidens = .q_seq)),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(obs_id = "obs1"), verbose = FALSE
+  )
+  expect_equal(nrow(res), 1L)
+  expect_false(any(res$is_restored))
+})
+
+test_that("dropped-hit replacement uses only placed references of a region-matched reference_df", {
+  m <- .rm_match(obs_id = "obs_other", score = 99)
+  ref <- .rm_ref(c(simplicidens = .q_seq), trim_path = "not_placed")
+  res <- restore_suppressed_candidates(
+    m, ref,
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(), verbose = FALSE
+  )
+  expect_false("obs_gone" %in% res$observation_id)
+})
+
+test_that("dropped_matches is validated", {
+  expect_error(
+    restore_suppressed_candidates(.rm_match(), .rm_ref(),
+      rank_system = c("family", "genus", "species"), dropped_matches = .rm_dropped(),
+      verbose = FALSE
+    ),
+    "requires 'sequence_col'"
+  )
+  expect_error(
+    restore_suppressed_candidates(.rm_match(), .rm_ref(),
+      rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+      dropped_matches = data.frame(x = 1), verbose = FALSE
+    ),
+    "must be a data frame with column"
+  )
+})
