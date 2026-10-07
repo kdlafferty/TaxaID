@@ -39,7 +39,11 @@ utils::globalVariables(c(
 #'   and `n_prior_names_not_binomial` (species-rank prior names such as
 #'   "Ulva sp." or a family name that were not counted) qualify that result;
 #'   `n_excluded_other_species` counts top hits in a qualifying genus that
-#'   were not its plausible species.
+#'   were not its plausible species. Only OBSERVED rows are considered: rows
+#'   added by [restore_suppressed_candidates()] (`is_restored`, hypothesis
+#'   type `"suppressed_candidate"`, any `restoration_basis`) are hypotheses,
+#'   not measurements of query noise, and are removed first; attribute
+#'   `n_restored_rows_excluded` counts them.
 #'
 #' @seealso [calibrate_query_noise()]
 #'
@@ -127,6 +131,25 @@ identify_confident_observations <- function(match_df,
     return(match_df[integer(0L), , drop = FALSE])
   }
 
+  # OBSERVED rows only. A restored row (restore_suppressed_candidates():
+  # is_restored, hypothesis_type "suppressed_candidate", a restoration_basis,
+  # including dropped-hit replacements) is a hypothesis the pipeline added, not
+  # a measurement of how a real query scores against its own species. Left
+  # in, it sets the measured query noise from the restoration rule instead of
+  # the data: imputed restored scores once WIDENED the COI spread (nanopore
+  # ratio 2.26 vs 1.00 from observed rows), and measured ones then narrowed it
+  # (illumina 2.25 vs about 3.2), gating thousands of observed candidates.
+  is_restored_row <- rep(FALSE, nrow(match_df))
+  if ("is_restored" %in% names(match_df)) is_restored_row <- is_restored_row | match_df$is_restored %in% TRUE
+  if ("hypothesis_type" %in% names(match_df)) {
+    is_restored_row <- is_restored_row | match_df$hypothesis_type %in% "suppressed_candidate"
+  }
+  if ("restoration_basis" %in% names(match_df)) {
+    is_restored_row <- is_restored_row | !is.na(match_df$restoration_basis)
+  }
+  n_restored_excluded <- sum(is_restored_row)
+  match_df <- match_df[!is_restored_row, , drop = FALSE]
+
   # Each observation's TOP hit overall, kept only when it IS the genus's one
   # locally plausible species. Taking the best hit within a qualifying genus
   # instead admits rows whose matched reference is a different species (a
@@ -161,6 +184,7 @@ identify_confident_observations <- function(match_df,
   # top hits in a qualifying genus that were NOT the confident species
   attr(confident, "n_excluded_other_species") <- n_top_in_genus - nrow(confident)
   attr(confident, "n_prior_names_not_binomial") <- n_names_not_binomial
+  attr(confident, "n_restored_rows_excluded") <- n_restored_excluded
 
   confident
 }
@@ -764,6 +788,7 @@ calibrate_query_noise <- function(model_params,
     n_confident_obs = nrow(confident),
     n_confident_genera = n_confident_genera,
     n_excluded_other_species = attr(confident, "n_excluded_other_species") %||% NA_integer_,
+    n_restored_rows_excluded = attr(confident, "n_restored_rows_excluded") %||% NA_integer_,
     n_excluded_no_trained_mean = n_no_trained_mean,
     plausibility_threshold = plausibility_threshold
   )

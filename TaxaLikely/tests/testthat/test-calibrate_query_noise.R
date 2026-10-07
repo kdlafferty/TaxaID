@@ -316,3 +316,60 @@ test_that("calibrate_sigma: an uncalibrated exit (too few confident observations
   expect_equal(out$H1_Sigma["score_logit", "score_logit"], 1.0)
   expect_match(out$Query_Calibration$sigma_source, "conservative floor")
 })
+
+# ---- observed rows only -------------------------------------------------------
+# Restored rows are hypotheses added by restore_suppressed_candidates(), not
+# measurements of query noise. Tight restored rows outscoring each
+# observation's own hit would otherwise become the confident top hits and
+# NARROW the measured scatter.
+.with_tight_restored <- function(m) {
+  r <- m
+  r$score_original <- 99.5
+  r$is_restored <- TRUE
+  r$hypothesis_type <- "suppressed_candidate"
+  r$restoration_basis <- "plausible_prior"
+  m$is_restored <- FALSE
+  m$hypothesis_type <- "specific_candidate"
+  m$restoration_basis <- NA_character_
+  rbind(m, r)
+}
+
+test_that("restored rows are excluded from the noise measurement, so tight ones cannot narrow the spread", {
+  m <- .make_calib_match_df()
+  m$score_original <- rep(c(90, 99), 20)
+  observed_only <- calibrate_query_noise(.tight_params(), m, .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, min_sigma_obs = 10L, verbose = FALSE)
+  with_restored <- calibrate_query_noise(.tight_params(), .with_tight_restored(m), .make_calib_priors(),
+    offset_form = "constant", min_confident_obs = 30L, min_sigma_obs = 10L, verbose = FALSE)
+  expect_gt(observed_only$Query_Calibration$sigma_ratio, 1)
+  expect_equal(with_restored$Query_Calibration$sigma_ratio, observed_only$Query_Calibration$sigma_ratio)
+  expect_equal(with_restored$Query_Calibration$offset_logit, observed_only$Query_Calibration$offset_logit)
+  expect_equal(with_restored$Query_Calibration$n_restored_rows_excluded, 40L)
+  expect_equal(observed_only$Query_Calibration$n_restored_rows_excluded, 0L)
+})
+
+test_that("any one restoration marker is enough to exclude a row", {
+  m <- .make_calib_match_df()
+  base <- TaxaLikely:::identify_confident_observations(m, .make_calib_priors())
+  for (marker in c("is_restored", "hypothesis_type", "restoration_basis")) {
+    r <- m
+    r$score_original <- 99.5
+    r[[marker]] <- switch(marker, is_restored = TRUE, hypothesis_type = "suppressed_candidate",
+      restoration_basis = "dropped_hit_replacement")
+    m2 <- m
+    m2[[marker]] <- switch(marker, is_restored = FALSE, hypothesis_type = "specific_candidate",
+      restoration_basis = NA_character_)
+    cf <- suppressMessages(TaxaLikely:::identify_confident_observations(rbind(m2, r), .make_calib_priors()))
+    expect_equal(nrow(cf), nrow(base), info = marker)
+    expect_true(all(cf$score_original == 95), info = marker)
+    expect_equal(attr(cf, "n_restored_rows_excluded"), 40L, info = marker)
+  }
+})
+
+test_that("an observation whose only rows are restored contributes nothing", {
+  m <- .make_calib_match_df()
+  r <- .with_tight_restored(m)
+  r <- r[r$is_restored, ]
+  cf <- suppressMessages(suppressWarnings(TaxaLikely:::identify_confident_observations(r, .make_calib_priors())))
+  expect_equal(nrow(cf), 0L)
+})

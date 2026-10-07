@@ -35,7 +35,11 @@ counts once however many sites list it. Attributes \code{n_qualifying_genera}
 and \code{n_prior_names_not_binomial} (species-rank prior names such as
 "Ulva sp." or a family name that were not counted) qualify that result;
 \code{n_excluded_other_species} counts top hits in a qualifying genus that
-were not its plausible species.
+were not its plausible species. Only OBSERVED rows are considered: rows
+added by \code{\link[=restore_suppressed_candidates]{restore_suppressed_candidates()}} (\code{is_restored}, hypothesis
+type \code{"suppressed_candidate"}, any \code{restoration_basis}) are hypotheses,
+not measurements of query noise, and are removed first; attribute
+\code{n_restored_rows_excluded} counts them.
 }
 \description{
 Finds genera where exactly one species clears a local occurrence-plausibility
