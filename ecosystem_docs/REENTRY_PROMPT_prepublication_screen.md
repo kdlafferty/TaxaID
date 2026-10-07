@@ -1758,6 +1758,16 @@ backstop, all option-controlled.
   existed: the workflow writes capped (lineage repair, `max_per_species = 20`)
   and uncapped fetches into the SAME cache dir, and `blacklist_regex` is not
   recoverable from file content.
+- **COI likelihoods below 75 are extrapolated for OBSERVED hits too** -- a
+  SEPARATE, pre-existing condition, not a consequence of the restoration
+  defect. `build_sequence_matrix(max_dist = 0.25)` means no reference pair
+  below `p_match` 75 ever trained H1/H2/H3, and 12.8% of COI ESV@Site (2,366)
+  have their best observed hit in that untrained tail. Consequence is mostly
+  confined to coarse ranks -- those rows take phylum/class consensus and only
+  11 have a sub-75 named-species R2 winner -- so this is a scope note to
+  document rather than a blocker. The lever if wanted is `max_dist`: training
+  on more distant pairs extends the calibrated range, at a matrix cost the
+  2026-10-05/06 memory work has made affordable.
 - **`max_per_genus` default fragility**: `976639d` changed the default NULL ->
   500L, and because it is part of the cache key the workflow's explicit
   `max_per_genus = NULL` is the only thing keeping ~21 h of COI plus the 12S
@@ -1784,6 +1794,30 @@ same kind of re-run:
    calls for 283 COI against 67 12S and 20 18S. COI adds 1,168 observations at
    likelihood level with a median excess of 8.7 points. Any statement scoped to
    "12S and 18S" understates this -- an earlier version of this section did.
+   **AND THE REACH IS WIDER THAN THE WINNER COUNTS** (measured 2026-10-06, 300
+   COI observations containing an inflated row): as-is vs corrected changes the
+   TOP-LIKELIHOOD hypothesis in **227 of 300**, while the restored row itself
+   was the top in only 10. An inflated restored row becomes the observation's
+   BEST SCORE, which moves the gap feature and the H2/H3 anchor for EVERY other
+   candidate -- so one bad imputed score distorts the whole observation's
+   feature set, not just its own row. Counting "observations whose R2 winner is
+   an inflated row" (403 COI / 233 12S / 190 18S) therefore UNDERSTATES the
+   exposure by roughly an order of magnitude; the right denominator is
+   observations CONTAINING an inflated row (1,971 COI / 1,049 12S / 1,359 18S).
+   Any before/after must report on that denominator.
+   **The invariant the fix establishes**, worth asserting in code rather than
+   only computing: since `r <= 100`, `a - (100 - r) <= a`, so AN IMPUTED SCORE
+   CAN NEVER EXCEED THE OBSERVATION'S BEST OBSERVED SCORE. That is the property
+   that was violated, and a defensive assertion on it would catch any future
+   formula change that broke it again.
+   **Sub-floor handling, measured**: under option 2 (extrapolate and flag) the
+   sub-floor COI restored rows are nearly weightless -- median likelihood share
+   0, max 0.067, 15 of 564 above 1% -- and option 2 vs 3 changes the top
+   hypothesis in only 13 of 300. So the choice is mostly bookkeeping, and
+   option 3 (DROP below the training floor, with a
+   `restored_below_training_floor` reason code) is the honest form. Dropping is
+   not neutral either: it redistributes the candidate's mass (top share rises
+   by median 0, max 0.71).
    Agreed fix: `anchor_score - (100 - ref_ref_identity)`, a no-op when the
    anchor match is 100%. **Describe it as a conservative DATA-DERIVED LOWER
    ESTIMATE, not a triangle-inequality proof**: percent identity over pairwise
