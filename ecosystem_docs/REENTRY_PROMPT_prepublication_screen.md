@@ -1918,6 +1918,49 @@ CI-equivalent rcmdcheck, inventory recomputed from the tree, exports diff, and
 a real before/after. "Work on auto" authorises proceeding without asking, not
 lowering the bar on the maintainer's behalf.
 
+## 7i. OPEN INVESTIGATION: does a consensus call depend on its FRAME-MATES? (2026-10-07)
+
+Unconfirmed, and if confirmed it outranks everything else in 7e-7h. Found by
+posterior math while validating `cross_phylum_eps`: 2 COI sipunculan ORDER
+calls at Jalama Beach (Golfingiiformes) fired the cross-phylum rule under v1
+(frame = 24,739 observations) but NOT under v2 (frame = 109). For an
+order-level call both versions fire on the same condition, so THE PHYLUM VALUES
+MUST HAVE DIFFERED BETWEEN RUNS.
+
+Refuted already: v1 rewriting the taxonomy cache (all 4,926 files
+byte-identical, mtimes are the copy time).
+
+Remaining lead: `lookup_missing_taxonomy()` or harmonisation may fill a name's
+phylum FRAME-WIDE, so what one observation resolves to depends on which OTHER
+observations share the input. That is the "a result must depend only on its
+inputs" class -- see [[reference_result_must_depend_only_on_its_inputs]] -- and
+it would mean every chunked call (per Site, per marker, per batch) disagrees
+with the whole, regardless of how correct the rule is.
+
+**THE EXPERIMENT MUST VARY ONLY THE FRAME.** Comparing v1-on-24,739 against
+v2-on-109 confounds code version with frame size. Run V2 ALONE on the 2
+observations, then on the 109, then on the full 24,739. Differing calls prove
+frame dependence under one code version; identical calls send you back to the
+v1-v2 difference. Same 3 GB load, one variable.
+
+**A SECOND, INDEPENDENT DEFECT IN THE SAME LEAD.** Sipuncula is a known
+backbone disagreement -- a phylum, or within Annelida. If `cross_phylum_eps`
+compares PHYLUM NAME STRINGS, one lineage carrying two names is counted as two
+phyla and the rule fires on an ambiguity that does not exist. That is a bug
+whether or not the frame matters, and the fix is to compare RESOLVED LINEAGES.
+Standing lesson: [[reference_homonym_name_is_not_a_key]] -- a bare-name query
+once pulled 306K vertebrate sequences for a red alga.
+
+**If frame dependence is confirmed**: taxonomy filling must be per-observation
+or precomputed before the call, never frame-wide inside it, and the test that
+pins it is an INVARIANCE test -- the same observation in a frame of 1 and a
+frame of many must give an identical call. Worth adding regardless of the
+outcome, since it is the only thing that stops the next frame-wide convenience
+reintroducing this.
+
+Deferred until after the full run: it needs a 3 GB posterior load, and doing
+that beside a live production run risks a watcher trip.
+
 ## 7g. QUEUED for the maintainer: `.is_unreferenced_type()` gates the boost (2026-10-06)
 
 Pre-existing, but `043dd0e` (item b) made it consequential. `.is_unreferenced_type()`
