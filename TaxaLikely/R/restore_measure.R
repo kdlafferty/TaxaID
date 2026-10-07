@@ -19,7 +19,7 @@
 # from the provider's BLAST database -- on CalIntertidal 18S, 58% of restored
 # pairs did), while an imputed one has no evidence of its own to stand on.
 
-#' Measure the query's identity to a candidate species' references
+#' Measure the query's identity to candidate species' references
 #'
 #' Local alignment of the query to each reference (the same aligner and scoring
 #' as Level 4's `.check_regional_overlap()`), identity as `pwalign::pid()`
@@ -27,31 +27,49 @@
 #' `min_query_coverage` of the query -- the share BLAST's query-coverage filter
 #' asks of the match data's own scores, so the two are on one scale.
 #'
+#' All references go through ONE `pairwiseAlignment()` call: each
+#' pattern-subject pair is aligned independently, so the result is the same as
+#' one call per reference, but `pwalign` rebuilds its quality-substitution
+#' array on every call (~60 ms), which dominated the cost when called per
+#' candidate.
+#'
 #' @param query_sequence Character(1). The observation's query sequence.
-#' @param cand_sequences Character. The candidate species' reference
-#'   sequences.
+#' @param cand_sequences Character. Reference sequences.
+#' @param species Character, parallel to `cand_sequences`, or `NULL` (all one
+#'   candidate).
 #' @param min_query_coverage Numeric(1). Minimum aligned share of the query.
-#' @return Numeric(1): best percent identity (0-100) among references that
-#'   clear the coverage rule, or `NA_real_` when none does (including invalid
-#'   or missing sequences).
+#' @return Without `species`, numeric(1); with it, a numeric vector named by
+#'   species. Best percent identity (0-100) among references that clear the
+#'   coverage rule, `NA_real_` where none does (including invalid or missing
+#'   sequences).
 #' @noRd
-.measure_query_identity <- function(query_sequence, cand_sequences, min_query_coverage = 0.8) {
+.measure_query_identity <- function(query_sequence, cand_sequences, min_query_coverage = 0.8,
+                                    species = NULL) {
+  grp <- if (is.null(species)) rep("..one", length(cand_sequences)) else as.character(species)
+  ugrp <- unique(grp)
+  out <- stats::setNames(rep(NA_real_, length(ugrp)), ugrp)
+  ret <- function(o) if (is.null(species)) unname(o[1L]) %||% NA_real_ else o
   if (is.null(query_sequence) || length(query_sequence) != 1L || is.na(query_sequence) ||
     !nzchar(query_sequence)) {
-    return(NA_real_)
+    return(ret(out))
   }
   q_chr <- toupper(query_sequence)
-  if (!grepl("^[ACGTRYSWKMBDHVN]+$", q_chr)) return(NA_real_)
-  r_chr <- toupper(cand_sequences[!is.na(cand_sequences) & nzchar(cand_sequences)])
-  r_chr <- r_chr[grepl("^[ACGTRYSWKMBDHVN]+$", r_chr)]
-  if (!length(r_chr)) return(NA_real_)
+  if (!grepl("^[ACGTRYSWKMBDHVN]+$", q_chr)) return(ret(out))
+  r_chr <- toupper(cand_sequences)
+  ok_seq <- !is.na(r_chr) & nzchar(r_chr) & grepl("^[ACGTRYSWKMBDHVN]+$", r_chr)
+  if (!any(ok_seq)) return(ret(out))
+  d <- unique(data.frame(g = grp[ok_seq], s = r_chr[ok_seq], stringsAsFactors = FALSE))
+  us <- unique(d$s)
   q <- Biostrings::DNAString(q_chr)
-  aln <- pwalign::pairwiseAlignment(Biostrings::DNAStringSet(r_chr), q, type = "local")
+  aln <- pwalign::pairwiseAlignment(Biostrings::DNAStringSet(us), q, type = "local")
   cov <- (Biostrings::end(pwalign::subject(aln)) - Biostrings::start(pwalign::subject(aln)) + 1) /
     length(q)
-  ok <- cov >= min_query_coverage
-  if (!any(ok)) return(NA_real_)
-  max(pwalign::pid(aln)[ok])
+  pid <- pwalign::pid(aln)
+  pid[cov < min_query_coverage] <- NA_real_
+  d$pid <- pid[match(d$s, us)]
+  best <- tapply(d$pid, d$g, function(v) if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE))
+  out[names(best)] <- as.numeric(best)
+  ret(out)
 }
 
 #' Offset between measured identity and the observed scores' scale
@@ -86,12 +104,22 @@
   if (nrow(mo) > max_obs) {
     mo <- mo[unique(round(seq(1, nrow(mo), length.out = max_obs))), , drop = FALSE]
   }
-  ref_seq <- stats::setNames(reference_df$sequence, as.character(reference_df$composite_id))
-  meas <- vapply(seq_len(nrow(mo)), function(i) {
-    .measure_query_identity(mo[[sequence_col]][i], ref_seq[[as.character(mo[[accession_col]][i])]],
-      min_query_coverage = min_query_coverage
-    )
-  }, numeric(1))
+  ref_seq <- stats::setNames(toupper(reference_df$sequence), as.character(reference_df$composite_id))
+  qs <- toupper(mo[[sequence_col]])
+  rs <- unname(ref_seq[as.character(mo[[accession_col]])])
+  valid <- !is.na(qs) & !is.na(rs) & grepl("^[ACGTRYSWKMBDHVN]+$", qs) & grepl("^[ACGTRYSWKMBDHVN]+$", rs)
+  meas <- rep(NA_real_, nrow(mo))
+  if (any(valid)) {
+    # One elementwise call (pattern i against subject i), same scoring as
+    # .measure_query_identity().
+    qq <- Biostrings::DNAStringSet(qs[valid])
+    aln <- pwalign::pairwiseAlignment(Biostrings::DNAStringSet(rs[valid]), qq, type = "local")
+    cov <- (Biostrings::end(pwalign::subject(aln)) - Biostrings::start(pwalign::subject(aln)) + 1) /
+      Biostrings::width(qq)
+    m <- pwalign::pid(aln)
+    m[cov < min_query_coverage] <- NA_real_
+    meas[valid] <- m
+  }
   obs <- if (isTRUE(scale_100)) mo[[score_col]] else mo[[score_col]] * 100
   d <- (meas - obs)[!is.na(meas)]
   out$n <- length(d)
@@ -105,13 +133,13 @@
 #' Impute a restored congener's score from the anchor and the reference hierarchy
 #'
 #' The fallback when the query cannot be measured against the candidate:
-#' `anchor - (top - ref_ref)`, where `ref_ref` is the hierarchy's
-#' reference-to-reference identity and `top` is 100 (or 1 on a 0-1 scale). A
-#' conservative, data-derived LOWER estimate -- not a proven bound, since the
-#' identities involved are measured over different overlap regions -- and equal
-#' to `ref_ref` when the anchor is a perfect match. It replaces using `ref_ref`
-#' directly (a property of the two reference sets alone), not a flat
-#' `anchor - delta`, which the hierarchy was built to avoid.
+#' `min(ref_ref, anchor)`, where `ref_ref` is the hierarchy's
+#' reference-to-reference identity. `ref_ref` alone matched the measured
+#' identity closely where it did not exceed the anchor (CalIntertidal MAE
+#' 0.94-1.27); the inflation came from rows above the anchor, which an imputed
+#' score has no evidence of its own to justify. `anchor - (top - ref_ref)` was
+#' measured and rejected: worse than the defect on the defect's own rows (COI
+#' MAE 7.02 against 5.08).
 #'
 #' Ceiling, asserted here and only here: an IMPUTED score may never exceed the
 #' anchor, the observation's best observed score. Measured scores are not
@@ -119,12 +147,12 @@
 #'
 #' @param anchor_score Numeric(1). The observation's best observed score.
 #' @param ref_ref Numeric(1). Hierarchy identity, on the same scale.
-#' @param scale_100 Logical(1). Scores on 0-100 (TRUE) or 0-1 (FALSE).
+#' @param scale_100 Logical(1). Unused by the rule; kept so the call site
+#'   states its scale.
 #' @return Numeric(1).
 #' @noRd
 .impute_restored_score <- function(anchor_score, ref_ref, scale_100) {
-  top <- if (isTRUE(scale_100)) 100 else 1
-  imputed <- anchor_score - (top - ref_ref)
+  imputed <- min(ref_ref, anchor_score)
   .assert_imputed_ceiling(imputed, anchor_score)
   imputed
 }

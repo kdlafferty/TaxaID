@@ -190,14 +190,16 @@ share BLAST's query-coverage filter asks of the match data's own scores.}
 removed from \code{match_obj} before this call because their reference
 accession was dropped (e.g. a reference-screen drop list), with the same
 columns as \code{match_obj}, including \code{sequence_col}. For each
-(observation, species) among them that \code{match_obj} no longer holds,
-the species' KEPT references in \code{reference_df} are offered as a
-candidate, scored by the same direct alignment
+(observation, genus) among them, every species of that genus with KEPT
+references in \code{reference_df} that the observation does not already
+hold is offered as a candidate (at most \code{max_per_obs}, best first),
+scored by the same direct alignment
 (\code{@section Measured restored scores}) and added only when a kept
 reference covers at least \code{min_query_coverage} of the query
 (\code{restoration_basis = "dropped_hit_replacement"}). Dropping an
-accession then no longer drops a species that has other good
-references -- including from an observation whose every hit was dropped.
+accession then no longer drops a genus that has other good references --
+including from an observation whose every hit was dropped -- and a
+congener the dropped label never named can win on its own alignment.
 Requires \code{sequence_col}.}
 
 \item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
@@ -329,8 +331,8 @@ provider kept, since suppression does not follow identity.
 Only when no reference clears the coverage rule (or no query sequence is
 available) does the score fall back to the hierarchy below, as an
 IMPUTATION (\code{restored_score_source = "imputed"}):
-\code{anchor - (top - ref_ref)}, where \code{ref_ref} is the hierarchy's
-identity and \code{top} is 100 (or 1). Every hierarchy level is
+\code{min(ref_ref, anchor)}, where \code{ref_ref} is the hierarchy's
+identity. Every hierarchy level is
 REFERENCE-vs-REFERENCE identity -- including Level 4, whose \code{pid} is
 the candidate's reference aligned to the ANCHOR's reference; the query only
 locates the anchor range -- so used directly as the query's score it is a

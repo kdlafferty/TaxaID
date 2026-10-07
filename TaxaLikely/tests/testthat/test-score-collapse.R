@@ -1277,8 +1277,8 @@ test_that("restore_suppressed_candidates: Purpose A (competitive_score) admits a
     coverage = 1.0,
     stringsAsFactors = FALSE
   )
-  # Imputed scores are anchor - (100 - ref_ref): nigricans 99.5 - 0.5 = 99.0,
-  # close to the anchor; laevifrons 99.5 - 20 = 79.5.
+  # Imputed scores are min(ref_ref, anchor): nigricans 99.5, at the anchor;
+  # laevifrons 80.
   m <- make_match(score = 99.5)
 
   result <- restore_suppressed_candidates(

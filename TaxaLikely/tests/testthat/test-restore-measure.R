@@ -64,12 +64,14 @@ test_that(".measure_query_identity: NA when no reference covers min_query_covera
   expect_true(is.na(.measure_query_identity(.q_seq, character(0))))
 })
 
-test_that(".impute_restored_score: anchor - (100 - ref_ref), and the ceiling assertion fires", {
-  expect_equal(.impute_restored_score(78, 97, scale_100 = TRUE), 75)
-  expect_equal(.impute_restored_score(0.78, 0.97, scale_100 = FALSE), 0.75)
+test_that(".impute_restored_score: min(ref_ref, anchor), and the ceiling assertion fires", {
+  expect_equal(.impute_restored_score(78, 97, scale_100 = TRUE), 78)
+  expect_equal(.impute_restored_score(0.78, 0.97, scale_100 = FALSE), 0.78)
   expect_equal(.impute_restored_score(100, 97, scale_100 = TRUE), 97)
-  # A constructed violation (ref_ref above the scale's top) must fail loudly.
-  expect_error(.impute_restored_score(78, 101, scale_100 = TRUE), "exceeds the observation's best")
+  expect_equal(.impute_restored_score(98, 90, scale_100 = TRUE), 90)
+  # The assertion itself must fire on a constructed violation.
+  expect_error(.assert_imputed_ceiling(79, 78), "exceeds the observation's best")
+  expect_silent(.assert_imputed_ceiling(78, 78))
 })
 
 test_that("a measured congener scoring above the anchor is restored untouched", {
@@ -101,7 +103,7 @@ test_that("measurement wins over the hierarchy when both are available", {
   expect_equal(r$restored_score_source, "measured")
 })
 
-test_that("without a query sequence the score is imputed as anchor - (100 - ref_ref)", {
+test_that("without a query sequence the score is imputed as min(ref_ref, anchor)", {
   m <- .rm_match(score = 98)
   m$sequence <- NULL
   res <- restore_suppressed_candidates(
@@ -110,7 +112,7 @@ test_that("without a query sequence the score is imputed as anchor - (100 - ref_
     seq_matrix = .rm_sm(0.97), verbose = FALSE
   )
   r <- res[res$is_restored, ]
-  expect_equal(r$score_original, 95)
+  expect_equal(r$score_original, 97)
   expect_lte(r$score_original, 98)
   expect_equal(r$restored_score_source, "imputed")
   expect_equal(r$restored_reason, "imputed_no_query_sequence")
@@ -124,23 +126,23 @@ test_that("a query the candidate's references cover too little of falls back to 
     seq_matrix = .rm_sm(0.97), sequence_col = "sequence", verbose = FALSE
   )
   r <- res[res$is_restored, ]
-  expect_equal(r$score_original, 95)
+  expect_equal(r$score_original, 97)
   expect_equal(r$restored_reason, "imputed_query_coverage_below_min")
 })
 
 test_that("a restored score below the training floor is kept and flagged", {
   m <- .rm_match(score = 78)
   m$sequence <- NULL
-  # 78 - (100 - 90) = 68, below 1 - max_dist = 75; Purpose A admits it under a
+  # min(70, 78) = 70, below 1 - max_dist = 75; Purpose A admits it under a
   # wide sigma.
   res <- restore_suppressed_candidates(
     m, .rm_ref(),
     rank_system = c("family", "genus", "species"),
-    seq_matrix = .rm_sm(0.90), model_params = .rm_params(sigma11 = 1), verbose = FALSE
+    seq_matrix = .rm_sm(0.70), model_params = .rm_params(sigma11 = 1), verbose = FALSE
   )
   r <- res[res$is_restored, ]
   expect_equal(nrow(r), 1L)
-  expect_equal(r$score_original, 68)
+  expect_equal(r$score_original, 70)
   expect_true(r$restored_below_floor)
 })
 
@@ -230,13 +232,62 @@ test_that("dropped-hit replacement needs a kept reference covering the query", {
     dropped_matches = .rm_dropped(), verbose = FALSE
   )
   expect_false("obs_gone" %in% res$observation_id)
-  # No kept reference of the species at all: nothing added either.
+  # No kept reference anywhere in the genus: nothing added either.
   res2 <- restore_suppressed_candidates(
-    m, .rm_ref(c(nigricans = .q_seq)),
+    m, .rm_ref(c(simplicidens = .q_seq))[0, ],
     rank_system = c("family", "genus", "species"), sequence_col = "sequence",
     dropped_matches = .rm_dropped(), verbose = FALSE
   )
   expect_false("obs_gone" %in% res2$observation_id)
+})
+
+test_that("replacement offers every congener with kept references, not only the dropped label", {
+  m <- .rm_match(obs_id = "obs_other", score = 99)
+  # The dropped hit was labelled simplicidens, which has no kept reference;
+  # its congener nigricans does.
+  res <- restore_suppressed_candidates(
+    m, .rm_ref(c(nigricans = .q_seq)),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(), verbose = FALSE
+  )
+  r <- res[res$observation_id == "obs_gone", ]
+  expect_equal(r$species, "nigricans")
+  expect_equal(r$restoration_basis, "dropped_hit_replacement")
+})
+
+test_that("the better-aligned unlabelled congener wins on likelihood", {
+  skip_if_not_installed("TaxaTools")
+  mut <- .q_seq
+  for (pos in c(10, 30, 50)) substr(mut, pos, pos) <- if (substr(mut, pos, pos) == "A") "C" else "A"
+  m <- .rm_match(obs_id = "obs_other", score = 99)
+  ref <- .rm_ref(c(simplicidens = mut, nigricans = .q_seq))
+  res <- restore_suppressed_candidates(
+    m, ref,
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = .rm_dropped(), verbose = FALSE
+  )
+  r <- res[res$observation_id == "obs_gone", ]
+  expect_setequal(r$species, c("simplicidens", "nigricans"))
+  expect_gt(r$score_original[r$species == "nigricans"], r$score_original[r$species == "simplicidens"])
+
+  sigma <- matrix(c(2, 0.2, 0.2, 1), 2, dimnames = list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit")))
+  i2 <- diag(2)
+  dimnames(i2) <- list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit"))
+  params <- structure(list(
+    H1_Lookup = data.frame(lookup_key = character(0), rank = character(0), mu_score = numeric(0),
+      mu_gap = numeric(0), sigma_score = numeric(0), n_obs_species = integer(0), stringsAsFactors = FALSE),
+    H1_Global_Mu = c(score_logit = 4.5, gap_logit = 1.5), H1_Sigma = sigma,
+    H2 = list(delta = 3, sigma = i2),
+    H3 = list(delta = 5, sigma = i2),
+    Stats = list(n_species = 1L, n_singletons = 0L), Score_Transform = "logit"
+  ), class = "taxa_model_params")
+  r$score <- r$score_original
+  r$taxon_name <- r$species
+  lk <- suppressWarnings(evaluate_likelihoods(r, params,
+    rank_system = c("family", "genus", "species"), ratio_threshold = 0
+  ))$likelihoods
+  h1 <- lk[lk$hypothesis_type == "specific_candidate", ]
+  expect_equal(h1$taxon_name[which.max(h1$score_likelihood)], "nigricans")
 })
 
 test_that("dropped-hit replacement never duplicates a species the observation already holds", {
@@ -323,5 +374,6 @@ test_that("the calibration offset also applies to dropped-hit replacements", {
     dropped_matches = d, verbose = FALSE
   )
   r <- res[res$observation_id == "obs_gone", ]
-  expect_equal(r$score_original, 98)
+  expect_true(nrow(r) >= 1L)
+  expect_true(all(r$score_original == 98))
 })

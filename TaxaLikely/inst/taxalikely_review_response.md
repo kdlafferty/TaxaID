@@ -1552,3 +1552,26 @@ points too high.
 
 Tests: the offset is applied (a pid of 100 against an observed 98 gives 98), a thin estimate falls
 back to 0 and is flagged, and the offset applies to replacements.
+
+### 2026-10-06: maintainer decisions on the restoration fix, and batched measurement
+
+- **Fallback is `min(ref_ref, anchor)`** (maintainer: "use min(today's imputation, anchor)"). Not
+  `anchor - (100 - ref_ref)`. The ceiling assertion stays at the imputation site.
+  - `ref_ref` alone matched the measured identity closely where it did not exceed the anchor (MAE
+    0.94-1.27).
+  - The rejected formula was worse than the defect on the defect's own rows (COI 7.02 against 5.08).
+- **Dropped-hit replacement works at genus level** (maintainer: "genus level"). For each
+  (observation, genus) among the dropped hits, every species of that genus with kept placed
+  references is measured against the query (best-measured first, at most `max_per_obs`), shifted by
+  the calibration offset, and added on a measured score.
+  - The dropped label's own species gets no preference, so a better-aligned congener can win.
+  - Test: two congeners, the unlabelled better-aligned one has the higher score and the higher
+    likelihood under `evaluate_likelihoods()`.
+- **Measurement is batched.** One `pairwiseAlignment()` call per observation for all admissible
+  candidates, and one elementwise call for the calibration.
+  - `pwalign` rebuilds its quality-substitution array on every call (~60 ms). That dominated:
+    500 12S observations took 67 s per candidate call and take 14 s batched, with identical output.
+  - Only candidates that could be admitted are measured (on the filter, or `model_params`
+    supplied). Identical reference sequences are aligned once.
+
+Tests: 1,912 passed / 0 failed.

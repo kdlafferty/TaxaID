@@ -400,14 +400,16 @@ detect_suppressed_candidates <- function(match_obj,
 #'   removed from \code{match_obj} before this call because their reference
 #'   accession was dropped (e.g. a reference-screen drop list), with the same
 #'   columns as \code{match_obj}, including \code{sequence_col}. For each
-#'   (observation, species) among them that \code{match_obj} no longer holds,
-#'   the species' KEPT references in \code{reference_df} are offered as a
-#'   candidate, scored by the same direct alignment
+#'   (observation, genus) among them, every species of that genus with KEPT
+#'   references in \code{reference_df} that the observation does not already
+#'   hold is offered as a candidate (at most \code{max_per_obs}, best first),
+#'   scored by the same direct alignment
 #'   (\code{@section Measured restored scores}) and added only when a kept
 #'   reference covers at least \code{min_query_coverage} of the query
 #'   (\code{restoration_basis = "dropped_hit_replacement"}). Dropping an
-#'   accession then no longer drops a species that has other good
-#'   references -- including from an observation whose every hit was dropped.
+#'   accession then no longer drops a genus that has other good references --
+#'   including from an observation whose every hit was dropped -- and a
+#'   congener the dropped label never named can win on its own alignment.
 #'   Requires \code{sequence_col}.
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
 #'
@@ -433,8 +435,8 @@ detect_suppressed_candidates <- function(match_obj,
 #' Only when no reference clears the coverage rule (or no query sequence is
 #' available) does the score fall back to the hierarchy below, as an
 #' IMPUTATION (\code{restored_score_source = "imputed"}):
-#' \code{anchor - (top - ref_ref)}, where \code{ref_ref} is the hierarchy's
-#' identity and \code{top} is 100 (or 1). Every hierarchy level is
+#' \code{min(ref_ref, anchor)}, where \code{ref_ref} is the hierarchy's
+#' identity. Every hierarchy level is
 #' REFERENCE-vs-REFERENCE identity -- including Level 4, whose \code{pid} is
 #' the candidate's reference aligned to the ANCHOR's reference; the query only
 #' locates the anchor range -- so used directly as the query's score it is a
@@ -975,6 +977,28 @@ restore_suppressed_candidates <- function(match_obj,
 
     grid_id <- if (grid_id_col %in% names(anchor_row)) anchor_row[[grid_id_col]] else NA
 
+    # Measure every admissible candidate in one alignment call (see
+    # .measure_query_identity()); cached per (species, query).
+    if (can_measure && !is.na(query_seq_measure)) {
+      adm_sp <- other_species[is.null(candidate_species_filter) |
+        other_species %in% candidate_species_filter | !is.na(anchor_transform)]
+      adm_sp <- adm_sp[!vapply(paste0("measure::", adm_sp, "::", query_seq_measure),
+        exists, logical(1), envir = align_cache, inherits = FALSE)]
+      if (length(adm_sp)) {
+        mr <- ref_genus_rows[ref_genus_rows[[species_col]] %in% adm_sp, , drop = FALSE]
+        if (region_matched) mr <- mr[mr$trim_path %in% .REGION_PLACED_PATHS, , drop = FALSE]
+        mb <- .measure_query_identity(query_seq_measure, mr$sequence,
+          min_query_coverage = min_query_coverage, species = mr[[species_col]]
+        )
+        for (sp_m in adm_sp) {
+          assign(paste0("measure::", sp_m, "::", query_seq_measure),
+            unname(mb[match(sp_m, names(mb))]), # match(), not [[: a species may be ""
+            envir = align_cache
+          )
+        }
+      }
+    }
+
     rows_for_obs <- list()
     for (sp in other_species) {
       cand_rows <- ref_genus_rows[!is.na(ref_genus_rows[[species_col]]) &
@@ -992,7 +1016,12 @@ restore_suppressed_candidates <- function(match_obj,
 
       # ---- measured first: the query against the candidate's own references.
       measured <- NA_real_
-      if (can_measure && !is.na(query_seq_measure)) {
+      # Measure only a candidate that could be admitted: Purpose B needs the
+      # filter, Purpose A needs model_params. The rest are never restored, so
+      # aligning the query to their references would be wasted work.
+      admissible <- is.null(candidate_species_filter) || sp %in% candidate_species_filter ||
+        !is.na(anchor_transform)
+      if (admissible && can_measure && !is.na(query_seq_measure)) {
         mkey <- paste0("measure::", sp, "::", query_seq_measure)
         measured <- align_cache[[mkey]]
         if (is.null(measured)) {
@@ -1150,7 +1179,7 @@ restore_suppressed_candidates <- function(match_obj,
       genus_col = genus_col, species_col = species_col, rank_system = rank_system,
       score_col = score_col, sequence_col = sequence_col, scale_100 = scale_100,
       max_dist = max_dist, min_query_coverage = min_query_coverage,
-      measured_offset = measured_offset,
+      measured_offset = measured_offset, max_per_obs = max_per_obs,
       region_matched = region_matched, align_cache = align_cache
     )
     if (!is.null(repl)) {
@@ -1240,13 +1269,16 @@ restore_suppressed_candidates <- function(match_obj,
   result
 }
 
-#' Offer a dropped hit's species back through its kept references
+#' Offer a dropped hit's genus back through its kept references
 #'
-#' One row per (observation, species) in `dropped_matches` that neither
-#' `match_obj` nor `restored_df` already holds, when a kept reference of that
-#' species measures against the query at the coverage rule. The dropped row
-#' itself is the template, so an observation with no row left in `match_obj`
-#' still gets one.
+#' For each (observation, genus) among `dropped_matches`, every species of that
+#' genus with kept references is a candidate, unless the observation already
+#' holds it (in `match_obj` or `restored_df`). Each is measured against the
+#' query (best identity over references covering `min_query_coverage`),
+#' shifted by `measured_offset`, and added only when measured. At most
+#' `max_per_obs` per observation, best-measured first. A dropped row of that
+#' genus is the template, so an observation with no row left in `match_obj`
+#' still gets candidates.
 #'
 #' @return Data frame of restored rows, or `NULL`.
 #' @noRd
@@ -1254,45 +1286,70 @@ restore_suppressed_candidates <- function(match_obj,
                                   observation_id_col, genus_col, species_col, rank_system,
                                   score_col, sequence_col, scale_100, max_dist,
                                   min_query_coverage, region_matched, align_cache,
-                                  measured_offset = 0) {
-  dm <- dropped_matches[!is.na(dropped_matches[[species_col]]) &
+                                  measured_offset = 0, max_per_obs = 10L) {
+  if (!all(c(genus_col, species_col) %in% names(dropped_matches))) {
+    stop(sprintf(
+      "restore_suppressed_candidates: 'dropped_matches' needs columns '%s' and '%s'.",
+      genus_col, species_col
+    ), call. = FALSE)
+  }
+  dm <- dropped_matches[!is.na(dropped_matches[[genus_col]]) &
     !is.na(dropped_matches[[sequence_col]]), , drop = FALSE]
   if (nrow(dm) == 0L) return(NULL)
+  gkey <- paste(dm[[observation_id_col]], dm[[genus_col]], sep = "\r")
+  dm <- dm[!duplicated(gkey), , drop = FALSE]
   key <- function(df) paste(df[[observation_id_col]], df[[species_col]], sep = "\r")
   held <- c(key(match_obj), if (!is.null(restored_df) && nrow(restored_df)) key(restored_df))
-  dm <- dm[!key(dm) %in% held & !duplicated(key(dm)), , drop = FALSE]
-  if (nrow(dm) == 0L) return(NULL)
 
-  ref <- reference_df[!is.na(reference_df[[species_col]]), , drop = FALSE]
+  ref <- reference_df[!is.na(reference_df[[species_col]]) & !is.na(reference_df[[genus_col]]), , drop = FALSE]
   if (region_matched) ref <- ref[ref$trim_path %in% .REGION_PLACED_PATHS, , drop = FALSE]
-  ref_by_species <- split(ref, ref[[species_col]])
+  ref_by_genus <- split(ref, ref[[genus_col]])
 
   rows <- list()
   for (k in seq_len(nrow(dm))) {
     tmpl <- dm[k, , drop = FALSE]
-    sp <- tmpl[[species_col]]
-    cand <- ref_by_species[[sp]]
-    if (is.null(cand) || nrow(cand) == 0L) next
+    obs <- tmpl[[observation_id_col]]
+    g_ref <- ref_by_genus[[tmpl[[genus_col]]]]
+    if (is.null(g_ref) || nrow(g_ref) == 0L) next
     q <- tmpl[[sequence_col]]
-    mkey <- paste0("measure::", sp, "::", q)
-    measured <- align_cache[[mkey]]
-    if (is.null(measured)) {
-      measured <- .measure_query_identity(q, cand$sequence, min_query_coverage = min_query_coverage)
-      assign(mkey, measured, envir = align_cache)
+    sps <- unique(g_ref[[species_col]])
+    sps <- sps[!paste(obs, sps, sep = "\r") %in% held]
+    if (!length(sps)) next
+    todo <- sps[!vapply(paste0("measure::", sps, "::", q), exists, logical(1),
+      envir = align_cache, inherits = FALSE
+    )]
+    if (length(todo)) {
+      mr <- g_ref[g_ref[[species_col]] %in% todo, , drop = FALSE]
+      mb <- .measure_query_identity(q, mr$sequence,
+        min_query_coverage = min_query_coverage, species = mr[[species_col]]
+      )
+      for (sp_m in todo) {
+        assign(paste0("measure::", sp_m, "::", q),
+          unname(mb[match(sp_m, names(mb))]), # match(), not [[: a species may be ""
+          envir = align_cache
+        )
+      }
     }
-    if (is.na(measured)) next
-    measured <- min(100, measured - measured_offset)
-    score <- if (scale_100) measured else measured / 100
+    meas <- vapply(sps, function(sp) align_cache[[paste0("measure::", sp, "::", q)]], numeric(1))
+    keep <- which(!is.na(meas))
+    if (!length(keep)) next
+    keep <- keep[order(-meas[keep])][seq_len(min(length(keep), max_per_obs))]
     if (!"hypothesis_type" %in% names(tmpl)) tmpl$hypothesis_type <- "specific_candidate"
-    new_row <- .build_restored_row(
-      tmpl, cand, sp, rank_system, species_col,
-      score_col = score_col, imputed_score = score,
-      restoration_basis = "dropped_hit_replacement"
-    )
-    new_row[["restored_score_source"]] <- "measured"
-    new_row[["restored_reason"]] <- "replaced_dropped_hit"
-    new_row[["restored_below_floor"]] <- (if (scale_100) score / 100 else score) < (1 - max_dist)
-    rows[[length(rows) + 1L]] <- new_row
+    for (kk in keep) {
+      sp <- sps[kk]
+      measured <- min(100, meas[[kk]] - measured_offset)
+      score <- if (scale_100) measured else measured / 100
+      new_row <- .build_restored_row(
+        tmpl, g_ref, sp, rank_system, species_col,
+        score_col = score_col, imputed_score = score,
+        restoration_basis = "dropped_hit_replacement"
+      )
+      new_row[["restored_score_source"]] <- "measured"
+      new_row[["restored_reason"]] <- "replaced_dropped_hit"
+      new_row[["restored_below_floor"]] <- (if (scale_100) score / 100 else score) < (1 - max_dist)
+      rows[[length(rows) + 1L]] <- new_row
+      held <- c(held, paste(obs, sp, sep = "\r"))
+    }
   }
   if (length(rows) == 0L) return(NULL)
   dplyr::bind_rows(rows)
