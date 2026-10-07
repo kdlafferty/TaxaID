@@ -1128,17 +1128,21 @@ Tests: the Dictyota case (outside the node: not raised; raised with the guards o
 it); an observation with no node (nothing raised); the Aplanochytrium case (unrecorded inside the node: not
 raised; a recorded sibling is); the occurrence-record test rewritten; the stop names the missing column; the
 pipeline helper runs the LLM workflow without theta_mean and requires it for the Bayesian one. The
-mechanics tests run with the guards off through a local wrapper. The four guard tests fail on main 01feb65.
+mechanics tests run with the guards off through a local wrapper (their fixtures carry neither column); one
+arithmetic test runs the guarded default path with both columns and checks the same occurrence-scale value
+and Beta shape as the shim path. The four guard tests fail on main 01feb65.
 Real data (r2g_before_after.R, TaxaID_dev diagnostics): today's saved Section 8 update input (6,120,500
 rows), the update run one Site at a time (the update is Site-local; the full input does not fit in memory)
 with n_sims = 0 (calls use posterior_point_est, which does not depend on the simulations), then the
-workflow's Section 8c consensus. SANITY: main 01feb65's code reproduces the stored Round 2 priors and point
-posteriors exactly (max difference 0 over all 6,120,500 rows). With the guards, 1,291,613 rows change in
+workflow's Section 8c consensus. BASELINE IS PRODUCTION: main 01feb65's code reproduces the stored Round 2
+priors and point posteriors exactly (max difference 0 over all 6,120,500 rows), so the comparison below is
+against what the run actually produced, not a re-derivation. With the guards, 1,291,613 rows change in
 17,126 observations. Of the 184 flagged new confident species calls, 159 are touched and 148 change: back to
 the 2026-10-06 call 35, no call 33, coarser (phylum 21, class 12, order 3, family 5, genus 39); 11 unchanged.
-Across the changed observations, species calls 2,241 -> 810 (1,545 withheld, 114 new). 35 species calls
-become another species: Acrochaetium humile -> A. catenulatum x34 (same genus; the unrecorded humile is no
-longer raised, the recorded catenulatum wins) and Artedius lateralis -> A. harringtoni x1. The built code
+HEADLINE: across the changed observations, species calls 2,241 -> 810 (1,545 withheld), with 114 new species
+calls and 35 species -> other species. Those 35 are NOT a broad effect: 34 are ONE congeneric pair,
+Acrochaetium humile -> A. catenulatum (the unrecorded humile is no longer raised; the recorded catenulatum
+wins), plus one other (Artedius lateralis -> A. harringtoni). The built code
 matches the earlier measurement on 17,124 of 17,126 calls. The 2 that differ, plus 35 observations changed
 only in the measurement, come from the built code testing node membership with .extract_rank_values (the
 helper the node is built with, which derives genus/species from the binomial) where the measurement read

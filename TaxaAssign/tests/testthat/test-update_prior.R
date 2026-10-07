@@ -531,6 +531,28 @@ test_that("boost is rescaled onto the occurrence-scale ceiling, not used directl
   expect_false(isTRUE(all.equal(sp_a_s2, 0.95)))
 })
 
+test_that("the raise arithmetic is the same on the guarded (default) path", {
+  # The mechanics tests above run through the guards-off shim (.upf); this one
+  # runs the production configuration: both support columns supplied, guards
+  # ON. Every candidate shares one likelihood node, so only Sp_D (theta NA) is
+  # held back, and Sp_A's raise must be the occurrence-scale value exactly.
+  result <- .make_result_theta()
+  result$phylum <- "P1"
+  consensus <- .make_consensus_theta()
+  consensus$likelihood_consensus_taxon <- "P1"
+  consensus$likelihood_consensus_rank <- "phylum"
+  out <- suppressMessages(update_prior_from_consensus(result, consensus, n_sims = 0))
+  sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
+  m <- 0.25 * 0.95
+  expect_equal(sp_a_s2, 0.001 + (0.95 * 0.05 - 0.001) * m / (1 + m), tolerance = 1e-8)
+  shim <- .upf(result, consensus, n_sims = 0)
+  expect_equal(sp_a_s2, shim$prior_mean[shim$observation_id == "S2" & shim$taxon_name == "Sp_A"])
+  # alpha/beta follow the new mean with the concentration preserved, as on the shim path
+  r <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_equal(r$prior_alpha + r$prior_beta, 10)
+  expect_equal(r$prior_alpha / (r$prior_alpha + r$prior_beta), sp_a_s2)
+})
+
 test_that("a supported row with no occurrence record (theta_mean NA) is never raised", {
   # 2026-10-07 (maintainer, error-first): previously raised and only flagged.
   result <- .make_result_theta()
