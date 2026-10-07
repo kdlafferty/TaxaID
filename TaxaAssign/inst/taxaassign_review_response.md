@@ -1045,3 +1045,25 @@ HONEST LIMIT: the memory saving is modest (~1.1-1.6 GB at 2.1M rows), and the ne
 in this function, not touched here, dominates at full scale; it needs profiling before a further
 fix. This branch is exact and strictly cheaper, but it does not by itself make the full CalIntertidal
 input fit; the workflow's per-Site calls remain necessary.
+
+### 2026-10-06: update_prior_from_consensus soft confirmation uses referenced candidates only
+
+Maintainer's decision (relayed by the peer coordinator; "referenced species with sequence support").
+Rows whose `hypothesis_type` is an unreferenced-relative type (`.is_unreferenced_type()`: ring rows
+and the named rows of recorded unreferenced species) are excluded on BOTH sides of the soft
+confirmation: their posterior no longer counts as cross-observation support (donors), and their
+priors are no longer raised (receivers). Such rows carry a ring likelihood but no sequence match of
+their own, and their support at one observation comes from the same rows at the others, so the
+old behaviour was circular. Diagnosed on CalIntertidal (2026-10-06): ring priors rose from the
+dark-diversity floor (3.5e-6) to ~0.05 across a Site and turned honest no-calls into confident
+wrong-phylum calls. Tests (both fail on main 8cc0c36; the control passes there): an
+unreferenced-relative row is not raised although a donor confirms its species; an
+unreferenced-relative row's posterior does not confirm a species elsewhere.
+Real data, before (main 8cc0c36) vs after (this branch), on the whole-Site CalIntertidal subset used
+for the upfc-memory check (2,133,087 rows, 25,143 observations, 8 Sites incl. Government Point,
+seed 42, n_sims 1000): rows raised 1,552,495 -> 58,300; unreferenced-relative rows raised 1,493,171 ->
+0; referenced candidates raised 59,324 -> 58,300; prior mass on unreferenced-relative rows per
+observation, median 0.104 (83% of the observation's prior) -> 0.00244 (23%), p90 1.01 -> 0.083.
+Example 18S_ESV_026656 (a sequence ~77% from every reference): before, a ring prior raised from
+3.5e-6 to 0.0998 took posterior 0.87; after, the ring stays at the floor and the consensus is a
+no-call limited by threshold.
