@@ -1575,3 +1575,31 @@ back to 0 and is flagged, and the offset applies to replacements.
     supplied). Identical reference sequences are aligned once.
 
 Tests: 1,912 passed / 0 failed.
+
+### 2026-10-06: NEW ARGUMENT `restore_suppressed_candidates(measured_offset =)`, and the calibration's measured range
+
+**`measured_offset` is a NEW ARGUMENT on an exported function.** It is additive, and the default
+`NULL` keeps the in-call estimate.
+- A supplied number is used as given, recorded as `source = "supplied"`.
+- It exists so that a marker restored in more than one call does not get a batch-dependent score.
+  That is package review's point: a result must depend only on its inputs.
+- CalIntertidal restores each marker in ONE call on the whole match object (`observation_id` = the
+  ESV), so its in-call estimate is already per-marker. In-call n: 12S 1,997, 18S 1,464.
+- The release-freeze rule asks for the maintainer's direct yes on new public surface. If he prefers,
+  this becomes internal-only with a workflow constant (two lines).
+
+**Where the offset was actually measured.** Random kept hits (not best hits), >= 80% coverage,
+banded by observed score:
+- 18S is flat across 75-98: band medians +2.24 to +2.28, n = 273-797 per band. Every measured 18S
+  restored score tonight lies inside that range.
+- 12S has almost no kept hits below 85 (n = 1 for 75-85, 23 for 85-90). Its offset there is
+  UNMEASURED, not measured-and-small. From 95 up (n = 1,859) it is +0.01 to +0.05. 12S restored
+  scores sit high (only 2 rows below 75).
+- The test where a measured 70 becomes 67.75 under an offset of 2.25 is hypothetical for 18S, which
+  has no measured rows below 75. It pins the mechanism: the same constant everywhere, with no floor
+  clamp.
+
+**Below-floor rows created by the calibration itself** are reported separately per marker in the
+before/after. These are rows measured in [75, 75 + offset) that the correction moves under the
+training floor. 12S and 18S have 0 below-floor rows at all, so 0 of these. COI will be reported with
+its run.
