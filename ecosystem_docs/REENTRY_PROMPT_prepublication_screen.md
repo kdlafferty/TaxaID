@@ -1876,6 +1876,38 @@ same kind of re-run:
    the file header, and never asked whether it was ACCURATE. Only the
    before/after-before-merging requirement caught it.
 
+## 7g. QUEUED for the maintainer: `.is_unreferenced_type()` gates the boost (2026-10-06)
+
+Pre-existing, but `043dd0e` (item b) made it consequential. `.is_unreferenced_type()`
+(`site_utils.R:437`) hardcodes `^unreferenced_(phylum|class|order|family|genus|species)$`
+-- SIX ranks -- while `.RANK_LADDER` has SEVEN, including `kingdom`. Harmless
+today: `.unreferenced_ring_rank()`'s `i > 1L` guard means a kingdom-level ring
+cannot form, so the two agree in effect.
+
+**Why it now matters**: that predicate used to drive reporting; after item b it
+GATES WHETHER A ROW'S PRIOR CAN BE RAISED. Anything the regex misses returns
+FALSE, i.e. TREATED AS REFERENCED, i.e. eligible for the circular boost again
+-- silently. With rank-ring work active, one added rank re-opens it, and no
+test notices unless its fixture happens to use the new rank.
+
+**Agreed shape of the fix** (to the maintainer as its own item, not slipped in,
+since the predicate is shared by SIX call sites):
+1. Derive the pattern from `.RANK_LADDER`, keeping EXACT semantics at all six
+   call sites -- `join_priors.R:80`, `:1372`, `:1610`,
+   `posterior_consensus.R:807`, `update_prior_from_consensus.R:346`. A bare
+   `^unreferenced_` prefix match was considered and REJECTED: it fails safe for
+   the gate but broadens the predicate for five other callers, and `:1372`
+   SELECTS ring rows rather than excluding them, where over-matching means
+   acting on a row that is not a ring.
+2. Only if the gate should fail safe independently, add a separate,
+   deliberately permissive `.is_boost_ineligible()` used ONLY by
+   `update_prior_from_consensus()`, so the difference is visible in the names.
+3. A test ENUMERATING `unreferenced_<rank>` for EVERY ladder rank, so a ladder
+   change fails loudly. Spot-checking two ranks cannot report an absent one.
+
+Same 'derive, don't duplicate' lesson as `ring_codes` deriving from the model's
+own `rank_system`.
+
 ## 7f. Accession screen drops references on OUT-OF-REGION evidence (2026-10-06)
 
 Its own defect, not a symptom of restoration. 12S drop `AY279644` is **100%
