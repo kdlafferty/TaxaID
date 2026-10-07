@@ -999,3 +999,49 @@ from these lineages / supplied (the absent case fails on the previous code). Pac
 placeholder test now adds a second observation carrying a real class, so its "backbone"
 expectation still describes a supplied-but-missing rank; a single-observation, all-placeholder
 input is now "rank_not_supplied", asserted alongside.
+
+### 2026-10-05: update_prior_from_consensus memory (exact; no method change)
+
+Approved under the maintainer's standing instruction for exact memory fixes (relayed by the peer
+coordinator). CalIntertidal attempt 6 was killed at 19.04 GB in Section 8 inside this function: the
+soft-confirmation step made whole-table copies of `result` (~4.7M posterior rows at ESV x site),
+including two base `merge()` calls on full-width tables just to add `consensus_taxon_v1` /
+`consensus_rank_v1`. There is no observation x species matrix. Changes:
+- The support pool takes the three columns it uses (observation_id, taxon_name, posterior),
+  not a full-width copy of `result`.
+- The resolved / unresolved rows are built by `.merge_rows_with()`: `merge()` runs on a NARROW
+  (observation_id, row index) table, whose row permutation and y columns are the same as merging
+  the full rows (merge's ordering depends only on the key and the row order of x), and the
+  full-width rows are taken once in merge's own layout (key column first, x's other columns in
+  order, then y's columns; compact row names). It falls back to `merge()` itself for a
+  non-data.frame `result` (a tibble) or a y column name `result` already has (merge would
+  suffix it).
+Evidence: `.merge_rows_with()` is `expect_identical` to `merge()` on shuffled rows with several
+rows per observation, unmatched observations and mixed column types (character, logical with
+NA, factor, Date), for full, partial and empty row sets; with NA KEYS (merge() pairs NA with NA)
+and with keys repeated on BOTH sides (the cartesian block, ordered by the pairing of match indices;
+the expansion is asserted) -- both raised by package review; a test asserts the narrow path is
+the one taken; both fallbacks are tested. Scope of the claim: identity holds between the two paths
+on one machine; merge()'s character-key order follows the locale identically in both, so this
+does not address cross-machine reproducibility of merge() itself. The whole function, old (main 6c83ced) vs new, on a
+synthetic 6-site fixture (400 observations, 1,603 rows, ties, 620 priors raised, a site without
+theta_mean exercising the ceiling fallback, shuffled rows, n_sims = 50 under one seed):
+identical() TRUE.
+Real data (2026-10-06, after the CalIntertidal rerun; machine otherwise idle): CalIntertidalWorkflow's
+saved Section 8 inputs (cache_lik/section8_update_inputs.rds: 4,738,140 posterior rows x 62 columns,
+49,352 observations; group_cols = "Site", marker_col = "marker", n_sims = 1000). Comparison on a
+WHOLE-SITE subset, because the update is group-local per Site: a random row sample would cut groups in
+half and could mask a divergence or manufacture one, whereas whole Sites are a valid smaller instance
+(the one cross-group quantity, the theta_mean ceiling fallback, is computed on the same subset by both
+versions; no Site in the input falls back). Subset: 8 Sites (Government Point, the largest, 19,942
+observations; plus the 7 smallest), 2,133,087 rows, 25,143 observations; seed 42 (set.seed before the
+call, same in both). Old = main 6c83ced, new = this branch, each alone in its own process:
+identical(old, new) TRUE on the full output (1,702,418 rows prior_updated).
+Cost on that subset: wall 3,322 s -> 334 s; CPU (user) 449 s -> 317 s; R heap max 7.91 -> 6.78 GB;
+peak footprint 7.77 -> 6.21 GB; maximum resident set 8.61 -> 8.67 GB. The old version's wall time
+was ~7x its CPU time (memory pressure), so the speed gain is mostly avoided waiting, not computation.
+HONEST LIMIT: the memory saving is modest (~1.1-1.6 GB at 2.1M rows), and the new version on the FULL
+4.74M-row input still exceeded a 12 GB tree cap within ~100 s (aborted at 13.0 GB). Another consumer
+in this function, not touched here, dominates at full scale; it needs profiling before a further
+fix. This branch is exact and strictly cheaper, but it does not by itself make the full CalIntertidal
+input fit; the workflow's per-Site calls remain necessary.

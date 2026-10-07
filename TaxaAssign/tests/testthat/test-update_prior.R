@@ -947,3 +947,59 @@ test_that("detections and spatial_group_map together is an error; bad inputs are
     "None of"
   )
 })
+
+# ---- memory: narrow merge reproduces merge() exactly (2026-10-05) ----------
+test_that(".merge_rows_with() is identical to merge() on the full rows", {
+  set.seed(11)
+  n <- 60
+  r <- data.frame(
+    taxon_name = sample(c("A a", "B b", "C c"), n, TRUE),
+    observation_id = sample(sprintf("obs%02d", c(3, 1, 10, 2, 7, 22)), n, TRUE), # several rows per obs, shuffled
+    posterior_point_est = round(runif(n), 2), # ties
+    flag = sample(c(TRUE, FALSE, NA), n, TRUE),
+    f = factor(sample(c("x", "y"), n, TRUE)),
+    d = as.Date("2026-01-01") + sample(0:5, n, TRUE),
+    stringsAsFactors = FALSE
+  )
+  y <- data.frame(observation_id = sprintf("obs%02d", c(1, 2, 3, 7)), # obs10 / obs22 unmatched
+    consensus_taxon_v1 = c("A a", NA, "B b", "C c"), consensus_rank_v1 = "species", stringsAsFactors = FALSE)
+  for (idx in list(seq_len(n), which(r$flag %in% TRUE), sample(n, 20), integer(0))) {
+    expect_identical(TaxaAssign:::.merge_rows_with(r, idx, y),
+      merge(r[idx, , drop = FALSE], y, by = "observation_id", all.x = TRUE))
+  }
+  # the narrow path is the one taken for a plain data.frame (not the fallback)
+  called <- 0L
+  real_merge <- base::merge # captured BEFORE mocking (the mock must not call itself)
+  local_mocked_bindings(merge = function(x, ...) { called <<- called + 1L; expect_identical(names(x), c("observation_id", ".upfc_row")); real_merge(x, ...) }, .package = "base")
+  TaxaAssign:::.merge_rows_with(r, seq_len(n), y)
+  expect_equal(called, 1L)
+})
+
+test_that(".merge_rows_with() falls back to merge() where it would differ (tibble, name collision)", {
+  r <- data.frame(observation_id = c("o2", "o1", "o2"), consensus_taxon_v1 = "old", v = 1:3, stringsAsFactors = FALSE)
+  y <- data.frame(observation_id = c("o1", "o2"), consensus_taxon_v1 = c("A", "B"), stringsAsFactors = FALSE)
+  expect_identical(TaxaAssign:::.merge_rows_with(r, 1:3, y), merge(r, y, by = "observation_id", all.x = TRUE))
+  tb <- dplyr::as_tibble(r[, c("observation_id", "v")])
+  expect_identical(TaxaAssign:::.merge_rows_with(tb, 1:3, y), merge(tb, y, by = "observation_id", all.x = TRUE))
+})
+
+test_that(".merge_rows_with() matches merge() with NA keys and with keys repeated on BOTH sides", {
+  set.seed(5)
+  r <- data.frame(observation_id = sample(c("o1", "o2", NA, "o3"), 30, TRUE),
+    v = 1:30, w = sample(letters, 30, TRUE), stringsAsFactors = FALSE)
+  # NA key in x and in y: merge() pairs NA with NA (match() treats NA as matchable)
+  y_na <- data.frame(observation_id = c("o2", NA, "o1"), consensus_taxon_v1 = c("B", "N", "A"),
+    stringsAsFactors = FALSE)
+  for (idx in list(seq_len(30), which(is.na(r$observation_id)), sample(30, 12))) {
+    expect_identical(TaxaAssign:::.merge_rows_with(r, idx, y_na),
+      merge(r[idx, , drop = FALSE], y_na, by = "observation_id", all.x = TRUE))
+  }
+  # keys repeated on both sides: a cartesian block per key, ordered by the pairing of match indices
+  y_dup <- data.frame(observation_id = c("o1", "o2", "o1", "o3", "o2", "o1"),
+    consensus_taxon_v1 = c("A1", "B1", "A2", "C1", "B2", "A3"), stringsAsFactors = FALSE)
+  for (idx in list(seq_len(30), sample(30, 17))) {
+    got <- TaxaAssign:::.merge_rows_with(r, idx, y_dup)
+    expect_identical(got, merge(r[idx, , drop = FALSE], y_dup, by = "observation_id", all.x = TRUE))
+    expect_gt(nrow(got), length(idx)) # the cartesian expansion really happened
+  }
+})
