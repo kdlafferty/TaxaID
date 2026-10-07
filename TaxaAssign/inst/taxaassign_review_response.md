@@ -1045,3 +1045,28 @@ HONEST LIMIT: the memory saving is modest (~1.1-1.6 GB at 2.1M rows), and the ne
 in this function, not touched here, dominates at full scale; it needs profiling before a further
 fix. This branch is exact and strictly cheaper, but it does not by itself make the full CalIntertidal
 input fit; the workflow's per-Site calls remain necessary.
+
+### 2026-10-06: posterior_consensus per-observation chunks by a row-index split (exact)
+
+Approved under the maintainer's instruction for exact memory/time fixes (relayed by the peer
+coordinator). Two changes, both identical by construction:
+- The main loop took each observation's rows as `posterior_df[posterior_df$observation_id == sid, ]`,
+  scanning every row once per observation (O(N x observations)). The row indices are now split once
+  (`split(seq_len(n), factor(observation_id, levels = observation_ids))`, original row order kept)
+  and each chunk is `posterior_df[row_idx[[i]], ]`: the same rows, in the same order, with the same
+  row names. NA observation ids keep the original path, where `==` selects differently.
+- The likelihood-consensus pass (`.add_prior_role()`) did `split(posterior_df, observation_id)`,
+  holding a full-width second copy of the table as one data frame per observation.
+  `split.data.frame()` is `lapply(split(seq_len(n), f), function(i) x[i, , drop = FALSE])`, so it now
+  keeps the index split and takes each chunk when used: the same objects without the copy.
+Tests: interleaving observations' rows (each observation's own row order kept, interleaving
+asserted) gives the same per-observation output as grouped rows; an NA observation id still runs.
+Real data (CalIntertidal whole-Site subset of the saved Section 8 inputs; credible_node,
+phylum..species): old (main 8cc0c36) vs new on the 7 small Sites (494,266 rows, 5,201 observations):
+identical() TRUE on the full output (1,129 species calls); old 54 s / 1.43 GB tree peak, new 47 s /
+1.08 GB. Full subset (2,133,087 rows, 25,143 observations, 8 Sites incl. Government Point): identical() TRUE
+again (7,295 species calls). Cost, old -> new: process wall 367 -> 227 s and CPU 343 -> 219 s (a
+compute gain, not avoided paging; the machine was idle); R heap max 3.10 -> 2.07 GB; maximum
+resident set 3.85 -> 2.30 GB. The O(N x observations) scan grows faster than N, so the gain
+should be larger at the full CalIntertidal scale (6.15M rows, 49,262 observations), where Round 2's
+consensus took ~2 h at ~14 GB; that full-scale before/after was not run here.
