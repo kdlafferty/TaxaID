@@ -163,21 +163,40 @@
 #' instead -- the units mismatch this section fixes is specific to
 #' occurrence-model-sourced priors.
 #'
+#' @section Receiver guards:
+#' A raise may choose among candidates the sequence cannot separate; it may
+#' never pick one the sequence argues against, nor manufacture presence. Two
+#' guards apply to the rows that would be raised (donor support is unchanged):
+#' \itemize{
+#'   \item **Likelihood node.** Only rows inside their observation's
+#'     likelihood-only credible node are raised: the node is
+#'     `likelihood_consensus_taxon` at `likelihood_consensus_rank` in
+#'     `consensus` (from [posterior_consensus()] with
+#'     `likelihood_consensus = TRUE`, its default), so it reflects the
+#'     sequence evidence before any raise. An observation with no such node
+#'     has no row raised. Without these columns the guard is not applied, and
+#'     a message says so. Measured on CalIntertidal (2026-10-07): raising a
+#'     row outside its node let a rare recorded brown alga (likelihood 0.016)
+#'     overturn a red-alga match (likelihood 1.0) once its prior was raised
+#'     about 300-fold.
+#'   \item **Occurrence record.** A row with no occurrence record
+#'     (`theta_mean` `NA`) is never raised. Without a `theta_mean` column the
+#'     guard is not applied, and a message says so.
+#' }
+#' A message counts the supported rows each guard held back.
+#'
 #' @section Confirmed without an occurrence record:
-#' A taxon can be confidently identified elsewhere in the dataset while
-#' having no occurrence record at all (`theta_mean` `NA` for every row
-#' naming it) -- e.g. a real Mugu case, *Oncorhynchus mykiss*, which has no
-#' row in `taxaexpect_priors` at all (a known, separate upstream join gap,
-#' not a sign the species is
-#' actually rare). Such a row still gets boosted (the confirmation is real
-#' identification evidence, worth keeping) but is flagged via a new
-#' `confirmed_without_occurrence_record` column rather than silently
-#' presented as occurrence-grounded. Boosting is *not* suppressed for these
-#' rows: gating on occurrence-record presence would currently punish
-#' exactly the taxa the join gap affects (whole families, in the Mugu
-#' salmonid case), which are neither rare nor implausible -- only
-#' undercounted by an unrelated bug. Revisit suppression once that join gap
-#' is fixed.
+#' Until 2026-10-07 a row with no occurrence record (`theta_mean` `NA`) was
+#' still raised and only flagged in `confirmed_without_occurrence_record`.
+#' Measured on CalIntertidal, such raises produced most of the confident new
+#' species calls whose Round 1 support was weak (131 of 176 reviewed winners:
+#' sibling sequence variants of one organism, matching a reference at a
+#' mediocre identity, confirmed each other). The maintainer chose to suppress
+#' them (error-first): such rows are now never raised (see
+#' \emph{Receiver guards}). The column is kept for compatibility and is
+#' `FALSE` whenever `theta_mean` is present. A taxon missing from the
+#' occurrence priors through an upstream join gap is therefore not raised
+#' either; that gap must be fixed upstream.
 #'
 #' @param result Dataframe. Output of [assign_taxa_llm()] or [compute_posterior()].
 #'   Must contain: `observation_id`, `taxon_name`, `score_likelihood`,
@@ -190,7 +209,9 @@
 #'   from if `n_sims > 0`.
 #' @param consensus Dataframe. Output of [posterior_consensus()] run on `result`.
 #'   Must contain: `observation_id`, `consensus_taxon`, `is_resolved`,
-#'   `consensus_posterior`.
+#'   `consensus_posterior`. `likelihood_consensus_taxon` and
+#'   `likelihood_consensus_rank` (present by default) enable the
+#'   likelihood-node guard (see \emph{Receiver guards}).
 #' @param confirmation_quantile Numeric in (0, 1]. Quantile of confirming
 #'   observations' `consensus_posterior` used as the candidate new
 #'   `prior_mean` for a confirmed species. Default 0.9. `1` is equivalent to
@@ -229,9 +250,10 @@
 #'   this or `detections`, not both.
 #'
 #' @return The full posterior dataframe with the same structure as `result`,
-#'   plus one new column, `confirmed_without_occurrence_record` (logical,
-#'   `FALSE` unless set `TRUE` -- see @section Confirmed without an
-#'   occurrence record). Resolved observations are returned unchanged.
+#'   plus one new column, `confirmed_without_occurrence_record` (logical; kept
+#'   for compatibility and `FALSE` whenever `theta_mean` is present, since such
+#'   rows are no longer raised -- see \emph{Confirmed without an occurrence
+#'   record}). Resolved observations are returned unchanged.
 #'   Unresolved observations that share at least one group with another
 #'   observation have updated `prior_mean` and freshly computed posterior
 #'   columns (`posterior_point_est`, `posterior_mean`, `posterior_sd`,
@@ -458,6 +480,35 @@ update_prior_from_consensus <- function(result,
   } else {
     rep(TRUE, n_ur)
   }
+  # Two receiver guards. A raise may choose among candidates the sequence cannot
+  # separate, never one it argues against, and never manufactures presence:
+  # (G3) only rows INSIDE their observation's likelihood-only credible node
+  # (posterior_consensus()'s likelihood_consensus_taxon at
+  # likelihood_consensus_rank, from the consensus this update starts from) are
+  # raised; an observation with no such node has no row raised. (G1) a row with
+  # no occurrence record (theta_mean NA) is never raised.
+  lik_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank")
+  in_node <- rep(TRUE, n_ur)
+  if (all(lik_cols %in% names(consensus))) {
+    j <- match(as.character(unresolved_rows$observation_id), as.character(consensus$observation_id))
+    lt <- as.character(consensus$likelihood_consensus_taxon[j])
+    lr <- as.character(consensus$likelihood_consensus_rank[j])
+    in_node <- rep(FALSE, n_ur)
+    for (r in unique(lr[!is.na(lr)])) {
+      m <- which(!is.na(lr) & lr == r)
+      v <- .extract_rank_values(unresolved_rows[m, , drop = FALSE], r)
+      in_node[m] <- !is.na(v) & !is.na(lt[m]) & v == lt[m]
+    }
+  } else {
+    message("update_prior_from_consensus: consensus has no likelihood_consensus_taxon/_rank (run posterior_consensus() with likelihood_consensus = TRUE); the likelihood-node guard is NOT applied.")
+  }
+  has_record <- rep(TRUE, n_ur)
+  if ("theta_mean" %in% names(unresolved_rows)) {
+    has_record <- !is.na(unresolved_rows$theta_mean)
+  } else {
+    message("update_prior_from_consensus: result has no theta_mean column; the no-occurrence-record guard is NOT applied.")
+  }
+  ur_ok <- ur_ref & in_node & has_record
   rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")
   row_key <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
   own_p <- as.numeric(obs_support[row_key])
@@ -472,7 +523,15 @@ update_prior_from_consensus <- function(result,
   md_rg <- confirmation_discount * mass_rg
   s_rg <- md_rg / (1 + md_rg) # smooth saturation in [0, 1): no cliffs
   md_row <- .row_mean(md_rg)
-  boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref
+  n_out_node <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & !in_node)
+  n_no_record <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & in_node & !has_record)
+  if (n_out_node + n_no_record > 0L) {
+    message(sprintf(
+      "update_prior_from_consensus: %d supported row(s) not raised because they lie outside their observation's likelihood-only credible node; %d not raised because they have no occurrence record.",
+      n_out_node, n_no_record
+    ))
+  }
+  boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ok
 
   if (!any(boost_mask)) {
     cli::cli_inform(
@@ -517,7 +576,7 @@ update_prior_from_consensus <- function(result,
   # --- Non-mixture rows: soft, never-demote substitution -----------------------
   old_prior <- unresolved_rows$prior_mean
   gain_rg <- pmax(cand_rg - old_prior[rg$row], 0) * s_rg
-  gain_rg[is.na(gain_rg) | is_mix_row[rg$row] | is.na(rg_taxon) | !ur_ref[rg$row]] <- 0
+  gain_rg[is.na(gain_rg) | is_mix_row[rg$row] | is.na(rg_taxon) | !ur_ok[rg$row]] <- 0
   soft_gain <- .row_mean(gain_rg)
   raise_mask <- soft_gain > 0
   new_prior <- old_prior + soft_gain
@@ -535,16 +594,8 @@ update_prior_from_consensus <- function(result,
     }
   ))
 
-  if (has_theta && any(raise_mask)) {
-    no_record_raised <- raise_mask & is.na(unresolved_rows$theta_mean)
-    if (any(no_record_raised)) {
-      unresolved_rows$confirmed_without_occurrence_record[no_record_raised] <- TRUE
-      cli::cli_inform(
-        "{sum(no_record_raised)} raised row(s) have NO occurrence record at all \\
-        (theta_mean NA) -- flagged via confirmed_without_occurrence_record, not suppressed."
-      )
-    }
-  }
+  # (A row with no occurrence record is no longer raised -- see has_record
+  # above -- so confirmed_without_occurrence_record stays FALSE.)
 
   if (any(raise_mask)) {
     unresolved_rows$prior_mean[raise_mask] <- new_prior[raise_mask]
@@ -579,8 +630,8 @@ update_prior_from_consensus <- function(result,
     pc_rg <- pc_all[rg$row]
     w0_rg <- w0_all[rg$row]
     w1_rg <- (pc_rg * w0_rg + md_rg) / (pc_rg + md_rg)
-    w1_rg[!is_mix_row[rg$row] | is.na(w1_rg) | !ur_ref[rg$row]] <- 0
-    w_raised_rg <- is_mix_row[rg$row] & md_rg > 0 & ur_ref[rg$row]
+    w1_rg[!is_mix_row[rg$row] | is.na(w1_rg) | !ur_ok[rg$row]] <- 0
+    w_raised_rg <- is_mix_row[rg$row] & md_rg > 0 & ur_ok[rg$row]
     w1_all <- .row_mean(w1_rg)
 
     pc <- pc_all[mixable]

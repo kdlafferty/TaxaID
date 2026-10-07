@@ -525,19 +525,23 @@ test_that("boost is rescaled onto the occurrence-scale ceiling, not used directl
   expect_false(isTRUE(all.equal(sp_a_s2, 0.95)))
 })
 
-test_that("confirmed_without_occurrence_record flags a boosted taxon with NA theta_mean", {
+test_that("a supported row with no occurrence record (theta_mean NA) is never raised", {
+  # 2026-10-07 (maintainer, error-first): previously raised and only flagged.
   result <- .make_result_theta()
   consensus <- .make_consensus_theta()
-  out <- update_prior_from_consensus(result, consensus, n_sims = 0)
-
+  out <- suppressMessages(update_prior_from_consensus(result, consensus, n_sims = 0))
   sp_d_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_D", ]
   sp_a_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
-
-  expect_true("confirmed_without_occurrence_record" %in% names(out))
-  expect_true(sp_d_s2$confirmed_without_occurrence_record)
+  # Sp_D has support (S3 resolves it at 0.95) but no record: kept at its prior
+  expect_equal(sp_d_s2$prior_mean, 0.0005)
+  expect_false(sp_d_s2$confirmed_without_occurrence_record)
+  # control: Sp_A in the SAME observation has a record and IS raised
+  expect_gt(sp_a_s2$prior_mean, 0.001)
   expect_false(sp_a_s2$confirmed_without_occurrence_record)
-  # boosting is NOT suppressed for the no-record taxon -- it still gets raised
-  expect_gt(sp_d_s2$prior_mean, 0.0005)
+  expect_true("confirmed_without_occurrence_record" %in% names(out))
+  # the message counts the row the guard held back
+  expect_message(update_prior_from_consensus(result, consensus, n_sims = 0),
+    "1 not raised because they have no occurrence record")
 })
 
 test_that("confirmed_without_occurrence_record defaults FALSE for resolved/unboosted rows", {
@@ -1021,4 +1025,80 @@ test_that("an unreferenced-relative row's posterior does not confirm a species e
   r$hypothesis_type[r$observation_id == "S1" & r$taxon_name == "Sp_A"] <- "unreferenced_species"
   out <- suppressMessages(update_prior_from_consensus(r, .make_consensus()))
   expect_equal(out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"], 0.5)
+})
+
+
+# ---- Receiver guards (2026-10-07): likelihood node (G3), occurrence record (G1) ----
+.g_rows <- function(id, taxa, phylum, L, prior = 1e-3, theta = 0.01) {
+  tibble(observation_id = id, taxon_name = taxa, taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate", phylum = phylum, genus = sub(" .*", "", taxa),
+    score_likelihood = L, score_likelihood_mean = L, score_likelihood_sd = 0.01,
+    prior_mean = prior, prior_alpha = prior * 100, prior_beta = (1 - prior) * 100, theta_mean = theta,
+    posterior_point_est = L / sum(L), posterior_mean = L / sum(L), posterior_sd = 0.01, confidence_score = L / sum(L))
+}
+.g_cons <- function(ids, resolved, taxon, lik_taxon, lik_rank) {
+  tibble(observation_id = ids, consensus_taxon = ifelse(resolved, taxon, NA_character_),
+    consensus_rank = ifelse(resolved, "species", NA_character_), is_resolved = resolved,
+    consensus_posterior = ifelse(resolved, 0.95, NA_real_),
+    likelihood_consensus_taxon = lik_taxon, likelihood_consensus_rank = lik_rank)
+}
+# S1 and S3 resolve Dictyota dichotoma (donor support); S2 is a red-alga sequence: Neoporphyra
+# haitanensis fits (L 1.0), Dictyota does not (L 0.016). S2's likelihood node is the red-alga species.
+.dictyota_fixture <- function() {
+  list(
+    result = bind_rows(
+      .g_rows("S1", "Dictyota dichotoma", "Ochrophyta", 1),
+      .g_rows("S3", "Dictyota dichotoma", "Ochrophyta", 1),
+      .g_rows("S2", c("Neoporphyra haitanensis", "Dictyota dichotoma"), c("Rhodophyta", "Ochrophyta"), c(1, 0.016))
+    ),
+    consensus = .g_cons(c("S1", "S3", "S2"), c(TRUE, TRUE, FALSE), "Dictyota dichotoma",
+      c("Dictyota dichotoma", "Dictyota dichotoma", "Neoporphyra haitanensis"), "species")
+  )
+}
+
+test_that("G3: a supported row OUTSIDE its observation's likelihood node is never raised (Dictyota)", {
+  fx <- .dictyota_fixture()
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Dictyota dichotoma"), 1e-3)
+  expect_message(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+    "1 supported row\\(s\\) not raised because they lie outside")
+  # CONTROL: the same row IS raised when the guard cannot apply (no likelihood columns) ...
+  no_lik <- fx$consensus[, setdiff(names(fx$consensus), c("likelihood_consensus_taxon", "likelihood_consensus_rank"))]
+  expect_message(off <- update_prior_from_consensus(fx$result, no_lik, n_sims = 0), "likelihood-node guard is NOT applied")
+  expect_gt(.prior_of(off, "S2", "Dictyota dichotoma"), 1e-3)
+  # ... and when S2's node contains it (a node at the phylum Ochrophyta)
+  inside <- fx$consensus
+  inside$likelihood_consensus_taxon[3] <- "Ochrophyta"; inside$likelihood_consensus_rank[3] <- "phylum"
+  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(fx$result, inside, n_sims = 0)), "S2", "Dictyota dichotoma"), 1e-3)
+})
+
+test_that("G3: an observation with no likelihood node has no row raised", {
+  fx <- .dictyota_fixture()
+  fx$consensus$likelihood_consensus_taxon[3] <- NA; fx$consensus$likelihood_consensus_rank[3] <- NA
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Dictyota dichotoma"), 1e-3)
+  expect_equal(.prior_of(out, "S2", "Neoporphyra haitanensis"), 1e-3)
+})
+
+test_that("G1: an unrecorded row INSIDE the likelihood node is not raised; a recorded one is (Aplanochytrium)", {
+  # S2's node is the phylum Bigyra; both candidates are inside it. Aplanochytrium has no
+  # occurrence record (theta NA); Thraustochytrium has one. Both have donor support.
+  res <- bind_rows(
+    .g_rows("S1", "Aplanochytrium stocchinoi", "Bigyra", 1, theta = NA),
+    .g_rows("S3", "Thraustochytrium kinnei", "Bigyra", 1),
+    .g_rows("S2", c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei"), "Bigyra", c(0.378, 0.3), theta = c(NA, 0.01))
+  )
+  cons <- tibble(observation_id = c("S1", "S3", "S2"),
+    consensus_taxon = c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei", NA),
+    consensus_rank = c("species", "species", NA), is_resolved = c(TRUE, TRUE, FALSE),
+    consensus_posterior = c(0.95, 0.95, NA),
+    likelihood_consensus_taxon = c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei", "Bigyra"),
+    likelihood_consensus_rank = c("species", "species", "phylum"))
+  out <- suppressMessages(update_prior_from_consensus(res, cons, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Aplanochytrium stocchinoi"), 1e-3)
+  expect_gt(.prior_of(out, "S2", "Thraustochytrium kinnei"), 1e-3)
+  expect_false(any(out$confirmed_without_occurrence_record))
+  # without a theta_mean column the guard cannot apply, and says so
+  expect_message(update_prior_from_consensus(res[, setdiff(names(res), "theta_mean")], cons, n_sims = 0),
+    "no-occurrence-record guard is NOT applied")
 })
