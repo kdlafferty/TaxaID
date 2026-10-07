@@ -1417,3 +1417,304 @@ validated; a local socket that accepts and never answers is aborted by curl ("to
 timeout) in seconds under sub-second-scale settings, for httr and httr2, and `.retry_fetch()`
 retries it. All three fail on the previous code. Test mocks of rentrez functions now accept
 `...`, as the real functions do (5 mocks in two files).
+
+### 2026-10-06: restored congeners are scored by measuring the query, not by reference-to-reference identity
+
+`restore_suppressed_candidates()` scored a restored congener from `.resolve_hierarchy_score()`, and
+every level there is REFERENCE-vs-REFERENCE identity. Levels 1-3 read `seq_matrix` `p_match`
+between the anchor's and the candidate's references. Level 4's `pid` comes from
+`regional_overlap.R:286`, `pairwiseAlignment(cand_seq, anchor_seq, type = "local")`: the candidate's
+reference aligned to the ANCHOR's reference. The query is aligned only to the anchor (:241), and
+only to locate a position range. No level ever aligned the query to the candidate, although the
+earlier docs implied Level 4 did. Used as the query's score, ref-ref identity is a fair proxy only
+when the query matches its anchor almost exactly. On CalIntertidal it put restored rows up to 31
+points above every real hit. Such a row becomes the observation's best score, which moves the gap
+feature and the H2/H3 anchor for every candidate. On COI it changed the top-likelihood hypothesis
+in 227 of 300 affected observations.
+
+**What changed.**
+- **Measured first.** With `sequence_col`, the query is aligned (`pwalign` local, `pid()` PID1) to
+  each of the candidate's references.
+  - The score is the best identity over references covering `>= min_query_coverage` (default 0.8)
+    of the query.
+  - Its source is recorded as `restored_score_source = "measured"`.
+- **Imputed fallback.** When no reference covers the query enough, or there is no query sequence,
+  the score is `anchor - (100 - ref_ref)` (`"imputed"`, with the reason in `restored_reason`).
+  - A ceiling (imputed never exceeds the anchor) is asserted at that site ONLY.
+  - A measured score may exceed the anchor. On CalIntertidal 18S, 58% of measured restored pairs
+    did, because suppression does not follow identity. A ceiling on measured scores would impose a
+    falsehood, not enforce a truth.
+- **Below the training floor** (`1 - max_dist`): the row is kept and flagged
+  (`restored_below_floor`), not dropped.
+- **No observed anchor score and no measurement:** the candidate is not restored and is recorded
+  in `attr(, "restoration_skipped")` as `restored_no_anchor_score`.
+  - No occurrences in today's data. The branch is retained because that is a property of the data,
+    not of the function.
+- **Region-matched `reference_df`** (`trim_path` present): only placed references measure or
+  justify a row. A candidate with none is recorded in `regional_unreferenced` with basis
+  `"no_placed_region_reference"`. This affects 0 restored rows on CalIntertidal.
+
+**Measurement behind the decision** (CalIntertidal, scored rows tonight; MAE is against the measured
+query-vs-candidate identity at >= 80% coverage):
+
+| Marker | Pairs measurable | Measured > best hit | Today's imputation MAE (all / inflated) | `anchor - (100 - ref_ref)` MAE |
+|---|---|---|---|---|
+| 12S | 96% | 2.7% | 1.15-1.90 | 1.24-1.48 |
+| 18S | 78% | 57.8% | 1.27 / 3.56 | 2.88-4.59 |
+| COI | 81% | 7.2% | 0.94 / 5.08 | 2.64-7.02 |
+
+The proposed formula was worse than the defect on the defect's own rows (COI inflated: 7.02 against
+5.08). So it is kept only as the fallback the maintainer approved. `min(today, anchor)` scored MAE
+0.94-1.99 and is with the maintainer as a one-line swap inside `.impute_restored_score()`.
+Alignment cost: 22.7 / 15.2 / 3.9 s per 1,000 alignments (12S / 18S / COI).
+
+**Open, requested by package review:**
+- The measured `pid()` is not yet validated against `seq_matrix`'s own `p_match` scale
+  (`DECIPHER::DistanceMatrix(includeTerminalGaps = FALSE)`). The offset on existing pairs is to be
+  measured before merge.
+- The fallback choice should be compared on the low-coverage rows the fallback actually governs.
+
+Tests: `test-restore-measure.R` covers the following.
+- A measured congener scoring above the anchor is restored untouched.
+- Measurement takes precedence over the hierarchy.
+- An imputed score is `anchor - (100 - ref_ref)`, and the ceiling assertion fires on a constructed
+  violation.
+- Low query coverage falls back to imputation.
+- A below-floor row is kept and flagged.
+- An all-NA observation is skipped with a reason.
+- The placed-reference guard works.
+
+Two fixtures in `test-score-collapse.R` moved their anchor from 95 to 99.5, so that the imputed
+congener still sits beside the anchor under the new formula.
+
+### 2026-10-06: dropped-hit replacement (`restore_suppressed_candidates(dropped_matches =)`)
+
+This is a separate commit from the measured-first change above, so it can be reviewed or dropped on
+its own. A reference drop list is applied to the match object BEFORE restoration. Removing an
+accession therefore removes every hit on it, and with it the species, even when that species has
+other kept references that match the query. On CalIntertidal this left 41 12S ESVs with no
+candidate at all. For 32 of them a kept same-species reference matches at >= 99%. The 18S count is
+4 (2 with such a reference) and the COI count is 1 (0).
+
+**How it works.**
+- Pass the removed rows as `dropped_matches`.
+- For each (observation, species) among them that `match_obj` no longer holds, the species' kept
+  references (only placed ones, when region-matched) are aligned to the query by the same rule as
+  the measured restored score: best PID1 over references covering `>= min_query_coverage`.
+- A row is added only on a measured score, with `restoration_basis = "dropped_hit_replacement"`
+  and `restored_reason = "replaced_dropped_hit"`. The dropped row is its template, so an
+  observation with no row left still gets one.
+- Requires `sequence_col`. It never duplicates a species the observation already holds or that the
+  congener path restored.
+- The workflow must pass the dropped rows; nothing changes until it does.
+
+Tests: in `test-restore-measure.R`.
+- A dropped-only-hit ESV gains its kept reference.
+- No row is added below the coverage rule, without a kept reference, or with only unplaced
+  references.
+- A species the observation already holds is not duplicated.
+- `dropped_matches` is validated.
+
+### 2026-10-06: measured restored scores are calibrated to the observed scale
+
+Package review asked for the measured `pid()` to be validated against the scale it is used on,
+rather than assumed equal to it. That check was run on CalIntertidal: 2,400 stratified
+`seq_matrix` pairs and 2,000 kept hits per marker.
+
+**Against the observed scale (decision-relevant).** A restored row competes with the provider's
+observed rows in its observation. So the comparison is `pid(query, its kept hit's own reference)`
+against JV's observed score for that same pair:
+
+| Marker | median | IQR |
+|---|---|---|
+| 12S | +0.02 | [+0.01, +0.04] |
+| 18S | +2.25 | [+2.18, +2.33] |
+
+The 18S value is a systematic offset. Uncorrected, measured 18S restored scores would sit ~2.2
+points too high.
+
+**Against `seq_matrix` `p_match` (DECIPHER, `includeTerminalGaps = FALSE`).**
+- At or above 0.90, `pid()` agrees: median 0.00, and `|d| > 1` in 0.2-18% of pairs (12S) or
+  2.8-39% (18S) by bin.
+- Below 0.90 local `pid()` is HIGHER: 12S median +12.1 below 0.80; 18S +18.4 below 0.80 and
+  +11.2 for 0.80-0.90. Local alignment drops divergent ends.
+- This is the same BLAST-vs-DECIPHER gap that observed (BLAST, local) scores already carry against
+  training, handled by `calibrate_query_noise()`. It is not new to restored rows. That is why the
+  observed scale, not `p_match`, is the target.
+
+**Fix.** `.calibrate_measured_offset()` estimates the offset per call.
+- It aligns each observation's query to its own best hit's reference, wherever `reference_df`
+  holds that accession: evenly spaced over sorted ids, at most 2,000, no RNG.
+- It subtracts the median (measured - observed) from every measured score, including dropped-hit
+  replacements, capped at 100.
+- With fewer than 30 pairs the offset is 0 and `thin = TRUE`.
+- It is reported as `attr(, "measured_score_calibration")`.
+
+Tests: the offset is applied (a pid of 100 against an observed 98 gives 98), a thin estimate falls
+back to 0 and is flagged, and the offset applies to replacements.
+
+### 2026-10-06: maintainer decisions on the restoration fix, and batched measurement
+
+- **Fallback is `min(ref_ref, anchor)`** (maintainer: "use min(today's imputation, anchor)"). Not
+  `anchor - (100 - ref_ref)`. The ceiling assertion stays at the imputation site.
+  - `ref_ref` alone matched the measured identity closely where it did not exceed the anchor (MAE
+    0.94-1.27).
+  - The rejected formula was worse than the defect on the defect's own rows (COI 7.02 against 5.08).
+- **Dropped-hit replacement works at genus level** (maintainer: "genus level"). For each
+  (observation, genus) among the dropped hits, every species of that genus with kept placed
+  references is measured against the query (best-measured first, at most `max_per_obs`), shifted by
+  the calibration offset, and added on a measured score.
+  - The dropped label's own species gets no preference, so a better-aligned congener can win.
+  - Test: two congeners, the unlabelled better-aligned one has the higher score and the higher
+    likelihood under `evaluate_likelihoods()`.
+- **Measurement is batched.** One `pairwiseAlignment()` call per observation for all admissible
+  candidates, and one elementwise call for the calibration.
+  - `pwalign` rebuilds its quality-substitution array on every call (~60 ms). That dominated:
+    500 12S observations took 67 s per candidate call and take 14 s batched, with identical output.
+  - Only candidates that could be admitted are measured (on the filter, or `model_params`
+    supplied). Identical reference sequences are aligned once.
+
+Tests: 1,912 passed / 0 failed.
+
+### 2026-10-06: NEW ARGUMENT `restore_suppressed_candidates(measured_offset =)`, and the calibration's measured range
+
+**`measured_offset` is a NEW ARGUMENT on an exported function.** It is additive, and the default
+`NULL` keeps the in-call estimate.
+- A supplied number is used as given, recorded as `source = "supplied"`.
+- It exists so that a marker restored in more than one call does not get a batch-dependent score.
+  That is package review's point: a result must depend only on its inputs.
+- CalIntertidal restores each marker in ONE call on the whole match object (`observation_id` = the
+  ESV), so its in-call estimate is already per-marker. In-call n: 12S 1,997, 18S 1,464.
+- The release-freeze rule asks for the maintainer's direct yes on new public surface. If he prefers,
+  this becomes internal-only with a workflow constant (two lines).
+
+**Where the offset was actually measured.** Random kept hits (not best hits), >= 80% coverage,
+banded by observed score:
+- 18S is flat across 75-98: band medians +2.24 to +2.28, n = 273-797 per band. Every measured 18S
+  restored score tonight lies inside that range.
+- 12S has almost no kept hits below 85 (n = 1 for 75-85, 23 for 85-90). Its offset there is
+  UNMEASURED, not measured-and-small. From 95 up (n = 1,859) it is +0.01 to +0.05. 12S restored
+  scores sit high (only 2 rows below 75).
+- The test where a measured 70 becomes 67.75 under an offset of 2.25 is hypothetical for 18S, which
+  has no measured rows below 75. It pins the mechanism: the same constant everywhere, with no floor
+  clamp.
+
+**Below-floor rows created by the calibration itself** are reported separately per marker in the
+before/after. These are rows measured in [75, 75 + offset) that the correction moves under the
+training floor. 12S and 18S have 0 below-floor rows at all, so 0 of these. COI will be reported with
+its run.
+
+### 2026-10-06: before/after on CalIntertidal (restoration and likelihood level)
+
+Same inputs as tonight's run: the post-drop match object, placed references, the drop-filtered
+matrix, the priors filter, and the dropped rows from the 09-27 pre-drop object. Likelihoods were
+evaluated on the affected observations with tonight's per-platform models, as point estimates, with
+priors NOT applied.
+
+| | 12S | 18S | COI |
+|---|---|---|---|
+| Restored rows, measured / imputed (coverage) / replacement | 11,889 / 468 / 351 | 1,358 / 279 / 84 | 8,074 / 995 / 520 |
+| Rows above the observation's best observed score, before (all imputed) -> after (all measured) | 1,049 -> 235 | 1,359 -> 142 | 1,971 -> 382 |
+| Below-floor rows (kept + flagged) | 0 | 0 | 0 |
+| ...of which created by the calibration | 0 | 0 | 0 |
+| Region-reference requirement | 0 | 0 | 0 |
+| ESVs gaining replacement candidates | 81 (all 41 zero-candidate ESVs recovered) | 25 | 148 |
+| Affected obs | 5,600 | 689 | 4,163 |
+| Top hypothesis changed | 584 | 508 | 942 |
+| New confident species calls (share >= 0.9) | 3 | 0 | 28 |
+| Confident calls lost | 1 | 0 | 13 |
+
+- The below-floor flag's population is therefore entirely "the evidence is weak", with no
+  correction artefact.
+- 12S: the three new calls are the same species already on top, newly crossing 0.9.
+- 18S: mostly moves to coarser ranks, as inflated restored rows are removed.
+- COI new calls: 16 are *Ophiothrix angulata* -> *O. spiculata*. *O. spiculata* is the local
+  Pacific species; *O. angulata* is Atlantic.
+
+**Runtime.** Production COI restoration takes 3,593 s, against 3,360 s on the old code: about +7%. That
+buys a measured score instead of an imputation for 8,074 COI rows (58,432 query alignments). The
+harness peaks at 8.6 GB. That peak, and most of the time, belong to the existing 34.1M-pair accession
+index, the hierarchy and Level 4, not to the measurement.
+
+**COI calibration slopes with identity.** Measured minus observed: about 0 at >= 98, +0.25 to +0.42
+over 85-98, +1.59 over 75-85 (n = 1,177), +4.36 over 70-75 (n = 16). The in-call constant was +0.321.
+A two-band step (+1.59 below a raw identity of 85, +0.32 above) changes 23 of 1,177 affected COI tops
+(2.0%). Confident species calls go 365 -> 370, all the same species crossing 0.9. The choice between
+the step and the constant is with the maintainer.
+
+### 2026-10-07: measured-score offset learned in bands from the data, the same rule for every marker
+
+Maintainer decision ("A"): the offset is estimated per observed-score band within each call. No
+marker appears in the logic.
+
+**The rule.**
+- `.calibrate_measured_offset()` aligns queries to their own KEPT hits' references: every hit
+  `reference_df` holds, not only the best one, so the low-identity end is represented. Up to 3,000
+  pairs, evenly spaced, no RNG.
+- It bands (measured - observed) by observed score at edges 75 / 85 / 90 / 95 / 98 / 99.5.
+- A band with fewer than 30 pairs pools into its upward neighbour; a thin top band pools down.
+- Each measured row takes its band's median offset (`.apply_measured_offset()`).
+- A measured row outside the observed scores the offset was measured on takes the nearest band and
+  is flagged `restored_offset_out_of_range`. This flag is separate from `restored_below_floor`.
+- A supplied `measured_offset =` constant still applies as given, with no bands.
+
+**Bands on CalIntertidal and their effect.** All three markers use the same code. The likelihood level
+is re-scored on the saved restored rows against the constant offset; priors are not applied.
+
+| | 12S | 18S | COI |
+|---|---|---|---|
+| Bands (offset, n) | 75-95 +0.51 (127); 95-98 +0.05 (466); 98-99.5 +0.01 (2,359); >= 99.5 0 (45) | -85 +2.28 (281); 85-90 +2.24 (340); 90-95 +2.25 (526); 95-98 +2.23 (806) | -85 +1.67 (1,171); 85-90 +0.48 (128); 90-95 +0.28 (72); 95-98 +0.32 (76); 98-99.5 +0.02 (255); >= 99.5 -0.02 (33) |
+| Pattern | pools to a slope near zero above 95 | flat, so a constant | sloped |
+| Affected obs | 5,596 | 555 | 3,570 |
+| Top hypothesis changed | 225 (4.0%) | 5 (0.9%) | 57 (1.6%) |
+| Confident species calls | 3 -> 5 | 0 -> 0 | 1,262 -> 1,268 |
+| Lost | 0 | 0 | 0 |
+| Flagged out of range | 29 (below the observed minimum, 82.8) | 222 (above the observed maximum, 97.9) | 0 |
+
+- **12S:** the low band moves restored congeners (median raw identity 94.7) down by about 0.5 point.
+  Changes are mostly at low share.
+- **18S:** scores move at most 0.03 point. The 5 changed tops are all coarse calls at share < 0.3.
+- **COI:** genus -> species 23, species -> genus 6.
+
+The earlier best-hit constant had UNDER-corrected the low end: COI 75-85 by about 1.3 points, 12S by
+about 0.5.
+
+Tests in `test-restore-measure.R`:
+- a sloped fixture gives distinct bands, and the right offset per band;
+- a flat fixture collapses to a constant;
+- sparse bands pool upward, a thin top band pools down, and out-of-range rows are flagged with
+  their own flag.
+
+Full suite 1,939 passed / 0 failed.
+
+Two readings of the banded table, so it is not misread:
+
+- **12S changes the most tops even though its offset barely slopes.** Its kept hits show +0.51 across
+  75-95 (n = 127) and about 0 above 95. Its restored congeners sit precisely in that band (median raw
+  identity 94.7), so about half of them move down by about half a point.
+- **18S's 222 out-of-range rows all lie ABOVE the highest observed score the offset was measured on
+  (97.9).** They take the nearest band's offset (+2.23). 18S is flat at +2.23 to +2.28 throughout, so
+  extrapolating that constant costs almost nothing. The flag records only that the offset was not
+  measured at their identity.
+
+The README software inventory is updated to 35 test files (`test-restore-measure.R` is new).
+
+**Out-of-range rows take the NEAREST BAND'S OFFSET; they are not left uncorrected.** For 18S that is
+defensible because its measured bands are flat (+2.23 to +2.28), so stepping past 97.9 with +2.23
+cannot be far wrong. The same reasoning does NOT transfer to a marker whose bands slope. COI's bands
+move by more than four points across neighbours, and nearest-band extrapolation there would carry an
+offset into identities where it was never measured. COI has no out-of-range rows tonight, but the
+code path is live. On a sloping marker a `restored_offset_out_of_range` row is something to check,
+not to ignore.
+
+**How this design was reached: by measurement at each step, not by reasoning about it.**
+- The before/after requirement showed the first proposed fallback, `anchor - (100 - ref_ref)`, was
+  worse than the defect on the defect's own rows.
+- Measuring query-vs-candidate directly showed a measured score can legitimately exceed the anchor
+  (58% of 18S pairs).
+- Comparing pid() with the observed scores showed the 18S offset of +2.25.
+- Banding on random kept hits showed the COI slope.
+- The 2% top-change count sized the step-versus-constant choice.
+
+The final shape — measured first, a capped imputation fallback, offsets learned in bands, and
+separate flags — follows from those numbers.

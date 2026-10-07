@@ -28,6 +28,9 @@ restore_suppressed_candidates(
   theta_col = "theta_mean",
   budget_ratio_cap = 19,
   max_level4_per_anchor = 10L,
+  min_query_coverage = 0.8,
+  dropped_matches = NULL,
+  measured_offset = NULL,
   verbose = TRUE
 )
 }
@@ -177,6 +180,36 @@ against a large or absent filter (or a permissive ratio) still forcing
 an unbounded number of expensive alignments for one anchor. See
 \code{@section Level 4 cost control}.}
 
+\item{min_query_coverage}{Numeric in (0, 1] (default \code{0.8}). When
+\code{sequence_col} supplies the query sequence, a restored candidate is
+scored by aligning the query directly to the candidate's own references
+(\code{@section Measured restored scores}); a reference counts only if
+its local alignment covers at least this share of the query -- the same
+share BLAST's query-coverage filter asks of the match data's own scores.}
+
+\item{dropped_matches}{Data frame or \code{NULL} (default). Match rows
+removed from \code{match_obj} before this call because their reference
+accession was dropped (e.g. a reference-screen drop list), with the same
+columns as \code{match_obj}, including \code{sequence_col}. For each
+(observation, genus) among them, every species of that genus with KEPT
+references in \code{reference_df} that the observation does not already
+hold is offered as a candidate (at most \code{max_per_obs}, best first),
+scored by the same direct alignment
+(\code{@section Measured restored scores}) and added only when a kept
+reference covers at least \code{min_query_coverage} of the query
+(\code{restoration_basis = "dropped_hit_replacement"}). Dropping an
+accession then no longer drops a genus that has other good references --
+including from an observation whose every hit was dropped -- and a
+congener the dropped label never named can win on its own alignment.
+Requires \code{sequence_col}.}
+
+\item{measured_offset}{\code{NULL} (default) or a single number. \code{NULL}
+estimates the banded offset from this call's own \code{match_obj}
+(\code{@section Measured restored scores}). A number is subtracted from
+every measured identity as given (no bands) -- for a marker restored in
+more than one call, so that a restored score does not depend on which
+batch its observation landed in.}
+
 \item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
 }
 \value{
@@ -211,7 +244,16 @@ also came back empty, or was skipped by the compute-budget mechanism).
 Ready to \code{dplyr::bind_rows()} onto an \code{unreferenced_df} before
 calling \code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}, whose \code{observation_id}-
 scoped rows accept this shape directly (an extra \code{basis} column is
-additive and does not disturb that consumer).
+additive and does not disturb that consumer). Restored rows also carry
+\code{restored_score_source} (\code{"measured"} or \code{"imputed"}),
+\code{restored_reason} (why that source: \code{"measured_query_alignment"},
+\code{"imputed_no_query_sequence"} or
+\code{"imputed_query_coverage_below_min"}) and
+\code{restored_below_floor} and \code{restored_offset_out_of_range}; all
+are \code{NA} on original rows.
+\code{attr(result, "restoration_skipped")} is \code{NULL} or a data
+frame (\code{observation_id}, \code{species}, \code{reason}) of
+candidates that could not be scored at all.
 }
 \description{
 This function's job is not "restore
@@ -275,6 +317,61 @@ way (no purpose distinction applies without real score evidence).
 For a fully runnable, non-\verb{\dontrun{}} demonstration, see
 \code{inst/review_function_inputs.R} Section 9 in the package source.
 }
+\section{Measured restored scores}{
+
+A restored row's score is the QUERY's identity to the candidate whenever
+that can be measured: with \code{sequence_col} supplied, the query is
+aligned (\code{pwalign::pairwiseAlignment(type = "local")}, identity as
+\code{pwalign::pid()} PID1) to each of the candidate's references, and the
+best identity over references covering at least \code{min_query_coverage}
+of the query is used (\code{restored_score_source = "measured"}). A
+measured identity is then put on the observed scores' scale, the same rule
+for every marker: queries are aligned the same way to their own kept hits'
+references (every hit \code{reference_df} holds, up to 3,000 pairs), and
+(that identity - the observed score) is summarised per observed-score band
+(edges 75, 85, 90, 95, 98, 99.5). A band with fewer than 30 pairs is pooled
+into its upward neighbour; each measured score takes its band's median
+offset. Where the offset is flat the bands come out equal and this is a
+constant; where it slopes with identity they differ (on CalIntertidal: 18S
++2.24 to +2.28 throughout; COI +1.6 below 85, about +0.3 above, about 0 at
+98 and up). A measured score outside the observed scores the offset was
+measured on takes the nearest band and is flagged
+(\code{restored_offset_out_of_range}), never with the below-floor flag. With
+fewer than 30 pairs in all the offset is 0 and flagged thin. The calibration
+is returned as \code{attr(result, "measured_score_calibration")}
+(\code{offset}, \code{n}, \code{iqr}, \code{thin}, \code{bands},
+\code{range}, \code{source}). A measured score may exceed the observation's best observed score: a
+suppressed congener can genuinely match the query better than every hit the
+provider kept, since suppression does not follow identity.
+
+Only when no reference clears the coverage rule (or no query sequence is
+available) does the score fall back to the hierarchy below, as an
+IMPUTATION (\code{restored_score_source = "imputed"}):
+\code{min(ref_ref, anchor)}, where \code{ref_ref} is the hierarchy's
+identity. Every hierarchy level is
+REFERENCE-vs-REFERENCE identity -- including Level 4, whose \code{pid} is
+the candidate's reference aligned to the ANCHOR's reference; the query only
+locates the anchor range -- so used directly as the query's score it is a
+fair proxy only when the query matches its anchor almost exactly. An
+imputed score is asserted never to exceed the anchor; measured scores are
+not subject to that ceiling.
+
+A restored score below the training floor \code{1 - max_dist} (scores the
+likelihood model never trained on) is kept and flagged
+(\code{restored_below_floor = TRUE}). An observation whose scores are all
+\code{NA} has no anchor score to impute from: a candidate that cannot be
+measured there is not restored and is recorded in
+\code{attr(result, "restoration_skipped")} with reason
+\code{"restored_no_anchor_score"}.
+
+When \code{reference_df} carries a \code{trim_path} column
+(\code{\link[=match_reference_region]{match_reference_region()}} output), only references placed on the query
+region are used, for measurement and for restoration alike; a candidate
+with no placed reference is not restored and is recorded in
+\code{attr(result, "regional_unreferenced")} with basis
+\code{"no_placed_region_reference"}.
+}
+
 \section{Score-sourcing hierarchy}{
 
 Provides a real, evidence-grounded score for a restored candidate, rather
