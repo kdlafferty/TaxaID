@@ -1948,11 +1948,44 @@ DO NOT LET WHAT IS NOT AN OBSERVATION BEHAVE LIKE ONE.**
 To be written into the review responses as a family rather than four unrelated
 fixes, so whoever meets the fifth instance recognises it.
 
-**STILL WANTED FROM THE COMPLETED RUN**: the per-stage TREE PEAKS. Asked for
-twice, and the run succeeding is exactly when they are easiest to ignore. A run
-that passed at 11 GB and one that passed at 17.5 GB against an 18 GB watcher
-are different facts for whoever adds the next stage, and only the first is
-headroom.
+**PER-STAGE TREE PEAKS, measured** (`run_next_2026-10-07_0755.stages` +
+`_stage_peaks.tsv`), minutes / GB:
+
+| Stage | min | GB |
+|---|---|---|
+| COI prep (frozen) | 1.1 | 8.13 |
+| **COI restoration+join** | 50.9 | **15.92 = RUN PEAK** |
+| COI training | 16.1 | 12.40 |
+| COI evaluate (parallel) | 107.8 | 7.14 |
+| 12S restoration / training / evaluate | 6.1 / 0.1 / 11.6 | 3.71 / 3.81 / 3.57 |
+| 18S restoration / training / evaluate | 1.6 / 0.7 / 12.7 | 4.16 / 5.08 / 3.77 |
+| Section 8 Round 1 | 34.1 | 15.17 |
+| Section 8 U update (fresh) | 14.4 | 10.78 |
+| Section 8 W2 restore COI / P post-update / X robust | 1.2 / 10.6 / 10.7 | 7.61 / 5.33 / 5.52 |
+
+**THE MEMORY WORK SUCCEEDED AND THE PEAK HAS MOVED.** Training, the stage that
+killed attempt 3 at >17.2 GB, is now 12.40 GB -- the THIRD largest. The peak is
+COI restoration+join at 15.92 GB, which is the existing 34.1M-pair accession
+index plus join, a stage nobody has optimised and NOT fix (a). Round 1 is
+second at 15.17. So the profile-first item for any next round is the accession
+index and join.
+
+**MY PROJECTION WAS 13% OPTIMISTIC, and for the reason I had flagged as
+unverified.** I projected ~11 GB for training (3.3 parent + 7.7 child) and
+noted the parent-baseline assumption was "likely but unverified". Actual
+training peak 12.40 GB, so the parent held about 4.7 GB rather than 3.3. The
+caveat was the right one to state and the error was in the direction it warned
+about.
+
+**Headroom is about 4 GB against the 20 GB cap**, at two stages only: COI
+restoration+join and Round 1. Anything added at either needs a memory check
+first. Note that C1 (training-path calibration) and G1/G3 (Round 2 raising,
+the U and P stages at 10.78 and 5.33) touch NEITHER peak stage, so they should
+not move the ceiling.
+
+**The time lever is separate from the memory lever**: COI evaluate is 107.8 of
+roughly 250 total minutes at only 7.14 GB, so it is time-bound, not
+memory-bound. Shortening the run means parallelism there, not memory work.
 
 ## 7i. OPEN INVESTIGATION: does a consensus call depend on its FRAME-MATES? (2026-10-07)
 
