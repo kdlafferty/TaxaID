@@ -75,6 +75,18 @@
 #' observations updated and rows raised are printed and returned as
 #' `attr(<result>, "prior_update_groups")`.
 #'
+#' @section Referenced candidates only:
+#' Only REFERENCED candidates take part in the soft confirmation, on both
+#' sides: only their posterior counts as cross-observation support, and only
+#' their priors can be raised. Rows whose `hypothesis_type` is an
+#' unreferenced-relative type (`unreferenced_species`, `unreferenced_genus`,
+#' ..., i.e. ring rows and the named rows of recorded unreferenced species)
+#' carry a ring likelihood but no sequence match of their own; their support
+#' at one observation comes from the same rows at the others, so letting them
+#' confirm one another is circular. Without this, on CalIntertidal
+#' (2026-10-06) ring and named-row priors rose up to ~14,000-fold across a
+#' Site and turned honest no-calls into confident wrong-phylum calls.
+#'
 #' @section Soft confirmation:
 #' A hard-gate donor definition -- counting an observation as a "donor" only
 #' when it resolves a species with `consensus_posterior >=` a threshold
@@ -324,7 +336,19 @@ update_prior_from_consensus <- function(result,
   post_col <- if ("posterior_point_est" %in% names(result)) "posterior_point_est" else "posterior_mean"
   # Only the three columns the support evidence uses (not a full-width copy of
   # result): identical values in identical order.
-  keep_sp <- !is.na(result$taxon_name) & !is.na(result[[post_col]])
+  # Donors: only REFERENCED candidates carry sequence support. Named rows and
+  # ring rows (hypothesis_type unreferenced_*: an unsequenced relative, with a
+  # ring likelihood and no sequence match of its own) neither confirm a
+  # species elsewhere nor are raised below -- their posterior support comes
+  # from the same rows across the Site, so letting them confirm each other is
+  # circular (CalIntertidal 2026-10-06: ring priors rose 3.5e-6 -> 0.049).
+  is_ref <- if ("hypothesis_type" %in% names(result)) {
+    !.is_unreferenced_type(result$hypothesis_type)
+  } else {
+    rep(TRUE, nrow(result))
+  }
+  keep_sp <- !is.na(result$taxon_name) & !is.na(result[[post_col]]) & is_ref
+  rm(is_ref)
   support_pool <- data.frame(
     observation_id = result$observation_id[keep_sp],
     taxon_name = result$taxon_name[keep_sp],
@@ -428,6 +452,12 @@ update_prior_from_consensus <- function(result,
   }
 
   rg_taxon <- unresolved_rows$taxon_name[rg$row]
+  # Receivers: referenced candidates only (see the donors' note above).
+  ur_ref <- if ("hypothesis_type" %in% names(unresolved_rows)) {
+    !.is_unreferenced_type(unresolved_rows$hypothesis_type)
+  } else {
+    rep(TRUE, n_ur)
+  }
   rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")
   row_key <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
   own_p <- as.numeric(obs_support[row_key])
@@ -442,7 +472,7 @@ update_prior_from_consensus <- function(result,
   md_rg <- confirmation_discount * mass_rg
   s_rg <- md_rg / (1 + md_rg) # smooth saturation in [0, 1): no cliffs
   md_row <- .row_mean(md_rg)
-  boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0
+  boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref
 
   if (!any(boost_mask)) {
     cli::cli_inform(
@@ -487,7 +517,7 @@ update_prior_from_consensus <- function(result,
   # --- Non-mixture rows: soft, never-demote substitution -----------------------
   old_prior <- unresolved_rows$prior_mean
   gain_rg <- pmax(cand_rg - old_prior[rg$row], 0) * s_rg
-  gain_rg[is.na(gain_rg) | is_mix_row[rg$row] | is.na(rg_taxon)] <- 0
+  gain_rg[is.na(gain_rg) | is_mix_row[rg$row] | is.na(rg_taxon) | !ur_ref[rg$row]] <- 0
   soft_gain <- .row_mean(gain_rg)
   raise_mask <- soft_gain > 0
   new_prior <- old_prior + soft_gain
@@ -549,8 +579,8 @@ update_prior_from_consensus <- function(result,
     pc_rg <- pc_all[rg$row]
     w0_rg <- w0_all[rg$row]
     w1_rg <- (pc_rg * w0_rg + md_rg) / (pc_rg + md_rg)
-    w1_rg[!is_mix_row[rg$row] | is.na(w1_rg)] <- 0
-    w_raised_rg <- is_mix_row[rg$row] & md_rg > 0
+    w1_rg[!is_mix_row[rg$row] | is.na(w1_rg) | !ur_ref[rg$row]] <- 0
+    w_raised_rg <- is_mix_row[rg$row] & md_rg > 0 & ur_ref[rg$row]
     w1_all <- .row_mean(w1_rg)
 
     pc <- pc_all[mixable]

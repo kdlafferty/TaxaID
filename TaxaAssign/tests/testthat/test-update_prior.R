@@ -1003,3 +1003,22 @@ test_that(".merge_rows_with() matches merge() with NA keys and with keys repeate
     expect_gt(nrow(got), length(idx)) # the cartesian expansion really happened
   }
 })
+
+# ---- referenced candidates only (2026-10-06) ---------------------------------
+test_that("an unreferenced-relative row is never raised by the soft confirmation", {
+  r <- .make_result()
+  r$hypothesis_type[r$observation_id == "S2" & r$taxon_name == "Sp_A"] <- "unreferenced_species"
+  out <- suppressMessages(update_prior_from_consensus(r, .make_consensus()))
+  row <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+  expect_equal(row$prior_mean, 0.5) # unchanged, although S1 confirms Sp_A
+  # control: the same row as a referenced candidate IS raised
+  out0 <- suppressMessages(update_prior_from_consensus(.make_result(), .make_consensus()))
+  expect_gt(out0$prior_mean[out0$observation_id == "S2" & out0$taxon_name == "Sp_A"], 0.5)
+})
+
+test_that("an unreferenced-relative row's posterior does not confirm a species elsewhere", {
+  r <- .make_result()
+  r$hypothesis_type[r$observation_id == "S1" & r$taxon_name == "Sp_A"] <- "unreferenced_species"
+  out <- suppressMessages(update_prior_from_consensus(r, .make_consensus()))
+  expect_equal(out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"], 0.5)
+})

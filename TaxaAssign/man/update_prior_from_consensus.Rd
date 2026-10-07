@@ -160,6 +160,20 @@ observations updated and rows raised are printed and returned as
 \verb{attr(<result>, "prior_update_groups")}.
 }
 
+\section{Referenced candidates only}{
+
+Only REFERENCED candidates take part in the soft confirmation, on both
+sides: only their posterior counts as cross-observation support, and only
+their priors can be raised. Rows whose \code{hypothesis_type} is an
+unreferenced-relative type (\code{unreferenced_species}, \code{unreferenced_genus},
+..., i.e. ring rows and the named rows of recorded unreferenced species)
+carry a ring likelihood but no sequence match of their own; their support
+at one observation comes from the same rows at the others, so letting them
+confirm one another is circular. Without this, on CalIntertidal
+(2026-10-06) ring and named-row priors rose up to ~14,000-fold across a
+Site and turned honest no-calls into confident wrong-phylum calls.
+}
+
 \section{Soft confirmation}{
 
 A hard-gate donor definition -- counting an observation as a "donor" only
