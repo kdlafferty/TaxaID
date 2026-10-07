@@ -1918,6 +1918,42 @@ CI-equivalent rcmdcheck, inventory recomputed from the tree, exports diff, and
 a real before/after. "Work on auto" authorises proceeding without asking, not
 lowering the bar on the maintainer's behalf.
 
+## 7j. The full run on `01feb65` COMPLETED (2026-10-07)
+
+Started 07:55, **finished 12:47:14 with rc 0** -- the first full run to
+complete after the four memory stages, the network-timeout fix and the
+four-item assignment sequence. Attempts 1-6 had all been killed by the tree
+watcher or a workflow defect.
+
+**The h1-spread re-measure has been DONE ONCE and came back clean.** posterior
+math's 2026-10-07 morning measurement (item c) found the adopted spread SAFE:
+**0 risky flips**. So the standing caveat in 7e is partly discharged -- the
+defaults were fitted on data carrying two within-species biases, but the
+measurement says the consequence is nil. What remains is a FOLLOW-UP re-measure
+after C1 lands, because C1 changes the calibration machinery itself.
+
+**Next run is gated on**: C1 (TaxaLikely, query-noise calibration from observed
+rows only), G3 and G1 (TaxaAssign, Round 2 raises only inside the R1
+likelihood-only credible node; never raise rows with no occurrence record),
+plus workflow-only P1-P5 from the audit. `cross-phylum` (`6cd806d`) stays
+post-run.
+
+**ONE PRINCIPLE, NOW FOUR INSTANCES, found separately by two sessions:
+DO NOT LET WHAT IS NOT AN OBSERVATION BEHAVE LIKE ONE.**
+- item b (`4acf4d3`): unreferenced relatives no longer lend cross-observation
+  support nor receive a boost -- 96% of all prior-raising was theirs;
+- G3: raising confined to the R1 likelihood-only credible node;
+- G1: rows with no occurrence record are never raised;
+- C1: non-observed rows no longer enter the query-noise calibration.
+To be written into the review responses as a family rather than four unrelated
+fixes, so whoever meets the fifth instance recognises it.
+
+**STILL WANTED FROM THE COMPLETED RUN**: the per-stage TREE PEAKS. Asked for
+twice, and the run succeeding is exactly when they are easiest to ignore. A run
+that passed at 11 GB and one that passed at 17.5 GB against an 18 GB watcher
+are different facts for whoever adds the next stage, and only the first is
+headroom.
+
 ## 7i. OPEN INVESTIGATION: does a consensus call depend on its FRAME-MATES? (2026-10-07)
 
 Unconfirmed, and if confirmed it outranks everything else in 7e-7h. Found by
