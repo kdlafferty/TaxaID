@@ -1778,7 +1778,7 @@ backstop, all option-controlled.
 
 Three outstanding items, all awaiting the maintainer, and they do NOT need the
 same kind of re-run:
-1. **Round 2 circular boost** of unreferenced/ring rows -- changes ASSIGNMENTS.
+1. **Round 2 circular boost** of unreferenced/ring rows -- MERGED as item b, `4acf4d3`; see 7h.
 2. **`restore_suppressed_candidates()` score imputation** -- changes
    ASSIGNMENTS. Levels 1-3 impute a restored congener's QUERY score as the
    median reference-vs-reference `p_match`, which is only valid when the query
@@ -1875,6 +1875,48 @@ same kind of re-run:
    **The lesson**: I checked that formula's ARITHMETIC and its consistency with
    the file header, and never asked whether it was ACCURATE. Only the
    before/after-before-merging requirement caught it.
+
+## 7h. Merge ledger -- the approved four-item sequence (2026-10-06/07)
+
+Maintainer approved the full list, then went to bed with "you can work on
+auto". ONE install after all four are merged, only with zero R running. Each
+required a REAL before/after in its review response.
+
+| item | merge | branch @ tip | what |
+|---|---|---|---|
+| d1 | `8cc0c36` | `upfc-memory` @ `904196d` | narrow-merge row assembly, exact |
+| b | `4acf4d3` | `upf-referenced-only` @ `043dd0e` | soft confirmation excludes unreferenced relatives |
+| d2(ii) | `46cea96` | `pc-index-split` @ `9b8aeaa` | per-observation chunks from one row-index split, exact |
+| a | PENDING | `restore-measured` | measured-first restoration + calibration |
+
+**d1 was merged AND INSTALLED before the hold arrived** (TaxaAssign, build
+2026-10-07 04:01:05 UTC), so the installed state is already ahead of the
+"one install at the end" plan. Harmless: items b and d2(ii) touch TaxaAssign
+too, so the final pass reinstalls it anyway.
+
+**b is the finding, not the fix**: rows raised 1,552,495 -> 58,300, with
+unreferenced-relative raising going 1,493,171 -> ZERO while referenced raising
+barely moves (59,324 -> 58,300). **96% of all prior-raising was driven by rows
+that exist BECAUSE no reference supports them.** The mechanism is not reduced;
+a circularity that was doing almost all of the work is removed.
+
+**d2(ii) differs from the rest of the week's memory work in two ways**: the gain
+is COMPUTE (CPU 343 -> 219 s on an idle machine), not relieved pressure, and
+MAXIMUM RESIDENT ACTUALLY DROPS (3.85 -> 2.30 GB) where `upfc-memory`'s did
+not move at all -- so this is the one the tree watcher will see.
+
+**The review-response file conflicts every time two branches touch it.** b and
+d2(ii) both appended a dated section at the shared end-of-file insertion point;
+resolved by keeping both. DATED HEADINGS DO NOT PREVENT THIS -- I claimed
+earlier in the week that they had, when that pair had merely written to
+different SECTIONS (894 and 1212). Headings make the resolution trivial and
+unambiguous; the shared insertion point still collides.
+
+**Standing decision rule while the maintainer sleeps**: merge what passes the
+full standard, HOLD what does not. The standard does not move -- suite,
+CI-equivalent rcmdcheck, inventory recomputed from the tree, exports diff, and
+a real before/after. "Work on auto" authorises proceeding without asking, not
+lowering the bar on the maintainer's behalf.
 
 ## 7g. QUEUED for the maintainer: `.is_unreferenced_type()` gates the boost (2026-10-06)
 
