@@ -155,13 +155,14 @@
 #' @param cross_phylum_eps Numeric in `[0, 0.5)` (default `0.05`; `0` turns
 #'   it off). Used with `consensus_method = "credible_node"`. When the
 #'   runner-up phylum holds at least this share of an observation's total
-#'   posterior, a call at phylum or finer would rest on a choice between
+#'   posterior, a call finer than phylum would rest on a choice between
 #'   phyla that the evidence barely makes (typically a low-identity sequence
 #'   whose best candidates from two phyla score almost alike). Such a call is
-#'   withheld: the call becomes the finest node coarser than phylum in
-#'   `rank_system` that holds `cumulative_threshold` (a clade both phyla
-#'   share, e.g. a kingdom), or no call when `rank_system` has none, and
-#'   `consensus_limit` is `"cross_phylum"`. The share is the plain posterior
+#'   withheld: the call becomes the finest node at phylum or coarser in
+#'   `rank_system` that holds `cumulative_threshold` (the leading phylum when
+#'   it does, else a clade both phyla share, e.g. a kingdom), or no call when
+#'   none does, and `consensus_limit` is `"cross_phylum"`. A phylum call that
+#'   holds the threshold is kept. The share is the plain posterior
 #'   share (the robust-prior check does not change it). The value is an error
 #'   tolerance: smaller withholds more calls. Applied in the likelihood-only
 #'   pass too, so `prior_role` compares calls made under the same rule. Not
@@ -415,9 +416,10 @@
 #'       throughout); the rank was never provided, which differs from
 #'       `"backbone"`, where it is missing from some lineages (e.g. a backbone
 #'       with no class for ray-finned fishes). A message names such ranks.
-#'       `"cross_phylum"`: a call at phylum or finer was withheld because the
+#'       `"cross_phylum"`: a call finer than phylum was withheld because the
 #'       runner-up phylum holds at least `cross_phylum_eps` of the posterior;
-#'       the call is the finest coarser node holding the threshold, or none.}
+#'       the call is the finest node at phylum or coarser holding the
+#'       threshold, or none.}
 #'     \item{`robust_lower_posterior`}{With `consensus_method =
 #'       "credible_node"` and `robust_prior_s > 0`: the lower bound of the
 #'       reported taxon's posterior over the imprecise-prior neighbourhood
@@ -1041,13 +1043,14 @@ posterior_consensus <- function(posterior_df,
       break
     }
   }
-  # Cross-phylum rule: a call at phylum or finer is withheld when the
+  # Cross-phylum rule: a call FINER than phylum is withheld when the
   # runner-up phylum holds at least cross_phylum_eps of the total (plain
-  # shares). The call moves to the finest node COARSER than phylum that holds
-  # the threshold (a clade both phyla share, when rank_system has one), else
-  # no call.
+  # shares). The call moves to the finest node at phylum or coarser that holds
+  # the threshold (the leading phylum when it does, else a clade both phyla
+  # share when rank_system has one), else no call. A phylum call that holds
+  # the threshold stands.
   ph_i <- match("phylum", rank_system)
-  if (cross_phylum_eps > 0 && !is.na(call_i) && !is.na(ph_i) && call_i >= ph_i) {
+  if (cross_phylum_eps > 0 && !is.na(call_i) && !is.na(ph_i) && call_i > ph_i) {
     v <- vals[[ph_i]]
     ph_share <- sort(vapply(unique(v[!is.na(v)]), function(nd) sum(w[!is.na(v) & v == nd]) / tot, numeric(1)),
       decreasing = TRUE)
@@ -1055,7 +1058,7 @@ posterior_consensus <- function(posterior_df,
       out$taxon <- NA_character_
       out$rank <- NA_character_
       out$lower <- NA_real_
-      for (i in rev(seq_len(ph_i - 1L))) {
+      for (i in rev(seq_len(ph_i))) {
         b <- best_at(i, eps)
         if (b$p >= threshold) {
           out$taxon <- b$node
