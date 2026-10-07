@@ -13,7 +13,8 @@ update_prior_from_consensus(
   detections = NULL,
   group_cols = "sample_id",
   marker_col = "marker",
-  spatial_group_map = NULL
+  spatial_group_map = NULL,
+  receiver_guards = TRUE
 )
 }
 \arguments{
@@ -75,6 +76,15 @@ evidence is pooled within each spatial group only, so two sites in
 different spatial groups donate nothing to each other. Membership is
 binary (same group or not), with no distance decay within a group. Supply
 this or \code{detections}, not both.}
+
+\item{receiver_guards}{Logical (default \code{TRUE}). Apply the receiver guards
+(see \emph{Receiver guards}): only rows inside their observation's
+likelihood-only credible node, and with an occurrence record, are raised.
+Requires \code{likelihood_consensus_taxon}/\code{likelihood_consensus_rank} in
+\code{consensus} and \code{theta_mean} in \code{result}, and stops if they are missing.
+\code{FALSE} restores the earlier behaviour, where such rows can be raised (a
+message says so); use it only knowingly, e.g. for priors that are not
+occurrence-based.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},
@@ -269,16 +279,16 @@ likelihood-only credible node are raised: the node is
 \code{consensus} (from \code{\link[=posterior_consensus]{posterior_consensus()}} with
 \code{likelihood_consensus = TRUE}, its default), so it reflects the
 sequence evidence before any raise. An observation with no such node
-has no row raised. Without these columns the guard is not applied, and
-a message says so. Measured on CalIntertidal (2026-10-07): raising a
+has no row raised. Measured on CalIntertidal (2026-10-07): raising a
 row outside its node let a rare recorded brown alga (likelihood 0.016)
 overturn a red-alga match (likelihood 1.0) once its prior was raised
 about 300-fold.
 \item \strong{Occurrence record.} A row with no occurrence record
-(\code{theta_mean} \code{NA}) is never raised. Without a \code{theta_mean} column the
-guard is not applied, and a message says so.
+(\code{theta_mean} \code{NA}) is never raised.
 }
-A message counts the supported rows each guard held back.
+A message counts the supported rows each guard held back. Both guards need
+their input columns and stop if one is missing; \code{receiver_guards = FALSE}
+turns them off.
 }
 
 \section{Confirmed without an occurrence record}{

@@ -174,16 +174,16 @@
 #'     `consensus` (from [posterior_consensus()] with
 #'     `likelihood_consensus = TRUE`, its default), so it reflects the
 #'     sequence evidence before any raise. An observation with no such node
-#'     has no row raised. Without these columns the guard is not applied, and
-#'     a message says so. Measured on CalIntertidal (2026-10-07): raising a
+#'     has no row raised. Measured on CalIntertidal (2026-10-07): raising a
 #'     row outside its node let a rare recorded brown alga (likelihood 0.016)
 #'     overturn a red-alga match (likelihood 1.0) once its prior was raised
 #'     about 300-fold.
 #'   \item **Occurrence record.** A row with no occurrence record
-#'     (`theta_mean` `NA`) is never raised. Without a `theta_mean` column the
-#'     guard is not applied, and a message says so.
+#'     (`theta_mean` `NA`) is never raised.
 #' }
-#' A message counts the supported rows each guard held back.
+#' A message counts the supported rows each guard held back. Both guards need
+#' their input columns and stop if one is missing; `receiver_guards = FALSE`
+#' turns them off.
 #'
 #' @section Confirmed without an occurrence record:
 #' Until 2026-10-07 a row with no occurrence record (`theta_mean` `NA`) was
@@ -223,6 +223,14 @@
 #'   independent -- almost certainly too strong for same-site detections of
 #'   any kind). See the
 #'   \emph{Soft confirmation} section.
+#' @param receiver_guards Logical (default `TRUE`). Apply the receiver guards
+#'   (see \emph{Receiver guards}): only rows inside their observation's
+#'   likelihood-only credible node, and with an occurrence record, are raised.
+#'   Requires `likelihood_consensus_taxon`/`likelihood_consensus_rank` in
+#'   `consensus` and `theta_mean` in `result`, and stops if they are missing.
+#'   `FALSE` restores the earlier behaviour, where such rows can be raised (a
+#'   message says so); use it only knowingly, e.g. for priors that are not
+#'   occurrence-based.
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty -- match the value used in the original run.
@@ -293,8 +301,12 @@ update_prior_from_consensus <- function(result,
                                         detections = NULL,
                                         group_cols = "sample_id",
                                         marker_col = "marker",
-                                        spatial_group_map = NULL) {
+                                        spatial_group_map = NULL,
+                                        receiver_guards = TRUE) {
   # --- Input validation -------------------------------------------------------
+  if (!is.logical(receiver_guards) || length(receiver_guards) != 1L || is.na(receiver_guards)) {
+    cli::cli_abort("{.arg receiver_guards} must be TRUE or FALSE.")
+  }
   required_result <- c(
     "observation_id", "taxon_name", "score_likelihood",
     "score_likelihood_mean", "score_likelihood_sd", "prior_mean"
@@ -311,6 +323,22 @@ update_prior_from_consensus <- function(result,
   missing_consensus <- setdiff(required_consensus, names(consensus))
   if (length(missing_consensus) > 0) {
     cli::cli_abort("consensus missing required column(s): {.field {missing_consensus}}")
+  }
+  if (receiver_guards) {
+    miss_g <- c(
+      setdiff(c("likelihood_consensus_taxon", "likelihood_consensus_rank"), names(consensus)),
+      setdiff("theta_mean", names(result))
+    )
+    if (length(miss_g) > 0L) {
+      cli::cli_abort(c(
+        "The receiver guards need column(s) that are missing: {.field {miss_g}}.",
+        "i" = "{.field likelihood_consensus_taxon}/{.field likelihood_consensus_rank} come from \\
+        {.fn posterior_consensus} with {.code likelihood_consensus = TRUE} (its default); \\
+        {.field theta_mean} comes from occurrence-model priors.",
+        "i" = "Set {.code receiver_guards = FALSE} only to allow raises the guards would block \\
+        (rows outside the likelihood-only credible node, rows with no occurrence record)."
+      ))
+    }
   }
 
   if (!is.numeric(confirmation_quantile) || length(confirmation_quantile) != 1L ||
@@ -489,7 +517,8 @@ update_prior_from_consensus <- function(result,
   # no occurrence record (theta_mean NA) is never raised.
   lik_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank")
   in_node <- rep(TRUE, n_ur)
-  if (all(lik_cols %in% names(consensus))) {
+  has_record <- rep(TRUE, n_ur)
+  if (receiver_guards) {
     j <- match(as.character(unresolved_rows$observation_id), as.character(consensus$observation_id))
     lt <- as.character(consensus$likelihood_consensus_taxon[j])
     lr <- as.character(consensus$likelihood_consensus_rank[j])
@@ -499,14 +528,9 @@ update_prior_from_consensus <- function(result,
       v <- .extract_rank_values(unresolved_rows[m, , drop = FALSE], r)
       in_node[m] <- !is.na(v) & !is.na(lt[m]) & v == lt[m]
     }
-  } else {
-    message("update_prior_from_consensus: consensus has no likelihood_consensus_taxon/_rank (run posterior_consensus() with likelihood_consensus = TRUE); the likelihood-node guard is NOT applied.")
-  }
-  has_record <- rep(TRUE, n_ur)
-  if ("theta_mean" %in% names(unresolved_rows)) {
     has_record <- !is.na(unresolved_rows$theta_mean)
   } else {
-    message("update_prior_from_consensus: result has no theta_mean column; the no-occurrence-record guard is NOT applied.")
+    message("update_prior_from_consensus: receiver_guards = FALSE: rows outside the likelihood node and rows with no occurrence record CAN be raised.")
   }
   ur_ok <- ur_ref & in_node & has_record
   rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")
