@@ -30,6 +30,7 @@ restore_suppressed_candidates(
   max_level4_per_anchor = 10L,
   min_query_coverage = 0.8,
   dropped_matches = NULL,
+  measured_offset = NULL,
   verbose = TRUE
 )
 }
@@ -202,6 +203,15 @@ including from an observation whose every hit was dropped -- and a
 congener the dropped label never named can win on its own alignment.
 Requires \code{sequence_col}.}
 
+\item{measured_offset}{\code{NULL} (default) or a single number: the
+percentage-point offset subtracted from every measured identity to put it
+on the observed scores' scale. \code{NULL} estimates it from this call's
+own \code{match_obj} (\code{@section Measured restored scores}). Supply
+a per-marker constant (for example the \code{offset} of a whole-marker
+call's \code{attr(result, "measured_score_calibration")}) whenever a
+marker is restored in more than one call, so that a restored score does
+not depend on which batch its observation landed in.}
+
 \item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
 }
 \value{
@@ -323,8 +333,9 @@ query is aligned the same way to its own best hit's reference (where
 score. With fewer than 30 such observations the offset is 0 and flagged.
 The calibration is returned as \code{attr(result,
 "measured_score_calibration")} (\code{offset}, \code{n}, \code{iqr},
-\code{thin}). A
-measured score may exceed the observation's best observed score: a
+\code{thin}, \code{source}). The estimate uses each observation's best hit;
+on CalIntertidal the offset was flat across observed scores of 75-98 (18S
+median 2.23-2.28 by band). A measured score may exceed the observation's best observed score: a
 suppressed congener can genuinely match the query better than every hit the
 provider kept, since suppression does not follow identity.
 

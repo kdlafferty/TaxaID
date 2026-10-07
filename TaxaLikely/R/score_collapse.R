@@ -411,6 +411,14 @@ detect_suppressed_candidates <- function(match_obj,
 #'   including from an observation whose every hit was dropped -- and a
 #'   congener the dropped label never named can win on its own alignment.
 #'   Requires \code{sequence_col}.
+#' @param measured_offset \code{NULL} (default) or a single number: the
+#'   percentage-point offset subtracted from every measured identity to put it
+#'   on the observed scores' scale. \code{NULL} estimates it from this call's
+#'   own \code{match_obj} (\code{@section Measured restored scores}). Supply
+#'   a per-marker constant (for example the \code{offset} of a whole-marker
+#'   call's \code{attr(result, "measured_score_calibration")}) whenever a
+#'   marker is restored in more than one call, so that a restored score does
+#'   not depend on which batch its observation landed in.
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
 #'
 #' @section Measured restored scores:
@@ -427,8 +435,9 @@ detect_suppressed_candidates <- function(match_obj,
 #' score. With fewer than 30 such observations the offset is 0 and flagged.
 #' The calibration is returned as \code{attr(result,
 #' "measured_score_calibration")} (\code{offset}, \code{n}, \code{iqr},
-#' \code{thin}). A
-#' measured score may exceed the observation's best observed score: a
+#' \code{thin}, \code{source}). The estimate uses each observation's best hit;
+#' on CalIntertidal the offset was flat across observed scores of 75-98 (18S
+#' median 2.23-2.28 by band). A measured score may exceed the observation's best observed score: a
 #' suppressed congener can genuinely match the query better than every hit the
 #' provider kept, since suppression does not follow identity.
 #'
@@ -648,6 +657,7 @@ restore_suppressed_candidates <- function(match_obj,
                                           max_level4_per_anchor = 10L,
                                           min_query_coverage = 0.8,
                                           dropped_matches = NULL,
+                                          measured_offset = NULL,
                                           verbose = TRUE) {
   # ---- validate ---------------------------------------------------------------
   if (!is.data.frame(match_obj)) {
@@ -846,7 +856,16 @@ restore_suppressed_candidates <- function(match_obj,
   # scorer and pwalign's pid() can differ systematically for the same pair
   # (CalIntertidal 18S: +2.25 points), and a restored row competes with
   # observed rows in its own observation.
-  measured_cal <- if (can_measure && !no_score_path) {
+  if (!is.null(measured_offset) && (!is.numeric(measured_offset) || length(measured_offset) != 1L ||
+    !is.finite(measured_offset))) {
+    stop("restore_suppressed_candidates: 'measured_offset' must be NULL or a single finite number.",
+      call. = FALSE
+    )
+  }
+  measured_cal <- if (!is.null(measured_offset)) {
+    list(offset = measured_offset, n = NA_integer_, iqr = c(NA_real_, NA_real_), thin = FALSE,
+      source = "supplied")
+  } else if (can_measure && !no_score_path) {
     .calibrate_measured_offset(match_obj, reference_df,
       observation_id_col = observation_id_col, score_col = score_col,
       accession_col = accession_col, sequence_col = sequence_col,
@@ -855,6 +874,7 @@ restore_suppressed_candidates <- function(match_obj,
   } else {
     NULL
   }
+  if (!is.null(measured_cal) && is.null(measured_cal$source)) measured_cal$source <- "estimated_in_call"
   measured_offset <- if (is.null(measured_cal)) 0 else measured_cal$offset
 
   no_score_target_species <- if (no_score_path && !is.null(candidate_species_filter)) {

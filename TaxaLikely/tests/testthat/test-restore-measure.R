@@ -377,3 +377,22 @@ test_that("the calibration offset also applies to dropped-hit replacements", {
   expect_true(nrow(r) >= 1L)
   expect_true(all(r$score_original == 98))
 })
+
+test_that("a supplied measured_offset is used as given, regardless of the call's own data", {
+  res <- restore_suppressed_candidates(
+    .rm_calib_set(10), .rm_ref(),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    measured_offset = 2.25, verbose = FALSE
+  )
+  cal <- attr(res, "measured_score_calibration")
+  expect_equal(cal$offset, 2.25)
+  expect_equal(cal$source, "supplied")
+  expect_true(all(res$score_original[res$is_restored] == 97.75))
+  expect_error(
+    restore_suppressed_candidates(.rm_calib_set(2), .rm_ref(),
+      rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+      measured_offset = c(1, 2), verbose = FALSE
+    ),
+    "measured_offset"
+  )
+})
