@@ -1026,5 +1026,22 @@ on one machine; merge()'s character-key order follows the locale identically in 
 does not address cross-machine reproducibility of merge() itself. The whole function, old (main 6c83ced) vs new, on a
 synthetic 6-site fixture (400 observations, 1,603 rows, ties, 620 priors raised, a site without
 theta_mean exercising the ceiling fallback, shuffled rows, n_sims = 50 under one seed):
-identical() TRUE. The real CalIntertidal Section 8 input check (identical() + peak RSS, old vs
-new) is reported below when run.
+identical() TRUE.
+Real data (2026-10-06, after the CalIntertidal rerun; machine otherwise idle): CalIntertidalWorkflow's
+saved Section 8 inputs (cache_lik/section8_update_inputs.rds: 4,738,140 posterior rows x 62 columns,
+49,352 observations; group_cols = "Site", marker_col = "marker", n_sims = 1000). Comparison on a
+WHOLE-SITE subset, because the update is group-local per Site: a random row sample would cut groups in
+half and could mask a divergence or manufacture one, whereas whole Sites are a valid smaller instance
+(the one cross-group quantity, the theta_mean ceiling fallback, is computed on the same subset by both
+versions; no Site in the input falls back). Subset: 8 Sites (Government Point, the largest, 19,942
+observations; plus the 7 smallest), 2,133,087 rows, 25,143 observations; seed 42 (set.seed before the
+call, same in both). Old = main 6c83ced, new = this branch, each alone in its own process:
+identical(old, new) TRUE on the full output (1,702,418 rows prior_updated).
+Cost on that subset: wall 3,322 s -> 334 s; CPU (user) 449 s -> 317 s; R heap max 7.91 -> 6.78 GB;
+peak footprint 7.77 -> 6.21 GB; maximum resident set 8.61 -> 8.67 GB. The old version's wall time
+was ~7x its CPU time (memory pressure), so the speed gain is mostly avoided waiting, not computation.
+HONEST LIMIT: the memory saving is modest (~1.1-1.6 GB at 2.1M rows), and the new version on the FULL
+4.74M-row input still exceeded a 12 GB tree cap within ~100 s (aborted at 13.0 GB). Another consumer
+in this function, not touched here, dominates at full scale; it needs profiling before a further
+fix. This branch is exact and strictly cheaper, but it does not by itself make the full CalIntertidal
+input fit; the workflow's per-Site calls remain necessary.
