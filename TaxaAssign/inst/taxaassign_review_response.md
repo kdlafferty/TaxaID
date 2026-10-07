@@ -1125,3 +1125,15 @@ calls identical. eps 0.05 withholds 109 calls (18S 34, COI 75, 12S 0), all stamp
 every withheld call becomes no call; 0 move to a node that is not an ancestor of the old call. The
 proposal's estimate (277 / 29 species) used Round 1 phylum mass; Round 2's posteriors give 109 / 2.
 Peak 5.7 GB, 741 s.
+AMENDED the same day (the maintainer: "let's go with your recommendations"): a PHYLUM call that holds
+the threshold is kept; only calls FINER than phylum are withheld, and a withheld call moves to the finest
+node at phylum or coarser that holds the threshold. A finer call's own phylum holds at least the call's
+mass, so a withheld call normally becomes its leading phylum; it becomes no call (or a shared kingdom when
+rank_system has one) only when part of the called mass carries no phylum. Re-check on the 109
+observations the first version changed (the only ones the amended rule can change): the before arm matches
+the saved provisional consensus on 109 of 109; 91 calls change (18S 31, COI 60; 2 species), all stamped
+"cross_phylum": 31 become their leading phylum, 60 become no call; the 16 phylum calls the first
+version withheld now stand. Every one of the 31 new phylum calls is the GBIF parent of the old call
+(e.g. Hydrozoa -> Cnidaria, Dinophyceae -> Myzozoa, Neoporphyra -> Rhodophyta), checked by hand: the
+script's automatic ancestor check flagged 11 of them only because it reads the input rows' phylum before
+lookup_missing_taxonomy fills it inside posterior_consensus. Peak 3.95 GB, 26 s.
