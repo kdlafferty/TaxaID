@@ -418,6 +418,14 @@ detect_suppressed_candidates <- function(match_obj,
 #' \code{pwalign::pid()} PID1) to each of the candidate's references, and the
 #' best identity over references covering at least \code{min_query_coverage}
 #' of the query is used (\code{restored_score_source = "measured"}). A
+#' measured identity is then put on the observed scores' scale: the
+#' query is aligned the same way to its own best hit's reference (where
+#' \code{reference_df} holds it, up to 2,000 observations), and the median of
+#' (that identity - the observed score) is subtracted from every measured
+#' score. With fewer than 30 such observations the offset is 0 and flagged.
+#' The calibration is returned as \code{attr(result,
+#' "measured_score_calibration")} (\code{offset}, \code{n}, \code{iqr},
+#' \code{thin}). A
 #' measured score may exceed the observation's best observed score: a
 #' suppressed congener can genuinely match the query better than every hit the
 #' provider kept, since suppression does not follow identity.
@@ -832,6 +840,20 @@ restore_suppressed_candidates <- function(match_obj,
   # restored row.
   region_matched <- "trim_path" %in% names(reference_df)
   can_measure <- !is.null(sequence_col) && "sequence" %in% names(reference_df)
+  # Put measured identities on the observed scores' scale: the provider's
+  # scorer and pwalign's pid() can differ systematically for the same pair
+  # (CalIntertidal 18S: +2.25 points), and a restored row competes with
+  # observed rows in its own observation.
+  measured_cal <- if (can_measure && !no_score_path) {
+    .calibrate_measured_offset(match_obj, reference_df,
+      observation_id_col = observation_id_col, score_col = score_col,
+      accession_col = accession_col, sequence_col = sequence_col,
+      scale_100 = scale_100, min_query_coverage = min_query_coverage
+    )
+  } else {
+    NULL
+  }
+  measured_offset <- if (is.null(measured_cal)) 0 else measured_cal$offset
 
   no_score_target_species <- if (no_score_path && !is.null(candidate_species_filter)) {
     candidate_species_filter
@@ -1045,7 +1067,8 @@ restore_suppressed_candidates <- function(match_obj,
       if (!is.na(measured)) {
         score_source <- "measured"
         score_reason <- "measured_query_alignment"
-        restored_score <- if (scale_100) measured else measured / 100
+        measured_obs <- min(100, measured - measured_offset)
+        restored_score <- if (scale_100) measured_obs else measured_obs / 100
       } else {
         if (is.na(h1_score)) {
           # No observed score anywhere in this observation, so nothing to
@@ -1127,6 +1150,7 @@ restore_suppressed_candidates <- function(match_obj,
       genus_col = genus_col, species_col = species_col, rank_system = rank_system,
       score_col = score_col, sequence_col = sequence_col, scale_100 = scale_100,
       max_dist = max_dist, min_query_coverage = min_query_coverage,
+      measured_offset = measured_offset,
       region_matched = region_matched, align_cache = align_cache
     )
     if (!is.null(repl)) {
@@ -1181,6 +1205,7 @@ restore_suppressed_candidates <- function(match_obj,
     match_obj$restoration_source_accession <- NA_character_
     attr(match_obj, "regional_unreferenced") <- regional_unreferenced_df
     attr(match_obj, "restoration_skipped") <- restoration_skipped_df
+    attr(match_obj, "measured_score_calibration") <- measured_cal
     return(match_obj)
   }
 
@@ -1211,6 +1236,7 @@ restore_suppressed_candidates <- function(match_obj,
 
   attr(result, "regional_unreferenced") <- regional_unreferenced_df
   attr(result, "restoration_skipped") <- restoration_skipped_df
+  attr(result, "measured_score_calibration") <- measured_cal
   result
 }
 
@@ -1227,7 +1253,8 @@ restore_suppressed_candidates <- function(match_obj,
 .replace_dropped_hits <- function(dropped_matches, match_obj, restored_df, reference_df,
                                   observation_id_col, genus_col, species_col, rank_system,
                                   score_col, sequence_col, scale_100, max_dist,
-                                  min_query_coverage, region_matched, align_cache) {
+                                  min_query_coverage, region_matched, align_cache,
+                                  measured_offset = 0) {
   dm <- dropped_matches[!is.na(dropped_matches[[species_col]]) &
     !is.na(dropped_matches[[sequence_col]]), , drop = FALSE]
   if (nrow(dm) == 0L) return(NULL)
@@ -1254,6 +1281,7 @@ restore_suppressed_candidates <- function(match_obj,
       assign(mkey, measured, envir = align_cache)
     }
     if (is.na(measured)) next
+    measured <- min(100, measured - measured_offset)
     score <- if (scale_100) measured else measured / 100
     if (!"hypothesis_type" %in% names(tmpl)) tmpl$hypothesis_type <- "specific_candidate"
     new_row <- .build_restored_row(

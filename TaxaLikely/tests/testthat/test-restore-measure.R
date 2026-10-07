@@ -277,3 +277,51 @@ test_that("dropped_matches is validated", {
     "must be a data frame with column"
   )
 })
+
+# ---- measured-score calibration to the observed scale -------------------------
+
+.rm_calib_set <- function(n_obs, observed = 98) {
+  m <- do.call(rbind, lapply(seq_len(n_obs), function(i) .rm_match(obs_id = sprintf("o%03d", i), score = observed)))
+  m$accession <- "ACC_simplicidens" # its own best hit is in reference_df
+  m
+}
+
+test_that("measured scores are shifted onto the observed scale by the median offset", {
+  # Every query is identical to its own best hit's reference (pid 100) but
+  # the provider scored it 98: offset +2, so a measured 100 becomes 98.
+  res <- restore_suppressed_candidates(
+    .rm_calib_set(40), .rm_ref(),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence", verbose = FALSE
+  )
+  cal <- attr(res, "measured_score_calibration")
+  expect_equal(cal$offset, 2)
+  expect_equal(cal$n, 40L)
+  expect_false(cal$thin)
+  r <- res[res$is_restored, ]
+  expect_true(all(r$score_original == 98))
+  expect_true(all(r$restored_score_source == "measured"))
+})
+
+test_that("a thin calibration (fewer than 30 pairs) uses offset 0 and says so", {
+  res <- restore_suppressed_candidates(
+    .rm_calib_set(10), .rm_ref(),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence", verbose = FALSE
+  )
+  cal <- attr(res, "measured_score_calibration")
+  expect_equal(cal$offset, 0)
+  expect_equal(cal$n, 10L)
+  expect_true(cal$thin)
+  expect_true(all(res$score_original[res$is_restored] == 100))
+})
+
+test_that("the calibration offset also applies to dropped-hit replacements", {
+  m <- .rm_calib_set(40)
+  d <- .rm_dropped(obs_id = "obs_gone", species = "nigricans")
+  res <- restore_suppressed_candidates(
+    m, .rm_ref(),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    dropped_matches = d, verbose = FALSE
+  )
+  r <- res[res$observation_id == "obs_gone", ]
+  expect_equal(r$score_original, 98)
+})

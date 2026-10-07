@@ -54,6 +54,54 @@
   max(pwalign::pid(aln)[ok])
 }
 
+#' Offset between measured identity and the observed scores' scale
+#'
+#' Aligns each observation's query to its own best hit's reference (when
+#' `reference_df` holds that accession) by the measurement rule and returns
+#' the median of (measured identity - observed score), in percentage points.
+#' Observations are taken evenly spaced over the sorted ids (no RNG), at most
+#' `max_obs` of them. Fewer than `min_obs` usable pairs gives offset 0 with
+#' `thin = TRUE`: an offset estimated from a handful of pairs would move every
+#' measured score on little evidence.
+#'
+#' @return List: `offset`, `n` (pairs used), `iqr` (length-2), `thin`.
+#' @noRd
+.calibrate_measured_offset <- function(match_obj, reference_df, observation_id_col, score_col,
+                                       accession_col, sequence_col, scale_100,
+                                       min_query_coverage = 0.8, max_obs = 2000L,
+                                       min_obs = 30L) {
+  out <- list(offset = 0, n = 0L, iqr = c(NA_real_, NA_real_), thin = TRUE)
+  if (!all(c(accession_col, sequence_col, score_col) %in% names(match_obj)) ||
+    !"composite_id" %in% names(reference_df)) {
+    return(out)
+  }
+  sc <- match_obj[[score_col]]
+  ok <- !is.na(sc) & !is.na(match_obj[[sequence_col]]) &
+    as.character(match_obj[[accession_col]]) %in% as.character(reference_df$composite_id)
+  if (!any(ok)) return(out)
+  mo <- match_obj[ok, , drop = FALSE]
+  # each observation's best hit
+  mo <- mo[order(mo[[observation_id_col]], -mo[[score_col]]), , drop = FALSE]
+  mo <- mo[!duplicated(mo[[observation_id_col]]), , drop = FALSE]
+  if (nrow(mo) > max_obs) {
+    mo <- mo[unique(round(seq(1, nrow(mo), length.out = max_obs))), , drop = FALSE]
+  }
+  ref_seq <- stats::setNames(reference_df$sequence, as.character(reference_df$composite_id))
+  meas <- vapply(seq_len(nrow(mo)), function(i) {
+    .measure_query_identity(mo[[sequence_col]][i], ref_seq[[as.character(mo[[accession_col]][i])]],
+      min_query_coverage = min_query_coverage
+    )
+  }, numeric(1))
+  obs <- if (isTRUE(scale_100)) mo[[score_col]] else mo[[score_col]] * 100
+  d <- (meas - obs)[!is.na(meas)]
+  out$n <- length(d)
+  if (out$n < min_obs) return(out)
+  out$offset <- stats::median(d)
+  out$iqr <- unname(stats::quantile(d, c(0.25, 0.75)))
+  out$thin <- FALSE
+  out
+}
+
 #' Impute a restored congener's score from the anchor and the reference hierarchy
 #'
 #' The fallback when the query cannot be measured against the candidate:

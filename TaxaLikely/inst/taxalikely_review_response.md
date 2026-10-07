@@ -1514,3 +1514,41 @@ Tests: in `test-restore-measure.R`.
   references.
 - A species the observation already holds is not duplicated.
 - `dropped_matches` is validated.
+
+### 2026-10-06: measured restored scores are calibrated to the observed scale
+
+Package review asked for the measured `pid()` to be validated against the scale it is used on,
+rather than assumed equal to it. That check was run on CalIntertidal: 2,400 stratified
+`seq_matrix` pairs and 2,000 kept hits per marker.
+
+**Against the observed scale (decision-relevant).** A restored row competes with the provider's
+observed rows in its observation. So the comparison is `pid(query, its kept hit's own reference)`
+against JV's observed score for that same pair:
+
+| Marker | median | IQR |
+|---|---|---|
+| 12S | +0.02 | [+0.01, +0.04] |
+| 18S | +2.25 | [+2.18, +2.33] |
+
+The 18S value is a systematic offset. Uncorrected, measured 18S restored scores would sit ~2.2
+points too high.
+
+**Against `seq_matrix` `p_match` (DECIPHER, `includeTerminalGaps = FALSE`).**
+- At or above 0.90, `pid()` agrees: median 0.00, and `|d| > 1` in 0.2-18% of pairs (12S) or
+  2.8-39% (18S) by bin.
+- Below 0.90 local `pid()` is HIGHER: 12S median +12.1 below 0.80; 18S +18.4 below 0.80 and
+  +11.2 for 0.80-0.90. Local alignment drops divergent ends.
+- This is the same BLAST-vs-DECIPHER gap that observed (BLAST, local) scores already carry against
+  training, handled by `calibrate_query_noise()`. It is not new to restored rows. That is why the
+  observed scale, not `p_match`, is the target.
+
+**Fix.** `.calibrate_measured_offset()` estimates the offset per call.
+- It aligns each observation's query to its own best hit's reference, wherever `reference_df`
+  holds that accession: evenly spaced over sorted ids, at most 2,000, no RNG.
+- It subtracts the median (measured - observed) from every measured score, including dropped-hit
+  replacements, capped at 100.
+- With fewer than 30 pairs the offset is 0 and `thin = TRUE`.
+- It is reported as `attr(, "measured_score_calibration")`.
+
+Tests: the offset is applied (a pid of 100 against an observed 98 gives 98), a thin estimate falls
+back to 0 and is flagged, and the offset applies to replacements.

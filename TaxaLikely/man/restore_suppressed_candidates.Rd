@@ -314,6 +314,14 @@ aligned (\code{pwalign::pairwiseAlignment(type = "local")}, identity as
 \code{pwalign::pid()} PID1) to each of the candidate's references, and the
 best identity over references covering at least \code{min_query_coverage}
 of the query is used (\code{restored_score_source = "measured"}). A
+measured identity is then put on the observed scores' scale: the
+query is aligned the same way to its own best hit's reference (where
+\code{reference_df} holds it, up to 2,000 observations), and the median of
+(that identity - the observed score) is subtracted from every measured
+score. With fewer than 30 such observations the offset is 0 and flagged.
+The calibration is returned as \code{attr(result,
+"measured_score_calibration")} (\code{offset}, \code{n}, \code{iqr},
+\code{thin}). A
 measured score may exceed the observation's best observed score: a
 suppressed congener can genuinely match the query better than every hit the
 provider kept, since suppression does not follow identity.
