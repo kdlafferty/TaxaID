@@ -1698,3 +1698,23 @@ Two readings of the banded table, so it is not misread:
   measured at their identity.
 
 The README software inventory is updated to 35 test files (`test-restore-measure.R` is new).
+
+**Out-of-range rows take the NEAREST BAND'S OFFSET; they are not left uncorrected.** For 18S that is
+defensible because its measured bands are flat (+2.23 to +2.28), so stepping past 97.9 with +2.23
+cannot be far wrong. The same reasoning does NOT transfer to a marker whose bands slope. COI's bands
+move by more than four points across neighbours, and nearest-band extrapolation there would carry an
+offset into identities where it was never measured. COI has no out-of-range rows tonight, but the
+code path is live. On a sloping marker a `restored_offset_out_of_range` row is something to check,
+not to ignore.
+
+**How this design was reached: by measurement at each step, not by reasoning about it.**
+- The before/after requirement showed the first proposed fallback, `anchor - (100 - ref_ref)`, was
+  worse than the defect on the defect's own rows.
+- Measuring query-vs-candidate directly showed a measured score can legitimately exceed the anchor
+  (58% of 18S pairs).
+- Comparing pid() with the observed scores showed the 18S offset of +2.25.
+- Banding on random kept hits showed the COI slope.
+- The 2% top-change count sized the step-versus-constant choice.
+
+The final shape — measured first, a capped imputation fallback, offsets learned in bands, and
+separate flags — follows from those numbers.
