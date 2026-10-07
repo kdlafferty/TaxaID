@@ -1273,11 +1273,13 @@ test_that("restore_suppressed_candidates: Purpose A (competitive_score) admits a
   seq_matrix <- data.frame(
     id_x = c("ACC_simplicidens", "ACC_simplicidens"),
     id_y = c("ACC_nigricans", "ACC_laevifrons"),
-    p_match = c(0.945, 0.80),
+    p_match = c(0.995, 0.80),
     coverage = 1.0,
     stringsAsFactors = FALSE
   )
-  m <- make_match(score = 95)
+  # Imputed scores are anchor - (100 - ref_ref): nigricans 99.5 - 0.5 = 99.0,
+  # close to the anchor; laevifrons 99.5 - 20 = 79.5.
+  m <- make_match(score = 99.5)
 
   result <- restore_suppressed_candidates(
     m, ref,
@@ -1298,10 +1300,10 @@ test_that("restore_suppressed_candidates: Purpose A is never gated by candidate_
   # expectation).
   ref <- make_ref(species = c("simplicidens", "nigricans"))
   seq_matrix <- data.frame(
-    id_x = "ACC_simplicidens", id_y = "ACC_nigricans", p_match = 0.945, coverage = 1.0,
+    id_x = "ACC_simplicidens", id_y = "ACC_nigricans", p_match = 0.995, coverage = 1.0,
     stringsAsFactors = FALSE
   )
-  m <- make_match(score = 95)
+  m <- make_match(score = 99.5)
 
   result <- restore_suppressed_candidates(
     m, ref,

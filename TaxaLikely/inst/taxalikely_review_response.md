@@ -1417,3 +1417,72 @@ validated; a local socket that accepts and never answers is aborted by curl ("to
 timeout) in seconds under sub-second-scale settings, for httr and httr2, and `.retry_fetch()`
 retries it. All three fail on the previous code. Test mocks of rentrez functions now accept
 `...`, as the real functions do (5 mocks in two files).
+
+### 2026-10-06: restored congeners are scored by measuring the query, not by reference-to-reference identity
+
+`restore_suppressed_candidates()` scored a restored congener from `.resolve_hierarchy_score()`, and
+every level there is REFERENCE-vs-REFERENCE identity. Levels 1-3 read `seq_matrix` `p_match`
+between the anchor's and the candidate's references. Level 4's `pid` comes from
+`regional_overlap.R:286`, `pairwiseAlignment(cand_seq, anchor_seq, type = "local")`: the candidate's
+reference aligned to the ANCHOR's reference. The query is aligned only to the anchor (:241), and
+only to locate a position range. No level ever aligned the query to the candidate, although the
+earlier docs implied Level 4 did. Used as the query's score, ref-ref identity is a fair proxy only
+when the query matches its anchor almost exactly. On CalIntertidal it put restored rows up to 31
+points above every real hit. Such a row becomes the observation's best score, which moves the gap
+feature and the H2/H3 anchor for every candidate. On COI it changed the top-likelihood hypothesis
+in 227 of 300 affected observations.
+
+**What changed.**
+- **Measured first.** With `sequence_col`, the query is aligned (`pwalign` local, `pid()` PID1) to
+  each of the candidate's references.
+  - The score is the best identity over references covering `>= min_query_coverage` (default 0.8)
+    of the query.
+  - Its source is recorded as `restored_score_source = "measured"`.
+- **Imputed fallback.** When no reference covers the query enough, or there is no query sequence,
+  the score is `anchor - (100 - ref_ref)` (`"imputed"`, with the reason in `restored_reason`).
+  - A ceiling (imputed never exceeds the anchor) is asserted at that site ONLY.
+  - A measured score may exceed the anchor. On CalIntertidal 18S, 58% of measured restored pairs
+    did, because suppression does not follow identity. A ceiling on measured scores would impose a
+    falsehood, not enforce a truth.
+- **Below the training floor** (`1 - max_dist`): the row is kept and flagged
+  (`restored_below_floor`), not dropped.
+- **No observed anchor score and no measurement:** the candidate is not restored and is recorded
+  in `attr(, "restoration_skipped")` as `restored_no_anchor_score`.
+  - No occurrences in today's data. The branch is retained because that is a property of the data,
+    not of the function.
+- **Region-matched `reference_df`** (`trim_path` present): only placed references measure or
+  justify a row. A candidate with none is recorded in `regional_unreferenced` with basis
+  `"no_placed_region_reference"`. This affects 0 restored rows on CalIntertidal.
+
+**Measurement behind the decision** (CalIntertidal, scored rows tonight; MAE is against the measured
+query-vs-candidate identity at >= 80% coverage):
+
+| Marker | Pairs measurable | Measured > best hit | Today's imputation MAE (all / inflated) | `anchor - (100 - ref_ref)` MAE |
+|---|---|---|---|---|
+| 12S | 96% | 2.7% | 1.15-1.90 | 1.24-1.48 |
+| 18S | 78% | 57.8% | 1.27 / 3.56 | 2.88-4.59 |
+| COI | 81% | 7.2% | 0.94 / 5.08 | 2.64-7.02 |
+
+The proposed formula was worse than the defect on the defect's own rows (COI inflated: 7.02 against
+5.08). So it is kept only as the fallback the maintainer approved. `min(today, anchor)` scored MAE
+0.94-1.99 and is with the maintainer as a one-line swap inside `.impute_restored_score()`.
+Alignment cost: 22.7 / 15.2 / 3.9 s per 1,000 alignments (12S / 18S / COI).
+
+**Open, requested by package review:**
+- The measured `pid()` is not yet validated against `seq_matrix`'s own `p_match` scale
+  (`DECIPHER::DistanceMatrix(includeTerminalGaps = FALSE)`). The offset on existing pairs is to be
+  measured before merge.
+- The fallback choice should be compared on the low-coverage rows the fallback actually governs.
+
+Tests: `test-restore-measure.R` covers the following.
+- A measured congener scoring above the anchor is restored untouched.
+- Measurement takes precedence over the hierarchy.
+- An imputed score is `anchor - (100 - ref_ref)`, and the ceiling assertion fires on a constructed
+  violation.
+- Low query coverage falls back to imputation.
+- A below-floor row is kept and flagged.
+- An all-NA observation is skipped with a reason.
+- The placed-reference guard works.
+
+Two fixtures in `test-score-collapse.R` moved their anchor from 95 to 99.5, so that the imputed
+congener still sits beside the anchor under the new formula.

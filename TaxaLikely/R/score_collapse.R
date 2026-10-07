@@ -390,7 +390,51 @@ detect_suppressed_candidates <- function(match_obj,
 #'   against a large or absent filter (or a permissive ratio) still forcing
 #'   an unbounded number of expensive alignments for one anchor. See
 #'   \code{@section Level 4 cost control}.
+#' @param min_query_coverage Numeric in (0, 1] (default \code{0.8}). When
+#'   \code{sequence_col} supplies the query sequence, a restored candidate is
+#'   scored by aligning the query directly to the candidate's own references
+#'   (\code{@section Measured restored scores}); a reference counts only if
+#'   its local alignment covers at least this share of the query -- the same
+#'   share BLAST's query-coverage filter asks of the match data's own scores.
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
+#'
+#' @section Measured restored scores:
+#' A restored row's score is the QUERY's identity to the candidate whenever
+#' that can be measured: with \code{sequence_col} supplied, the query is
+#' aligned (\code{pwalign::pairwiseAlignment(type = "local")}, identity as
+#' \code{pwalign::pid()} PID1) to each of the candidate's references, and the
+#' best identity over references covering at least \code{min_query_coverage}
+#' of the query is used (\code{restored_score_source = "measured"}). A
+#' measured score may exceed the observation's best observed score: a
+#' suppressed congener can genuinely match the query better than every hit the
+#' provider kept, since suppression does not follow identity.
+#'
+#' Only when no reference clears the coverage rule (or no query sequence is
+#' available) does the score fall back to the hierarchy below, as an
+#' IMPUTATION (\code{restored_score_source = "imputed"}):
+#' \code{anchor - (top - ref_ref)}, where \code{ref_ref} is the hierarchy's
+#' identity and \code{top} is 100 (or 1). Every hierarchy level is
+#' REFERENCE-vs-REFERENCE identity -- including Level 4, whose \code{pid} is
+#' the candidate's reference aligned to the ANCHOR's reference; the query only
+#' locates the anchor range -- so used directly as the query's score it is a
+#' fair proxy only when the query matches its anchor almost exactly. An
+#' imputed score is asserted never to exceed the anchor; measured scores are
+#' not subject to that ceiling.
+#'
+#' A restored score below the training floor \code{1 - max_dist} (scores the
+#' likelihood model never trained on) is kept and flagged
+#' (\code{restored_below_floor = TRUE}). An observation whose scores are all
+#' \code{NA} has no anchor score to impute from: a candidate that cannot be
+#' measured there is not restored and is recorded in
+#' \code{attr(result, "restoration_skipped")} with reason
+#' \code{"restored_no_anchor_score"}.
+#'
+#' When \code{reference_df} carries a \code{trim_path} column
+#' ([match_reference_region()] output), only references placed on the query
+#' region are used, for measurement and for restoration alike; a candidate
+#' with no placed reference is not restored and is recorded in
+#' \code{attr(result, "regional_unreferenced")} with basis
+#' \code{"no_placed_region_reference"}.
 #'
 #' @section Score-sourcing hierarchy:
 #' Provides a real, evidence-grounded score for a restored candidate, rather
@@ -526,7 +570,15 @@ detect_suppressed_candidates <- function(match_obj,
 #'   Ready to \code{dplyr::bind_rows()} onto an \code{unreferenced_df} before
 #'   calling [expand_unreferenced_hypotheses()], whose \code{observation_id}-
 #'   scoped rows accept this shape directly (an extra \code{basis} column is
-#'   additive and does not disturb that consumer).
+#'   additive and does not disturb that consumer). Restored rows also carry
+#'   \code{restored_score_source} (\code{"measured"} or \code{"imputed"}),
+#'   \code{restored_reason} (why that source: \code{"measured_query_alignment"},
+#'   \code{"imputed_no_query_sequence"} or
+#'   \code{"imputed_query_coverage_below_min"}) and
+#'   \code{restored_below_floor}; all three are \code{NA} on original rows.
+#'   \code{attr(result, "restoration_skipped")} is \code{NULL} or a data
+#'   frame (\code{observation_id}, \code{species}, \code{reason}) of
+#'   candidates that could not be scored at all.
 #'
 #' @note For a fully runnable, non-`\dontrun{}` demonstration, see
 #'   `inst/review_function_inputs.R` Section 9 in the package source.
@@ -571,6 +623,7 @@ restore_suppressed_candidates <- function(match_obj,
                                           theta_col = "theta_mean",
                                           budget_ratio_cap = 19,
                                           max_level4_per_anchor = 10L,
+                                          min_query_coverage = 0.8,
                                           verbose = TRUE) {
   # ---- validate ---------------------------------------------------------------
   if (!is.data.frame(match_obj)) {
@@ -609,6 +662,13 @@ restore_suppressed_candidates <- function(match_obj,
         call. = FALSE
       )
     }
+  }
+
+  if (!is.numeric(min_query_coverage) || length(min_query_coverage) != 1L ||
+    is.na(min_query_coverage) || min_query_coverage <= 0 || min_query_coverage > 1) {
+    stop("restore_suppressed_candidates: 'min_query_coverage' must be a single number in (0, 1].",
+      call. = FALSE
+    )
   }
 
   max_per_obs <- as.integer(max_per_obs)
@@ -732,6 +792,15 @@ restore_suppressed_candidates <- function(match_obj,
   # shape expand_unreferenced_hypotheses()'s observation_id-scoped
   # unreferenced_df expects, with an additive `basis` column.
   regional_unreferenced_list <- list()
+  # Candidates that could not be scored at all (no measurement, and no anchor
+  # score to impute from). Kept apart from regional_unreferenced: these are not
+  # claims about the reference, so they must not become named hypotheses.
+  restoration_skipped_list <- list()
+  # A region-matched reference_df (match_reference_region() output) says which
+  # references sit on the query region; only those may score or justify a
+  # restored row.
+  region_matched <- "trim_path" %in% names(reference_df)
+  can_measure <- !is.null(sequence_col) && "sequence" %in% names(reference_df)
 
   no_score_target_species <- if (no_score_path && !is.null(candidate_species_filter)) {
     candidate_species_filter
@@ -830,6 +899,13 @@ restore_suppressed_candidates <- function(match_obj,
     }
     anchor_subject_range <- NULL
     query_sequence <- NULL
+    # The query sequence for direct measurement -- independent of
+    # check_regional_overlap, which only governs Level 4.
+    query_seq_measure <- if (can_measure && sequence_col %in% names(anchor_row)) {
+      anchor_row[[sequence_col]]
+    } else {
+      NA_character_
+    }
     if (check_regional_overlap) {
       anchor_subject_range <- if (all(c("subject_start", "subject_end") %in% names(anchor_row))) {
         rng <- c(anchor_row[["subject_start"]], anchor_row[["subject_end"]])
@@ -848,6 +924,32 @@ restore_suppressed_candidates <- function(match_obj,
 
     rows_for_obs <- list()
     for (sp in other_species) {
+      cand_rows <- ref_genus_rows[!is.na(ref_genus_rows[[species_col]]) &
+        ref_genus_rows[[species_col]] == sp, , drop = FALSE]
+      if (region_matched) {
+        cand_rows <- cand_rows[cand_rows$trim_path %in% .REGION_PLACED_PATHS, , drop = FALSE]
+        if (nrow(cand_rows) == 0L) {
+          regional_unreferenced_list[[length(regional_unreferenced_list) + 1L]] <-
+            .regional_unreferenced_row(obs_id, sp, h1_genus, ref_genus_rows, species_col,
+              basis = "no_placed_region_reference"
+            )
+          next
+        }
+      }
+
+      # ---- measured first: the query against the candidate's own references.
+      measured <- NA_real_
+      if (can_measure && !is.na(query_seq_measure)) {
+        mkey <- paste0("measure::", sp, "::", query_seq_measure)
+        measured <- align_cache[[mkey]]
+        if (is.null(measured)) {
+          measured <- .measure_query_identity(query_seq_measure, cand_rows$sequence,
+            min_query_coverage = min_query_coverage
+          )
+          assign(mkey, measured, envir = align_cache)
+        }
+      }
+
       res <- .resolve_hierarchy_score(
         anchor_accession = anchor_accession, anchor_species = anchor_species,
         candidate_species = sp, genus = h1_genus, ref_genus_rows = ref_genus_rows,
@@ -857,7 +959,7 @@ restore_suppressed_candidates <- function(match_obj,
 
       basis_note <- NULL # set only when this candidate ends up unresolved/rejected
 
-      if (is.na(res$level)) {
+      if (is.na(res$level) && is.na(measured)) {
         # Levels 1-3 didn't resolve this candidate (or Level 0 precheck
         # failed outright) -- try Level 4 when enabled, gated by (a)
         # candidate_species_filter/the compute-budget ratio (Option A)
@@ -898,22 +1000,42 @@ restore_suppressed_candidates <- function(match_obj,
         }
       }
 
-      if (is.na(res$level)) {
+      if (is.na(res$level) && is.na(measured)) {
         if (!is.null(basis_note)) {
-          has_family_col <- "family" %in% names(ref_genus_rows)
-          fam_val <- if (has_family_col) {
-            fv <- ref_genus_rows$family[ref_genus_rows[[species_col]] == sp]
-            if (length(fv) == 0L || is.na(fv[1L])) NA_character_ else as.character(fv[1L])
-          } else {
-            NA_character_
-          }
-          regional_unreferenced_list[[length(regional_unreferenced_list) + 1L]] <- data.frame(
-            observation_id = obs_id, species = sp, genus = h1_genus, family = fam_val,
-            basis = basis_note, stringsAsFactors = FALSE
-          )
+          regional_unreferenced_list[[length(regional_unreferenced_list) + 1L]] <-
+            .regional_unreferenced_row(obs_id, sp, h1_genus, ref_genus_rows, species_col,
+              basis = basis_note
+            )
         }
         next
       }
+
+      # ---- the restored score, on match_obj's own scale.
+      if (!is.na(measured)) {
+        score_source <- "measured"
+        score_reason <- "measured_query_alignment"
+        restored_score <- if (scale_100) measured else measured / 100
+      } else {
+        if (is.na(h1_score)) {
+          # No observed score anywhere in this observation, so nothing to
+          # impute from. No occurrences today; retained because that is a
+          # property of the data, not of the function.
+          restoration_skipped_list[[length(restoration_skipped_list) + 1L]] <- data.frame(
+            observation_id = obs_id, species = sp, reason = "restored_no_anchor_score",
+            stringsAsFactors = FALSE
+          )
+          next
+        }
+        score_source <- "imputed"
+        score_reason <- if (can_measure && !is.na(query_seq_measure)) {
+          "imputed_query_coverage_below_min"
+        } else {
+          "imputed_no_query_sequence"
+        }
+        ref_ref <- if (scale_100) res$p_match * 100 else res$p_match
+        restored_score <- .impute_restored_score(h1_score, ref_ref, scale_100)
+      }
+      restored_p <- if (scale_100) restored_score / 100 else restored_score
 
       # ---- Purpose A: tight, score-only outlier test (same mechanism as
       # evaluate_likelihoods()'s own H1 outlier filter) -- statistically
@@ -921,7 +1043,7 @@ restore_suppressed_candidates <- function(match_obj,
       # by candidate_species_filter.
       purpose_a_pass <- FALSE
       if (!is.na(anchor_transform) && !is.na(sigma_to_use) && sigma_to_use > 0) {
-        cand_transform <- .transform_p(res$p_match, score_transform)
+        cand_transform <- .transform_p(restored_p, score_transform)
         d_sq <- (cand_transform - anchor_transform)^2 / sigma_to_use
         p_val <- stats::pchisq(d_sq, df = 1L, lower.tail = FALSE)
         purpose_a_pass <- !is.na(p_val) && p_val >= alpha
@@ -929,7 +1051,7 @@ restore_suppressed_candidates <- function(match_obj,
 
       # ---- Purpose B: wide, plausibility-gated max_dist sanity floor.
       in_filter <- is.null(candidate_species_filter) || sp %in% candidate_species_filter
-      clears_dist <- !is.na(res$p_match) && res$p_match >= (1 - max_dist)
+      clears_dist <- !is.na(restored_p) && restored_p >= (1 - max_dist)
       purpose_b_pass <- in_filter && clears_dist
 
       if (!purpose_a_pass && !purpose_b_pass) next
@@ -942,13 +1064,16 @@ restore_suppressed_candidates <- function(match_obj,
         "plausible_prior"
       }
 
-      imputed_score <- if (scale_100) res$p_match * 100 else res$p_match
-
-      rows_for_obs[[length(rows_for_obs) + 1L]] <- .build_restored_row(
+      new_row <- .build_restored_row(
         anchor_row, ref_genus_rows, sp, rank_system, species_col,
-        score_col = score_col, imputed_score = imputed_score, restoration_basis = basis,
+        score_col = score_col, imputed_score = restored_score, restoration_basis = basis,
         restoration_level = res$level, restoration_source_accession = res$source_accession
       )
+      new_row[["restored_score_source"]] <- score_source
+      new_row[["restored_reason"]] <- score_reason
+      # Kept, but flagged: the likelihood model never trained below this floor.
+      new_row[["restored_below_floor"]] <- restored_p < (1 - max_dist)
+      rows_for_obs[[length(rows_for_obs) + 1L]] <- new_row
     }
 
     if (length(rows_for_obs) == 0L) next
@@ -962,6 +1087,11 @@ restore_suppressed_candidates <- function(match_obj,
   }
 
   restored_df <- dplyr::bind_rows(restored_list)
+  restoration_skipped_df <- if (length(restoration_skipped_list) > 0L) {
+    dplyr::bind_rows(restoration_skipped_list)
+  } else {
+    NULL
+  }
 
   regional_unreferenced_df <- if (length(regional_unreferenced_list) > 0L) {
     dplyr::bind_rows(regional_unreferenced_list)
@@ -992,6 +1122,7 @@ restore_suppressed_candidates <- function(match_obj,
     match_obj$restoration_level <- NA_integer_
     match_obj$restoration_source_accession <- NA_character_
     attr(match_obj, "regional_unreferenced") <- regional_unreferenced_df
+    attr(match_obj, "restoration_skipped") <- restoration_skipped_df
     return(match_obj)
   }
 
@@ -1005,6 +1136,10 @@ restore_suppressed_candidates <- function(match_obj,
   if (!"restoration_source_accession" %in% names(match_obj)) {
     match_obj$restoration_source_accession <- NA_character_
   }
+  for (rc in c("restored_score_source", "restored_reason")) {
+    if (!rc %in% names(match_obj)) match_obj[[rc]] <- NA_character_
+  }
+  if (!"restored_below_floor" %in% names(match_obj)) match_obj$restored_below_floor <- NA
   restored_df$is_restored <- TRUE
 
   result <- dplyr::bind_rows(match_obj, restored_df)
@@ -1017,7 +1152,24 @@ restore_suppressed_candidates <- function(match_obj,
   }
 
   attr(result, "regional_unreferenced") <- regional_unreferenced_df
+  attr(result, "restoration_skipped") <- restoration_skipped_df
   result
+}
+
+#' One attr(result, "regional_unreferenced") row
+#'
+#' @noRd
+.regional_unreferenced_row <- function(obs_id, sp, genus, ref_genus_rows, species_col, basis) {
+  fam_val <- if ("family" %in% names(ref_genus_rows)) {
+    fv <- ref_genus_rows$family[ref_genus_rows[[species_col]] == sp]
+    if (length(fv) == 0L || is.na(fv[1L])) NA_character_ else as.character(fv[1L])
+  } else {
+    NA_character_
+  }
+  data.frame(
+    observation_id = obs_id, species = sp, genus = genus, family = fam_val,
+    basis = basis, stringsAsFactors = FALSE
+  )
 }
 
 #' Build one restored candidate row (shared by the scored and no-score paths)

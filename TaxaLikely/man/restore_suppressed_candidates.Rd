@@ -28,6 +28,7 @@ restore_suppressed_candidates(
   theta_col = "theta_mean",
   budget_ratio_cap = 19,
   max_level4_per_anchor = 10L,
+  min_query_coverage = 0.8,
   verbose = TRUE
 )
 }
@@ -177,6 +178,13 @@ against a large or absent filter (or a permissive ratio) still forcing
 an unbounded number of expensive alignments for one anchor. See
 \code{@section Level 4 cost control}.}
 
+\item{min_query_coverage}{Numeric in (0, 1] (default \code{0.8}). When
+\code{sequence_col} supplies the query sequence, a restored candidate is
+scored by aligning the query directly to the candidate's own references
+(\code{@section Measured restored scores}); a reference counts only if
+its local alignment covers at least this share of the query -- the same
+share BLAST's query-coverage filter asks of the match data's own scores.}
+
 \item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
 }
 \value{
@@ -211,7 +219,15 @@ also came back empty, or was skipped by the compute-budget mechanism).
 Ready to \code{dplyr::bind_rows()} onto an \code{unreferenced_df} before
 calling \code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}, whose \code{observation_id}-
 scoped rows accept this shape directly (an extra \code{basis} column is
-additive and does not disturb that consumer).
+additive and does not disturb that consumer). Restored rows also carry
+\code{restored_score_source} (\code{"measured"} or \code{"imputed"}),
+\code{restored_reason} (why that source: \code{"measured_query_alignment"},
+\code{"imputed_no_query_sequence"} or
+\code{"imputed_query_coverage_below_min"}) and
+\code{restored_below_floor}; all three are \code{NA} on original rows.
+\code{attr(result, "restoration_skipped")} is \code{NULL} or a data
+frame (\code{observation_id}, \code{species}, \code{reason}) of
+candidates that could not be scored at all.
 }
 \description{
 This function's job is not "restore
@@ -275,6 +291,46 @@ way (no purpose distinction applies without real score evidence).
 For a fully runnable, non-\verb{\dontrun{}} demonstration, see
 \code{inst/review_function_inputs.R} Section 9 in the package source.
 }
+\section{Measured restored scores}{
+
+A restored row's score is the QUERY's identity to the candidate whenever
+that can be measured: with \code{sequence_col} supplied, the query is
+aligned (\code{pwalign::pairwiseAlignment(type = "local")}, identity as
+\code{pwalign::pid()} PID1) to each of the candidate's references, and the
+best identity over references covering at least \code{min_query_coverage}
+of the query is used (\code{restored_score_source = "measured"}). A
+measured score may exceed the observation's best observed score: a
+suppressed congener can genuinely match the query better than every hit the
+provider kept, since suppression does not follow identity.
+
+Only when no reference clears the coverage rule (or no query sequence is
+available) does the score fall back to the hierarchy below, as an
+IMPUTATION (\code{restored_score_source = "imputed"}):
+\code{anchor - (top - ref_ref)}, where \code{ref_ref} is the hierarchy's
+identity and \code{top} is 100 (or 1). Every hierarchy level is
+REFERENCE-vs-REFERENCE identity -- including Level 4, whose \code{pid} is
+the candidate's reference aligned to the ANCHOR's reference; the query only
+locates the anchor range -- so used directly as the query's score it is a
+fair proxy only when the query matches its anchor almost exactly. An
+imputed score is asserted never to exceed the anchor; measured scores are
+not subject to that ceiling.
+
+A restored score below the training floor \code{1 - max_dist} (scores the
+likelihood model never trained on) is kept and flagged
+(\code{restored_below_floor = TRUE}). An observation whose scores are all
+\code{NA} has no anchor score to impute from: a candidate that cannot be
+measured there is not restored and is recorded in
+\code{attr(result, "restoration_skipped")} with reason
+\code{"restored_no_anchor_score"}.
+
+When \code{reference_df} carries a \code{trim_path} column
+(\code{\link[=match_reference_region]{match_reference_region()}} output), only references placed on the query
+region are used, for measurement and for restoration alike; a candidate
+with no placed reference is not restored and is recorded in
+\code{attr(result, "regional_unreferenced")} with basis
+\code{"no_placed_region_reference"}.
+}
+
 \section{Score-sourcing hierarchy}{
 
 Provides a real, evidence-grounded score for a restored candidate, rather
