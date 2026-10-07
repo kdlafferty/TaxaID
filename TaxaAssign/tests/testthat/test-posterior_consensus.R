@@ -1717,8 +1717,13 @@ test_that("lineage_conflict reports a name the rows use with two lineages", {
   out <- .lc(h)
   expect_true("lineage_conflict" %in% names(out))
   expect_equal(out$lineage_conflict, "genus:Porella")
-  # reported only: the call itself is unchanged by the diagnostic
-  expect_equal(out$consensus_taxon, "Porella")
+  # reported only: the call itself is unchanged by the diagnostic (with the
+  # cross-phylum rule off; by default that rule withholds this pooled call,
+  # whose two rows sit in different phyla)
+  expect_equal(.lc(h, cross_phylum_eps = 0)$consensus_taxon, "Porella")
+  expect_equal(.lc(h, cross_phylum_eps = 0)$lineage_conflict, "genus:Porella")
+  expect_true(is.na(out$consensus_taxon))
+  expect_equal(out$consensus_limit, "cross_phylum")
   ok <- transform(h, phylum = "Bryozoa", class = "Gymnolaemata", order = "Cheilostomatida",
     family = "Bryocryptellidae")
   expect_true(is.na(.lc(ok)$lineage_conflict))
@@ -1802,4 +1807,90 @@ test_that("an NA observation_id still runs (original chunking path)", {
     taxon_name_rank = "species", hypothesis_type = "specific_candidate", family = "F", genus = c("A", "B", "C"),
     posterior_point_est = c(0.95, 0.05, 1), stringsAsFactors = FALSE)
   expect_no_error(suppressWarnings(suppressMessages(posterior_consensus(d, rank_system = c("family", "genus", "species")))))
+})
+
+# --- cross_phylum_eps -------------------------------------------------------
+.xp_df <- function(post, phylum = c("Ochrophyta", "Oomycota"), kingdom = c("Chromista", "Chromista")) {
+  data.frame(observation_id = "E1", taxon_name = c("Macrocystis pyrifera", "Phytophthora polonica"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate",
+    kingdom = kingdom, phylum = phylum, class = c("Phaeophyceae", "Oomycetes"),
+    order = c("Laminariales", "Peronosporales"), family = c("Laminariaceae", "Peronosporaceae"),
+    genus = c("Macrocystis", "Phytophthora"), posterior_point_est = post, stringsAsFactors = FALSE)
+}
+.xp <- function(df, rs = c("phylum", "class", "order", "family", "genus", "species"), ...)
+  suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs,
+    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0, ...)))
+
+test_that("cross_phylum_eps withholds a call when the runner-up phylum holds eps or more", {
+  df <- .xp_df(c(0.93, 0.07))
+  # without the rule: a species call at 0.93 against another phylum's 0.07
+  off <- .xp(df, cross_phylum_eps = 0)
+  expect_equal(off$consensus_taxon, "Macrocystis pyrifera")
+  expect_true(is.na(off$consensus_limit))
+  on <- .xp(df) # default 0.05
+  expect_true(is.na(on$consensus_taxon))
+  expect_true(is.na(on$consensus_rank))
+  expect_equal(on$consensus_reason, "no_credible_node")
+  expect_equal(on$consensus_limit, "cross_phylum")
+  # below the tolerance the call stands (and the limit is not stamped)
+  below <- .xp(.xp_df(c(0.96, 0.04)))
+  expect_equal(below$consensus_taxon, "Macrocystis pyrifera")
+  expect_true(is.na(below$consensus_limit))
+  # eps is the tolerance: 0.10 lets the 0.07 runner-up through
+  expect_equal(.xp(df, cross_phylum_eps = 0.10)$consensus_taxon, "Macrocystis pyrifera")
+})
+
+test_that("cross_phylum_eps moves the call to a shared clade above phylum when rank_system has one", {
+  out <- .xp(.xp_df(c(0.93, 0.07)), rs = c("kingdom", "phylum", "class", "order", "family", "genus", "species"))
+  expect_equal(out$consensus_taxon, "Chromista")
+  expect_equal(out$consensus_rank, "kingdom")
+  expect_equal(out$consensus_limit, "cross_phylum")
+  # (a withheld call's own kingdom holds at least the call's mass, so with a
+  # kingdom rank a coarser call always exists; "no call" is the case without one,
+  # tested above)
+})
+
+test_that("cross_phylum_eps leaves single-phylum observations and coarser-than-phylum calls alone", {
+  one <- .xp_df(c(0.93, 0.07), phylum = c("Ochrophyta", "Ochrophyta"))
+  nop <- function(x) { attr(x, "report_params") <- NULL; x }
+  expect_identical(nop(.xp(one)), nop(.xp(one, cross_phylum_eps = 0)))
+  # already above phylum (kingdom call): nothing to withhold
+  k <- .xp_df(c(0.5, 0.5))
+  rs7 <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+  expect_equal(.xp(k, rs = rs7)$consensus_rank, "kingdom")
+  expect_identical(nop(.xp(k, rs = rs7)), nop(.xp(k, rs = rs7, cross_phylum_eps = 0)))
+})
+
+test_that("cross_phylum_eps is applied in the robust-prior path too", {
+  df <- .xp_df(c(0.93, 0.07))
+  df$score_likelihood <- c(0.93, 0.07); df$prior_mean <- 0.5
+  df$prior_alpha <- 5e4; df$prior_beta <- 5e4; df$prior_site_records <- 1e5
+  r <- function(e) suppressWarnings(suppressMessages(posterior_consensus(df,
+    rank_system = c("phylum", "class", "order", "family", "genus", "species"),
+    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 1, cross_phylum_eps = e)))
+  expect_equal(r(0)$consensus_taxon, "Macrocystis pyrifera")
+  expect_equal(r(0.05)$consensus_limit, "cross_phylum")
+  expect_true(is.na(r(0.05)$consensus_taxon))
+  expect_true(is.na(r(0.05)$robust_lower_posterior))
+})
+
+test_that("the likelihood-only pass uses the same cross-phylum rule", {
+  df <- .xp_df(c(0.93, 0.07))
+  df$score_likelihood <- c(0.93, 0.07); df$prior_mean <- 0.5
+  run <- function(e) suppressWarnings(suppressMessages(posterior_consensus(df,
+    rank_system = c("phylum", "class", "order", "family", "genus", "species"),
+    consensus_method = "credible_node", likelihood_consensus = TRUE, robust_prior_s = 0, cross_phylum_eps = e)))
+  expect_equal(run(0)$likelihood_consensus_taxon, "Macrocystis pyrifera")
+  expect_true(is.na(run(0.05)$likelihood_consensus_taxon))
+})
+
+test_that("cross_phylum_eps is validated and says when it cannot apply", {
+  df <- .xp_df(c(0.93, 0.07))
+  for (bad in list(-0.1, 0.5, NA_real_, c(0.05, 0.1), "0.05")) {
+    expect_error(.xp(df, cross_phylum_eps = bad), "cross_phylum_eps")
+  }
+  expect_message(suppressWarnings(posterior_consensus(df, rank_system = c("class", "order", "family", "genus", "species"),
+    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0)),
+    "cross_phylum_eps is not applied")
+  expect_equal(attr(.xp(df, cross_phylum_eps = 0.1), "report_params")$cross_phylum_eps, 0.1)
 })
