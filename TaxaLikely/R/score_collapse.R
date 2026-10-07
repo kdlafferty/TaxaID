@@ -411,14 +411,12 @@ detect_suppressed_candidates <- function(match_obj,
 #'   including from an observation whose every hit was dropped -- and a
 #'   congener the dropped label never named can win on its own alignment.
 #'   Requires \code{sequence_col}.
-#' @param measured_offset \code{NULL} (default) or a single number: the
-#'   percentage-point offset subtracted from every measured identity to put it
-#'   on the observed scores' scale. \code{NULL} estimates it from this call's
-#'   own \code{match_obj} (\code{@section Measured restored scores}). Supply
-#'   a per-marker constant (for example the \code{offset} of a whole-marker
-#'   call's \code{attr(result, "measured_score_calibration")}) whenever a
-#'   marker is restored in more than one call, so that a restored score does
-#'   not depend on which batch its observation landed in.
+#' @param measured_offset \code{NULL} (default) or a single number. \code{NULL}
+#'   estimates the banded offset from this call's own \code{match_obj}
+#'   (\code{@section Measured restored scores}). A number is subtracted from
+#'   every measured identity as given (no bands) -- for a marker restored in
+#'   more than one call, so that a restored score does not depend on which
+#'   batch its observation landed in.
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
 #'
 #' @section Measured restored scores:
@@ -428,16 +426,22 @@ detect_suppressed_candidates <- function(match_obj,
 #' \code{pwalign::pid()} PID1) to each of the candidate's references, and the
 #' best identity over references covering at least \code{min_query_coverage}
 #' of the query is used (\code{restored_score_source = "measured"}). A
-#' measured identity is then put on the observed scores' scale: the
-#' query is aligned the same way to its own best hit's reference (where
-#' \code{reference_df} holds it, up to 2,000 observations), and the median of
-#' (that identity - the observed score) is subtracted from every measured
-#' score. With fewer than 30 such observations the offset is 0 and flagged.
-#' The calibration is returned as \code{attr(result,
-#' "measured_score_calibration")} (\code{offset}, \code{n}, \code{iqr},
-#' \code{thin}, \code{source}). The estimate uses each observation's best hit;
-#' on CalIntertidal the offset was flat across observed scores of 75-98 (18S
-#' median 2.23-2.28 by band). A measured score may exceed the observation's best observed score: a
+#' measured identity is then put on the observed scores' scale, the same rule
+#' for every marker: queries are aligned the same way to their own kept hits'
+#' references (every hit \code{reference_df} holds, up to 3,000 pairs), and
+#' (that identity - the observed score) is summarised per observed-score band
+#' (edges 75, 85, 90, 95, 98, 99.5). A band with fewer than 30 pairs is pooled
+#' into its upward neighbour; each measured score takes its band's median
+#' offset. Where the offset is flat the bands come out equal and this is a
+#' constant; where it slopes with identity they differ (on CalIntertidal: 18S
+#' +2.24 to +2.28 throughout; COI +1.6 below 85, about +0.3 above, about 0 at
+#' 98 and up). A measured score outside the observed scores the offset was
+#' measured on takes the nearest band and is flagged
+#' (\code{restored_offset_out_of_range}), never with the below-floor flag. With
+#' fewer than 30 pairs in all the offset is 0 and flagged thin. The calibration
+#' is returned as \code{attr(result, "measured_score_calibration")}
+#' (\code{offset}, \code{n}, \code{iqr}, \code{thin}, \code{bands},
+#' \code{range}, \code{source}). A measured score may exceed the observation's best observed score: a
 #' suppressed congener can genuinely match the query better than every hit the
 #' provider kept, since suppression does not follow identity.
 #'
@@ -607,7 +611,8 @@ detect_suppressed_candidates <- function(match_obj,
 #'   \code{restored_reason} (why that source: \code{"measured_query_alignment"},
 #'   \code{"imputed_no_query_sequence"} or
 #'   \code{"imputed_query_coverage_below_min"}) and
-#'   \code{restored_below_floor}; all three are \code{NA} on original rows.
+#'   \code{restored_below_floor} and \code{restored_offset_out_of_range}; all
+#'   are \code{NA} on original rows.
 #'   \code{attr(result, "restoration_skipped")} is \code{NULL} or a data
 #'   frame (\code{observation_id}, \code{species}, \code{reason}) of
 #'   candidates that could not be scored at all.
@@ -875,7 +880,6 @@ restore_suppressed_candidates <- function(match_obj,
     NULL
   }
   if (!is.null(measured_cal) && is.null(measured_cal$source)) measured_cal$source <- "estimated_in_call"
-  measured_offset <- if (is.null(measured_cal)) 0 else measured_cal$offset
 
   no_score_target_species <- if (no_score_path && !is.null(candidate_species_filter)) {
     candidate_species_filter
@@ -1116,7 +1120,9 @@ restore_suppressed_candidates <- function(match_obj,
       if (!is.na(measured)) {
         score_source <- "measured"
         score_reason <- "measured_query_alignment"
-        measured_obs <- min(100, measured - measured_offset)
+        am <- .apply_measured_offset(measured, measured_cal)
+        measured_obs <- am$score
+        out_of_range <- am$out_of_range
         restored_score <- if (scale_100) measured_obs else measured_obs / 100
       } else {
         if (is.na(h1_score)) {
@@ -1130,6 +1136,7 @@ restore_suppressed_candidates <- function(match_obj,
           next
         }
         score_source <- "imputed"
+        out_of_range <- NA
         score_reason <- if (can_measure && !is.na(query_seq_measure)) {
           "imputed_query_coverage_below_min"
         } else {
@@ -1176,6 +1183,7 @@ restore_suppressed_candidates <- function(match_obj,
       new_row[["restored_reason"]] <- score_reason
       # Kept, but flagged: the likelihood model never trained below this floor.
       new_row[["restored_below_floor"]] <- restored_p < (1 - max_dist)
+      new_row[["restored_offset_out_of_range"]] <- out_of_range
       rows_for_obs[[length(rows_for_obs) + 1L]] <- new_row
     }
 
@@ -1199,7 +1207,7 @@ restore_suppressed_candidates <- function(match_obj,
       genus_col = genus_col, species_col = species_col, rank_system = rank_system,
       score_col = score_col, sequence_col = sequence_col, scale_100 = scale_100,
       max_dist = max_dist, min_query_coverage = min_query_coverage,
-      measured_offset = measured_offset, max_per_obs = max_per_obs,
+      measured_cal = measured_cal, max_per_obs = max_per_obs,
       region_matched = region_matched, align_cache = align_cache
     )
     if (!is.null(repl)) {
@@ -1272,6 +1280,7 @@ restore_suppressed_candidates <- function(match_obj,
     if (!rc %in% names(match_obj)) match_obj[[rc]] <- NA_character_
   }
   if (!"restored_below_floor" %in% names(match_obj)) match_obj$restored_below_floor <- NA
+  if (!"restored_offset_out_of_range" %in% names(match_obj)) match_obj$restored_offset_out_of_range <- NA
   restored_df$is_restored <- TRUE
 
   result <- dplyr::bind_rows(match_obj, restored_df)
@@ -1295,7 +1304,7 @@ restore_suppressed_candidates <- function(match_obj,
 #' genus with kept references is a candidate, unless the observation already
 #' holds it (in `match_obj` or `restored_df`). Each is measured against the
 #' query (best identity over references covering `min_query_coverage`),
-#' shifted by `measured_offset`, and added only when measured. At most
+#' put on the observed scale by `measured_cal`, and added only when measured. At most
 #' `max_per_obs` per observation, best-measured first. A dropped row of that
 #' genus is the template, so an observation with no row left in `match_obj`
 #' still gets candidates.
@@ -1306,7 +1315,7 @@ restore_suppressed_candidates <- function(match_obj,
                                   observation_id_col, genus_col, species_col, rank_system,
                                   score_col, sequence_col, scale_100, max_dist,
                                   min_query_coverage, region_matched, align_cache,
-                                  measured_offset = 0, max_per_obs = 10L) {
+                                  measured_cal = NULL, max_per_obs = 10L) {
   if (!all(c(genus_col, species_col) %in% names(dropped_matches))) {
     stop(sprintf(
       "restore_suppressed_candidates: 'dropped_matches' needs columns '%s' and '%s'.",
@@ -1357,7 +1366,8 @@ restore_suppressed_candidates <- function(match_obj,
     if (!"hypothesis_type" %in% names(tmpl)) tmpl$hypothesis_type <- "specific_candidate"
     for (kk in keep) {
       sp <- sps[kk]
-      measured <- min(100, meas[[kk]] - measured_offset)
+      am <- .apply_measured_offset(meas[[kk]], measured_cal)
+      measured <- am$score
       score <- if (scale_100) measured else measured / 100
       new_row <- .build_restored_row(
         tmpl, g_ref, sp, rank_system, species_col,
@@ -1367,6 +1377,7 @@ restore_suppressed_candidates <- function(match_obj,
       new_row[["restored_score_source"]] <- "measured"
       new_row[["restored_reason"]] <- "replaced_dropped_hit"
       new_row[["restored_below_floor"]] <- (if (scale_100) score / 100 else score) < (1 - max_dist)
+      new_row[["restored_offset_out_of_range"]] <- am$out_of_range
       rows[[length(rows) + 1L]] <- new_row
       held <- c(held, paste(obs, sp, sep = "\r"))
     }

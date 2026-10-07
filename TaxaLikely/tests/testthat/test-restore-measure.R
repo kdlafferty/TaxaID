@@ -414,3 +414,61 @@ test_that("the calibration offset shifts a low-scoring measured row by the same 
   expect_equal(r$score_original, raw - 2.25)
   expect_equal(r$restored_below_floor, (raw - 2.25) < 75)
 })
+
+# ---- banded offset: the same rule for every marker ----------------------------
+
+test_that("a sloped offset gives distinct bands", {
+  set.seed(1)
+  score <- c(runif(200, 75, 85), runif(200, 90, 95), runif(200, 98.5, 99.4))
+  diff <- c(rep(1.6, 200), rep(0.3, 200), rep(0, 200)) + rnorm(600, 0, 0.01)
+  bd <- .pool_offset_bands(score, diff, .MEASURED_OFFSET_EDGES, 30L)
+  expect_equal(nrow(bd), 3L)
+  expect_equal(round(bd$offset, 1), c(1.6, 0.3, 0))
+  cal <- list(offset = median(diff), bands = bd, range = range(score))
+  expect_equal(.apply_measured_offset(80, cal)$score, 80 - bd$offset[1])
+  expect_equal(.apply_measured_offset(99, cal)$score, 99 - bd$offset[3])
+  expect_false(.apply_measured_offset(80, cal)$out_of_range)
+})
+
+test_that("a flat offset collapses to a constant across bands", {
+  set.seed(2)
+  score <- runif(600, 75, 98)
+  diff <- 2.25 + rnorm(600, 0, 0.02)
+  bd <- .pool_offset_bands(score, diff, .MEASURED_OFFSET_EDGES, 30L)
+  expect_gt(nrow(bd), 1L)
+  expect_lt(diff(range(bd$offset)), 0.05)
+})
+
+test_that("thin bands pool upward, a thin top band pools down, and out-of-range is flagged", {
+  score <- c(rep(72, 5), rep(80, 40), rep(92, 10))
+  diff <- c(rep(4, 5), rep(1.5, 40), rep(0.2, 10))
+  bd <- .pool_offset_bands(score, diff, .MEASURED_OFFSET_EDGES, 30L)
+  # 72 (n = 5) pools up into 75-85; 92 (n = 10) is a thin top band and pools down.
+  expect_equal(nrow(bd), 1L)
+  expect_equal(bd$n, 55L)
+  expect_equal(bd$lower, -Inf)
+  expect_equal(bd$upper, 95)
+  cal <- list(offset = 1.5, bands = bd, range = range(score))
+  a <- .apply_measured_offset(60, cal)
+  expect_true(a$out_of_range)
+  expect_equal(a$score, 60 - 1.5)
+  expect_true(.apply_measured_offset(99.5, cal)$out_of_range)
+})
+
+test_that("restored rows carry restored_offset_out_of_range (NA when no banded calibration)", {
+  res <- restore_suppressed_candidates(
+    .rm_match(score = 80), .rm_ref(),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence", verbose = FALSE
+  )
+  expect_true("restored_offset_out_of_range" %in% names(res))
+  expect_true(is.na(res$restored_offset_out_of_range[res$is_restored]))
+  res2 <- restore_suppressed_candidates(
+    .rm_calib_set(40), .rm_ref(),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence", verbose = FALSE
+  )
+  cal <- attr(res2, "measured_score_calibration")
+  expect_equal(nrow(cal$bands), 1L)
+  # Observed scores span only 98; the restored row measures 100, outside it.
+  expect_equal(cal$range, c(98, 98))
+  expect_true(all(res2$restored_offset_out_of_range[res2$is_restored]))
+})

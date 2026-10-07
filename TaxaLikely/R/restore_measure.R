@@ -72,23 +72,40 @@
   ret(out)
 }
 
-#' Offset between measured identity and the observed scores' scale
+#' Band edges (observed score, percent identity) for the measured-score offset
 #'
-#' Aligns each observation's query to its own best hit's reference (when
-#' `reference_df` holds that accession) by the measurement rule and returns
-#' the median of (measured identity - observed score), in percentage points.
-#' Observations are taken evenly spaced over the sorted ids (no RNG), at most
-#' `max_obs` of them. Fewer than `min_obs` usable pairs gives offset 0 with
-#' `thin = TRUE`: an offset estimated from a handful of pairs would move every
-#' measured score on little evidence.
+#' The offset is estimated per band and thin bands are pooled, so these edges
+#' only set the finest resolution the data may use; how many distinct bands a
+#' marker ends up with is decided by its own data.
+#' @noRd
+.MEASURED_OFFSET_EDGES <- c(-Inf, 75, 85, 90, 95, 98, 99.5, Inf)
+
+#' Offset between measured identity and the observed scores' scale, by band
 #'
-#' @return List: `offset`, `n` (pairs used), `iqr` (length-2), `thin`.
+#' Aligns queries to their own kept hits' references (every hit whose
+#' accession `reference_df` holds, not only the best one, so the low-identity
+#' end is represented) by the measurement rule, and takes (measured identity -
+#' observed score) per pair. Pairs are banded by observed score
+#' (`.MEASURED_OFFSET_EDGES`); a band with fewer than `min_obs` pairs is pooled
+#' into its upward neighbour (the top band, if thin, into the band below), and
+#' each resulting band's offset is its median. Pairs are taken evenly spaced
+#' over the sorted rows (no RNG), at most `max_obs`. Fewer than `min_obs` pairs
+#' in all gives offset 0 with `thin = TRUE`.
+#'
+#' The same rule runs for every marker: where the offset is flat the bands come
+#' out equal (a constant), where it slopes they differ.
+#'
+#' @return List: `offset` (median over all pairs), `n`, `iqr`, `thin`,
+#'   `bands` (data frame `lower`, `upper`, `n`, `offset`, or `NULL`), and
+#'   `range` (observed scores spanned by the pairs; a measured score outside
+#'   it is flagged by the caller).
 #' @noRd
 .calibrate_measured_offset <- function(match_obj, reference_df, observation_id_col, score_col,
                                        accession_col, sequence_col, scale_100,
-                                       min_query_coverage = 0.8, max_obs = 2000L,
+                                       min_query_coverage = 0.8, max_obs = 3000L,
                                        min_obs = 30L) {
-  out <- list(offset = 0, n = 0L, iqr = c(NA_real_, NA_real_), thin = TRUE)
+  out <- list(offset = 0, n = 0L, iqr = c(NA_real_, NA_real_), thin = TRUE, bands = NULL,
+    range = c(NA_real_, NA_real_))
   if (!all(c(accession_col, sequence_col, score_col) %in% names(match_obj)) ||
     !"composite_id" %in% names(reference_df)) {
     return(out)
@@ -97,10 +114,9 @@
   ok <- !is.na(sc) & !is.na(match_obj[[sequence_col]]) &
     as.character(match_obj[[accession_col]]) %in% as.character(reference_df$composite_id)
   if (!any(ok)) return(out)
-  mo <- match_obj[ok, , drop = FALSE]
-  # each observation's best hit
-  mo <- mo[order(mo[[observation_id_col]], -mo[[score_col]]), , drop = FALSE]
-  mo <- mo[!duplicated(mo[[observation_id_col]]), , drop = FALSE]
+  mo <- match_obj[ok, c(observation_id_col, accession_col, sequence_col, score_col), drop = FALSE]
+  mo <- mo[order(mo[[observation_id_col]], as.character(mo[[accession_col]])), , drop = FALSE]
+  mo <- mo[!duplicated(paste(mo[[observation_id_col]], mo[[accession_col]])), , drop = FALSE]
   if (nrow(mo) > max_obs) {
     mo <- mo[unique(round(seq(1, nrow(mo), length.out = max_obs))), , drop = FALSE]
   }
@@ -121,13 +137,74 @@
     meas[valid] <- m
   }
   obs <- if (isTRUE(scale_100)) mo[[score_col]] else mo[[score_col]] * 100
-  d <- (meas - obs)[!is.na(meas)]
+  keep <- !is.na(meas)
+  d <- (meas - obs)[keep]
+  ob <- obs[keep]
   out$n <- length(d)
   if (out$n < min_obs) return(out)
   out$offset <- stats::median(d)
   out$iqr <- unname(stats::quantile(d, c(0.25, 0.75)))
   out$thin <- FALSE
+  out$range <- range(ob)
+  out$bands <- .pool_offset_bands(ob, d, .MEASURED_OFFSET_EDGES, min_obs)
   out
+}
+
+#' Pool thin observed-score bands upward and take each band's median offset
+#'
+#' @return Data frame `lower`, `upper` (edges), `n`, `offset`; contiguous,
+#'   covering every band that holds data.
+#' @noRd
+.pool_offset_bands <- function(score, diff, edges, min_obs) {
+  b <- findInterval(score, edges, left.open = TRUE)
+  nb <- length(edges) - 1L
+  cnt <- tabulate(b, nbins = nb)
+  occupied <- which(cnt > 0L)
+  groups <- list()
+  cur <- integer(0)
+  for (k in occupied) {
+    cur <- c(cur, k)
+    if (sum(cnt[cur]) >= min_obs) {
+      groups[[length(groups) + 1L]] <- cur
+      cur <- integer(0)
+    }
+  }
+  if (length(cur)) { # thin top remainder: pool into the band below
+    if (length(groups)) {
+      groups[[length(groups)]] <- c(groups[[length(groups)]], cur)
+    } else {
+      groups[[1L]] <- cur
+    }
+  }
+  do.call(rbind, lapply(groups, function(g) {
+    sel <- b %in% g
+    data.frame(
+      lower = edges[min(g)], upper = edges[max(g) + 1L], n = sum(sel),
+      offset = stats::median(diff[sel])
+    )
+  }))
+}
+
+#' Put one measured identity on the observed scale
+#'
+#' @param raw Numeric(1), measured identity (0-100).
+#' @param cal Calibration list from `.calibrate_measured_offset()` (or a
+#'   supplied constant), or `NULL`.
+#' @return List: `score` (raw minus its band's offset, at most 100) and
+#'   `out_of_range` (`TRUE` when `raw` lies outside the observed scores the
+#'   offset was measured on, so the nearest band was extrapolated; `NA` when
+#'   no banded calibration applies).
+#' @noRd
+.apply_measured_offset <- function(raw, cal) {
+  if (is.null(cal)) return(list(score = min(100, raw), out_of_range = NA))
+  if (is.null(cal$bands) || !nrow(cal$bands)) {
+    return(list(score = min(100, raw - cal$offset), out_of_range = NA))
+  }
+  bd <- cal$bands
+  k <- which(raw > bd$lower & raw <= bd$upper)
+  if (!length(k)) k <- if (raw <= bd$lower[1L]) 1L else nrow(bd)
+  oor <- raw < cal$range[1L] || raw > cal$range[2L]
+  list(score = min(100, raw - bd$offset[k[1L]]), out_of_range = oor)
 }
 
 #' Impute a restored congener's score from the anchor and the reference hierarchy

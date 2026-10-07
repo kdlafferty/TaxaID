@@ -1641,3 +1641,48 @@ over 85-98, +1.59 over 75-85 (n = 1,177), +4.36 over 70-75 (n = 16). The in-call
 A two-band step (+1.59 below a raw identity of 85, +0.32 above) changes 23 of 1,177 affected COI tops
 (2.0%). Confident species calls go 365 -> 370, all the same species crossing 0.9. The choice between
 the step and the constant is with the maintainer.
+
+### 2026-10-07: measured-score offset learned in bands from the data, the same rule for every marker
+
+Maintainer decision ("A"): the offset is estimated per observed-score band within each call. No
+marker appears in the logic.
+
+**The rule.**
+- `.calibrate_measured_offset()` aligns queries to their own KEPT hits' references: every hit
+  `reference_df` holds, not only the best one, so the low-identity end is represented. Up to 3,000
+  pairs, evenly spaced, no RNG.
+- It bands (measured - observed) by observed score at edges 75 / 85 / 90 / 95 / 98 / 99.5.
+- A band with fewer than 30 pairs pools into its upward neighbour; a thin top band pools down.
+- Each measured row takes its band's median offset (`.apply_measured_offset()`).
+- A measured row outside the observed scores the offset was measured on takes the nearest band and
+  is flagged `restored_offset_out_of_range`. This flag is separate from `restored_below_floor`.
+- A supplied `measured_offset =` constant still applies as given, with no bands.
+
+**Bands on CalIntertidal and their effect.** All three markers use the same code. The likelihood level
+is re-scored on the saved restored rows against the constant offset; priors are not applied.
+
+| | 12S | 18S | COI |
+|---|---|---|---|
+| Bands (offset, n) | 75-95 +0.51 (127); 95-98 +0.05 (466); 98-99.5 +0.01 (2,359); >= 99.5 0 (45) | -85 +2.28 (281); 85-90 +2.24 (340); 90-95 +2.25 (526); 95-98 +2.23 (806) | -85 +1.67 (1,171); 85-90 +0.48 (128); 90-95 +0.28 (72); 95-98 +0.32 (76); 98-99.5 +0.02 (255); >= 99.5 -0.02 (33) |
+| Pattern | pools to a slope near zero above 95 | flat, so a constant | sloped |
+| Affected obs | 5,596 | 555 | 3,570 |
+| Top hypothesis changed | 225 (4.0%) | 5 (0.9%) | 57 (1.6%) |
+| Confident species calls | 3 -> 5 | 0 -> 0 | 1,262 -> 1,268 |
+| Lost | 0 | 0 | 0 |
+| Flagged out of range | 29 (below the observed minimum, 82.8) | 222 (above the observed maximum, 97.9) | 0 |
+
+- **12S:** the low band moves restored congeners (median raw identity 94.7) down by about 0.5 point.
+  Changes are mostly at low share.
+- **18S:** scores move at most 0.03 point. The 5 changed tops are all coarse calls at share < 0.3.
+- **COI:** genus -> species 23, species -> genus 6.
+
+The earlier best-hit constant had UNDER-corrected the low end: COI 75-85 by about 1.3 points, 12S by
+about 0.5.
+
+Tests in `test-restore-measure.R`:
+- a sloped fixture gives distinct bands, and the right offset per band;
+- a flat fixture collapses to a constant;
+- sparse bands pool upward, a thin top band pools down, and out-of-range rows are flagged with
+  their own flag.
+
+Full suite 1,939 passed / 0 failed.
