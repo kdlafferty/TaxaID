@@ -1832,6 +1832,16 @@ same kind of re-run:
    violated -- partial coverage, as in the worked case, is exactly where. It
    does NOT contradict the file header, which rejected a CONSTANT delta; this
    delta is measured.
+   **Proposal written and code-checked**: `ecosystem_docs/PROPOSAL_restore_imputation_fix_2026_10_06.md`,
+   five parts -- corrected formula; asserted invariant (with a test that the
+   assertion FIRES on a constructed violation); drop-below-training-floor with
+   `restored_below_training_floor`; all-NA anchor dropped as unscoreable with
+   `restored_no_anchor_score` (0 cases in tonight's data, handled anyway --
+   that zero is a property of CURRENT data, not a guarantee, so the handling
+   must not be removed as dead code later); and a before/after on all
+   observations containing an inflated row, labelled imputation-only. Awaiting
+   the maintainer. Package review verified the mechanism, the anchor
+   definition and the training floor against the code.
 3. **h1-spread re-measure** -- a property of the TRAINING pairs, not of
    assignment. Needs a retrain and a measurement, NOT a full run, and its
    inputs are already merged and installed, so it can run in parallel.
