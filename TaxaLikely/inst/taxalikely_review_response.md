@@ -1603,3 +1603,41 @@ banded by observed score:
 before/after. These are rows measured in [75, 75 + offset) that the correction moves under the
 training floor. 12S and 18S have 0 below-floor rows at all, so 0 of these. COI will be reported with
 its run.
+
+### 2026-10-06: before/after on CalIntertidal (restoration and likelihood level)
+
+Same inputs as tonight's run: the post-drop match object, placed references, the drop-filtered
+matrix, the priors filter, and the dropped rows from the 09-27 pre-drop object. Likelihoods were
+evaluated on the affected observations with tonight's per-platform models, as point estimates, with
+priors NOT applied.
+
+| | 12S | 18S | COI |
+|---|---|---|---|
+| Restored rows, measured / imputed (coverage) / replacement | 11,889 / 468 / 351 | 1,358 / 279 / 84 | 8,074 / 995 / 520 |
+| Rows above the observation's best observed score, before (all imputed) -> after (all measured) | 1,049 -> 235 | 1,359 -> 142 | 1,971 -> 382 |
+| Below-floor rows (kept + flagged) | 0 | 0 | 0 |
+| ...of which created by the calibration | 0 | 0 | 0 |
+| Region-reference requirement | 0 | 0 | 0 |
+| ESVs gaining replacement candidates | 81 (all 41 zero-candidate ESVs recovered) | 25 | 148 |
+| Affected obs | 5,600 | 689 | 4,163 |
+| Top hypothesis changed | 584 | 508 | 942 |
+| New confident species calls (share >= 0.9) | 3 | 0 | 28 |
+| Confident calls lost | 1 | 0 | 13 |
+
+- The below-floor flag's population is therefore entirely "the evidence is weak", with no
+  correction artefact.
+- 12S: the three new calls are the same species already on top, newly crossing 0.9.
+- 18S: mostly moves to coarser ranks, as inflated restored rows are removed.
+- COI new calls: 16 are *Ophiothrix angulata* -> *O. spiculata*. *O. spiculata* is the local
+  Pacific species; *O. angulata* is Atlantic.
+
+**Runtime.** Production COI restoration takes 3,593 s, against 3,360 s on the old code: about +7%. That
+buys a measured score instead of an imputation for 8,074 COI rows (58,432 query alignments). The
+harness peaks at 8.6 GB. That peak, and most of the time, belong to the existing 34.1M-pair accession
+index, the hierarchy and Level 4, not to the measurement.
+
+**COI calibration slopes with identity.** Measured minus observed: about 0 at >= 98, +0.25 to +0.42
+over 85-98, +1.59 over 75-85 (n = 1,177), +4.36 over 70-75 (n = 16). The in-call constant was +0.321.
+A two-band step (+1.59 below a raw identity of 85, +0.32 above) changes 23 of 1,177 affected COI tops
+(2.0%). Confident species calls go 365 -> 370, all the same species crossing 0.9. The choice between
+the step and the constant is with the maintainer.
