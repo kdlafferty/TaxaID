@@ -1803,8 +1803,14 @@ same kind of re-run:
    feature set, not just its own row. Counting "observations whose R2 winner is
    an inflated row" (403 COI / 233 12S / 190 18S) therefore UNDERSTATES the
    exposure by roughly an order of magnitude; the right denominator is
-   observations CONTAINING an inflated row (1,971 COI / 1,049 12S / 1,359 18S).
-   Any before/after must report on that denominator.
+   observations CONTAINING an inflated row: **1,168 COI / 577 12S / 568 18S**
+   (the 1,971 / 1,049 / 1,359 figures are inflated ROWS, several per
+   observation -- an earlier version of this section conflated the two). Any
+   before/after must report on the observation denominator.
+   **The anchor IS the observation's best observed score**, verified in code:
+   `score_collapse.R:749` takes `anchor_idx <- which.max(sc_vec)`. So the
+   invariant below really does bound the imputed score by the best MEASURED
+   evidence, not merely by some anchor's score.
    **The invariant the fix establishes**, worth asserting in code rather than
    only computing: since `r <= 100`, `a - (100 - r) <= a`, so AN IMPUTED SCORE
    CAN NEVER EXCEED THE OBSERVATION'S BEST OBSERVED SCORE. That is the property
