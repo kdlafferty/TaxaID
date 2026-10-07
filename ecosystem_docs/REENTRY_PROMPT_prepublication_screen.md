@@ -1842,6 +1842,53 @@ same kind of re-run:
    observations containing an inflated row, labelled imputation-only. Awaiting
    the maintainer. Package review verified the mechanism, the anchor
    definition and the training floor against the code.
+   **PART 1 OF THAT PROPOSAL IS OVERTURNED BY MEASUREMENT (2026-10-06, 21:12),
+   and the error was mine as much as anyone's.** Verified in code:
+   `regional_overlap.R:286` aligns CANDIDATE to ANCHOR (`pid(aln)` at :309),
+   and :241 aligns the query only to the ANCHOR to derive a position range --
+   so NO level has ever aligned the query to the candidate, and there was never
+   a measured query-to-candidate score. Measured directly (region-trimmed refs,
+   >= 80% query coverage):
+   - today's imputation is ACCURATE when not inflated, MAE 0.94-1.27;
+   - the proposed `anchor - (100 - ref_ref)` OVER-PENALISES, MAE 1.48-4.59, and
+     is WORSE THAN TODAY on the rows it targeted (inflated COI: 7.02 vs 5.08);
+   - `min(today, anchor)` is the best cheap estimator, MAE 0.94-1.99.
+   **The ceiling-at-anchor invariant is empirically FALSE as a truth claim**: a
+   restored congener's true identity beats the best retained hit in 58% of 18S
+   pairs, because suppression is not about identity. It is defensible ONLY as a
+   conservative constraint on an unverifiable ESTIMATE -- so ceiling AND
+   assertion belong at the IMPUTATION SITE only, with a test that a measured
+   score above the anchor passes untouched. I had argued it as a general
+   property; that was wrong.
+   Revised design: MEASURE query vs candidate directly (0 restored rows lack a
+   placed region reference; ~22 min single-core total), fall back only where
+   query coverage < 80% (4-22% of pairs), bound the fallback only, keep+flag
+   below the 75% floor.
+   **Open requirement before it lands**: the measured score must be VALIDATED
+   against `seq_matrix`'s own `p_match` rather than asserted equal to it. Level
+   4's comment claims `pwalign::pid()` PID1 is on the same scale, citing ONE
+   case (F. parvipinnis/F. lima, 96.43%), but training `p_match` comes from
+   `DECIPHER::DistanceMatrix(includeTerminalGaps = FALSE)`. Compute both for
+   pairs ALREADY IN `seq_matrix` and report the offset; a systematic offset
+   means restoration scores are read against densities trained on a different
+   scale.
+   **The lesson**: I checked that formula's ARITHMETIC and its consistency with
+   the file header, and never asked whether it was ACCURATE. Only the
+   before/after-before-merging requirement caught it.
+
+## 7f. Accession screen drops references on OUT-OF-REGION evidence (2026-10-06)
+
+Its own defect, not a symptom of restoration. 12S drop `AY279644` is **100%
+*S. pulcher* on the MiFish region**, dropped for family-rank evidence elsewhere
+in its 940 bp. That single drop leaves **41 12S ESVs with zero candidates, 32
+of which match kept same-species references at >= 99%**. The screen is judging
+a reference on sequence the amplicon never sees -- the same region-scoping
+theme as `match_reference_region()`. The restoration fix's dropped-hit
+replacement (an ESV whose only hits are dropped gets the species' kept placed
+refs as candidates, measured; ~32 12S ESVs incl. sheephead, 2 18S) MITIGATES
+the symptom; it does not address the screen. Needs the maintainer as a separate
+item.
+
 3. **h1-spread re-measure** -- a property of the TRAINING pairs, not of
    assignment. Needs a retrain and a measurement, NOT a full run, and its
    inputs are already merged and installed, so it can run in parallel.
