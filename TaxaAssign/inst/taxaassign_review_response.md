@@ -1092,3 +1092,36 @@ compute gain, not avoided paging; the machine was idle); R heap max 3.10 -> 2.07
 resident set 3.85 -> 2.30 GB. The O(N x observations) scan grows faster than N, so the gain
 should be larger at the full CalIntertidal scale (6.15M rows, 49,262 observations), where Round 2's
 consensus took ~2 h at ~14 GB; that full-scale before/after was not run here.
+
+### 2026-10-07: posterior_consensus(cross_phylum_eps): withhold calls that rest on a choice between phyla
+
+Approved by the maintainer (2026-10-07, relayed by the peer coordinator: "y" to the item-k proposal,
+INCLUDING the new exported argument `cross_phylum_eps` and its default 0.05, his error-first choice).
+Applied post-run by re-running consensus on saved posteriors, so it was not part of the 2026-10-07 install.
+Problem: at low identity, candidates from two phyla can score almost alike (CalIntertidal COI: Macrocystis
+83.1 vs Phytophthora 83.4; Codium 89.8 vs Cylindrotheca 90.1). The credible node then calls whichever
+side leads, down to species, and a 0.3-point score difference decides between phyla.
+Change (credible_node only): when the runner-up phylum holds at least `cross_phylum_eps` of the
+observation's total posterior (plain shares), a call at phylum or finer is withheld. The call becomes
+the finest node coarser than phylum holding the threshold (a shared clade, e.g. a kingdom, when
+rank_system has one), else no call; `consensus_limit = "cross_phylum"`. Also applied in the
+likelihood-only pass, so `prior_role` compares calls made under the same rule. Not applied (with a
+message) when no phylum is carried. `0` restores the old behaviour exactly.
+Behaviour changes in existing tests (both fixtures put two rows in different phyla at 0.5/0.5): the
+Porella bryozoan/liverwort homonym, previously one pooled genus call, is now withheld by default (its
+"diagnostic changes no call" assertion is kept with eps = 0); a placeholder-rank control that pooled a
+class across Chordata and Mollusca now pins eps = 0, since the rule is not what it tests.
+Tests: fires at 0.07 against eps 0.05 and not at 0.04; eps 0.10 lets 0.07 through; moves to a shared
+kingdom when rank_system has one; no-op for single-phylum observations and for calls already above
+phylum (identical output apart from report_params); the robust-prior path; the likelihood-only pass;
+argument validation and the not-applied message.
+Real data (k_before_after.R): tonight's saved CalIntertidal Round 2 posteriors (6,150,131 rows, 49,262
+observations), the workflow's Section 8c arguments (credible_node, threshold 0.90, phylum..species,
+lookup_missing_taxonomy on a COPY of the taxonomy cache, species_reference), run on the 24,739
+observations the rule can touch (rows in 2+ phyla, or a named row lacking phylum); it is a no-op
+elsewhere by construction. Before arm (eps 0) vs the saved provisional consensus: 24,739 of 24,739
+calls identical. eps 0.05 withholds 109 calls (18S 34, COI 75, 12S 0), all stamped "cross_phylum":
+16 at phylum, 52 class, 34 order, 1 family, 4 genus, 2 species. With rank_system starting at phylum,
+every withheld call becomes no call; 0 move to a node that is not an ancestor of the old call. The
+proposal's estimate (277 / 29 species) used Round 1 phylum mass; Round 2's posteriors give 109 / 2.
+Peak 5.7 GB, 741 s.
