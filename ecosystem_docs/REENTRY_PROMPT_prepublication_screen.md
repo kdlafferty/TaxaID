@@ -1711,6 +1711,89 @@ TaxaWizard's pack guard 2-3 min; SHA to merged-and-installed ~12 min, achieved
 in 7. The install being 2 s is the useful fact: there is never a speed reason
 to jump the reinstall gate.
 
+## 7d. Merge ledger -- 2026-10-05/06 (training memory + network robustness)
+
+| merge | branch @ tip | what |
+|---|---|---|
+| `e5e9636` | `train-blocks` @ `11316e1` | blocked curve collapse + training-data prep |
+| `6c83ced` | `train-blocks-note` @ `040252c` | docs: why the per-block `N_Obs` sum is exact |
+| `ce2bf22` | `ncbi-timeout` @ `dabf5f0` | progress-based aborts on all 21 remote calls |
+
+**All four memory stages are now merged and installed** -- matrix `which()`,
+retention pass, curve collapse, training prep. Full-COI training measured at
+7.66 GB peak where it was previously killed at 17.2 GB. The pattern worth
+keeping: each stage was found by MEASURING the stages, not by guessing which
+was next, and the first fix (row-blocking) saved only ~0.7 GB of a >19 GB peak.
+
+**Curve blocking is exact only because stage 2 runs ONCE.** Stage 2 groups by
+TAXON (species/genus/family), not by query, so blocking it by `id_x` would give
+each block a PARTIAL `k` and `n`; the Jeffreys mean `(k + 1/2)/(n + 1)` is not
+additive and `.equal_weighted_pooled()` would give a split species double
+weight -- plausible curves, quietly wrong, setting the confusion-risk values.
+`.id_blocks()` also sorts with `method = "radix"` (C-locale, so block
+membership does not shift with the machine's locale) and preserves within-block
+row order, which is what makes `slice_max(with_ties = FALSE)` reproduce.
+
+**RETRY WITHOUT A TIMEOUT IS NOT PROTECTION.** `.retry_fetch()` had 3 attempts
+with backoff, but it catches an ERROR and a hung socket never errors, so it
+never fired -- a network change hung a run on a dead socket. Before `ce2bf22`,
+`grep timeout` over all of TaxaLikely/R returned nothing. And the fix is NOT a
+single total timeout: curl's TIMEOUT is total request time, so a value low
+enough to catch a dead socket also kills healthy large fetches, and the retry
+then burns three attempts on the same doomed request. **What separates the two
+cases is PROGRESS, not elapsed time**: `connecttimeout` 30 s,
+`low_speed_limit` 1024 B/s over `low_speed_time` 60 s, 1800 s total as a
+backstop, all option-controlled.
+
+**Still open from the pre-flight audit** (2026-10-05, package side):
+- taxid resolution is UNCACHED and runs before the cache check (`fetch.R:1465`
+  vs `:1509`), so a fully cached run still pays ~2,830 live esearches, ~35 min.
+  Deferred; safe only because Stage B makes no fetch calls. The risk in fixing
+  it is the CACHE KEY, which must encode taxon AND lineage scope.
+- `sel_params` version stamp + which-case message: rides with the next
+  `fetch.R` change. Today one message covers capped, differently-blacklisted
+  and never-stamped, which have very different costs.
+- The `sel_params` gate (`8ee72a0`, merged `c9e0a76` 2026-09-28) cost
+  CalIntertidal 18S an ~8 h refetch of all 2,830 genera. NO SAFE MIGRATION
+  existed: the workflow writes capped (lineage repair, `max_per_species = 20`)
+  and uncapped fetches into the SAME cache dir, and `blacklist_regex` is not
+  recoverable from file content.
+- **`max_per_genus` default fragility**: `976639d` changed the default NULL ->
+  500L, and because it is part of the cache key the workflow's explicit
+  `max_per_genus = NULL` is the only thing keeping ~21 h of COI plus the 12S
+  cache valid, protected by a comment. "The same workflow arguments" is NOT a
+  safe statement across package versions.
+
+## 7e. 12S/18S ASSIGNMENTS ARE NOT STABLE (2026-10-06)
+
+Three outstanding items, all awaiting the maintainer, and they do NOT need the
+same kind of re-run:
+1. **Round 2 circular boost** of unreferenced/ring rows -- changes ASSIGNMENTS.
+2. **`restore_suppressed_candidates()` score imputation** -- changes
+   ASSIGNMENTS. Levels 1-3 impute a restored congener's QUERY score as the
+   median reference-vs-reference `p_match`, which is only valid when the query
+   matches its anchor almost exactly. Measured: 568 18S and 577 12S
+   observations carry a restored row imputed ABOVE its anchor (excess median
+   3.7, max 29.3 points for 18S), and 279 + 256 of those are the TOP
+   likelihood. Worked case: 18S_ESV_026656, every real hit 77-78%, restored
+   *Porphyra mumfordii* imputed at 97.18 and winning at likelihood 1.0, from a
+   reference covering 43% of the region.
+   Agreed fix: `anchor_score - (100 - ref_ref_identity)`, a no-op when the
+   anchor match is 100%. **Describe it as a conservative DATA-DERIVED LOWER
+   ESTIMATE, not a triangle-inequality proof**: percent identity over pairwise
+   OVERLAPS is not a metric (three different overlap regions, each normalised
+   over its own with `includeTerminalGaps = FALSE`), so the bound CAN be
+   violated -- partial coverage, as in the worked case, is exactly where. It
+   does NOT contradict the file header, which rejected a CONSTANT delta; this
+   delta is measured.
+3. **h1-spread re-measure** -- a property of the TRAINING pairs, not of
+   assignment. Needs a retrain and a measurement, NOT a full run, and its
+   inputs are already merged and installed, so it can run in parallel.
+
+Cheapest sequence: measure the spread now; build and verify 1 and 2; land both
+with ONE install; then ONE full run. Landing 1 and 2 separately costs two
+20 h cycles and yields two runs differing for two reasons.
+
 ## 8. Findings to carry into the manuscript (not to fix)
 
 - **18S V9's poor species discrimination is a property of the marker, not a
