@@ -1718,3 +1718,24 @@ not to ignore.
 
 The final shape — measured first, a capped imputation fallback, offsets learned in bands, and
 separate flags — follows from those numbers.
+
+### 2026-10-07: `calibrate_query_noise()` measures query noise on observed rows only
+
+Maintainer decision ("C1"). `identify_confident_observations()` now removes every row
+`restore_suppressed_candidates()` added before it takes each observation's top hit. A row is removed
+when it has `is_restored`, hypothesis type `"suppressed_candidate"` or any `restoration_basis`,
+dropped-hit replacements included. The count is reported as attribute `n_restored_rows_excluded` and
+in `Query_Calibration$n_restored_rows_excluded`. No marker appears in the rule.
+
+**Why.** A restored row is a hypothesis the pipeline added, not a measurement of how a real query scores
+against its own species. Inside the confident set (16-22% of COI's confident observations), it set
+the measured scatter from the restoration rule rather than the data.
+- On 2026-10-06 the imputed restored scores WIDENED the COI spread: nanopore sigma_ratio 2.26 against
+  1.00 from observed rows.
+- After the measured-first fix, the measured scores NARROWED it: illumina 2.25 against about 3.2.
+- That narrowing set the H1 outlier gate on 9,479 OBSERVED COI candidates in 3,490 ESVs.
+- 12S and 18S were barely affected, because few of their confident rows were restored.
+
+Tests: tight restored rows that would otherwise be the confident top hits leave sigma_ratio and the
+offset identical to the observed-only result; any one restoration marker excludes a row; an
+observation whose only rows are restored contributes nothing.

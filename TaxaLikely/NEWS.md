@@ -12,3 +12,6 @@
   species back through its kept references, scored by the same direct
   alignment, so dropping one accession does not drop a species that has other
   good references.
+* `calibrate_query_noise()` measures query noise on OBSERVED rows only: rows
+  added by `restore_suppressed_candidates()` are hypotheses and are excluded
+  from the confident set (`Query_Calibration$n_restored_rows_excluded`).
