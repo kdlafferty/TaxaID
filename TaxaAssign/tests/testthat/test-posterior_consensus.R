@@ -1772,3 +1772,34 @@ test_that("a rank no row carries is 'rank_not_supplied'; a rank some lineages la
   expect_equal(co$consensus_taxon, "Actinopteri")
   expect_equal(co$consensus_limit, "threshold")
 })
+
+# ---- per-observation chunks by row-index split (2026-10-06) ------------------
+test_that("interleaved observation rows give the same consensus as grouped rows", {
+  set.seed(9)
+  mk <- function(o, k) data.frame(observation_id = o, taxon_name = paste("Gen", sample(letters, k), "sp"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate", family = "F1",
+    genus = "Gen", posterior_point_est = prop.table(runif(k)), score_likelihood = runif(k),
+    prior_mean = runif(k, 1e-4, 1e-2), stringsAsFactors = FALSE)
+  d <- do.call(rbind, lapply(sprintf("o%02d", 1:12), function(o) mk(o, sample(2:5, 1))))
+  run <- function(x) suppressWarnings(suppressMessages(posterior_consensus(x,
+    rank_system = c("family", "genus", "species"), consensus_method = "credible_node")))
+  grouped <- run(d)
+  # interleave observations round-robin while keeping each observation's own row order
+  pos <- stats::ave(seq_len(nrow(d)), d$observation_id, FUN = seq_along)
+  inter_df <- d[order(pos, d$observation_id), ]
+  expect_true(any(diff(match(inter_df$observation_id, unique(d$observation_id))) != 0 &
+    duplicated(inter_df$observation_id))) # really interleaved
+  inter <- run(inter_df)
+  # same per-observation result regardless of how the rows of different observations interleave
+  # compare column contents, both sides subset the same way (a column subset drops report_params)
+  a1 <- as.list(inter[order(inter$observation_id), names(grouped)])
+  b1 <- as.list(grouped[order(grouped$observation_id), names(grouped)])
+  expect_identical(a1, b1)
+})
+
+test_that("an NA observation_id still runs (original chunking path)", {
+  d <- data.frame(observation_id = c("o1", "o1", NA), taxon_name = c("A a", "B b", "C c"),
+    taxon_name_rank = "species", hypothesis_type = "specific_candidate", family = "F", genus = c("A", "B", "C"),
+    posterior_point_est = c(0.95, 0.05, 1), stringsAsFactors = FALSE)
+  expect_no_error(suppressWarnings(suppressMessages(posterior_consensus(d, rank_system = c("family", "genus", "species")))))
+})
