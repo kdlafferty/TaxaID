@@ -1686,3 +1686,15 @@ Tests in `test-restore-measure.R`:
   their own flag.
 
 Full suite 1,939 passed / 0 failed.
+
+Two readings of the banded table, so it is not misread:
+
+- **12S changes the most tops even though its offset barely slopes.** Its kept hits show +0.51 across
+  75-95 (n = 127) and about 0 above 95. Its restored congeners sit precisely in that band (median raw
+  identity 94.7), so about half of them move down by about half a point.
+- **18S's 222 out-of-range rows all lie ABOVE the highest observed score the offset was measured on
+  (97.9).** They take the nearest band's offset (+2.23). 18S is flat at +2.23 to +2.28 throughout, so
+  extrapolating that constant costs almost nothing. The flag records only that the offset was not
+  measured at their identity.
+
+The README software inventory is updated to 35 test files (`test-restore-measure.R` is new).
