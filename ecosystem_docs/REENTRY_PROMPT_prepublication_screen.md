@@ -1764,7 +1764,7 @@ backstop, all option-controlled.
   cache valid, protected by a comment. "The same workflow arguments" is NOT a
   safe statement across package versions.
 
-## 7e. 12S/18S ASSIGNMENTS ARE NOT STABLE (2026-10-06)
+## 7e. 12S/18S/COI ASSIGNMENTS ARE NOT STABLE (2026-10-06)
 
 Three outstanding items, all awaiting the maintainer, and they do NOT need the
 same kind of re-run:
@@ -1778,6 +1778,12 @@ same kind of re-run:
    likelihood. Worked case: 18S_ESV_026656, every real hit 77-78%, restored
    *Porphyra mumfordii* imputed at 97.18 and winning at likelihood 1.0, from a
    reference covering 43% of the region.
+   **COI IS THE WORST-AFFECTED MARKER, not 18S** (counts on the final files,
+   2026-10-06): inflated restored rows are the Round 2 winner for 403 COI
+   ESV@Site against 233 12S and 190 18S, and drive SPECIES-LEVEL consensus
+   calls for 283 COI against 67 12S and 20 18S. COI adds 1,168 observations at
+   likelihood level with a median excess of 8.7 points. Any statement scoped to
+   "12S and 18S" understates this -- an earlier version of this section did.
    Agreed fix: `anchor_score - (100 - ref_ref_identity)`, a no-op when the
    anchor match is 100%. **Describe it as a conservative DATA-DERIVED LOWER
    ESTIMATE, not a triangle-inequality proof**: percent identity over pairwise
