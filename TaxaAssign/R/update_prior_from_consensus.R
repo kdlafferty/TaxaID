@@ -182,8 +182,8 @@
 #'     (`theta_mean` `NA`) is never raised.
 #' }
 #' A message counts the supported rows each guard held back. Both guards need
-#' their input columns and stop if one is missing; `receiver_guards = FALSE`
-#' turns them off.
+#' their input columns and stop if one is missing; `require_support_columns =
+#' FALSE` is a transitional shim that turns them off.
 #'
 #' @section Confirmed without an occurrence record:
 #' Until 2026-10-07 a row with no occurrence record (`theta_mean` `NA`) was
@@ -223,14 +223,16 @@
 #'   independent -- almost certainly too strong for same-site detections of
 #'   any kind). See the
 #'   \emph{Soft confirmation} section.
-#' @param receiver_guards Logical (default `TRUE`). Apply the receiver guards
-#'   (see \emph{Receiver guards}): only rows inside their observation's
-#'   likelihood-only credible node, and with an occurrence record, are raised.
-#'   Requires `likelihood_consensus_taxon`/`likelihood_consensus_rank` in
-#'   `consensus` and `theta_mean` in `result`, and stops if they are missing.
-#'   `FALSE` restores the earlier behaviour, where such rows can be raised (a
-#'   message says so); use it only knowingly, e.g. for priors that are not
-#'   occurrence-based.
+#' @param require_support_columns Logical (default `TRUE`). The receiver
+#'   guards (see \emph{Receiver guards}) need `likelihood_consensus_taxon` and
+#'   `likelihood_consensus_rank` in `consensus` (from [posterior_consensus()]'s
+#'   likelihood-only pass) and `theta_mean` in `result` (from the TaxaExpect
+#'   prior table); with `TRUE` the function stops, naming any that is missing.
+#'   `FALSE` is a TRANSITIONAL shim for callers not yet migrated, not a
+#'   supported mode: it skips both guards and raises without
+#'   likelihood-consensus support (a message says so), so its results are not
+#'   comparable to a guarded run. Within this package it is used only for the
+#'   LLM pathway, whose priors are not occurrence-based.
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty -- match the value used in the original run.
@@ -302,10 +304,10 @@ update_prior_from_consensus <- function(result,
                                         group_cols = "sample_id",
                                         marker_col = "marker",
                                         spatial_group_map = NULL,
-                                        receiver_guards = TRUE) {
+                                        require_support_columns = TRUE) {
   # --- Input validation -------------------------------------------------------
-  if (!is.logical(receiver_guards) || length(receiver_guards) != 1L || is.na(receiver_guards)) {
-    cli::cli_abort("{.arg receiver_guards} must be TRUE or FALSE.")
+  if (!is.logical(require_support_columns) || length(require_support_columns) != 1L || is.na(require_support_columns)) {
+    cli::cli_abort("{.arg require_support_columns} must be TRUE or FALSE.")
   }
   required_result <- c(
     "observation_id", "taxon_name", "score_likelihood",
@@ -324,19 +326,19 @@ update_prior_from_consensus <- function(result,
   if (length(missing_consensus) > 0) {
     cli::cli_abort("consensus missing required column(s): {.field {missing_consensus}}")
   }
-  if (receiver_guards) {
-    miss_g <- c(
-      setdiff(c("likelihood_consensus_taxon", "likelihood_consensus_rank"), names(consensus)),
-      setdiff("theta_mean", names(result))
-    )
-    if (length(miss_g) > 0L) {
+  if (require_support_columns) {
+    miss_lik <- setdiff(c("likelihood_consensus_taxon", "likelihood_consensus_rank"), names(consensus))
+    miss_theta <- setdiff("theta_mean", names(result))
+    if (length(miss_lik) + length(miss_theta) > 0L) {
       cli::cli_abort(c(
-        "The receiver guards need column(s) that are missing: {.field {miss_g}}.",
-        "i" = "{.field likelihood_consensus_taxon}/{.field likelihood_consensus_rank} come from \\
-        {.fn posterior_consensus} with {.code likelihood_consensus = TRUE} (its default); \\
-        {.field theta_mean} comes from occurrence-model priors.",
-        "i" = "Set {.code receiver_guards = FALSE} only to allow raises the guards would block \\
-        (rows outside the likelihood-only credible node, rows with no occurrence record)."
+        "Round 2 needs its support columns, and some are missing.",
+        "x" = if (length(miss_lik)) "{.arg consensus} lacks {.field {miss_lik}}: it comes from \\
+          {.fn posterior_consensus}'s likelihood-only pass ({.code likelihood_consensus = TRUE}, the default).",
+        "x" = if (length(miss_theta)) "{.arg result} lacks {.field theta_mean}: it comes from the TaxaExpect \\
+          prior table (occurrence-based priors), carried through {.fn join_priors}.",
+        "i" = "{.code require_support_columns = FALSE} is a transitional shim for callers not yet \\
+          migrated, not a supported mode: it raises without likelihood-consensus support, and its \\
+          results are not comparable to a guarded run."
       ))
     }
   }
@@ -518,7 +520,7 @@ update_prior_from_consensus <- function(result,
   lik_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank")
   in_node <- rep(TRUE, n_ur)
   has_record <- rep(TRUE, n_ur)
-  if (receiver_guards) {
+  if (require_support_columns) {
     j <- match(as.character(unresolved_rows$observation_id), as.character(consensus$observation_id))
     lt <- as.character(consensus$likelihood_consensus_taxon[j])
     lr <- as.character(consensus$likelihood_consensus_rank[j])
@@ -530,7 +532,7 @@ update_prior_from_consensus <- function(result,
     }
     has_record <- !is.na(unresolved_rows$theta_mean)
   } else {
-    message("update_prior_from_consensus: receiver_guards = FALSE: rows outside the likelihood node and rows with no occurrence record CAN be raised.")
+    message("update_prior_from_consensus: require_support_columns = FALSE (transitional shim): raising without likelihood-consensus support; results are not comparable to a guarded run.")
   }
   ur_ok <- ur_ref & in_node & has_record
   rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")

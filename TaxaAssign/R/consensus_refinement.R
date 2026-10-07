@@ -81,7 +81,10 @@
     result, consensus,
     confirmation_quantile = confirmation_quantile,
     confirmation_discount = confirmation_discount,
-    n_sims = n_sims
+    n_sims = n_sims,
+    # LLM priors are not occurrence-based (no theta_mean), so the
+    # occurrence-record guard has nothing to read there: guards off for "llm"
+    require_support_columns = workflow != "llm"
   )
 
   consensus_final <- posterior_consensus(

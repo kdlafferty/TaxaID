@@ -178,7 +178,7 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
   # this fixture's priors are not occurrence-based (no theta_mean), so the
   # receiver guards are turned off explicitly
   result_updated <- suppressMessages(update_prior_from_consensus(result, con,
-    n_sims = 100, receiver_guards = FALSE
+    n_sims = 100, require_support_columns = FALSE
   ))
   expect_s3_class(result_updated, "data.frame")
 

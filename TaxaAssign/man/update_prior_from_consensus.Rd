@@ -14,7 +14,7 @@ update_prior_from_consensus(
   group_cols = "sample_id",
   marker_col = "marker",
   spatial_group_map = NULL,
-  receiver_guards = TRUE
+  require_support_columns = TRUE
 )
 }
 \arguments{
@@ -77,14 +77,16 @@ different spatial groups donate nothing to each other. Membership is
 binary (same group or not), with no distance decay within a group. Supply
 this or \code{detections}, not both.}
 
-\item{receiver_guards}{Logical (default \code{TRUE}). Apply the receiver guards
-(see \emph{Receiver guards}): only rows inside their observation's
-likelihood-only credible node, and with an occurrence record, are raised.
-Requires \code{likelihood_consensus_taxon}/\code{likelihood_consensus_rank} in
-\code{consensus} and \code{theta_mean} in \code{result}, and stops if they are missing.
-\code{FALSE} restores the earlier behaviour, where such rows can be raised (a
-message says so); use it only knowingly, e.g. for priors that are not
-occurrence-based.}
+\item{require_support_columns}{Logical (default \code{TRUE}). The receiver
+guards (see \emph{Receiver guards}) need \code{likelihood_consensus_taxon} and
+\code{likelihood_consensus_rank} in \code{consensus} (from \code{\link[=posterior_consensus]{posterior_consensus()}}'s
+likelihood-only pass) and \code{theta_mean} in \code{result} (from the TaxaExpect
+prior table); with \code{TRUE} the function stops, naming any that is missing.
+\code{FALSE} is a TRANSITIONAL shim for callers not yet migrated, not a
+supported mode: it skips both guards and raises without
+likelihood-consensus support (a message says so), so its results are not
+comparable to a guarded run. Within this package it is used only for the
+LLM pathway, whose priors are not occurrence-based.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},
@@ -287,8 +289,7 @@ about 300-fold.
 (\code{theta_mean} \code{NA}) is never raised.
 }
 A message counts the supported rows each guard held back. Both guards need
-their input columns and stop if one is missing; \code{receiver_guards = FALSE}
-turns them off.
+their input columns and stop if one is missing; \code{require_support_columns = FALSE} is a transitional shim that turns them off.
 }
 
 \section{Confirmed without an occurrence record}{

@@ -11,7 +11,7 @@ library(dplyr)
 # themselves, so they run with the guards off (their fixtures carry no
 # likelihood-only consensus and mostly no theta_mean). The guards are tested
 # in their own section below and in the occurrence-record test.
-.upf <- function(...) update_prior_from_consensus(..., receiver_guards = FALSE)
+.upf <- function(...) update_prior_from_consensus(..., require_support_columns = FALSE)
 
 .make_result <- function() {
   bind_rows(
@@ -1072,8 +1072,8 @@ test_that("G3: a supported row OUTSIDE its observation's likelihood node is neve
   expect_message(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
     "1 supported row\\(s\\) not raised because they lie outside")
   # CONTROL: the same row IS raised with the guards explicitly off ...
-  expect_message(off <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, receiver_guards = FALSE),
-    "receiver_guards = FALSE")
+  expect_message(off <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = FALSE),
+    "require_support_columns = FALSE")
   expect_gt(.prior_of(off, "S2", "Dictyota dichotoma"), 1e-3)
   # ... and when S2's node contains it (a node at the phylum Ochrophyta)
   inside <- fx$consensus
@@ -1108,7 +1108,7 @@ test_that("G1: an unrecorded row INSIDE the likelihood node is not raised; a rec
   expect_gt(.prior_of(out, "S2", "Thraustochytrium kinnei"), 1e-3)
   expect_false(any(out$confirmed_without_occurrence_record))
   # CONTROL: with the guards off the unrecorded row IS raised
-  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(res, cons, n_sims = 0, receiver_guards = FALSE)),
+  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(res, cons, n_sims = 0, require_support_columns = FALSE)),
     "S2", "Aplanochytrium stocchinoi"), 1e-3)
 })
 
@@ -1118,8 +1118,8 @@ test_that("the receiver guards stop, naming the column, when their inputs are mi
   expect_error(update_prior_from_consensus(fx$result, no_lik, n_sims = 0), "likelihood_consensus_taxon")
   expect_error(update_prior_from_consensus(fx$result[, setdiff(names(fx$result), "theta_mean")], fx$consensus, n_sims = 0),
     "theta_mean")
-  expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, receiver_guards = NA), "receiver_guards")
+  expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = NA), "require_support_columns")
   # with the guards off, neither column is needed
   expect_s3_class(suppressMessages(update_prior_from_consensus(fx$result[, setdiff(names(fx$result), "theta_mean")], no_lik,
-    n_sims = 0, receiver_guards = FALSE)), "data.frame")
+    n_sims = 0, require_support_columns = FALSE)), "data.frame")
 })
