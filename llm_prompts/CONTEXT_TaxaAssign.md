@@ -337,7 +337,7 @@ For each 'observation_id', applies conventional score-based filtering to derive 
 
 **Value:** A data frame with one row per 'observation_id': 'observation_id' Sample identifier. 'consensus_taxon' LCA taxon name, or 'NA' if unresolvable. 'consensus_rank' Rank of the LCA (e.g. '"genus"'), or 'NA'. 'consensus_reason' How the consensus was reached: '"unanimous"' (all retained taxa agree at the finest rank), '"single"' (only one taxon retained after filtering), '"lca"' (upranked because ...
 
-### update_prior_from_consensus(result, consensus, confirmation_quantile = 0.9, confirmation_discount = 0.25, n_sims = 0, detections = NULL, group_cols = "sample_id", marker_col = "marker", spatial_group_map = NULL)
+### update_prior_from_consensus(result, consensus, confirmation_quantile = 0.9, confirmation_discount = 0.25, n_sims = 0, detections = NULL, group_cols = "sample_id", marker_col = "marker", spatial_group_map = NULL, require_support_columns = TRUE)
 
 Update Priors from Consensus Assignments and Recompute Posteriors
 
@@ -346,7 +346,7 @@ A one-pass empirical Bayes refinement step. Every observation's posterior suppor
 | Param | Required | Default | Doc |
 |---|---|---|---|
 | result | yes |  | Dataframe. Output of assign_taxa_llm() or compute_posterior(). Must contain: observation_id, taxon_name, score_likelihood, score_likelihood_mean, score_likelihood_sd, prior_mean. When prior_alpha/prior_beta (Beta shape parameters) are present, they are recomputed alongside prior_mean for boosted rows, preserving the original concentration (alpha + beta) so compute_posterior()'s Monte Carlo path stays consistent with the boosted point estimate -- rescaling only prior_mean would leave a stale Beta shape that could be sampled from if n_sims > 0. |
-| consensus | yes |  | Dataframe. Output of posterior_consensus() run on result. Must contain: observation_id, consensus_taxon, is_resolved, consensus_posterior. |
+| consensus | yes |  | Dataframe. Output of posterior_consensus() run on result. Must contain: observation_id, consensus_taxon, is_resolved, consensus_posterior. likelihood_consensus_taxon and likelihood_consensus_rank (present by default) enable the likelihood-node guard (see Receiver guards). |
 | confirmation_quantile | no | 0.9 | Numeric in (0, 1]. Quantile of confirming observations' consensus_posterior used as the candidate new prior_mean for a confirmed species. Default 0.9. 1 is equivalent to taking the maximum. |
 | confirmation_discount | no | 0.25 | Numeric in [0, 1]. Power-prior discount a0 applied to the cross-observation support mass (0.25 default: ~4 correlated observations carry the weight of 1 independent one; 0 disables the update entirely; 1 treats every observation as fully independent -- almost certainly too strong for same-site detections of any kind). See the Soft confirmation section. |
 | n_sims | no | 0 | Integer. Passed to compute_posterior() for the re-run. Default 0 (point estimates only, fast). Set to 1000 to propagate uncertainty -- match the value used in the original run. |
@@ -354,8 +354,9 @@ A one-pass empirical Bayes refinement step. Every observation's posterior suppor
 | group_cols | no | "sample_id" | Character vector. Column(s) of detections whose combination defines an evidence group. Default "sample_id", the sample (tube). Pass e.g. "site" to pool every tube at a site, or c("site", "season") to pool within site and season. |
 | marker_col | no | "marker" | Character. Optional column of detections naming the marker or assay, used only to warn when no group spans more than one marker. Ignored when absent. Default "marker". |
 | spatial_group_map | no | NULL | Data frame with observation_id and spatial_group_id columns (e.g. from TaxaMatch::group_observations_by_bbox()), optional. Equivalent to detections = spatial_group_map, group_cols = "spatial_group_id": evidence is pooled within each spatial group only, so two sites in different spatial groups donate nothing to each other. Membership is binary (same group or not), with no distance decay within a group. Supply this or detections, not both. |
+| require_support_columns | no | TRUE | Logical (default TRUE). The receiver guards (see Receiver guards) need likelihood_consensus_taxon and likelihood_consensus_rank in consensus (from posterior_consensus()'s likelihood-only pass) and theta_mean in result (from the TaxaExpect prior table); with TRUE the function stops, naming any that is missing. FALSE is a TRANSITIONAL shim for callers not yet migrated, not a supported mode: it skips both guards and raises without likelihood-consensus support (a message says so), so its results are not comparable to a guarded run. Within this package it is used only for the LLM pathway, whose priors are not occurrence-based. |
 
-**Value:** The full posterior dataframe with the same structure as 'result', plus one new column, 'confirmed_without_occurrence_record' (logical, 'FALSE' unless set 'TRUE' - see @section Confirmed without an occurrence record). Resolved observations are returned unchanged. Unresolved observations that share at least one group with another observation have updated 'prior_mean' and freshly computed ...
+**Value:** The full posterior dataframe with the same structure as 'result', plus one new column, 'confirmed_without_occurrence_record' (logical; kept for compatibility and 'FALSE' whenever 'theta_mean' is present, since such rows are no longer raised - see _Confirmed without an occurrence record_). Resolved observations are returned unchanged. Unresolved observations that share at least one group with ...
 
 ## Quick Start
 
