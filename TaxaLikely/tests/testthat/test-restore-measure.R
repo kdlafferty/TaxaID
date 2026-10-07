@@ -396,3 +396,21 @@ test_that("a supplied measured_offset is used as given, regardless of the call's
     "measured_offset"
   )
 })
+
+test_that("the calibration offset shifts a low-scoring measured row by the same constant, with no clamp", {
+  far <- .q_seq
+  for (pos in seq(5, nchar(far), by = 8)) substr(far, pos, pos) <- if (substr(far, pos, pos) == "A") "C" else "A"
+  raw <- .measure_query_identity(.q_seq, far)
+  expect_false(is.na(raw))
+  expect_lt(raw, 90)
+  m <- .rm_match(score = 70)
+  m$sequence[1] <- .q_seq
+  res <- restore_suppressed_candidates(
+    m, .rm_ref(c(simplicidens = .q_seq, nigricans = far)),
+    rank_system = c("family", "genus", "species"), sequence_col = "sequence",
+    measured_offset = 2.25, model_params = .rm_params(sigma11 = 1), verbose = FALSE
+  )
+  r <- res[res$is_restored, ]
+  expect_equal(r$score_original, raw - 2.25)
+  expect_equal(r$restored_below_floor, (raw - 2.25) < 75)
+})
