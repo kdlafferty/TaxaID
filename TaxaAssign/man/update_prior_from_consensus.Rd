@@ -272,7 +272,7 @@ occurrence-model-sourced priors.
 \section{Receiver guards}{
 
 A raise may choose among candidates the sequence cannot separate; it may
-never pick one the sequence argues against, nor manufacture presence. Two
+never pick one the sequence argues against, nor manufacture presence. Three
 guards apply to the rows that would be raised (donor support is unchanged):
 \itemize{
 \item \strong{Likelihood node.} Only rows inside their observation's
@@ -287,6 +287,19 @@ overturn a red-alga match (likelihood 1.0) once its prior was raised
 about 300-fold.
 \item \strong{Occurrence record.} A row with no occurrence record
 (\code{theta_mean} \code{NA}) is never raised.
+\item \strong{Likelihood ranking.} A prior boost must not overturn the
+likelihood ordering: a row is raised only if its \code{score_likelihood} is
+at least that of every other REFERENCED candidate in its observation
+(ties allowed). Unreferenced rows (\verb{unreferenced_*}) are not in the
+comparison, so a higher-likelihood unreferenced row does not block. A
+comparator with an \code{NA} likelihood is left out of the comparison; a row
+whose own likelihood is \code{NA} is never raised. Measured
+on CalIntertidal (2026-10-07, after the two guards above): a recorded
+but rare red alga with 44-fold lower likelihood than its congener was
+raised about 160,000-fold inside a class-level likelihood node and
+called at posterior 0.98; this guard blocks such raises, and also lets
+the better-scoring species keep a call that a co-raised, weaker
+congener had split.
 }
 A message counts the supported rows each guard held back. Both guards need
 their input columns and stop if one is missing; \code{require_support_columns = FALSE} is a transitional shim that turns them off.
