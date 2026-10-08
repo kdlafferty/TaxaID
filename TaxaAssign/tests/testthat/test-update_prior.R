@@ -1097,10 +1097,11 @@ test_that("G3: a supported row OUTSIDE its observation's likelihood node is neve
   expect_message(off <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = FALSE),
     "require_support_columns = FALSE")
   expect_gt(.prior_of(off, "S2", "Dictyota dichotoma"), 1e-3)
-  # ... and when S2's node contains it (a node at the phylum Ochrophyta)
+  # ... and when S2's node contains it and it ties the best likelihood (G4 then lets it through)
   inside <- fx$consensus
   inside$likelihood_consensus_taxon[3] <- "Ochrophyta"; inside$likelihood_consensus_rank[3] <- "phylum"
-  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(fx$result, inside, n_sims = 0)), "S2", "Dictyota dichotoma"), 1e-3)
+  tie <- fx$result; tie$score_likelihood[tie$observation_id == "S2" & tie$taxon_name == "Dictyota dichotoma"] <- 1
+  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(tie, inside, n_sims = 0)), "S2", "Dictyota dichotoma"), 1e-3)
 })
 
 test_that("G3: an observation with no likelihood node has no row raised", {
@@ -1117,7 +1118,7 @@ test_that("G1: an unrecorded row INSIDE the likelihood node is not raised; a rec
   res <- bind_rows(
     .g_rows("S1", "Aplanochytrium stocchinoi", "Bigyra", 1, theta = NA),
     .g_rows("S3", "Thraustochytrium kinnei", "Bigyra", 1),
-    .g_rows("S2", c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei"), "Bigyra", c(0.378, 0.3), theta = c(NA, 0.01))
+    .g_rows("S2", c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei"), "Bigyra", c(0.378, 0.378), theta = c(NA, 0.01))
   )
   cons <- tibble(observation_id = c("S1", "S3", "S2"),
     consensus_taxon = c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei", NA),
@@ -1144,4 +1145,67 @@ test_that("the receiver guards stop, naming the column, when their inputs are mi
   # with the guards off, neither column is needed
   expect_s3_class(suppressMessages(update_prior_from_consensus(fx$result[, setdiff(names(fx$result), "theta_mean")], no_lik,
     n_sims = 0, require_support_columns = FALSE)), "data.frame")
+})
+
+# ---- G4: a prior boost must not overturn the likelihood ordering (2026-10-07) ----
+# S1 and S3 resolve the recorded Acrochaetium catenulatum (donor support at the Site). S2's sequence fits
+# A. humile better (L 0.20 vs 0.0046). Its likelihood node is the class, so both are inside it (G3 passes).
+.acro_fixture <- function(L_cat = 0.0046, L_hum = 0.20, theta_hum = 0.01) {
+  r <- bind_rows(
+    .g_rows("S1", "Acrochaetium catenulatum", "Rhodophyta", 1),
+    .g_rows("S3", "Acrochaetium catenulatum", "Rhodophyta", 1),
+    .g_rows("S2", c("Acrochaetium catenulatum", "Acrochaetium humile"), "Rhodophyta", c(L_cat, L_hum), theta = c(0.01, theta_hum))
+  )
+  r$class <- "Florideophyceae"
+  list(result = r, consensus = .g_cons(c("S1", "S3", "S2"), c(TRUE, TRUE, FALSE), "Acrochaetium catenulatum",
+    c("Acrochaetium catenulatum", "Acrochaetium catenulatum", "Florideophyceae"), c("species", "species", "class")))
+}
+
+test_that("G4: a lower-likelihood referenced row is not raised over a better one (Acrochaetium inversion)", {
+  fx <- .acro_fixture()
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_equal(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+  expect_message(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+    "1 not raised because another referenced candidate in the observation has a higher likelihood")
+  # CONTROL: with the guards off, the same row IS raised
+  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0,
+    require_support_columns = FALSE)), "S2", "Acrochaetium catenulatum"), 1e-3)
+})
+
+test_that("G4: a tie is allowed (Round 2 may break it)", {
+  fx <- .acro_fixture(L_cat = 0.2, L_hum = 0.2)
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+})
+
+test_that("G4: of two supported congeners, only the better-likelihood one is raised (no splitting)", {
+  fx <- .acro_fixture(L_cat = 0.1, L_hum = 0.9)
+  s4 <- .g_rows("S4", "Acrochaetium humile", "Rhodophyta", 1); s4$class <- "Florideophyceae"
+  fx$result <- bind_rows(fx$result, s4)
+  fx$consensus <- bind_rows(fx$consensus, .g_cons("S4", TRUE, "Acrochaetium humile", "Acrochaetium humile", "species"))
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_gt(.prior_of(out, "S2", "Acrochaetium humile"), 1e-3)
+  expect_equal(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+  # CONTROL: with the guards off BOTH are raised (the split G4 removes)
+  off <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = FALSE))
+  expect_gt(.prior_of(off, "S2", "Acrochaetium catenulatum"), 1e-3)
+  expect_gt(.prior_of(off, "S2", "Acrochaetium humile"), 1e-3)
+})
+
+test_that("G4: an UNREFERENCED row with a higher likelihood does not block a referenced one", {
+  fx <- .acro_fixture(L_cat = 0.5, L_hum = 0.2)
+  ring <- .g_rows("S2", "Acrochaetium", "Rhodophyta", 1, theta = NA)
+  ring$class <- "Florideophyceae"; ring$hypothesis_type <- "unreferenced_species"; ring$taxon_name_rank <- "genus"
+  fx$result <- bind_rows(fx$result, ring)
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+})
+
+test_that("G4: an NA-likelihood comparator is left out; an NA-likelihood receiver is never raised", {
+  fx <- .acro_fixture(L_cat = 0.0046, L_hum = NA)
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+  fx2 <- .acro_fixture(L_cat = NA, L_hum = 0.2)
+  out2 <- suppressMessages(update_prior_from_consensus(fx2$result, fx2$consensus, n_sims = 0))
+  expect_equal(.prior_of(out2, "S2", "Acrochaetium catenulatum"), 1e-3)
 })

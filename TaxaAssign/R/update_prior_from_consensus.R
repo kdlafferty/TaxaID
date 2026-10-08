@@ -165,7 +165,7 @@
 #'
 #' @section Receiver guards:
 #' A raise may choose among candidates the sequence cannot separate; it may
-#' never pick one the sequence argues against, nor manufacture presence. Two
+#' never pick one the sequence argues against, nor manufacture presence. Three
 #' guards apply to the rows that would be raised (donor support is unchanged):
 #' \itemize{
 #'   \item **Likelihood node.** Only rows inside their observation's
@@ -180,6 +180,19 @@
 #'     about 300-fold.
 #'   \item **Occurrence record.** A row with no occurrence record
 #'     (`theta_mean` `NA`) is never raised.
+#'   \item **Likelihood ranking.** A prior boost must not overturn the
+#'     likelihood ordering: a row is raised only if its `score_likelihood` is
+#'     at least that of every other REFERENCED candidate in its observation
+#'     (ties allowed). Unreferenced rows (`unreferenced_*`) are not in the
+#'     comparison, so a higher-likelihood unreferenced row does not block. A
+#'     comparator with an `NA` likelihood is left out of the comparison; a row
+#'     whose own likelihood is `NA` is never raised. Measured
+#'     on CalIntertidal (2026-10-07, after the two guards above): a recorded
+#'     but rare red alga with 44-fold lower likelihood than its congener was
+#'     raised about 160,000-fold inside a class-level likelihood node and
+#'     called at posterior 0.98; this guard blocks such raises, and also lets
+#'     the better-scoring species keep a call that a co-raised, weaker
+#'     congener had split.
 #' }
 #' A message counts the supported rows each guard held back. Both guards need
 #' their input columns and stop if one is missing; `require_support_columns =
@@ -520,6 +533,7 @@ update_prior_from_consensus <- function(result,
   lik_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank")
   in_node <- rep(TRUE, n_ur)
   has_record <- rep(TRUE, n_ur)
+  top_lik <- rep(TRUE, n_ur)
   if (require_support_columns) {
     j <- match(as.character(unresolved_rows$observation_id), as.character(consensus$observation_id))
     lt <- as.character(consensus$likelihood_consensus_taxon[j])
@@ -531,10 +545,24 @@ update_prior_from_consensus <- function(result,
       in_node[m] <- !is.na(v) & !is.na(lt[m]) & v == lt[m]
     }
     has_record <- !is.na(unresolved_rows$theta_mean)
+    # (G4) a row is raised only if its likelihood is at least that of every
+    # other referenced candidate in its observation (ties allowed): Round 2
+    # may break a tie, never invert the sequence's own ranking.
+    # Comparators are the REFERENCED candidates only (an unreferenced row with a
+    # higher likelihood does not block); one with an NA likelihood is left out
+    # of the comparison, and a receiver with an NA likelihood is never raised.
+    is_cand <- ur_ref & !is.na(unresolved_rows$taxon_name)
+    l_row <- unresolved_rows$score_likelihood
+    l_cand <- ifelse(is_cand & !is.na(l_row), l_row, -Inf)
+    oid <- as.character(unresolved_rows$observation_id)
+    top1 <- tapply(l_cand, oid, max)
+    top2 <- tapply(l_cand, oid, function(v) if (length(v) > 1L) sort(v, decreasing = TRUE)[2L] else -Inf)
+    best_other <- ifelse(l_cand == top1[oid], top2[oid], top1[oid])
+    top_lik <- !is.na(l_row) & l_row >= best_other
   } else {
     message("update_prior_from_consensus: require_support_columns = FALSE (transitional shim): raising without likelihood-consensus support; results are not comparable to a guarded run.")
   }
-  ur_ok <- ur_ref & in_node & has_record
+  ur_ok <- ur_ref & in_node & has_record & top_lik
   rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")
   row_key <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
   own_p <- as.numeric(obs_support[row_key])
@@ -551,10 +579,11 @@ update_prior_from_consensus <- function(result,
   md_row <- .row_mean(md_rg)
   n_out_node <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & !in_node)
   n_no_record <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & in_node & !has_record)
-  if (n_out_node + n_no_record > 0L) {
+  n_not_top <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & in_node & has_record & !top_lik)
+  if (n_out_node + n_no_record + n_not_top > 0L) {
     message(sprintf(
-      "update_prior_from_consensus: %d supported row(s) not raised because they lie outside their observation's likelihood-only credible node; %d not raised because they have no occurrence record.",
-      n_out_node, n_no_record
+      "update_prior_from_consensus: %d supported row(s) not raised because they lie outside their observation's likelihood-only credible node; %d not raised because they have no occurrence record; %d not raised because another referenced candidate in the observation has a higher likelihood.",
+      n_out_node, n_no_record, n_not_top
     ))
   }
   boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ok
