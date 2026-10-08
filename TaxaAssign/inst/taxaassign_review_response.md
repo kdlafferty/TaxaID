@@ -1227,5 +1227,12 @@ would make a species call, keeps one where the likelihood-only call is already s
 call coarser. The update stops when the settings are missing (hand-built or merged consensus) and runs once they are
 re-attached. `posterior_consensus()` attaches its own settings, and the guard calls it with them. NAMESPACE and every
 exported function's formals are unchanged against main.
-Real data: IDENTITY_PLACEHOLDER
+Real data (g56_identity.R; the G4 run's update input, 6,134,732 rows, one Site at a time, n_sims = 0, then the
+Section 8c consensus). The saved Round 1 consensus predates the attribute; the update stopped on it as designed, and
+the Section 8c settings were re-attached once. Per observation, all 49,349 calls are identical (taxon and rank) to
+the G5 + G6 measurement made before the build. Species calls per marker (12S / 18S / COI): G4 15,015 / 265 / 4,054;
+G5 + G6 10,527 / 195 / 3,249. Against G4 there are 0 new species calls and 0 swaps. The 41,667 observations the
+measurement did not touch have 0 call changes. The species guard undid 4,586 observations (12S 3,879, 18S 18,
+COI 689), all inside the measured set. Rows are identical to the earlier build that took the settings as an argument
+(max difference 0). 0 taxonomy names were looked up off cache.
 
