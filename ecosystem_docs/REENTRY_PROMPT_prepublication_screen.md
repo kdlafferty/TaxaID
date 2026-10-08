@@ -2457,6 +2457,93 @@ that "already merged" must not become the reason to keep something he would not
 choose again.
 
 
+## 7n. Resolved-only support: measured, not built (2026-10-08)
+
+Kevin, relayed verbatim: *"yes, measure resolved-only support first"*. Under it a
+site prior borrows only from observations whose likelihood-only call resolves the
+taxon. Measurement only; nothing to merge.
+
+### What the donor side does today
+
+Support is `max(posterior_point_est)` per (observation, species), summed over
+group members, discounted by `confirmation_discount` (a0 = 0.25). Donor
+eligibility is only `!is.na(taxon_name) & !is.na(posterior) & is_ref`, where
+`is_ref` is item b's exclusion of unreferenced types. So every observation
+contributes support for a species in proportion to its posterior support for it,
+whether or not its own sequence evidence picked that species out -- as the code
+states: the soft version "aggregates EVERY observation's posterior support for a
+species as fractional evidence of site-level presence."
+
+### Why this is a root-cause fix rather than another patch
+
+Donor mass is built from the POSTERIOR, and the posterior already contains the
+prior, so the circularity is structural rather than hypothetical. The package
+already makes exactly this argument one level down, at item b: ring rows'
+"posterior support comes from the same rows across the Site, so letting them
+confirm each other is circular (CalIntertidal 2026-10-06: ring priors rose
+3.5e-6 -> 0.049)." Resolved-only support applies the same argument to
+observations: one that could not resolve the taxon on its own sequence evidence
+is substantially expressing the prior, so letting it confirm the taxon feeds the
+prior back into itself. It is the principled completion of an argument already in
+the code -- the strongest general-method credential anything in this line has.
+
+It is also the **donor-side twin of G1**: G1 gates the receiver on
+`likelihood_consensus_taxon` / `likelihood_consensus_rank`, and this gates the
+donor on the same columns. One principle covers both -- *mass flows only between
+observations whose own sequence evidence identifies the taxon* -- which is a
+better methods story than three receiver guards plus a separate donor rule.
+
+Two precisions so it is not oversold:
+
+- The two sides are **not the same test**. G1 asks whether the receiver row is
+  CONTAINED in its observation's likelihood node, which may sit at class rank
+  (permissive). Resolved-only asks whether the donor's node IS the taxon
+  (strict). The asymmetry is defensible -- a donor asserts presence, a receiver
+  only chooses among candidates the sequence cannot separate -- but it should be
+  a stated choice, not an accident.
+- It **does not subsume G4 or G3**. G4's invariant is about ordering inside the
+  receiving observation; restricting donors reduces available MASS but cannot
+  restore an ordering, so with enough resolved donors a raise can still overturn
+  the likelihood ordering. G3 concerns a receiver row with no occurrence record
+  at all. Resolved-only makes G4 bind less often, not unnecessary. It composes
+  with b rather than replacing it: b filters row TYPE, this filters observation
+  RESOLUTION.
+
+### The risk the measurement must be built to catch
+
+The soft design exists because the hard version failed. From the code: gating
+donors on "resolved it with `consensus_posterior` >= a threshold" is
+classification EM (Celeux & Govaert 1992) and "would produce real cliffs: one
+marginal competitor holding every observation just under the bar means ZERO
+donors dataset-wide -- the GreatLakes2023 yellow-perch case, 78 observations at
+~0.69 each, no confirmation anywhere."
+
+Resolved-only support reintroduces a **binary donor gate**. The gated quantity
+differs (likelihood-only resolution, not a posterior threshold) so it is not the
+same cliff, but it is the same SHAPE, and GreatLakes2023 is the dataset known to
+expose it. The measurement should therefore report the **donor-count
+distribution** -- how many (group, species) cells lose all donors, and
+before/after donor counts per cell -- not only the resulting species calls, and
+should check GreatLakes2023 yellow perch specifically. On CalIntertidal alone a
+zero-donor cliff can be invisible.
+
+### A graded version the package already computes
+
+`posterior_consensus()`'s likelihood-only pass already emits
+**`likelihood_support`**: the "share of the baseline (sequence evidence, named
+candidates' priors flattened) that falls in the reported taxon", computed as
+`sum(.lik_post[taxon matches]) / sum(.lik_post)`. That is the *continuous*
+version of exactly the quantity resolved-only support would threshold.
+
+Weighting donor mass by it -- or building donor mass from the sequence-only
+`.lik_post` rather than the prior-containing posterior -- achieves the same goal
+with no binary gate, no cliff and no new parameter. For the general-vs-patch
+question that is the stronger form: it **removes** a threshold instead of adding
+one, so there is nothing to be accused of tuning. If resolved-only is measured
+binary-first, the graded variant is a cheap second arm on the same frame and
+worth having before a method is chosen.
+
+
 ## 8. Findings to carry into the manuscript (not to fix)
 
 - **18S V9's poor species discrimination is a property of the marker, not a
