@@ -1987,7 +1987,7 @@ not move the ceiling.
 roughly 250 total minutes at only 7.14 GB, so it is time-bound, not
 memory-bound. Shortening the run means parallelism there, not memory work.
 
-## 7k. The run peak MOVED +1.37 GB -- variance or C1? OPEN (2026-10-07)
+## 7k. The run peak MOVED +1.37 GB -- RESOLVED as variance (2026-10-07)
 
 Morning run (main `01feb65`): COI names+drop+restoration+guard+join peaked at
 **15.92 GB** in 50.9 min. Evening run (main `7b36dca`, with C1 and G1/G3):
@@ -2004,7 +2004,24 @@ at the run's peak stage is now about **2.7 GB under the 20 GB cap**.
    flow -- a join especially. If so the ceiling has MOVED FOR A REASON and 2.7
    GB is the new normal.
 
-**THE DISCRIMINATOR IS ROW COUNTS, NOT MEMORY.** Compare that stage's input and
+**RESOLVED: RUN-TO-RUN VARIANCE.** My C1 hypothesis is refuted on BOTH
+grounds. Empirically, that stage's row counts are IDENTICAL between the runs --
+restoration 205,552 -> 215,139 in both, dropped-hit replacement 446 dropped
+rows -> 520 candidate rows across 148 observations in both, matrix reused at
+34,101,480 pairs. Structurally, C1 cannot reach that stage: calibration runs
+AFTER training, and the 2,392 re-admitted candidates are ones the H1 outlier
+gate now passes inside `evaluate_likelihoods` (likelihood > 0 instead of 0),
+downstream of names+drop+restoration+guard+join -- and they were already rows
+in the match object in both runs.
+
+**CONSEQUENCE WORTH PLANNING AGAINST: a ~1.4 GB variance band at a stage with
+~2.7 GB headroom means the effective ceiling is nearer 18.7 GB than 17.29.**
+Half the remaining headroom is consumed by the noise, so this stage should be
+treated as being at about 18.7 GB for any decision about adding work there --
+one bad draw, not a trend, is enough to trip a 20 GB cap.
+
+**THE DISCRIMINATOR, KEPT because it is the right test to repeat:** row counts,
+not memory. Compare that stage's input and
 output row counts between the two runs. Identical inputs and a reused matrix
 mean the candidate set is the only thing that should differ; roughly 2,392 more
 COI candidate rows means C1, matching counts mean variance. Derivable from the
