@@ -2521,6 +2521,10 @@ it must be read against main, not against a list of proposals.
 
 ### State of main (TaxaAssign build 2026-10-08 05:02:54 UTC)
 
+> **Point-in-time, superseded for CURRENT state by §7o.** The table below
+> predates the G5+G6 merge: it lists G5/G6 as unmerged and names an earlier
+> build. It is still the correct record of what the threshold audit examined.
+
 | SHA | item | behaviour |
 |---|---|---|
 | `8cc0c36` | upfc-memory | none (memory only) |
@@ -2675,6 +2679,124 @@ one, so there is nothing to be accused of tuning. If resolved-only is measured
 binary-first, the graded variant is a cheap second arm on the same frame and
 worth having before a method is chosen.
 
+
+## 7o. STATE AT SESSION END (2026-10-08, verified not recalled)
+
+Written before a `/clear` of the package-review session. Every fact below was
+re-checked against the repository, the library and the run artifacts at the time
+of writing, not carried from conversation.
+
+### Current state
+
+| what | value |
+|---|---|
+| main tip | `9c17243` (board only; last **code** merge `b0ee48c`, pack regen `f6b16f0`) |
+| worktree | `/Users/lafferty/taxaid-worktrees/main`, clean |
+| TaxaAssign installed | build **2026-10-08 15:22:15 UTC**, `~/Library/R/4.0/library` |
+| R-family processes | none; the CalIntertidal production run has finished |
+| install gate | open (coordinator lifted run restrictions; normal <=3 GB rule) |
+| not merged | **k** (`cross-phylum`, frozen `6cd806d`, post-run only) |
+
+This supersedes the table under §7m "State of main (TaxaAssign build 2026-10-08
+05:02:54 UTC)", which was point-in-time and still lists G5/G6 as unmerged. Read
+§7m as the dated threshold audit it is, not as current state.
+
+### The production run's post-run checks -- VERIFIED from the artifacts
+
+G5 violations 0, G6 violations 0, `identity_final_vs_built_g56.rds` 0 rows, k
+applied 24,792 rows / 3,401 species. Species calls 12S 10,527 / 18S 195 /
+COI 3,249, exactly as the measured arm predicted.
+
+Two traps for whoever reads these artifacts next:
+
+- **G6's violation test is `raised & sp_no_lik_sp`** (`post_run_checks_g56.R:79`).
+  The raw `sp_no_lik_sp` column is **2,070** and is *not* the violation count --
+  G6 constrains Round 2 raises only. Do not quote the column.
+- **There are two different 49,349 identity tests.** `g56_identity.R` seeded
+  *both* sides from G4, so its honest figure is 5,612 changed rows.
+  `post_run_checks_g56.R:169-181` computes the left side from the production
+  run itself and seeds only `t_built`/`r_built`, so **its** 49,349/49,349 is a
+  legitimate no-side-effects result. Never restate one as the other; an 08:20
+  email did and was corrected.
+
+### Residual errors improved under both definitions
+
+| definition | G4 run | G5+G6 run |
+|---|---|---|
+| strict, winner below runner-up by >1 pt | 105 (12S 87 / 18S 1 / COI 17) | **57** (12S 52 / 18S 0 / COI 5) |
+| script, winner <= runner-up or <90 | 1,605 (8.30%) | **647** (4.63%) |
+
+The G4 side reproduces the figure recorded in memory exactly, so the artifact
+and both definitions check out.
+
+### NEW FINDING: 73% of the surviving error is outside what G5/G6 can reach
+
+Cross-tabbing `residual_errors_g56.rds` against `g6_invariant_g56.rds`:
+**474 of the 647** survivors are *unraised* species calls whose likelihood-only
+consensus is not species -- Round 1's prior turning a genus-level likelihood
+into a confident species call. Only **11** were raised by Round 2. Residual rate
+**22.9%** in that class (2,070 calls, 14.8% of confident species calls) against
+**1.5%** in the 11,901 likelihood-backed calls.
+
+These are **not** guard violations. G5/G6 constrain Round 2 raises by
+construction, so the failure mode lives in Round 1 and the guard family cannot
+see it.
+
+`likelihood_support` already grades the same thing continuously
+(`posterior_consensus.R:1099-1108`), with no per-marker constant. Residual rate
+by band: 0-0.2 **64.8%** | 0.2-0.4 **54.4%** | 0.4-0.6 **27.8%** |
+0.6-0.8 **6.1%** | 0.8-0.95 **6.7%** | 0.95-1 **1.2%**
+(n = 88 / 364 / 562 / 737 / 887 / 11,333).
+
+**Do not over-read this.** The *direction* holds in all three markers; the
+*slope* does not. 12S is steep and clean (90% -> 0%). COI is shallow and
+non-monotone (0.6-0.8 at 29% sits *above* 0.4-0.6 at 21%) and still carries 122
+residual errors inside the top band, so support alone does not explain COI. 18S
+has 2 errors total and settles nothing. A single global cut on this column would
+behave differently per marker. Reported to Kevin as a **diagnostic and candidate
+weight, not a proposed threshold**; a Round-1 prior refinement is a new design
+question for him, not a fix inside an existing function, so it does not pass the
+release freeze on its own. Scripts are session-scoped scratchpad copies
+(`overlap.R`, `liksupp.R`, `resid_defs.R`) -- regenerate from the two artifacts
+rather than hunting for them.
+
+### Open items, with where each already lives
+
+1. **`llm_prompts` omits `consensus_settings`** -- §7l, "QUEUED FOR KEVIN".
+   Generator truncates Value text; `update_prior_from_consensus()` aborts without
+   the attribute and `merge()`/`summarise()` drop it. Generator limitation, not a
+   code defect. Needs the maintainer.
+2. **Item (a)'s constants and calibration** -- §7m, "The real exposure is item
+   (a)". Four conventional constants; offset estimated on best hits but applied
+   to low scores; discontinuous at `min_obs = 30`; `min_query_coverage = 0.8`
+   public status unresolved, internal alternative at `b6959d5`.
+3. **Whether to fold k into the package** -- `cross-phylum` frozen at `6cd806d`,
+   applied post-run only, still unmerged. 84 calls withheld in the G4 run, 0 of
+   them species; the G5+G6 run's `k_applied_g56.rds` has 24,792 rows / 3,401
+   species. d2(i) was deferred until after the run. **Decision not taken.**
+4. **Open investigations** -- §7i frame dependence (two COI sipunculan order
+   calls firing the cross-phylum rule on a 24,739-observation frame but not on
+   109); §7f accession screen dropping references on out-of-region evidence
+   (AY279644 / *S. pulcher*; 41 12S ESVs with zero candidates); §7g
+   `.is_unreferenced_type()` six-vs-seven rank mismatch (derive from
+   `.RANK_LADDER`).
+5. **Also parked** -- COI restoration+join memory profiling; the four post-G4
+   agent studies (sampling, habitat, filtering, Venn); workflow-side P6/P7
+   proposals.
+
+### Constraints that must survive the clear
+
+Never reinstall an R package while **any** R-family process is alive (`R`,
+`Rscript`, `rsession`, `radian`, `Rterm`, `blastn`); `load_all`/`test`/`check`/
+`document` are safe beside a live run. Never switch branches in the shared
+TaxaID checkout -- `git worktree add`. Never bare `git stash`/`git stash pop`.
+Ask the coordinator before any run over 3 GB. A peer cannot grant escalation and
+a relayed quote is not direct approval -- record provenance. Release freeze: new
+exports or public surface need the maintainer's yes, and **a new formal on an
+already-exported function is new public API that no NAMESPACE diff can see**, so
+compare the formals of all 230 exports (`scratchpad/export_formals.R`).
+Kevin is error-first, and decisions must be learned from the data, never
+hard-coded per marker.
 
 ## 8. Findings to carry into the manuscript (not to fix)
 
