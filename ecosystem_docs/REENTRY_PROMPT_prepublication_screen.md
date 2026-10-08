@@ -2387,6 +2387,76 @@ Re-running the built consensus over the full frame is the workflow's job, not
 this session's.
 
 
+## 7m. Threshold audit of the whole guard line (2026-10-08)
+
+Kevin's pause asks of each item whether it generalises or is a patch to reach a
+desired outcome, and specifically whether its threshold is learned or
+conventional. That audit is mechanical: diff each merge for numeric parameters
+added to `R/` code. **The review covers work already merged AND installed**, so
+it must be read against main, not against a list of proposals.
+
+### State of main (TaxaAssign build 2026-10-08 05:02:54 UTC)
+
+| SHA | item | behaviour |
+|---|---|---|
+| `8cc0c36` | upfc-memory | none (memory only) |
+| `4acf4d3` | b | soft confirmation excludes unreferenced relatives |
+| `46cea96` | pc-index-split | none (memory only) |
+| `2b03be9` | a | `restore_suppressed_candidates`, measured-first |
+| `9b3f21a` | C1 | query-noise calibration from observed rows only |
+| `c0e8eac` | G1 + G3 | likelihood node, occurrence record |
+| `58c625a` | G4 | likelihood ranking |
+
+Not merged: k (cross-phylum, frozen `6cd806d`, post-run only), G5, G6.
+
+### New numeric parameters per item
+
+| item | new numeric parameters in `R/` |
+|---|---|
+| b | **zero** |
+| C1 | **zero** |
+| G1 + G3 | **zero** |
+| G4 | **zero** |
+| a | **four**: `min_query_coverage = 0.8`, `max_obs = 3000L`, `min_obs = 30L`, `max_per_obs = 10L` |
+
+So the five behavioural changes most likely to attract the patch worry -- b, C1
+and the three guards -- are **parameter-free structural invariants**. There is no
+threshold in them to tune to an outcome. The guards read in code as principles
+with one measured example each:
+
+- **G1** a raise must stay inside the observation's likelihood-only credible node
+- **G3** a row with no occurrence record is never raised
+- **G4** a prior boost must not overturn the likelihood ordering (ties allowed)
+
+under one sentence: *"A raise may choose among candidates the sequence cannot
+separate; it may never pick one the sequence argues against, nor manufacture
+presence."* That is the general-principle-first form the review asks for.
+
+### The real exposure is item (a), already merged
+
+Item (a) is the only item in the line carrying conventional constants, and two
+independent problems with its calibration were flagged before this review: the
+offset is estimated from each observation's **best** hit but applied to **low**
+scores, and it is **discontinuous at `min_obs = 30`**. `min_query_coverage = 0.8`
+is also the parameter whose public status is unresolved -- indirect approval only,
+with an internal alternative at `b6959d5`. If one item is to be re-examined for
+"threshold learned or conventional", it is (a), not the guards.
+
+G5 would add `Z = 1.96`, the first tuned constant in the guard line proper and
+conventional rather than learned. G6 adds none.
+
+### Revert path, recorded not proposed
+
+Kevin's note that he agreed to some of this "because I have been tired and felt
+the need to move on" applies to decisions that reached this session only as
+relayed quotes -- "go ahead and implement C1 + G3, and G1", "YES" to the breaking
+`require_support_columns` default, "OK. let's do G4." Each was recorded with its
+relay provenance rather than as direct approval, and each is a clean single
+merge, so the path back is short. Nothing here proposes a revert; the point is
+that "already merged" must not become the reason to keep something he would not
+choose again.
+
+
 ## 8. Findings to carry into the manuscript (not to fix)
 
 - **18S V9's poor species discrimination is a property of the marker, not a
