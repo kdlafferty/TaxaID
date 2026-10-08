@@ -2704,7 +2704,7 @@ This supersedes the table under §7m "State of main (TaxaAssign build 2026-10-08
 ### The production run's post-run checks -- VERIFIED from the artifacts
 
 G5 violations 0, G6 violations 0, `identity_final_vs_built_g56.rds` 0 rows, k
-applied 24,792 rows / 3,401 species. Species calls 12S 10,527 / 18S 195 /
+applied. Species calls 12S 10,527 / 18S 195 /
 COI 3,249, exactly as the measured arm predicted.
 
 Two traps for whoever reads these artifacts next:
@@ -2771,9 +2771,13 @@ rather than hunting for them.
    to low scores; discontinuous at `min_obs = 30`; `min_query_coverage = 0.8`
    public status unresolved, internal alternative at `b6959d5`.
 3. **Whether to fold k into the package** -- `cross-phylum` frozen at `6cd806d`,
-   applied post-run only, still unmerged. 84 calls withheld in the G4 run, 0 of
-   them species; the G5+G6 run's `k_applied_g56.rds` has 24,792 rows / 3,401
-   species. d2(i) was deferred until after the run. **Decision not taken.**
+   applied post-run only, still unmerged. **84 calls withheld in the G4 run and
+   the same 84 in the G5+G6 run, 0 of them species in either.** Beware the
+   artifact: `k_applied_g56.rds` has 24,792 rows, but that is k's *evaluated*
+   set and its 3,401 species are merely the species among those evaluated --
+   only `changed == TRUE` is withheld, which is 84 (80 class, 1 genus, 3 order;
+   82 to no call, 2 to phylum). d2(i) was deferred until after the run.
+   **Decision not taken.**
 4. **Open investigations** -- §7i frame dependence (two COI sipunculan order
    calls firing the cross-phylum rule on a 24,739-observation frame but not on
    109); §7f accession screen dropping references on out-of-region evidence
