@@ -241,7 +241,10 @@ result <- compute_posterior(joined, n_sims = 1000)
 consensus <- posterior_consensus(result, cumulative_threshold = 0.95)
 
 # Empirical Bayes refinement
-result_updated <- update_prior_from_consensus(result, consensus)
+# consensus_args: the final consensus's own arguments, so Round 2's species
+# guard reaches the same call
+result_updated <- update_prior_from_consensus(result, consensus,
+  consensus_args = list(cumulative_threshold = 0.95))
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
 ```
 

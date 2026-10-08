@@ -12,6 +12,17 @@ library(dplyr)
 # likelihood-only consensus and mostly no theta_mean). The guards are tested
 # in their own section below and in the occurrence-record test.
 .upf <- function(...) update_prior_from_consensus(..., require_support_columns = FALSE)
+# the guarded (production) path; consensus_args mirrors the caller's final consensus
+.CARGS <- list(cumulative_threshold = 0.9, min_posterior = 0.05)
+.upg <- function(..., consensus_args = .CARGS) update_prior_from_consensus(..., consensus_args = consensus_args)
+# isolates the earlier guards (G1/G3/G4) and the raise arithmetic: no likelihood margin (G5), and the
+# species guard's (G6) consensus stubbed to call no species, so it has nothing to undo
+.upg0 <- function(..., likelihood_margin_z = 0) {
+  stub <- function() data.frame(observation_id = unique(posterior_df$observation_id), consensus_rank = NA_character_)
+  formals(stub) <- formals(posterior_consensus) # keeps consensus_args validation meaningful
+  testthat::local_mocked_bindings(posterior_consensus = stub)
+  .upg(..., likelihood_margin_z = likelihood_margin_z)
+}
 
 .make_result <- function() {
   bind_rows(
@@ -541,7 +552,7 @@ test_that("the raise arithmetic is the same on the guarded (default) path", {
   consensus <- .make_consensus_theta()
   consensus$likelihood_consensus_taxon <- "P1"
   consensus$likelihood_consensus_rank <- "phylum"
-  out <- suppressMessages(update_prior_from_consensus(result, consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(result, consensus, n_sims = 0))
   sp_a_s2 <- out$prior_mean[out$observation_id == "S2" & out$taxon_name == "Sp_A"]
   m <- 0.25 * 0.95
   expect_equal(sp_a_s2, 0.001 + (0.95 * 0.05 - 0.001) * m / (1 + m), tolerance = 1e-8)
@@ -560,7 +571,7 @@ test_that("a supported row with no occurrence record (theta_mean NA) is never ra
   consensus <- .make_consensus_theta()
   consensus$likelihood_consensus_taxon <- "P1"
   consensus$likelihood_consensus_rank <- "phylum"
-  out <- suppressMessages(update_prior_from_consensus(result, consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(result, consensus, n_sims = 0))
   sp_d_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_D", ]
   sp_a_s2 <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
   # Sp_D has support (S3 resolves it at 0.95) but no record: kept at its prior
@@ -571,7 +582,7 @@ test_that("a supported row with no occurrence record (theta_mean NA) is never ra
   expect_false(sp_a_s2$confirmed_without_occurrence_record)
   expect_true("confirmed_without_occurrence_record" %in% names(out))
   # the message counts the row the guard held back
-  expect_message(update_prior_from_consensus(result, consensus, n_sims = 0),
+  expect_message(.upg0(result, consensus, n_sims = 0),
     "1 not raised because they have no occurrence record")
 })
 
@@ -1089,9 +1100,9 @@ test_that("an unreferenced-relative row's posterior does not confirm a species e
 
 test_that("G3: a supported row OUTSIDE its observation's likelihood node is never raised (Dictyota)", {
   fx <- .dictyota_fixture()
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_equal(.prior_of(out, "S2", "Dictyota dichotoma"), 1e-3)
-  expect_message(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+  expect_message(.upg0(fx$result, fx$consensus, n_sims = 0),
     "1 supported row\\(s\\) not raised because they lie outside")
   # CONTROL: the same row IS raised with the guards explicitly off ...
   expect_message(off <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = FALSE),
@@ -1101,13 +1112,13 @@ test_that("G3: a supported row OUTSIDE its observation's likelihood node is neve
   inside <- fx$consensus
   inside$likelihood_consensus_taxon[3] <- "Ochrophyta"; inside$likelihood_consensus_rank[3] <- "phylum"
   tie <- fx$result; tie$score_likelihood[tie$observation_id == "S2" & tie$taxon_name == "Dictyota dichotoma"] <- 1
-  expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(tie, inside, n_sims = 0)), "S2", "Dictyota dichotoma"), 1e-3)
+  expect_gt(.prior_of(suppressMessages(.upg0(tie, inside, n_sims = 0)), "S2", "Dictyota dichotoma"), 1e-3)
 })
 
 test_that("G3: an observation with no likelihood node has no row raised", {
   fx <- .dictyota_fixture()
   fx$consensus$likelihood_consensus_taxon[3] <- NA; fx$consensus$likelihood_consensus_rank[3] <- NA
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_equal(.prior_of(out, "S2", "Dictyota dichotoma"), 1e-3)
   expect_equal(.prior_of(out, "S2", "Neoporphyra haitanensis"), 1e-3)
 })
@@ -1126,7 +1137,7 @@ test_that("G1: an unrecorded row INSIDE the likelihood node is not raised; a rec
     consensus_posterior = c(0.95, 0.95, NA),
     likelihood_consensus_taxon = c("Aplanochytrium stocchinoi", "Thraustochytrium kinnei", "Bigyra"),
     likelihood_consensus_rank = c("species", "species", "phylum"))
-  out <- suppressMessages(update_prior_from_consensus(res, cons, n_sims = 0))
+  out <- suppressMessages(.upg0(res, cons, n_sims = 0))
   expect_equal(.prior_of(out, "S2", "Aplanochytrium stocchinoi"), 1e-3)
   expect_gt(.prior_of(out, "S2", "Thraustochytrium kinnei"), 1e-3)
   expect_false(any(out$confirmed_without_occurrence_record))
@@ -1138,8 +1149,8 @@ test_that("G1: an unrecorded row INSIDE the likelihood node is not raised; a rec
 test_that("the receiver guards stop, naming the column, when their inputs are missing", {
   fx <- .dictyota_fixture()
   no_lik <- fx$consensus[, setdiff(names(fx$consensus), c("likelihood_consensus_taxon", "likelihood_consensus_rank"))]
-  expect_error(update_prior_from_consensus(fx$result, no_lik, n_sims = 0), "likelihood_consensus_taxon")
-  expect_error(update_prior_from_consensus(fx$result[, setdiff(names(fx$result), "theta_mean")], fx$consensus, n_sims = 0),
+  expect_error(.upg(fx$result, no_lik, n_sims = 0), "likelihood_consensus_taxon")
+  expect_error(.upg(fx$result[, setdiff(names(fx$result), "theta_mean")], fx$consensus, n_sims = 0),
     "theta_mean")
   expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, require_support_columns = NA), "require_support_columns")
   # with the guards off, neither column is needed
@@ -1163,9 +1174,9 @@ test_that("the receiver guards stop, naming the column, when their inputs are mi
 
 test_that("G4: a lower-likelihood referenced row is not raised over a better one (Acrochaetium inversion)", {
   fx <- .acro_fixture()
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_equal(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
-  expect_message(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+  expect_message(.upg0(fx$result, fx$consensus, n_sims = 0),
     "1 not raised because another referenced candidate in the observation has a higher likelihood")
   # CONTROL: with the guards off, the same row IS raised
   expect_gt(.prior_of(suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0,
@@ -1174,7 +1185,7 @@ test_that("G4: a lower-likelihood referenced row is not raised over a better one
 
 test_that("G4: a tie is allowed (Round 2 may break it)", {
   fx <- .acro_fixture(L_cat = 0.2, L_hum = 0.2)
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
 })
 
@@ -1183,7 +1194,7 @@ test_that("G4: of two supported congeners, only the better-likelihood one is rai
   s4 <- .g_rows("S4", "Acrochaetium humile", "Rhodophyta", 1); s4$class <- "Florideophyceae"
   fx$result <- bind_rows(fx$result, s4)
   fx$consensus <- bind_rows(fx$consensus, .g_cons("S4", TRUE, "Acrochaetium humile", "Acrochaetium humile", "species"))
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_gt(.prior_of(out, "S2", "Acrochaetium humile"), 1e-3)
   expect_equal(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
   # CONTROL: with the guards off BOTH are raised (the split G4 removes)
@@ -1197,15 +1208,134 @@ test_that("G4: an UNREFERENCED row with a higher likelihood does not block a ref
   ring <- .g_rows("S2", "Acrochaetium", "Rhodophyta", 1, theta = NA)
   ring$class <- "Florideophyceae"; ring$hypothesis_type <- "unreferenced_species"; ring$taxon_name_rank <- "genus"
   fx$result <- bind_rows(fx$result, ring)
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
 })
 
 test_that("G4: an NA-likelihood comparator is left out; an NA-likelihood receiver is never raised", {
   fx <- .acro_fixture(L_cat = 0.0046, L_hum = NA)
-  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
   expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
   fx2 <- .acro_fixture(L_cat = NA, L_hum = 0.2)
-  out2 <- suppressMessages(update_prior_from_consensus(fx2$result, fx2$consensus, n_sims = 0))
+  out2 <- suppressMessages(.upg0(fx2$result, fx2$consensus, n_sims = 0))
   expect_equal(.prior_of(out2, "S2", "Acrochaetium catenulatum"), 1e-3)
+})
+
+
+# ---- G5: a raise must beat the runner-up by more than the likelihood noise ----
+# S1 and S3 resolve Clupea harengus (donor support). S2's likelihood node is the genus. G6 is stubbed
+# (.upg0) so these tests see the margin alone.
+.clupea_fixture <- function(L = c(1, 0.995), sd = c(0.05, 0.05), taxa = c("Clupea harengus", "Clupea pallasii")) {
+  s2 <- .g_rows("S2", taxa, "Chordata", L)
+  s2$score_likelihood_sd <- sd
+  list(result = bind_rows(.g_rows("S1", "Clupea harengus", "Chordata", 1), .g_rows("S3", "Clupea harengus", "Chordata", 1), s2),
+    consensus = .g_cons(c("S1", "S3", "S2"), c(TRUE, TRUE, FALSE), "Clupea harengus",
+      c("Clupea harengus", "Clupea harengus", "Clupea"), c("species", "species", "genus")))
+}
+
+test_that("G5: a near-tie is not broken (Clupea harengus 1 vs C. pallasii 0.995)", {
+  fx <- .clupea_fixture()
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96))
+  expect_equal(.prior_of(out, "S2", "Clupea harengus"), 1e-3)
+  expect_message(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96),
+    "1 not raised because their likelihood does not beat")
+  # CONTROL: without the margin (G4 alone) the same row IS raised
+  expect_gt(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0)), "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("G5: a clear likelihood lead is raised", {
+  fx <- .clupea_fixture(L = c(1, 0.2))
+  out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96))
+  expect_gt(.prior_of(out, "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("G5: the band uses both rows' sd (a noisy runner-up widens it)", {
+  # gap 0.2: band sqrt(0.05^2 + 0.2^2) = 0.206 -> 0.2 < 1.96 * 0.206, not raised;
+  # band sqrt(0.05^2 + 0.05^2) = 0.0707 -> 0.2 > 0.139, raised
+  wide <- .clupea_fixture(L = c(1, 0.8), sd = c(0.05, 0.2))
+  narrow <- .clupea_fixture(L = c(1, 0.8), sd = c(0.05, 0.05))
+  expect_equal(.prior_of(suppressMessages(.upg0(wide$result, wide$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+  expect_gt(.prior_of(suppressMessages(.upg0(narrow$result, narrow$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("G5: among comparators tied on likelihood, the larger sd sets the band", {
+  # two runners-up at 0.9 with sd 0.01 and 0.2: the wider band (0.2) blocks a 0.1 lead;
+  # had the 0.01 one been used (band 0.014) the row would be raised
+  fx <- .clupea_fixture(L = c(1, 0.9, 0.9), sd = c(0.01, 0.01, 0.2),
+    taxa = c("Clupea harengus", "Clupea pallasii", "Clupea bentincki"))
+  expect_equal(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+  fx2 <- .clupea_fixture(L = c(1, 0.9, 0.9), sd = c(0.01, 0.01, 0.01),
+    taxa = c("Clupea harengus", "Clupea pallasii", "Clupea bentincki"))
+  expect_gt(.prior_of(suppressMessages(.upg0(fx2$result, fx2$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("G5: a sole referenced candidate (only an unreferenced rival) is raised", {
+  fx <- .clupea_fixture(L = 1, sd = 0.05, taxa = "Clupea harengus")
+  ring <- .g_rows("S2", "Clupea", "Chordata", 1, theta = NA)
+  ring$hypothesis_type <- "unreferenced_species"; ring$taxon_name_rank <- "genus"
+  fx$result <- bind_rows(fx$result, ring)
+  expect_gt(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("G5: a missing sd leaves the band undefined, so the row is not raised", {
+  fx <- .clupea_fixture(L = c(1, 0.2), sd = c(0.05, NA))
+  expect_equal(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("likelihood_margin_z is validated", {
+  fx <- .clupea_fixture()
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = -1), "likelihood_margin_z")
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = NA), "likelihood_margin_z")
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = c(1, 2)), "likelihood_margin_z")
+})
+
+# ---- G6: Round 2 may not create a species call the likelihood alone does not make ----
+test_that("G6: a raise that would make a species call is undone when the likelihood-only call is coarser", {
+  fx <- .clupea_fixture(L = c(1, 0.2))
+  expect_message(out <- .upg(fx$result, fx$consensus, n_sims = 0), "species guard undid every raise in 1 observation")
+  expect_equal(attr(out, "round2_species_guard"), "S2")
+  # every prior column of S2 is back at its Round 1 value, and the posterior is recomputed from it
+  r1 <- fx$result[fx$result$observation_id == "S2", ]
+  r2 <- out[out$observation_id == "S2", ]
+  r2 <- r2[match(r1$taxon_name, r2$taxon_name), ]
+  expect_equal(r2$prior_mean, r1$prior_mean)
+  expect_equal(r2$prior_alpha, r1$prior_alpha)
+  expect_equal(r2$prior_beta, r1$prior_beta)
+  ref <- compute_posterior(r1[, setdiff(names(r1), c("posterior_point_est", "posterior_mean", "posterior_sd", "confidence_score"))], n_sims = 0)
+  expect_equal(r2$posterior_point_est, ref$posterior_point_est[match(r1$taxon_name, ref$taxon_name)])
+})
+
+test_that("G6: the raise is kept when the likelihood-only call is already a species", {
+  fx <- .clupea_fixture(L = c(1, 0.2))
+  fx$consensus$likelihood_consensus_taxon[3] <- "Clupea harengus"; fx$consensus$likelihood_consensus_rank[3] <- "species"
+  out <- suppressMessages(.upg(fx$result, fx$consensus, n_sims = 0))
+  expect_gt(.prior_of(out, "S2", "Clupea harengus"), 1e-3)
+  expect_length(attr(out, "round2_species_guard"), 0L)
+})
+
+test_that("G6: a raise that leaves the call coarser than species is kept", {
+  # three candidates; the raised one stays well under the 0.9 credible mass, so the call is the genus
+  fx <- .clupea_fixture(L = c(0.5, 0.45, 0.45), sd = c(0.01, 0.01, 0.01),
+    taxa = c("Clupea harengus", "Clupea pallasii", "Clupea bentincki"))
+  out <- suppressMessages(.upg(fx$result, fx$consensus, n_sims = 0))
+  expect_gt(.prior_of(out, "S2", "Clupea harengus"), 1e-3)
+  expect_length(attr(out, "round2_species_guard"), 0L)
+  chk <- posterior_consensus(out[out$observation_id == "S2", ], cumulative_threshold = 0.9, min_posterior = 0.05)
+  expect_false(chk$consensus_rank %in% "species")
+})
+
+test_that("G6 needs consensus_args on the guarded path, and checks their names", {
+  fx <- .clupea_fixture()
+  expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0), "consensus_args")
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, consensus_args = list(not_an_arg = 1)), "not_an_arg")
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, consensus_args = list(0.9)), "named list")
+  # the shim does not need them
+  expect_s3_class(suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0,
+    require_support_columns = FALSE)), "data.frame")
 })
