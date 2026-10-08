@@ -83,7 +83,7 @@ guards (see \emph{Receiver guards}) need \code{likelihood_consensus_taxon} and
 likelihood-only pass) and \code{theta_mean} in \code{result} (from the TaxaExpect
 prior table); with \code{TRUE} the function stops, naming any that is missing.
 \code{FALSE} is a TRANSITIONAL shim for callers not yet migrated, not a
-supported mode: it skips both guards and raises without
+supported mode: it skips every guard (including the species guard) and raises without
 likelihood-consensus support (a message says so), so its results are not
 comparable to a guarded run. Within this package it is used only for the
 LLM pathway, whose priors are not occurrence-based.}
@@ -102,7 +102,8 @@ singleton are returned unchanged, same as resolved ones. Sorted by
 \code{observation_id} then descending \code{posterior_point_est}. Attribute
 \code{prior_update_groups} holds the per-group counts (\code{group},
 \code{n_observations}, \code{n_eligible_unresolved}, \code{n_observations_updated},
-\code{n_rows_raised}).
+\code{n_rows_raised}). Attribute \code{round2_species_guard} holds the
+\code{observation_id}s whose raises the species guard undid (empty when none).
 }
 \description{
 A one-pass empirical Bayes refinement step. Every observation's posterior
@@ -272,7 +273,7 @@ occurrence-model-sourced priors.
 \section{Receiver guards}{
 
 A raise may choose among candidates the sequence cannot separate; it may
-never pick one the sequence argues against, nor manufacture presence. Three
+never pick one the sequence argues against, nor manufacture presence. Four
 guards apply to the rows that would be raised (donor support is unchanged):
 \itemize{
 \item \strong{Likelihood node.} Only rows inside their observation's
@@ -300,9 +301,53 @@ raised about 160,000-fold inside a class-level likelihood node and
 called at posterior 0.98; this guard blocks such raises, and also lets
 the better-scoring species keep a call that a co-raised, weaker
 congener had split.
+\item \strong{Likelihood margin.} Beyond the ranking guard, a row is raised
+only if its \code{score_likelihood} beats the best other referenced
+candidate's by more than the likelihoods' own noise:
+\code{L_row - L_other > 1.96 * sqrt(sd_row^2 + sd_other^2)},
+where \code{sd} is \code{score_likelihood_sd}. Among comparators tied on
+likelihood, the one with the larger \code{sd} is used. A missing \code{sd} on
+either side leaves the band undefined and the row is not raised. A row
+with no referenced rival has no runner-up to beat and is not held back by
+this guard. The multiplier 1.96 (the 97.5\% normal quantile) is fixed,
+not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
+example \emph{Clupea harengus} over \emph{C. pallasii}, likelihoods 1 and 0.995)
+produced confident wrong-species calls; the margin blocks such raises.
 }
-A message counts the supported rows each guard held back. Both guards need
-their input columns and stop if one is missing; \code{require_support_columns = FALSE} is a transitional shim that turns them off.
+A message counts the supported rows each guard held back. The guards need
+their input columns and stop if one is missing; \code{require_support_columns = FALSE} is a transitional shim that turns them off, together with the species
+guard below.
+}
+
+\section{Species guard}{
+
+Round 2 may not create a species call that the likelihood alone does not
+make. After raising, the function runs \code{\link[=posterior_consensus]{posterior_consensus()}}, with the
+settings of the call that made \code{consensus}, on every
+observation that has a raised row and whose likelihood-only call
+(\code{likelihood_consensus_rank} in \code{consensus}) is coarser than species or
+absent. Where that consensus calls a species, every raise in the observation
+is undone (its Round 1 priors restored) and its posteriors are recomputed, so
+the caller's final consensus sees the observation as if Round 2 had not
+touched it. Raises that leave the call coarser than species, and raises in
+observations whose likelihood-only call is already a species, are kept. The
+affected observations are listed in \verb{attr(<result>, "round2_species_guard")}.
+Measured on CalIntertidal, every Round 2 move from a coarser call to a
+species call had a likelihood-only call coarser than species, and several
+blocks of such calls rested on one reference per competing congener.
+
+Those settings come from \code{attr(consensus, "consensus_settings")}, which
+\code{\link[=posterior_consensus]{posterior_consensus()}} attaches; run the final consensus on the result with
+the same settings as the first, so the guard reaches the call it makes. Row
+subsetting, \code{\link[dplyr:filter]{dplyr::filter()}} and \code{\link[dplyr:mutate]{dplyr::mutate()}} keep the attribute;
+\code{\link[=merge]{merge()}}, \code{\link[dplyr:summarise]{dplyr::summarise()}}, rebuilding the data frame, or \code{\link[=rbind]{rbind()}} /
+\code{\link[dplyr:bind_rows]{dplyr::bind_rows()}} with a first piece that lacks it do not, and a
+consensus saved by a TaxaAssign that predates it has none. The function then
+stops and says how to re-attach it:
+\verb{attr(x, "consensus_settings") <- attr(<original consensus>, "consensus_settings")}.
+Combining consensus tables made with different settings keeps the first
+one's settings, so combine only tables made with the same settings. The
+attribute is needed only on the guarded path (\code{require_support_columns = TRUE}).
 }
 
 \section{Confirmed without an occurrence record}{

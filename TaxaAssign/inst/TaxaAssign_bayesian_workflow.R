@@ -220,6 +220,10 @@ consensus <- posterior_consensus(
   species_reference = taxaexpect_species_df
 )
 
+# Round 2's species guard reuses the settings attached to `consensus` (attribute
+# "consensus_settings"): run the final consensus below with the same settings.
+# merge() or rebuilding the table drops the attribute; the update then stops and
+# says how to re-attach it
 posteriors_updated <- update_prior_from_consensus(
   posteriors, consensus,
   confirmation_quantile = 0.9,

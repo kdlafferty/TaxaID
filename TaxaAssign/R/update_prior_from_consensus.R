@@ -165,7 +165,7 @@
 #'
 #' @section Receiver guards:
 #' A raise may choose among candidates the sequence cannot separate; it may
-#' never pick one the sequence argues against, nor manufacture presence. Three
+#' never pick one the sequence argues against, nor manufacture presence. Four
 #' guards apply to the rows that would be raised (donor support is unchanged):
 #' \itemize{
 #'   \item **Likelihood node.** Only rows inside their observation's
@@ -193,10 +193,53 @@
 #'     called at posterior 0.98; this guard blocks such raises, and also lets
 #'     the better-scoring species keep a call that a co-raised, weaker
 #'     congener had split.
+#'   \item **Likelihood margin.** Beyond the ranking guard, a row is raised
+#'     only if its `score_likelihood` beats the best other referenced
+#'     candidate's by more than the likelihoods' own noise:
+#'     `L_row - L_other > 1.96 * sqrt(sd_row^2 + sd_other^2)`,
+#'     where `sd` is `score_likelihood_sd`. Among comparators tied on
+#'     likelihood, the one with the larger `sd` is used. A missing `sd` on
+#'     either side leaves the band undefined and the row is not raised. A row
+#'     with no referenced rival has no runner-up to beat and is not held back by
+#'     this guard. The multiplier 1.96 (the 97.5% normal quantile) is fixed,
+#'     not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
+#'     example *Clupea harengus* over *C. pallasii*, likelihoods 1 and 0.995)
+#'     produced confident wrong-species calls; the margin blocks such raises.
 #' }
-#' A message counts the supported rows each guard held back. Both guards need
+#' A message counts the supported rows each guard held back. The guards need
 #' their input columns and stop if one is missing; `require_support_columns =
-#' FALSE` is a transitional shim that turns them off.
+#' FALSE` is a transitional shim that turns them off, together with the species
+#' guard below.
+#'
+#' @section Species guard:
+#' Round 2 may not create a species call that the likelihood alone does not
+#' make. After raising, the function runs [posterior_consensus()], with the
+#' settings of the call that made `consensus`, on every
+#' observation that has a raised row and whose likelihood-only call
+#' (`likelihood_consensus_rank` in `consensus`) is coarser than species or
+#' absent. Where that consensus calls a species, every raise in the observation
+#' is undone (its Round 1 priors restored) and its posteriors are recomputed, so
+#' the caller's final consensus sees the observation as if Round 2 had not
+#' touched it. Raises that leave the call coarser than species, and raises in
+#' observations whose likelihood-only call is already a species, are kept. The
+#' affected observations are listed in `attr(<result>, "round2_species_guard")`.
+#' Measured on CalIntertidal, every Round 2 move from a coarser call to a
+#' species call had a likelihood-only call coarser than species, and several
+#' blocks of such calls rested on one reference per competing congener.
+#'
+#' Those settings come from `attr(consensus, "consensus_settings")`, which
+#' [posterior_consensus()] attaches; run the final consensus on the result with
+#' the same settings as the first, so the guard reaches the call it makes. Row
+#' subsetting, [dplyr::filter()] and [dplyr::mutate()] keep the attribute;
+#' [merge()], [dplyr::summarise()], rebuilding the data frame, or [rbind()] /
+#' [dplyr::bind_rows()] with a first piece that lacks it do not, and a
+#' consensus saved by a TaxaAssign that predates it has none. The function then
+#' stops and says how to re-attach it:
+#' `attr(x, "consensus_settings") <- attr(<original consensus>, "consensus_settings")`.
+#' Combining consensus tables made with different settings keeps the first
+#' one's settings, so combine only tables made with the same settings. The
+#' attribute is needed only on the guarded path (`require_support_columns =
+#' TRUE`).
 #'
 #' @section Confirmed without an occurrence record:
 #' Until 2026-10-07 a row with no occurrence record (`theta_mean` `NA`) was
@@ -242,7 +285,7 @@
 #'   likelihood-only pass) and `theta_mean` in `result` (from the TaxaExpect
 #'   prior table); with `TRUE` the function stops, naming any that is missing.
 #'   `FALSE` is a TRANSITIONAL shim for callers not yet migrated, not a
-#'   supported mode: it skips both guards and raises without
+#'   supported mode: it skips every guard (including the species guard) and raises without
 #'   likelihood-consensus support (a message says so), so its results are not
 #'   comparable to a guarded run. Within this package it is used only for the
 #'   LLM pathway, whose priors are not occurrence-based.
@@ -285,7 +328,8 @@
 #'   `observation_id` then descending `posterior_point_est`. Attribute
 #'   `prior_update_groups` holds the per-group counts (`group`,
 #'   `n_observations`, `n_eligible_unresolved`, `n_observations_updated`,
-#'   `n_rows_raised`).
+#'   `n_rows_raised`). Attribute `round2_species_guard` holds the
+#'   `observation_id`s whose raises the species guard undid (empty when none).
 #'
 #' @seealso [posterior_consensus()], [compute_posterior()], [assign_taxa_llm()],
 #'   [combine_multisite_priors()]
@@ -356,6 +400,14 @@ update_prior_from_consensus <- function(result,
     }
   }
 
+  likelihood_margin_z <- .ROUND2_LIKELIHOOD_MARGIN_Z
+  # The species guard reuses the settings of the consensus this update starts
+  # from (attached by posterior_consensus()), so it reaches the call the
+  # caller's final consensus makes with the same settings.
+  consensus_args <- NULL
+  if (require_support_columns) {
+    consensus_args <- .consensus_settings_of(consensus)
+  }
   if (!is.numeric(confirmation_quantile) || length(confirmation_quantile) != 1L ||
     is.na(confirmation_quantile) || confirmation_quantile <= 0 || confirmation_quantile > 1) {
     cli::cli_abort("{.arg confirmation_quantile} must be a single number in (0, 1].")
@@ -534,10 +586,13 @@ update_prior_from_consensus <- function(result,
   in_node <- rep(TRUE, n_ur)
   has_record <- rep(TRUE, n_ur)
   top_lik <- rep(TRUE, n_ur)
+  margin_ok <- rep(TRUE, n_ur)
+  lr_row <- rep(NA_character_, n_ur)
   if (require_support_columns) {
     j <- match(as.character(unresolved_rows$observation_id), as.character(consensus$observation_id))
     lt <- as.character(consensus$likelihood_consensus_taxon[j])
     lr <- as.character(consensus$likelihood_consensus_rank[j])
+    lr_row <- lr
     in_node <- rep(FALSE, n_ur)
     for (r in unique(lr[!is.na(lr)])) {
       m <- which(!is.na(lr) & lr == r)
@@ -559,10 +614,37 @@ update_prior_from_consensus <- function(result,
     top2 <- tapply(l_cand, oid, function(v) if (length(v) > 1L) sort(v, decreasing = TRUE)[2L] else -Inf)
     best_other <- ifelse(l_cand == top1[oid], top2[oid], top1[oid])
     top_lik <- !is.na(l_row) & l_row >= best_other
+    # (G5) beyond G4, the row's likelihood must beat the best OTHER referenced
+    # candidate's by more than the likelihoods' own noise:
+    # L_row - L_other > likelihood_margin_z * sqrt(sd_row^2 + sd_other^2), with
+    # sd = score_likelihood_sd. The comparator is the referenced candidate with
+    # the highest likelihood other than the row itself; among comparators tied on
+    # likelihood, the one with the larger sd (the wider band) is used. A missing
+    # sd on either side leaves the band undefined, so the row is not raised. A row
+    # with no referenced rival is handled by .ROUND2_RAISE_SOLE_CANDIDATE.
+    # likelihood_margin_z = 0 is G4 exactly.
+    sd_row <- unresolved_rows$score_likelihood_sd
+    sd_key <- ifelse(is.na(sd_row), -Inf, sd_row)
+    o <- order(oid, -l_cand, -sd_key)
+    oo <- oid[o]
+    pos <- seq_along(o) - match(oo, oo) + 1L
+    first_i <- stats::setNames(o[pos == 1L], oo[pos == 1L])
+    second_i <- stats::setNames(rep(NA_integer_, length(first_i)), names(first_i))
+    second_i[oo[pos == 2L]] <- o[pos == 2L]
+    other <- ifelse(seq_len(n_ur) == first_i[oid], second_i[oid], first_i[oid])
+    l_other <- ifelse(is.na(other), -Inf, l_cand[other])
+    sole <- !is.finite(l_other)
+    band <- sqrt(sd_row^2 + ifelse(is.na(other), NA_real_, sd_row[other])^2)
+    margin_ok <- if (likelihood_margin_z == 0) {
+      top_lik
+    } else {
+      top_lik & ((sole & .ROUND2_RAISE_SOLE_CANDIDATE) |
+        (!sole & !is.na(band) & (l_row - l_other) > likelihood_margin_z * band))
+    }
   } else {
     message("update_prior_from_consensus: require_support_columns = FALSE (transitional shim): raising without likelihood-consensus support; results are not comparable to a guarded run.")
   }
-  ur_ok <- ur_ref & in_node & has_record & top_lik
+  ur_ok <- ur_ref & in_node & has_record & top_lik & margin_ok
   rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")
   row_key <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
   own_p <- as.numeric(obs_support[row_key])
@@ -580,10 +662,11 @@ update_prior_from_consensus <- function(result,
   n_out_node <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & !in_node)
   n_no_record <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & in_node & !has_record)
   n_not_top <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & in_node & has_record & !top_lik)
-  if (n_out_node + n_no_record + n_not_top > 0L) {
+  n_no_margin <- sum(!is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ref & in_node & has_record & top_lik & !margin_ok)
+  if (n_out_node + n_no_record + n_not_top + n_no_margin > 0L) {
     message(sprintf(
-      "update_prior_from_consensus: %d supported row(s) not raised because they lie outside their observation's likelihood-only credible node; %d not raised because they have no occurrence record; %d not raised because another referenced candidate in the observation has a higher likelihood.",
-      n_out_node, n_no_record, n_not_top
+      "update_prior_from_consensus: %d supported row(s) not raised because they lie outside their observation's likelihood-only credible node; %d not raised because they have no occurrence record; %d not raised because another referenced candidate in the observation has a higher likelihood; %d not raised because their likelihood does not beat the best other referenced candidate's by more than %s x the likelihood noise.",
+      n_out_node, n_no_record, n_not_top, n_no_margin, format(likelihood_margin_z)
     ))
   }
   boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0 & ur_ok
@@ -595,6 +678,11 @@ update_prior_from_consensus <- function(result,
     )
     return(result)
   }
+
+  # Pre-raise priors, restored by the species guard (G6) below.
+  g6_cols <- c("prior_mean", "prior_alpha", "prior_beta", "prior_mix_w", "prior_mix_p_conc")
+  g6_had <- g6_cols[g6_cols %in% names(unresolved_rows)]
+  g6_orig <- unresolved_rows[, g6_had, drop = FALSE]
 
   # Occurrence-scale rescale (see @section Rescaling onto the occurrence scale),
   # with the ceiling taken PER GROUP: the largest theta_mean among the rows of
@@ -791,6 +879,41 @@ update_prior_from_consensus <- function(result,
 
   updated_rows <- compute_posterior(unresolved_rows, n_sims = n_sims)
 
+  # --- Species guard (G6) ----------------------------------------------------------
+  # Round 2 may not create a species call the likelihood alone does not make:
+  # for observations with a raised row whose likelihood-only call is coarser than
+  # species (or absent), run the caller's own consensus on the raised posteriors;
+  # where it calls a species, undo every raise in the observation and recompute.
+  g6_reverted <- character(0)
+  if (require_support_columns) {
+    oid_ur <- as.character(unresolved_rows$observation_id)
+    changed <- raise_mask | mixable
+    g6_cand <- unique(oid_ur[changed & !(lr_row %in% "species")])
+    if (length(g6_cand) > 0L) {
+      cli::cli_inform(
+        "Species guard: checking {length(g6_cand)} observation(s) with a raised row and a \\
+        likelihood-only call coarser than species, with {.arg consensus}'s own settings."
+      )
+      chk_rows <- updated_rows[as.character(updated_rows$observation_id) %in% g6_cand, , drop = FALSE]
+      chk <- do.call(posterior_consensus, c(list(chk_rows), consensus_args))
+      g6_reverted <- sort(unique(as.character(chk$observation_id[chk$consensus_rank %in% "species"])))
+    }
+    if (length(g6_reverted) > 0L) {
+      rv <- oid_ur %in% g6_reverted
+      for (cc in g6_had) unresolved_rows[[cc]][rv] <- g6_orig[[cc]][rv]
+      for (cc in setdiff(intersect(g6_cols, names(unresolved_rows)), g6_had)) unresolved_rows[[cc]][rv] <- NA
+      redo <- compute_posterior(unresolved_rows[rv, , drop = FALSE], n_sims = n_sims)
+      updated_rows <- dplyr::bind_rows(
+        updated_rows[!(as.character(updated_rows$observation_id) %in% g6_reverted), , drop = FALSE],
+        redo
+      )
+      message(sprintf(
+        "update_prior_from_consensus: species guard undid every raise in %d observation(s): the raises would have made a species call that the likelihood-only call does not make.",
+        length(g6_reverted)
+      ))
+    }
+  }
+
   # --- Recombine and sort -----------------------------------------------------
   out <- dplyr::bind_rows(resolved_rows, updated_rows) |>
     dplyr::arrange(.data$observation_id, dplyr::desc(.data$posterior_point_est))
@@ -812,15 +935,63 @@ update_prior_from_consensus <- function(result,
       confirmation_quantile       = confirmation_quantile,
       confirmation_discount       = confirmation_discount,
       n_sims                      = n_sims,
-      group_cols                  = attr(membership, "group_cols")
+      group_cols                  = attr(membership, "group_cols"),
+      likelihood_margin_z         = likelihood_margin_z
     )
   )
   attr(out, "prior_update_groups") <- group_report
+  attr(out, "round2_species_guard") <- g6_reverted
   out
 }
 
 
 # --- Internal helpers ---------------------------------------------------------
+
+# G5: may a row with no referenced rival (no other referenced candidate with a
+# likelihood in its observation) be raised? There is no runner-up to beat, so
+# the margin test cannot apply; TRUE keeps G4's behaviour for such a row.
+.ROUND2_RAISE_SOLE_CANDIDATE <- TRUE
+
+# G5: the likelihood-margin guard's multiplier on the likelihood noise band
+# (the 97.5% normal quantile). Internal, not an argument; 0 would reduce the
+# margin guard to the ranking guard (G4).
+.ROUND2_LIKELIHOOD_MARGIN_Z <- 1.96
+
+#' The consensus settings the species guard reuses
+#'
+#' Reads `attr(consensus, "consensus_settings")`, which [posterior_consensus()]
+#' attaches: the arguments of the call that made `consensus`. Aborts, with the
+#' fix, when it is missing or malformed -- the guard is never skipped silently.
+#' @noRd
+.consensus_settings_of <- function(consensus) {
+  cs <- attr(consensus, "consensus_settings", exact = TRUE)
+  if (is.null(cs)) {
+    cli::cli_abort(c(
+      "Round 2's species guard needs the settings of the consensus it starts from, \\
+        and {.arg consensus} carries none.",
+      "x" = "{.fn posterior_consensus} attaches them as \\
+        {.code attr(<consensus>, \"consensus_settings\")}. Row subsetting, {.fn dplyr::filter} and \\
+        {.fn dplyr::mutate} keep them; {.fn merge}, {.fn dplyr::summarise}, rebuilding the data \\
+        frame, or {.fn rbind} / {.fn dplyr::bind_rows} with a first piece that lacks them do not, \\
+        and a consensus saved by a TaxaAssign that predates the attribute has none.",
+      "i" = "Re-attach the settings the consensus was made with: \\
+        {.code attr(x, \"consensus_settings\") <- attr(<original consensus>, \"consensus_settings\")}, \\
+        or for a saved consensus the named list of its {.fn posterior_consensus} arguments \\
+        (everything except {.arg posterior_df})."
+    ))
+  }
+  ok <- setdiff(names(formals(posterior_consensus)), "posterior_df")
+  bad <- if (is.list(cs)) setdiff(names(cs), ok) else character(0)
+  if (!is.list(cs) || (length(cs) > 0L && (is.null(names(cs)) || any(!nzchar(names(cs))))) ||
+    length(bad) > 0L) {
+    cli::cli_abort(c(
+      "{.code attr(consensus, \"consensus_settings\")} must be a named list of \\
+        {.fn posterior_consensus} arguments.",
+      "x" = if (length(bad)) "Not accepted: {.val {bad}}."
+    ))
+  }
+  cs
+}
 
 #' Resolve observation -> evidence-group membership
 #'

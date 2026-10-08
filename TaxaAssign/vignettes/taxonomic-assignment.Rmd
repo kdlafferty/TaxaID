@@ -131,6 +131,9 @@ consensus <- posterior_consensus(result, cumulative_threshold = 0.90)
 result_updated <- update_prior_from_consensus(
   result, consensus,
   confirmation_quantile = 0.9, confirmation_discount = 0.25
+  # Round 2's species guard reuses the settings `consensus` was made with
+  # (attribute "consensus_settings"), so the final consensus below uses the
+  # same ones
 )
 
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.90)

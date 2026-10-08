@@ -241,6 +241,8 @@ result <- compute_posterior(joined, n_sims = 1000)
 consensus <- posterior_consensus(result, cumulative_threshold = 0.95)
 
 # Empirical Bayes refinement
+# Round 2's species guard reuses the settings `consensus` was made with, so the
+# final consensus uses the same ones
 result_updated <- update_prior_from_consensus(result, consensus)
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
 ```
