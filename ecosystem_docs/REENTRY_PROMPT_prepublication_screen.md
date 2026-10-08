@@ -2133,7 +2133,7 @@ Cheapest sequence: measure the spread now; build and verify 1 and 2; land both
 with ONE install; then ONE full run. Landing 1 and 2 separately costs two
 20 h cycles and yields two runs differing for two reasons.
 
-## 7l. G5+G6 (a) WON, awaiting the frozen SHA -- acceptance test and API check (2026-10-08)
+## 7l. G5+G6 (a) MERGED+INSTALLED main b0ee48c -- acceptance exact (2026-10-08)
 
 Kevin decided "G5+G6" (relayed verbatim by the coordinator; not heard directly
 here). Posterior math is building both in TaxaAssign on `round2-g56`. On arrival
@@ -2447,6 +2447,55 @@ separately and not scored. Install only once **every** R-family process has
 exited, not just the two named. Then CalIntertidalWorkflow gets its GO. SHA due
 ~10:15 (build started 08:20).
 
+
+### MERGED AND INSTALLED: round2-g56 at dee0bdc (2026-10-08 08:19-08:26)
+
+| | |
+|---|---|
+| main | `b0ee48c` (merge of `dee0bdc`), then `f6b16f0` for the pack |
+| TaxaAssign installed | `2026-10-08 15:22:15 UTC` |
+| tree | `5a25450995e49e73b59b6578383ab144788288ae` -- identical to the tree rcmdcheck passed |
+
+Verification of the MERGE: pin exists, was not already an ancestor, HEAD moved,
+10 files changed; exports diff none; NAMESPACE unchanged; **exported formals
+UNCHANGED across all 230**; inventory recomputed from the tree matches;
+TaxaAssign 1197/0/0/1 (was 1161); rcmdcheck 0 errors, 1 pre-existing warning,
+0 notes; TaxaWizard 1154/1 before the pack regen (`test-pack.R`) and 1155/0
+after. Installed-package behaviour confirmed, not just the build stamp:
+`.ROUND2_LIKELIHOOD_MARGIN_Z` = 1.96 present, guard code in the body, and the
+exported formals are the ten pre-existing ones.
+
+**Acceptance, exact:** 4,586 of 4,586 on the capped set and 49,349 of 49,349 on
+the full frame, matching both taxon and rank with no-call as its own outcome. So
+the complement needed no separate scoring. Species calls G4 -> built: 12S
+15,015 -> 10,527, 18S 265 -> 195, COI 4,054 -> 3,249, and the build differs from
+G4 on 5,612 observations.
+
+**One honest limit.** `t_built` is identical to `t56` on all 49,349 rows. That is
+exact reproduction, but it is also indistinguishable from a copied column using
+the artifact alone. Against that: `t_built` is NOT a copy of the G4 columns (it
+differs on 5,612 observations), the guard code is verifiably in the installed
+namespace, and the 36 new TaxaAssign tests pass. Not treated as a defect, but not
+claimed as more than the artifact supports -- posterior math confirming the
+column came from a run rather than an assignment would close it.
+
+#### QUEUED FOR KEVIN: the pack silently omits behaviour that can abort a run
+
+`posterior_consensus()` now attaches a `consensus_settings` attribute and
+`update_prior_from_consensus()` **aborts without it**. Row subsetting keeps it;
+`merge()`, `dplyr::summarise()` or rebuilding the data frame **drop** it.
+
+Both facts are in the installed Rd. Neither is in `llm_prompts`: the generator
+truncates Value text and the attribute paragraph falls past the cut, so
+`consensus_settings` appears **nowhere in the pack**. A consumer working from the
+pack -- which the pack itself instructs readers to "trust over any prior
+knowledge of TaxaID" -- cannot learn that the attribute exists or that ordinary
+dplyr operations silently remove it. The regeneration's only real content change
+was `require_support_columns`' description.
+
+A generator limitation, not a defect in the merged code, and it did not block the
+merge. But it is the pack asserting completeness it does not have, so it belongs
+with the items for the maintainer.
 
 ## 7m. Threshold audit of the whole guard line (2026-10-08)
 
