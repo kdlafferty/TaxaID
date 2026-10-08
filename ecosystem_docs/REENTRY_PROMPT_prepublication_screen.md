@@ -2404,7 +2404,7 @@ it must be read against main, not against a list of proposals.
 | `46cea96` | pc-index-split | none (memory only) |
 | `2b03be9` | a | `restore_suppressed_candidates`, measured-first |
 | `9b3f21a` | C1 | query-noise calibration from observed rows only |
-| `c0e8eac` | G1 + G3 | likelihood node, occurrence record |
+| `c0e8eac` | G1 + G3 | occurrence record (G1), likelihood-only credible node (G3) |
 | `58c625a` | G4 | likelihood ranking |
 
 Not merged: k (cross-phylum, frozen `6cd806d`, post-run only), G5, G6.
@@ -2424,8 +2424,8 @@ and the three guards -- are **parameter-free structural invariants**. There is n
 threshold in them to tune to an outcome. The guards read in code as principles
 with one measured example each:
 
-- **G1** a raise must stay inside the observation's likelihood-only credible node
-- **G3** a row with no occurrence record is never raised
+- **G1** a row with no occurrence record (`theta_mean` `NA`) is never raised
+- **G3** a raise stays inside the observation's likelihood-only credible node
 - **G4** a prior boost must not overturn the likelihood ordering (ties allowed)
 
 under one sentence: *"A raise may choose among candidates the sequence cannot
@@ -2463,6 +2463,14 @@ Kevin, relayed verbatim: *"yes, measure resolved-only support first"*. Under it 
 site prior borrows only from observations whose likelihood-only call resolves the
 taxon. Measurement only; nothing to merge.
 
+**Label provenance (corrected 2026-10-08).** The G-numbers come from the
+decision thread, not the code -- the roxygen names the three guards without
+numbering them -- so the coordinator is the authority on the mapping. It is
+**G1 = occurrence record, G3 = likelihood-only credible node**; an earlier
+version of this section and of §7m had the two swapped. The substance is
+unaffected: the receiver guard that pairs with resolved-only support is the
+node one, G3.
+
 ### What the donor side does today
 
 Support is `max(posterior_point_est)` per (observation, species), summed over
@@ -2487,7 +2495,7 @@ is substantially expressing the prior, so letting it confirm the taxon feeds the
 prior back into itself. It is the principled completion of an argument already in
 the code -- the strongest general-method credential anything in this line has.
 
-It is also the **donor-side twin of G1**: G1 gates the receiver on
+It is also the **donor-side twin of G3**: G3 gates the receiver on
 `likelihood_consensus_taxon` / `likelihood_consensus_rank`, and this gates the
 donor on the same columns. One principle covers both -- *mass flows only between
 observations whose own sequence evidence identifies the taxon* -- which is a
@@ -2495,16 +2503,16 @@ better methods story than three receiver guards plus a separate donor rule.
 
 Two precisions so it is not oversold:
 
-- The two sides are **not the same test**. G1 asks whether the receiver row is
+- The two sides are **not the same test**. G3 asks whether the receiver row is
   CONTAINED in its observation's likelihood node, which may sit at class rank
   (permissive). Resolved-only asks whether the donor's node IS the taxon
   (strict). The asymmetry is defensible -- a donor asserts presence, a receiver
   only chooses among candidates the sequence cannot separate -- but it should be
   a stated choice, not an accident.
-- It **does not subsume G4 or G3**. G4's invariant is about ordering inside the
+- It **does not subsume G4 or G1**. G4's invariant is about ordering inside the
   receiving observation; restricting donors reduces available MASS but cannot
   restore an ordering, so with enough resolved donors a raise can still overturn
-  the likelihood ordering. G3 concerns a receiver row with no occurrence record
+  the likelihood ordering. G1 concerns a receiver row with no occurrence record
   at all. Resolved-only makes G4 bind less often, not unnecessary. It composes
   with b rather than replacing it: b filters row TYPE, this filters observation
   RESOLUTION.
