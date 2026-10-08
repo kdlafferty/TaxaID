@@ -2465,19 +2465,33 @@ after. Installed-package behaviour confirmed, not just the build stamp:
 `.ROUND2_LIKELIHOOD_MARGIN_Z` = 1.96 present, guard code in the body, and the
 exported formals are the ten pre-existing ones.
 
-**Acceptance, exact:** 4,586 of 4,586 on the capped set and 49,349 of 49,349 on
-the full frame, matching both taxon and rank with no-call as its own outcome. So
-the complement needed no separate scoring. Species calls G4 -> built: 12S
-15,015 -> 10,527, 18S 265 -> 195, COI 4,054 -> 3,249, and the build differs from
-G4 on 5,612 observations.
+**Acceptance, exact.** Matching both taxon and rank with no-call as its own
+outcome: 4,586 of 4,586 on the capped set, and 49,349 of 49,349 over the full
+frame. Species calls G4 -> built: 12S 15,015 -> 10,527, 18S 265 -> 195, COI
+4,054 -> 3,249.
 
-**One honest limit.** `t_built` is identical to `t56` on all 49,349 rows. That is
-exact reproduction, but it is also indistinguishable from a copied column using
-the artifact alone. Against that: `t_built` is NOT a copy of the G4 columns (it
-differs on 5,612 observations), the guard code is verifiably in the installed
-namespace, and the 36 new TaxaAssign tests pass. Not treated as a defect, but not
-claimed as more than the artifact supports -- posterior math confirming the
-column came from a run rather than an assignment would close it.
+**The honest figure is 5,612, not 49,349** (corrected same day). `g56_identity.R`
+seeds `t_built`/`r_built` from the G4 columns at line 98 and overwrites only the
+observations it recomputed at line 100, so every row it did not recompute carries
+the G4 value on both sides and agrees *by construction*. The substantive count is
+the changed rows:
+
+| | changed vs the G4 seed | of |
+|---|---|---|
+| capped set | **4,586** | 4,586 |
+| complement | 1,026 | 44,763 |
+| total | **5,612** | 49,349 |
+
+All 5,612 matched the measured arm. Every capped observation changed, so the
+capped-set result has no trivially-agreeing rows in it -- the acceptance test was
+100% informative on the set it was designed around, and the full-frame number
+simply includes 43,737 rows that could not have disagreed.
+
+**Provenance of `t_built`, checked in the source rather than taken on
+description.** `g56_identity.R` line 100 writes it from a real
+`posterior_consensus()` run over the affected observations; `t56` is read only in
+the comparison at line 101. So it is not a copied column, and the limit recorded
+here earlier is closed. The production run is the full-frame test.
 
 #### QUEUED FOR KEVIN: the pack silently omits behaviour that can abort a run
 
