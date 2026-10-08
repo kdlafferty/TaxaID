@@ -488,6 +488,12 @@ absent". \code{TRUE}/\code{FALSE} mean a real lookup against \code{group_priors}
 was performed and found/didn't find a matching group; \code{NA} means
 \code{group_priors} was not supplied (not checked at all).}
 }
+
+Attribute \code{consensus_settings}: a named list of the arguments this call
+used (everything except \code{posterior_df}). \code{\link[=update_prior_from_consensus]{update_prior_from_consensus()}}
+reads it so that Round 2's species guard uses the same settings. Row
+subsetting keeps it; \code{\link[=merge]{merge()}}, \code{\link[dplyr:summarise]{dplyr::summarise()}} or rebuilding the data
+frame drop it.
 }
 \description{
 For each \code{observation_id}, identifies the minimal set of top-ranked hypotheses

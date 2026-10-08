@@ -220,9 +220,19 @@ consensus <- posterior_consensus(
   species_reference = taxaexpect_species_df
 )
 
-# The final consensus arguments, used twice: Round 2's species guard must reach the
-# same call the final consensus will
-final_consensus_args <- list(
+# Round 2's species guard reuses the settings attached to `consensus` (attribute
+# "consensus_settings"): run the final consensus below with the same settings.
+# merge() or rebuilding the table drops the attribute; the update then stops and
+# says how to re-attach it
+posteriors_updated <- update_prior_from_consensus(
+  posteriors, consensus,
+  confirmation_quantile = 0.9,
+  confirmation_discount = 0.25,
+  n_sims = 1000
+)
+
+consensus_final <- posterior_consensus(
+  posteriors_updated,
   cumulative_threshold = 0.90,
   min_posterior = 0.05,
   posterior_col = "posterior_point_est",
@@ -231,16 +241,6 @@ final_consensus_args <- list(
   rank_system = c("order", "family", "genus", "species"),
   species_reference = taxaexpect_species_df
 )
-
-posteriors_updated <- update_prior_from_consensus(
-  posteriors, consensus,
-  confirmation_quantile = 0.9,
-  confirmation_discount = 0.25,
-  n_sims = 1000,
-  consensus_args = final_consensus_args
-)
-
-consensus_final <- do.call(posterior_consensus, c(list(posteriors_updated), final_consensus_args))
 .toc("S5_consensus")
 
 cat("\nConsensus taxonomy summary:\n")

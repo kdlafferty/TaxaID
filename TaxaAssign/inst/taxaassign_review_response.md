@@ -37,6 +37,17 @@ species with a prior of 1e-5 beats hypotheses carrying floors of 3e-6. 7 new int
 helper functions have also been added since (all in `site_utils.R`, `score_consensus.R`,
 `kernel_branch.R`, and `posterior_consensus.R`).
 
+Round 2 guards G5 and G6 (2026-10-08, see the dated entry under "Behavior changes") add no
+exported function and no argument. They add one internal helper,
+`.consensus_settings_of()` (`update_prior_from_consensus.R`), and the internal constant
+`.ROUND2_LIKELIHOOD_MARGIN_Z` (1.96). `posterior_consensus()` now attaches an attribute,
+`consensus_settings`: the arguments of the call. `update_prior_from_consensus()` reads it
+from the Round 1 consensus, so the species guard uses the caller's own consensus settings.
+If the attribute is missing, the function stops with instructions to re-attach it; it never
+skips the guard. The attribute is lost by `merge()`, `dplyr::summarise()`, rebuilding the
+table, or `rbind()`/`bind_rows()` whose first piece lacks it. A consensus saved before this
+change also has none.
+
 ------------------------------------------------------------------------
 
 ## Real bugs found and fixed
@@ -1185,3 +1196,36 @@ species calls per marker (12S / 18S / COI): 10-06 before item b 10,541 / 364 / 3
 12,238 / 1,079 / 4,670; 10-07 pm with C1 and the node and record guards 12,143 / 356 / 4,108; pm with G4
 15,015 / 265 / 4,054. The built code matches the earlier measurement on all 10,399 observations both touch;
 90 further observations touched only by the measurement have no call change.
+
+### 2026-10-08: G5 + G6 -- Round 2 may not manufacture species calls
+
+Decided by the maintainer (2026-10-08, relayed by the peer coordinator: "G5+G6."). Before the freeze he asked whether
+each guard is a general method or a patch for this dataset. Two source-level alternatives were measured first ("yes,
+measure resolved-only support first"): support only from observations whose likelihood-only call names the taxon (R),
+and sequence-only donor mass (`.lik_post`, Rg). Each failed a pre-stated test. Rg + G6 made 29 species calls G4 did
+not. R + G6 lost 30 likelihood-backed species calls whose donor cells shrank to the observation itself, a donor cliff.
+Neither made G6 unnecessary: without it, G6 would still have undone 2,868 (R) and 5,428 (Rg) observations. G5 + G6
+was therefore built.
+Problem (the G4 run): 12S species calls rose from 67% to 83%, all made by Round 2. None of the 3,125 12S
+genus -> species moves was a likelihood-only species call. They converted co-raised congener splits into single
+raises, often resting on one reference per congener (Gibbonsia elegans / G. metzi, likelihood 0.215 each). Confident
+wrong-species signals were near-ties (Clupea harengus vs C. pallasii, z 0.03). G4 also produced 125 phylum -> species
+jumps (Oligocottus snyderi 64).
+Change, under `require_support_columns` and with no new argument:
+- G5, likelihood margin: a row is raised only if `score_likelihood` beats the best other referenced candidate's by
+  more than 1.96 x sqrt(sd_row^2 + sd_other^2), with sd = `score_likelihood_sd`. Among comparators tied on
+  likelihood, the larger sd is used. A missing sd blocks the raise. A sole referenced candidate stays raisable, as
+  under G4 (`.ROUND2_RAISE_SOLE_CANDIDATE`). That choice affects 115 observations: in 77 the likelihood-only call
+  already names the species, and blocking them would lose those calls. The multiplier is the internal constant
+  `.ROUND2_LIKELIHOOD_MARGIN_Z`.
+- G6, species guard: after raising, `posterior_consensus()` is run with the Round 1 consensus's own settings
+  (attribute `consensus_settings`) on every observation that has a raised row and a likelihood-only call coarser
+  than species. Where it calls a species, every Round 1 prior column of the observation is restored and its
+  posteriors are recomputed. `attr(<result>, "round2_species_guard")` lists those observations.
+Tests: G5 blocks the Clupea near-tie, with the constant mocked to 0 for the older guard tests. G6 undoes a raise that
+would make a species call, keeps one where the likelihood-only call is already species, and keeps one that leaves the
+call coarser. The update stops when the settings are missing (hand-built or merged consensus) and runs once they are
+re-attached. `posterior_consensus()` attaches its own settings, and the guard calls it with them. NAMESPACE and every
+exported function's formals are unchanged against main.
+Real data: IDENTITY_PLACEHOLDER
+

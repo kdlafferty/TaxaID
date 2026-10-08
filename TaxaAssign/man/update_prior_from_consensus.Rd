@@ -14,9 +14,7 @@ update_prior_from_consensus(
   group_cols = "sample_id",
   marker_col = "marker",
   spatial_group_map = NULL,
-  require_support_columns = TRUE,
-  likelihood_margin_z = 1.96,
-  consensus_args = NULL
+  require_support_columns = TRUE
 )
 }
 \arguments{
@@ -89,19 +87,6 @@ supported mode: it skips every guard (including the species guard) and raises wi
 likelihood-consensus support (a message says so), so its results are not
 comparable to a guarded run. Within this package it is used only for the
 LLM pathway, whose priors are not occurrence-based.}
-
-\item{likelihood_margin_z}{Non-negative number (default \code{1.96}). The
-likelihood-margin guard's multiplier on the likelihood noise band (see
-\emph{Receiver guards}). \code{0} turns the margin off, leaving the ranking
-guard alone.}
-
-\item{consensus_args}{Named list. The arguments of the caller's final
-\code{\link[=posterior_consensus]{posterior_consensus()}} call, everything except \code{posterior_df} (e.g.
-\code{cumulative_threshold}, \code{min_posterior}, \code{posterior_col},
-\code{consensus_method}, \code{rank_system}, \code{species_reference},
-\code{lookup_missing_taxonomy}, \code{backbone_id}, \code{taxonomy_cache_dir}). Used by
-the species guard (see \emph{Species guard}), which must reach the same
-call the caller will. Required when \code{require_support_columns = TRUE}.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},
@@ -319,13 +304,13 @@ congener had split.
 \item \strong{Likelihood margin.} Beyond the ranking guard, a row is raised
 only if its \code{score_likelihood} beats the best other referenced
 candidate's by more than the likelihoods' own noise:
-\code{L_row - L_other > likelihood_margin_z * sqrt(sd_row^2 + sd_other^2)},
+\code{L_row - L_other > 1.96 * sqrt(sd_row^2 + sd_other^2)},
 where \code{sd} is \code{score_likelihood_sd}. Among comparators tied on
 likelihood, the one with the larger \code{sd} is used. A missing \code{sd} on
 either side leaves the band undefined and the row is not raised. A row
 with no referenced rival has no runner-up to beat and is not held back by
-this guard. \code{likelihood_margin_z = 0} reduces this guard to the ranking
-guard. Measured on CalIntertidal, a raise that broke a near-tie (for
+this guard. The multiplier 1.96 (the 97.5\% normal quantile) is fixed,
+not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
 example \emph{Clupea harengus} over \emph{C. pallasii}, likelihoods 1 and 0.995)
 produced confident wrong-species calls; the margin blocks such raises.
 }
@@ -337,8 +322,8 @@ guard below.
 \section{Species guard}{
 
 Round 2 may not create a species call that the likelihood alone does not
-make. After raising, the function runs \code{\link[=posterior_consensus]{posterior_consensus()}} (with
-\code{consensus_args}, the caller's own final-consensus arguments) on every
+make. After raising, the function runs \code{\link[=posterior_consensus]{posterior_consensus()}}, with the
+settings of the call that made \code{consensus}, on every
 observation that has a raised row and whose likelihood-only call
 (\code{likelihood_consensus_rank} in \code{consensus}) is coarser than species or
 absent. Where that consensus calls a species, every raise in the observation
@@ -350,6 +335,19 @@ affected observations are listed in \verb{attr(<result>, "round2_species_guard")
 Measured on CalIntertidal, every Round 2 move from a coarser call to a
 species call had a likelihood-only call coarser than species, and several
 blocks of such calls rested on one reference per competing congener.
+
+Those settings come from \code{attr(consensus, "consensus_settings")}, which
+\code{\link[=posterior_consensus]{posterior_consensus()}} attaches; run the final consensus on the result with
+the same settings as the first, so the guard reaches the call it makes. Row
+subsetting, \code{\link[dplyr:filter]{dplyr::filter()}} and \code{\link[dplyr:mutate]{dplyr::mutate()}} keep the attribute;
+\code{\link[=merge]{merge()}}, \code{\link[dplyr:summarise]{dplyr::summarise()}}, rebuilding the data frame, or \code{\link[=rbind]{rbind()}} /
+\code{\link[dplyr:bind_rows]{dplyr::bind_rows()}} with a first piece that lacks it do not, and a
+consensus saved by a TaxaAssign that predates it has none. The function then
+stops and says how to re-attach it:
+\verb{attr(x, "consensus_settings") <- attr(<original consensus>, "consensus_settings")}.
+Combining consensus tables made with different settings keeps the first
+one's settings, so combine only tables made with the same settings. The
+attribute is needed only on the guarded path (\code{require_support_columns = TRUE}).
 }
 
 \section{Confirmed without an occurrence record}{

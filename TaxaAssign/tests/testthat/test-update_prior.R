@@ -12,16 +12,24 @@ library(dplyr)
 # likelihood-only consensus and mostly no theta_mean). The guards are tested
 # in their own section below and in the occurrence-record test.
 .upf <- function(...) update_prior_from_consensus(..., require_support_columns = FALSE)
-# the guarded (production) path; consensus_args mirrors the caller's final consensus
+# the guarded (production) path. The fixtures' consensus is hand-built, so it carries the settings
+# posterior_consensus() would attach (attr "consensus_settings"), which the species guard reuses.
 .CARGS <- list(cumulative_threshold = 0.9, min_posterior = 0.05)
-.upg <- function(..., consensus_args = .CARGS) update_prior_from_consensus(..., consensus_args = consensus_args)
-# isolates the earlier guards (G1/G3/G4) and the raise arithmetic: no likelihood margin (G5), and the
-# species guard's (G6) consensus stubbed to call no species, so it has nothing to undo
+.with_settings <- function(consensus, settings = .CARGS) {
+  attr(consensus, "consensus_settings") <- settings
+  consensus
+}
+.upg <- function(result, consensus, ..., settings = .CARGS) {
+  update_prior_from_consensus(result, .with_settings(consensus, settings), ...)
+}
+# isolates the earlier guards (G1/G3/G4) and the raise arithmetic: no likelihood margin (G5; the
+# internal constant mocked to 0), and the species guard's (G6) consensus stubbed to call no species,
+# so it has nothing to undo
 .upg0 <- function(..., likelihood_margin_z = 0) {
   stub <- function() data.frame(observation_id = unique(posterior_df$observation_id), consensus_rank = NA_character_)
-  formals(stub) <- formals(posterior_consensus) # keeps consensus_args validation meaningful
-  testthat::local_mocked_bindings(posterior_consensus = stub)
-  .upg(..., likelihood_margin_z = likelihood_margin_z)
+  formals(stub) <- formals(posterior_consensus) # keeps the settings validation meaningful
+  testthat::local_mocked_bindings(posterior_consensus = stub, .ROUND2_LIKELIHOOD_MARGIN_Z = likelihood_margin_z)
+  .upg(...)
 }
 
 .make_result <- function() {
@@ -1288,11 +1296,15 @@ test_that("G5: a missing sd leaves the band undefined, so the row is not raised"
     "S2", "Clupea harengus"), 1e-3)
 })
 
-test_that("likelihood_margin_z is validated", {
+test_that("the likelihood margin is an internal constant (1.96), not an argument", {
+  expect_identical(.ROUND2_LIKELIHOOD_MARGIN_Z, 1.96)
+  expect_false(any(c("likelihood_margin_z", "consensus_args") %in% names(formals(update_prior_from_consensus))))
+  # the production path uses it: the Clupea near-tie is held back without mocking anything but G6
   fx <- .clupea_fixture()
-  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = -1), "likelihood_margin_z")
-  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = NA), "likelihood_margin_z")
-  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = c(1, 2)), "likelihood_margin_z")
+  stub <- function() data.frame(observation_id = unique(posterior_df$observation_id), consensus_rank = NA_character_)
+  formals(stub) <- formals(posterior_consensus)
+  local_mocked_bindings(posterior_consensus = stub)
+  expect_equal(.prior_of(suppressMessages(.upg(fx$result, fx$consensus, n_sims = 0)), "S2", "Clupea harengus"), 1e-3)
 })
 
 # ---- G6: Round 2 may not create a species call the likelihood alone does not make ----
@@ -1330,12 +1342,44 @@ test_that("G6: a raise that leaves the call coarser than species is kept", {
   expect_false(chk$consensus_rank %in% "species")
 })
 
-test_that("G6 needs consensus_args on the guarded path, and checks their names", {
+test_that("G6 stops, with the fix, when the consensus carries no settings, and checks them", {
   fx <- .clupea_fixture()
-  expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0), "consensus_args")
-  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, consensus_args = list(not_an_arg = 1)), "not_an_arg")
-  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, consensus_args = list(0.9)), "named list")
+  # a hand-built consensus has no settings attribute
+  expect_error(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0), "consensus_settings")
+  # row subsetting keeps it; merge() drops it, and the update stops rather than skipping the guard
+  expect_identical(attr(.with_settings(fx$consensus)[1:3, ], "consensus_settings"), .CARGS)
+  sub <- merge(.with_settings(fx$consensus), data.frame(observation_id = c("S1", "S2", "S3")))
+  expect_null(attr(sub, "consensus_settings"))
+  expect_error(update_prior_from_consensus(fx$result, sub, n_sims = 0), "Re-attach")
+  # re-attaching restores the guarded run
+  attr(sub, "consensus_settings") <- .CARGS
+  expect_s3_class(suppressMessages(update_prior_from_consensus(fx$result, sub, n_sims = 0)), "data.frame")
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, settings = list(not_an_arg = 1)), "not_an_arg")
+  expect_error(.upg(fx$result, fx$consensus, n_sims = 0, settings = list(0.9)), "named list")
   # the shim does not need them
   expect_s3_class(suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0,
     require_support_columns = FALSE)), "data.frame")
+})
+
+test_that("posterior_consensus() attaches its own settings, and the species guard reuses them", {
+  fx <- .clupea_fixture(L = c(1, 0.2))
+  cons <- posterior_consensus(fx$result, cumulative_threshold = 0.8, min_posterior = 0.05)
+  cs <- attr(cons, "consensus_settings")
+  expect_identical(sort(names(cs)), sort(setdiff(names(formals(posterior_consensus)), "posterior_df")))
+  expect_identical(cs$cumulative_threshold, 0.8)
+  expect_identical(cs$consensus_method, "lca") # match.arg()'d, as the call used it
+  # the guard's consensus is called with exactly those settings
+  seen <- NULL
+  real <- posterior_consensus
+  spy <- function() {
+    seen <<- list(cumulative_threshold = cumulative_threshold, consensus_method = consensus_method)
+    real(posterior_df, cumulative_threshold = cumulative_threshold, min_posterior = min_posterior,
+      consensus_method = consensus_method)
+  }
+  formals(spy) <- formals(posterior_consensus)
+  x <- fx$consensus
+  attr(x, "consensus_settings") <- cs
+  local_mocked_bindings(posterior_consensus = spy)
+  suppressMessages(update_prior_from_consensus(fx$result, x, n_sims = 0))
+  expect_identical(seen, list(cumulative_threshold = 0.8, consensus_method = "lca"))
 })

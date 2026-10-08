@@ -590,6 +590,12 @@
 #'       `group_priors` was not supplied (not checked at all).}
 #'   }
 #'
+#'   Attribute `consensus_settings`: a named list of the arguments this call
+#'   used (everything except `posterior_df`). [update_prior_from_consensus()]
+#'   reads it so that Round 2's species guard uses the same settings. Row
+#'   subsetting keeps it; [merge()], [dplyr::summarise()] or rebuilding the data
+#'   frame drop it.
+#'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
 #'   [TaxaLikely::suggest_unreferenced_species()]
 #'
@@ -654,6 +660,10 @@ posterior_consensus <- function(posterior_df,
                                 likelihood_consensus = TRUE,
                                 robust_prior_s = 1) {
   consensus_method <- match.arg(consensus_method)
+  # This call's own settings, attached to the result for Round 2's species
+  # guard (update_prior_from_consensus() reads them back).
+  consensus_settings <- mget(setdiff(names(formals(posterior_consensus)), "posterior_df"),
+    envir = environment())
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
     cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
   }
@@ -939,6 +949,7 @@ posterior_consensus <- function(posterior_df,
     min_posterior        = min_posterior,
     posterior_col        = posterior_col
   )
+  attr(result, "consensus_settings") <- consensus_settings
   result
 }
 

@@ -84,17 +84,9 @@
     n_sims = n_sims,
     # LLM priors are not occurrence-based (no theta_mean), so the
     # occurrence-record guard has nothing to read there: guards off for "llm"
-    require_support_columns = workflow != "llm",
-    # the species guard must reach the same call as the final consensus below
-    consensus_args = list(
-      cumulative_threshold    = cumulative_threshold,
-      min_posterior           = min_posterior,
-      posterior_col           = posterior_col,
-      lookup_missing_taxonomy = lookup_missing_taxonomy,
-      backbone_id             = backbone_id,
-      rank_system             = rank_system,
-      species_reference       = species_reference
-    )
+    # Round 2's species guard reuses `consensus`'s own settings (attached by
+    # posterior_consensus()), the same as the final consensus below
+    require_support_columns = workflow != "llm"
   )
 
   consensus_final <- posterior_consensus(

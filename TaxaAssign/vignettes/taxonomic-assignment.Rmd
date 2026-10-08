@@ -130,9 +130,10 @@ consensus <- posterior_consensus(result, cumulative_threshold = 0.90)
 
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  confirmation_quantile = 0.9, confirmation_discount = 0.25,
-  # the final consensus's own arguments, so Round 2's species guard reaches the same call
-  consensus_args = list(cumulative_threshold = 0.90)
+  confirmation_quantile = 0.9, confirmation_discount = 0.25
+  # Round 2's species guard reuses the settings `consensus` was made with
+  # (attribute "consensus_settings"), so the final consensus below uses the
+  # same ones
 )
 
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.90)
@@ -179,8 +180,6 @@ consensus_final <- posterior_consensus(result_updated)
 | `min_posterior` | 0.05 | Raise to exclude weak hypotheses |
 | `confirmation_quantile` | 0.9 | Quantile of confirming observations' posterior used as the EB boost |
 | `confirmation_discount` | 0.25 | Power-prior discount on cross-observation support mass; 0 disables |
-| `likelihood_margin_z` | 1.96 | Multiplier on the likelihood noise band a Round 2 raise must clear over the runner-up; 0 keeps only the ranking guard |
-| `consensus_args` | (required) | The final `posterior_consensus()` arguments; Round 2's species guard uses them to reach the same call |
 | `n_sims` | 1000 | 0 for point estimates only |
 | `score_sharpness` | 0.1 | LLM only: higher makes scores dominate |
 | `prior_phi` | c(high=50, moderate=10, low=3) | LLM only: controls prior tightness |

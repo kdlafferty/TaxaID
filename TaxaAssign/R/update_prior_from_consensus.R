@@ -196,13 +196,13 @@
 #'   \item **Likelihood margin.** Beyond the ranking guard, a row is raised
 #'     only if its `score_likelihood` beats the best other referenced
 #'     candidate's by more than the likelihoods' own noise:
-#'     `L_row - L_other > likelihood_margin_z * sqrt(sd_row^2 + sd_other^2)`,
+#'     `L_row - L_other > 1.96 * sqrt(sd_row^2 + sd_other^2)`,
 #'     where `sd` is `score_likelihood_sd`. Among comparators tied on
 #'     likelihood, the one with the larger `sd` is used. A missing `sd` on
 #'     either side leaves the band undefined and the row is not raised. A row
 #'     with no referenced rival has no runner-up to beat and is not held back by
-#'     this guard. `likelihood_margin_z = 0` reduces this guard to the ranking
-#'     guard. Measured on CalIntertidal, a raise that broke a near-tie (for
+#'     this guard. The multiplier 1.96 (the 97.5% normal quantile) is fixed,
+#'     not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
 #'     example *Clupea harengus* over *C. pallasii*, likelihoods 1 and 0.995)
 #'     produced confident wrong-species calls; the margin blocks such raises.
 #' }
@@ -213,8 +213,8 @@
 #'
 #' @section Species guard:
 #' Round 2 may not create a species call that the likelihood alone does not
-#' make. After raising, the function runs [posterior_consensus()] (with
-#' `consensus_args`, the caller's own final-consensus arguments) on every
+#' make. After raising, the function runs [posterior_consensus()], with the
+#' settings of the call that made `consensus`, on every
 #' observation that has a raised row and whose likelihood-only call
 #' (`likelihood_consensus_rank` in `consensus`) is coarser than species or
 #' absent. Where that consensus calls a species, every raise in the observation
@@ -226,6 +226,20 @@
 #' Measured on CalIntertidal, every Round 2 move from a coarser call to a
 #' species call had a likelihood-only call coarser than species, and several
 #' blocks of such calls rested on one reference per competing congener.
+#'
+#' Those settings come from `attr(consensus, "consensus_settings")`, which
+#' [posterior_consensus()] attaches; run the final consensus on the result with
+#' the same settings as the first, so the guard reaches the call it makes. Row
+#' subsetting, [dplyr::filter()] and [dplyr::mutate()] keep the attribute;
+#' [merge()], [dplyr::summarise()], rebuilding the data frame, or [rbind()] /
+#' [dplyr::bind_rows()] with a first piece that lacks it do not, and a
+#' consensus saved by a TaxaAssign that predates it has none. The function then
+#' stops and says how to re-attach it:
+#' `attr(x, "consensus_settings") <- attr(<original consensus>, "consensus_settings")`.
+#' Combining consensus tables made with different settings keeps the first
+#' one's settings, so combine only tables made with the same settings. The
+#' attribute is needed only on the guarded path (`require_support_columns =
+#' TRUE`).
 #'
 #' @section Confirmed without an occurrence record:
 #' Until 2026-10-07 a row with no occurrence record (`theta_mean` `NA`) was
@@ -275,17 +289,6 @@
 #'   likelihood-consensus support (a message says so), so its results are not
 #'   comparable to a guarded run. Within this package it is used only for the
 #'   LLM pathway, whose priors are not occurrence-based.
-#' @param likelihood_margin_z Non-negative number (default `1.96`). The
-#'   likelihood-margin guard's multiplier on the likelihood noise band (see
-#'   \emph{Receiver guards}). `0` turns the margin off, leaving the ranking
-#'   guard alone.
-#' @param consensus_args Named list. The arguments of the caller's final
-#'   [posterior_consensus()] call, everything except `posterior_df` (e.g.
-#'   `cumulative_threshold`, `min_posterior`, `posterior_col`,
-#'   `consensus_method`, `rank_system`, `species_reference`,
-#'   `lookup_missing_taxonomy`, `backbone_id`, `taxonomy_cache_dir`). Used by
-#'   the species guard (see \emph{Species guard}), which must reach the same
-#'   call the caller will. Required when `require_support_columns = TRUE`.
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty -- match the value used in the original run.
@@ -358,9 +361,7 @@ update_prior_from_consensus <- function(result,
                                         group_cols = "sample_id",
                                         marker_col = "marker",
                                         spatial_group_map = NULL,
-                                        require_support_columns = TRUE,
-                                        likelihood_margin_z = 1.96,
-                                        consensus_args = NULL) {
+                                        require_support_columns = TRUE) {
   # --- Input validation -------------------------------------------------------
   if (!is.logical(require_support_columns) || length(require_support_columns) != 1L || is.na(require_support_columns)) {
     cli::cli_abort("{.arg require_support_columns} must be TRUE or FALSE.")
@@ -399,22 +400,13 @@ update_prior_from_consensus <- function(result,
     }
   }
 
-  if (!is.numeric(likelihood_margin_z) || length(likelihood_margin_z) != 1L ||
-    !is.finite(likelihood_margin_z) || likelihood_margin_z < 0) {
-    cli::cli_abort("{.arg likelihood_margin_z} must be a single non-negative number (0 = no margin).")
-  }
+  likelihood_margin_z <- .ROUND2_LIKELIHOOD_MARGIN_Z
+  # The species guard reuses the settings of the consensus this update starts
+  # from (attached by posterior_consensus()), so it reaches the call the
+  # caller's final consensus makes with the same settings.
+  consensus_args <- NULL
   if (require_support_columns) {
-    if (is.null(consensus_args)) {
-      cli::cli_abort(c(
-        "Round 2's species guard needs {.arg consensus_args}, and none was supplied.",
-        "x" = "The guard asks {.fn posterior_consensus} whether a raise would make a species \\
-          call, so it must use the same arguments as the caller's own final consensus.",
-        "i" = "Pass the list of arguments you give that call, e.g. \\
-          {.code consensus_args = list(cumulative_threshold = 0.9, min_posterior = 0.05, \\
-          consensus_method = \"credible_node\", ...)} (everything except {.arg posterior_df})."
-      ))
-    }
-    .check_consensus_args(consensus_args)
+    consensus_args <- .consensus_settings_of(consensus)
   }
   if (!is.numeric(confirmation_quantile) || length(confirmation_quantile) != 1L ||
     is.na(confirmation_quantile) || confirmation_quantile <= 0 || confirmation_quantile > 1) {
@@ -900,7 +892,7 @@ update_prior_from_consensus <- function(result,
     if (length(g6_cand) > 0L) {
       cli::cli_inform(
         "Species guard: checking {length(g6_cand)} observation(s) with a raised row and a \\
-        likelihood-only call coarser than species, using {.arg consensus_args}."
+        likelihood-only call coarser than species, with {.arg consensus}'s own settings."
       )
       chk_rows <- updated_rows[as.character(updated_rows$observation_id) %in% g6_cand, , drop = FALSE]
       chk <- do.call(posterior_consensus, c(list(chk_rows), consensus_args))
@@ -960,22 +952,45 @@ update_prior_from_consensus <- function(result,
 # the margin test cannot apply; TRUE keeps G4's behaviour for such a row.
 .ROUND2_RAISE_SOLE_CANDIDATE <- TRUE
 
-#' Validate consensus_args for the species guard
+# G5: the likelihood-margin guard's multiplier on the likelihood noise band
+# (the 97.5% normal quantile). Internal, not an argument; 0 would reduce the
+# margin guard to the ranking guard (G4).
+.ROUND2_LIKELIHOOD_MARGIN_Z <- 1.96
+
+#' The consensus settings the species guard reuses
+#'
+#' Reads `attr(consensus, "consensus_settings")`, which [posterior_consensus()]
+#' attaches: the arguments of the call that made `consensus`. Aborts, with the
+#' fix, when it is missing or malformed -- the guard is never skipped silently.
 #' @noRd
-.check_consensus_args <- function(consensus_args) {
-  if (!is.list(consensus_args) || (length(consensus_args) > 0L &&
-    (is.null(names(consensus_args)) || any(!nzchar(names(consensus_args)))))) {
-    cli::cli_abort("{.arg consensus_args} must be a named list of {.fn posterior_consensus} arguments.")
-  }
-  ok <- setdiff(names(formals(posterior_consensus)), "posterior_df")
-  bad <- setdiff(names(consensus_args), ok)
-  if (length(bad)) {
+.consensus_settings_of <- function(consensus) {
+  cs <- attr(consensus, "consensus_settings", exact = TRUE)
+  if (is.null(cs)) {
     cli::cli_abort(c(
-      "{.arg consensus_args} has name(s) {.fn posterior_consensus} does not accept: {.val {bad}}.",
-      "i" = "Accepted: {.val {ok}}."
+      "Round 2's species guard needs the settings of the consensus it starts from, \\
+        and {.arg consensus} carries none.",
+      "x" = "{.fn posterior_consensus} attaches them as \\
+        {.code attr(<consensus>, \"consensus_settings\")}. Row subsetting, {.fn dplyr::filter} and \\
+        {.fn dplyr::mutate} keep them; {.fn merge}, {.fn dplyr::summarise}, rebuilding the data \\
+        frame, or {.fn rbind} / {.fn dplyr::bind_rows} with a first piece that lacks them do not, \\
+        and a consensus saved by a TaxaAssign that predates the attribute has none.",
+      "i" = "Re-attach the settings the consensus was made with: \\
+        {.code attr(x, \"consensus_settings\") <- attr(<original consensus>, \"consensus_settings\")}, \\
+        or for a saved consensus the named list of its {.fn posterior_consensus} arguments \\
+        (everything except {.arg posterior_df})."
     ))
   }
-  invisible(TRUE)
+  ok <- setdiff(names(formals(posterior_consensus)), "posterior_df")
+  bad <- if (is.list(cs)) setdiff(names(cs), ok) else character(0)
+  if (!is.list(cs) || (length(cs) > 0L && (is.null(names(cs)) || any(!nzchar(names(cs))))) ||
+    length(bad) > 0L) {
+    cli::cli_abort(c(
+      "{.code attr(consensus, \"consensus_settings\")} must be a named list of \\
+        {.fn posterior_consensus} arguments.",
+      "x" = if (length(bad)) "Not accepted: {.val {bad}}."
+    ))
+  }
+  cs
 }
 
 #' Resolve observation -> evidence-group membership
