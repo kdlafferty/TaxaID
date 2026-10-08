@@ -2133,7 +2133,7 @@ Cheapest sequence: measure the spread now; build and verify 1 and 2; land both
 with ONE install; then ONE full run. Landing 1 and 2 separately costs two
 20 h cycles and yields two runs differing for two reasons.
 
-## 7l. QUEUED: G5+G6, and why the built guard cannot be scored against the measured arms (2026-10-08)
+## 7l. QUEUED: G5+G6 -- the acceptance test, and the sole-candidate choice (2026-10-08)
 
 Kevin decided "G5+G6" (relayed verbatim by the coordinator; not heard directly
 here). Posterior math is building both in TaxaAssign on `round2-g56`. On arrival
@@ -2179,7 +2179,7 @@ within half a percent of where it started, 18S 46% below it and COI 15% below.
 The cumulative 12S +42% reported on the morning of 10-08 is expected to be given
 back almost entirely. That is the guards working, not a regression.
 
-### Why "reproduce 10,469/195/3,230" is the WRONG acceptance test
+### Measured G6 is a two-pass oracle (my superset argument retracted)
 
 Measured G6 is a **two-pass oracle**. It picks its capped observations using the
 G4 *final* consensus rank:
@@ -2189,30 +2189,112 @@ cap <- fin$observation_id[fin$consensus_rank %in% "species" & !lr %in% "species"
 ```
 
 run consensus, see which came out species, undo the raises there, re-run
-consensus. A built G6 inside `update_prior_from_consensus` cannot do this: at the
-moment it decides a raise the final call does not exist yet. It can only test the
-likelihood-only rank, so it blocks on a strict **superset** -- every observation
-whose likelihood-only call is coarser than species, including those whose G4
-final was already coarser. The measurement never touched those: it NA-filled them
-with their G4 values, which is exactly why G6's `changed` equals its `lost`
-(5,362 = 5,362) and why `new species` is 0.
+consensus.
 
-On that complement, the mechanism found on 10-08 runs the other way: removing a
-raise that overturned the likelihood ordering lets the likelihood leader win
-cleanly and **can create a species call** -- that is how G4 added 4,474 12S
-species calls. So a correct build may land above 10,469 with genuinely new
-species calls. **"0 new species" is not a property the build must have.** It was
-only ever measured inside the capped set.
+**Corrected 2026-10-08, same day**: I first argued a built G6 could not do this
+and would therefore block on a strict superset. The coordinator relayed posterior
+math's design note: built G6 also runs `posterior_consensus` after raising, over
+the observations whose likelihood-only rank is coarser than species, and undoes
+raises only where that consensus is species. That selects the same capped set, so
+the superset argument does not apply -- it was an argument against a single-pass
+build, which is not what is being built.
+
+The risk moved rather than vanished. The build's cap-selection pass now computes
+a consensus of its own, while the measurement took its cap from the full G4 run's
+final. If that pass runs over the restricted set while the G4 final came from the
+whole frame, the two caps can diverge for exactly the reason §7i is open. So the
+identity check is the right test, and **if it comes back dirty, look at the cap
+before the guard arithmetic**.
+
+### The acceptance test is a per-observation set, not a count
+
+The arms files carry per-observation taxon and rank for every arm, so agreement is
+reported as "N of N observations identical in both taxon AND rank", with any
+disagreement listed by `observation_id`. Counts are a by-product. Reasons:
+
+- a count match hides compensating differences -- one species call lost and
+  another gained nets to zero and reads as agreement;
+- a count mismatch of 1 is undiagnosable as a total but names the observation as
+  a set;
+- NA (no call) is a THIRD outcome and must be scored as itself. The arms disagree
+  on which observations get no call at all: on 12S, NA rank is G4 17, G5 23,
+  G6 20, G5+G6 26. Letting NA fall into "not species" would score a
+  species-to-no-call change the same as species-to-genus.
+
+### The sole-candidate choice is 115 observations, not one
+
+Kevin's pending (a)/(b) choice is measured in two separate files -- (a) in
+`g456_arms_soleA.rds`, (b) in `g456_arms.rds` -- with identical `observation_id`
+order, so they compare row-wise directly.
+
+The figures were first paired wrongly: 10,527 is **(a)'s G5+G6** and 10,528 is
+**(b)'s G6**, two different arms, and the one-observation gap between them is a
+coincidence. Like for like:
+
+| arm | 12S | 18S | COI |
+|---|---|---|---|
+| (a) G5+G6 | 10,527 | 195 | 3,249 |
+| (b) G5+G6 | 10,469 | 195 | 3,230 |
+
+They differ on **115 observations** under G5+G6 and **804** under G5-only, and in
+every single one **(a)'s call is identical to G4**. So the choice is not a
+stringency dial; it decides whether these rows are exempt from both guards.
+
+| marker | differing | species in (a) | species in (b) | (b) drops to NO CALL |
+|---|---|---|---|---|
+| 12S | 74 | 58 | 0 | 6 |
+| 18S | 19 | 0 | 0 | 0 |
+| COI | 22 | 19 | 0 | 0 |
+
+115 observations differ but only 77 species calls do -- all 19 of the 18S
+differences are order -> class, invisible to a species count. The
+per-observation test earned its keep on the first comparison it was applied to.
+
+(b)'s outcomes on those rows: 12S genus 8, family 57, phylum 3, no call 6; 18S
+class 19; COI genus 19, family 2, order 1. Two for Kevin's eye. Six 12S
+observations lose their call entirely (family Gobiesocidae x5, Clinidae x1 ->
+NA). Three fish go family Cottidae -> **phylum Chordata**, which is the queued
+fish-class pathology (GBIF `class` is NA for every fish row; the true node is
+Actinopteri), so part of (b)'s cost here is that separate bug, not the guard.
+
+Species calls (b) removes and (a) keeps: *Sardinops sagax* 16, *Naineris
+dendritica* 15, *Heterostichus rostratus* 11, *Atherinops affinis* 7, *Boccardia
+proboscidea* 4, *Engraulis mordax* 3, *Gasterosteus aculeatus* 3, *Medialuna
+californiensis* 3, then two each of *Cheilotrema saturnum*, *Menticirrhus
+undulatus*, *Rhacochilus toxotes*, *Rimicola muscarum*, *Scorpaenichthys
+marmoratus*, and one each of *Anisotremus davidsonii*, *Atractoscion nobilis*,
+*Etropus crossotus*, *Hypsypops rubicundus*, *Semicossyphus pulcher* (the
+sheephead of the §7f thread).
+
+**The conceptual point.** G5 asks whether the winner beats the best OTHER
+referenced candidate by more than the likelihood's own noise. On a sole-candidate
+row there is no other candidate -- nothing to beat. Treating "no competitor" as a
+*failure* of a separation test inverts it: no competitor is the easiest case, not
+the hardest. (a) is therefore not the lenient option with (b) the strict one;
+(b) applies a comparison where the comparison does not exist. Recommended to
+Kevin (as a recommendation, not a decision): **(a)**.
+
+**Mechanism NOT established.** The hypothesis was that `gap <- L - L2` with
+`L2 = -Inf` for a sole candidate gives `gap = Inf`, which fails the
+`is.finite(gap)` term in
+
+```r
+g5_block <- raised & ref & !(is.finite(gap) & gap > Z * band)
+```
+
+so a maximally clear win blocks. This did NOT hold in `g5_moves.rds`: 0 infinite
+gaps, 0 NA `runner_up`, 0 NA `sd_w`. But that table covers only the 3,334
+genus->species moves, not the sole-candidate rows, so it neither confirms nor
+refutes it. Posterior math should name the mechanism from its own code rather
+than inherit this guess; the question is what the comparison evaluates to when
+there is no second candidate.
 
 ### The decisive split
 
-1. **On the capped set** (G4 final species AND likelihood-only coarser): built
-   and measured perform the identical operation -- restore the Round 1 prior on
-   every raised row -- so they must agree **exactly**. Disagreement is a real
-   finding: an implementation difference, or frame dependence, since the
-   measurement ran `posterior_consensus` on a SUBSET while the build runs it on
-   the whole frame. That is precisely what §7i is investigating, so a
-   disagreement here is also a possible §7i sighting. HOLD on this.
+1. **On the capped set**: built and measured perform the identical operation --
+   restore the Round 1 prior on every raised row -- so they must agree
+   **exactly**. Disagreement is a real finding: an implementation difference, or
+   cap divergence from frame dependence (§7i). HOLD on this.
 2. **On the complement**: whatever the build does is new information, not a
    mismatch. Report species added, species removed and coarse calls changed as
    its own figure; do not score it against the arms and do not hold the run for
@@ -2222,12 +2304,12 @@ only ever measured inside the capped set.
 G5 carries a milder version: the measurement joined `score_likelihood_sd` from
 `CalIntertidal_lik.rds` through a two-try observation-id match (`j`, then `j2` on
 a stripped prefix) and printed an unmatched count; the build has `sd` natively.
-Check the saved `g5_measure_z1.96.rds` for unmatched rows before comparing.
+`g5_moves.rds` shows 0 NA `sd_w` among the moves, so the join was complete there.
 
-Memory: the arms file is 572 KB and every comparison object is under 250 KB, so
-the capped-set check sits well inside the 3 GB the coordinator set. Re-running
-the built consensus over the full frame is the workflow's job, not this
-session's.
+Memory: the arms files are ~570 KB each and every comparison object is under
+250 KB, so the capped-set check sits well inside the 3 GB the coordinator set.
+Re-running the built consensus over the full frame is the workflow's job, not
+this session's.
 
 
 ## 8. Findings to carry into the manuscript (not to fix)
