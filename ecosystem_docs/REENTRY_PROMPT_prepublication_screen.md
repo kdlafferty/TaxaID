@@ -1987,6 +1987,39 @@ not move the ceiling.
 roughly 250 total minutes at only 7.14 GB, so it is time-bound, not
 memory-bound. Shortening the run means parallelism there, not memory work.
 
+## 7k. The run peak MOVED +1.37 GB -- variance or C1? OPEN (2026-10-07)
+
+Morning run (main `01feb65`): COI names+drop+restoration+guard+join peaked at
+**15.92 GB** in 50.9 min. Evening run (main `7b36dca`, with C1 and G1/G3):
+**17.29 GB** in 55.6 min, SAME stage, identical inputs, matrix reused. Headroom
+at the run's peak stage is now about **2.7 GB under the 20 GB cap**.
+
+**TWO EXPLANATIONS, OPPOSITE IMPLICATIONS, NOT YET DISTINGUISHED:**
+1. Run-to-run heap variance in the 34.1M-pair index/join -- GC timing and
+   fragmentation do move peak RSS -- in which case the ceiling is unchanged and
+   this is the noise band, itself worth knowing.
+2. **C1's re-admitted candidates.** C1 re-admits 2,392 of the 9,479 gated
+   observed COI candidates. Its CODE is not in that stage, but it changes the
+   SIZE of the candidate set, and more rows cost memory wherever those rows
+   flow -- a join especially. If so the ceiling has MOVED FOR A REASON and 2.7
+   GB is the new normal.
+
+**THE DISCRIMINATOR IS ROW COUNTS, NOT MEMORY.** Compare that stage's input and
+output row counts between the two runs. Identical inputs and a reused matrix
+mean the candidate set is the only thing that should differ; roughly 2,392 more
+COI candidate rows means C1, matching counts mean variance. Derivable from the
+stage log or the saved outputs, so no new run is needed. **Do not record
+"variance" until this is checked** -- a specific mechanism with a known
+magnitude is sitting right there, and accepting the plausible explanation
+without measuring is the shape that produced the five-agreeing-CV-methods
+episode and the restore-imputation formula endorsed on arithmetic alone.
+
+**EITHER WAY THIS IS NOW THE STAGE TO PROFILE FIRST.** It is the run peak, it
+has the least headroom, and it is the ONE stage this week's four memory fixes
+never touched. region_matched_references already identified the 34.1M-pair
+accession index plus join as the cost and nobody has measured inside it. If the
+next round of memory work has a single target, this is it.
+
 ## 7i. OPEN INVESTIGATION: does a consensus call depend on its FRAME-MATES? (2026-10-07)
 
 Unconfirmed, and if confirmed it outranks everything else in 7e-7h. Found by
