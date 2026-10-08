@@ -2133,7 +2133,7 @@ Cheapest sequence: measure the spread now; build and verify 1 and 2; land both
 with ONE install; then ONE full run. Landing 1 and 2 separately costs two
 20 h cycles and yields two runs differing for two reasons.
 
-## 7l. ON HOLD: G5+G6 -- general method or dataset patch, and the acceptance test (2026-10-08)
+## 7l. G5+G6 (a) WON, awaiting the frozen SHA -- acceptance test and API check (2026-10-08)
 
 Kevin decided "G5+G6" (relayed verbatim by the coordinator; not heard directly
 here). Posterior math is building both in TaxaAssign on `round2-g56`. On arrival
@@ -2385,6 +2385,67 @@ Memory: the arms files are ~570 KB each and every comparison object is under
 250 KB, so the capped-set check sits well inside the 3 GB the coordinator set.
 Re-running the built consensus over the full frame is the workflow's job, not
 this session's.
+
+
+### Winner, the API resolution, and the public-surface check (2026-10-08)
+
+**Winner: G5+G6 under sole-candidate option (a).** The two alternatives failed
+on the measurements added at this session's request: the graded-donor arm (Rg+G6)
+produced 29 new species calls (T1), and the ungated resolved-only arm (R+G6)
+produced a 30-call donor cliff (T3) -- the GreatLakes-shaped failure the cliff
+check was added to catch. Details in posterior math's `rs_report.txt`. So the
+graded arm this session proposed was measured and lost, which is the right
+outcome for having measured it.
+
+**The build adds no public surface**, after the API problem was raised and the
+coordinator routed it: `z` becomes the internal constant
+`.ROUND2_LIKELIHOOD_MARGIN_Z`, and the consensus settings travel as an internal
+attribute on `posterior_consensus()` output, read by
+`update_prior_from_consensus()` with an abort if the attribute is missing.
+
+#### An exports diff cannot see a new argument
+
+`58d9944` added `likelihood_margin_z = 1.96` and `consensus_args = NULL` to the
+already-exported `update_prior_from_consensus()`. That is new public API, but it
+changes no NAMESPACE line, so `git diff -- '*/NAMESPACE' | grep '^[+-]export'`
+reported **none** and the release freeze would have been bypassed. NAMESPACE is a
+proxy for public surface, not the thing itself.
+
+`verify_merge.sh` now compares the **formals of every exported function**: read
+each package's `export()` lines, locate each name's top-level definition in `R/`,
+emit a canonical `Pkg::fn(arg = default, ...)` line, and diff that list between
+the BEFORE tree (`git archive`) and the merged tree. Tested against `58d9944`,
+where the answer was known in advance, it reports exactly one changed line out of
+**230 exported signatures** and nothing else. It also diffs NAMESPACE as a whole,
+not only `export` lines, so an S3 registration or import change cannot pass
+either.
+
+Anti-vacuity: abort if the scan emits nothing, exit 8 if either side yields fewer
+than 100 signatures, exit 7 if the scan itself fails. Audited for silent gaps --
+no parse errors across the nine packages, and the five exports reported as having
+no function definition are genuine data objects (`standard_ranks`,
+`extended_ranks`, `barcode_length_defaults`, `barcode_primer_defaults`,
+`example_habitat_scheme`), stable across before/after and acting as sentinels.
+
+R trap found while implementing it: never bind a formal's default to a variable,
+because assigning the empty symbol makes that variable *missing* and the next
+reference errors with `argument "d" is missing, with no default`. Deparse inline.
+
+#### State of 58d9944 for reference
+
+The full cycle ran clean on it: no conflicts, inventory matching the tree,
+TaxaAssign 1189 passed / 0 failed / 0 errors / 1 skip, CI-equivalent rcmdcheck
+0 errors / 1 warning (pre-existing) / 0 notes. What stood between it and a merge
+was the API change and the missing review-response entry, not the code.
+
+#### Acceptance settings for the handoff
+
+Reference `g456_arms_soleA.rds`, columns `t56` / `r56`; capped `observation_id`
+list arrives with the SHA. Exact per-observation agreement required on the capped
+set (`compare_arms.R`, exit 9 on any disagreement); the complement reported
+separately and not scored. Install only once **every** R-family process has
+exited, not just the two named. Then CalIntertidalWorkflow gets its GO. SHA due
+~10:15 (build started 08:20).
 
 
 ## 7m. Threshold audit of the whole guard line (2026-10-08)
