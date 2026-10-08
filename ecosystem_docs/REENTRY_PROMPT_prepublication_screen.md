@@ -2133,7 +2133,7 @@ Cheapest sequence: measure the spread now; build and verify 1 and 2; land both
 with ONE install; then ONE full run. Landing 1 and 2 separately costs two
 20 h cycles and yields two runs differing for two reasons.
 
-## 7l. QUEUED: G5+G6 -- the acceptance test, and the sole-candidate choice (2026-10-08)
+## 7l. ON HOLD: G5+G6 -- general method or dataset patch, and the acceptance test (2026-10-08)
 
 Kevin decided "G5+G6" (relayed verbatim by the coordinator; not heard directly
 here). Posterior math is building both in TaxaAssign on `round2-g56`. On arrival
@@ -2288,6 +2288,81 @@ genus->species moves, not the sole-candidate rows, so it neither confirms nor
 refutes it. Posterior math should name the mechanism from its own code rather
 than inherit this guess; the question is what the comparison evaluates to when
 there is no second candidate.
+
+### HOLD 2026-10-08: general methods, or patches for this dataset?
+
+Kevin paused the whole G5/G6 line to review exactly this. Nothing is to be
+merged or installed until the coordinator relays his decision; posterior math is
+not handing off a SHA meanwhile. The per-observation acceptance method above
+stands for whatever eventually gets built.
+
+The question is partly testable from the measurements already on disk. Under
+Kevin's standing rule -- no hard-coded rules for particular markers, decisions
+learned from the data -- a marker-uniform effect looks general and a
+marker-dependent one looks like a patch. Removal as a fraction of that marker's
+G4 species calls:
+
+| marker | G4 species | G5 | G6 | G5+G6 |
+|---|---|---|---|---|
+| 12S | 15,015 | 7.0% | 29.9% | 30.3% |
+| 18S | 265 | 24.2% | 26.4% | 26.4% |
+| COI | 4,054 | 10.5% | 19.9% | 20.3% |
+
+G6 is near-uniform (1.5x spread). G5 is not (3.5x), which first looked like the
+patch signature. **It is not.** Decomposing `z = gap / band`, where
+`band = sqrt(sd_w^2 + sd_2^2)`, medians by marker:
+
+| | 12S | 18S | COI |
+|---|---|---|---|
+| band | 0.059 | 0.060 | 0.067 |
+| gap | 0.553 | 0.398 | 0.242 |
+| z | 9.07 | 4.49 | 3.67 |
+
+The band -- the part the rule constructs -- is already **marker-invariant**,
+which is what `calibrate_query_noise()` is meant to deliver and is consistent
+with the 2026-09-30 finding that the score scale is constant across markers. All
+the marker dependence lives in the **gap**: 12S references separate congeners
+about twice as well as COI's do. That is biology and reference coverage, not a
+property of the rule.
+
+So one fixed Z giving different block rates per marker is the *correct*
+behaviour. The decisive check: equalising the block rate across markers would
+need Z = 3.86 (12S), 0.67 (18S), 1.60 (COI) at a 30% target -- a per-marker
+constant, precisely what is forbidden. **Here a uniform effect would be the
+patch; the uneven effect is the data speaking.**
+
+Where G5 is still patch-shaped is NOT the marker question: `Z = 1.96` is the
+two-sided normal 95% quantile, a value from a table rather than learned from
+these data. That is the part that fails "learned from the data" -- not that Z is
+shared across markers (it should be) but that its value was chosen by
+convention. A learned version fits Z once, across all markers, against the
+error-side evidence Kevin optimises.
+
+G4 and G6 carry no constant at all and are structural, zero-parameter
+invariants: maximally general in form. But G6 denies the prior any power to
+*improve* rank resolution, allowing it only to confirm or degrade. Defensible --
+priors inform confidence, not rank -- but a methodological commitment to argue
+in the manuscript, and the one a reviewer is most likely to challenge.
+
+**Caveat that undercuts every 18S figure above.** The z analysis rests on the
+genus->species moves, and 18S has only SEVEN. Its 42.9% block rate is 3 of 7:
+
+| marker | n | rate | 95% CI |
+|---|---|---|---|
+| 12S | 3,125 | 0.123 | [0.112, 0.135] |
+| 18S | 7 | 0.429 | [0.099, 0.816] |
+| COI | 202 | 0.386 | [0.319, 0.457] |
+
+The 18S interval spans 0.10-0.82 and overlaps both other markers, so no
+18S-specific conclusion about G5 is supportable from this run. 12S and COI do
+separate.
+
+**And the limit on all of it:** every figure comes from one dataset. A rule can
+have general form and still be a patch in effect if it was only ever tuned and
+checked on the dataset it was written for. Form is testable from here;
+generality in effect needs a second dataset (PtConception or GreatLakes), which
+is a run and therefore Kevin's call, not something this session starts.
+
 
 ### The decisive split
 
