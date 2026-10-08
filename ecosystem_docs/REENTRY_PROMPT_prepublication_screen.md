@@ -2133,6 +2133,103 @@ Cheapest sequence: measure the spread now; build and verify 1 and 2; land both
 with ONE install; then ONE full run. Landing 1 and 2 separately costs two
 20 h cycles and yields two runs differing for two reasons.
 
+## 7l. QUEUED: G5+G6, and why the built guard cannot be scored against the measured arms (2026-10-08)
+
+Kevin decided "G5+G6" (relayed verbatim by the coordinator; not heard directly
+here). Posterior math is building both in TaxaAssign on `round2-g56`. On arrival
+the cycle is the standard one: verify the merge, merge, install TaxaAssign only
+behind the zero-R check, re-run TaxaAssign + TaxaWizard, regenerate
+`llm_prompts/` only if the exported docs changed. G5/G6 add thresholds, so a new
+argument is likely; check rather than assume.
+
+### The verification script no longer gets copied
+
+`scratchpad/verify_merge.sh <pin> <Pkg> <tag>` replaces the per-branch scripts.
+The G4 vacuous run happened because each script was produced by `sed`-ing the
+previous one and the pattern silently matched nothing, leaving a pin that was
+already an ancestor of main; `git merge` then said "already up to date" with
+exit 0 and the suite passed. There is now nothing to `sed`. Four anti-vacuity
+guards, self-tested rather than merely written:
+
+| condition | exit | tested |
+|---|---|---|
+| pin already an ancestor of main | 4 | yes, against `58c625a` |
+| pin does not exist | 3 | yes |
+| merge did not move HEAD | 5 | -- |
+| merge changed no files | 6 | -- |
+| dirty tree | 2 | -- |
+| missing argument | 1, before any git work | yes |
+
+It prints pin, main-BEFORE and HEAD-AFTER on every run, so the before/after is
+in the log rather than assumed.
+
+### The measured arms (posterior math's measurement, `upfc_out/post_run/g456_arms.rds`)
+
+Read here from the file, not from a note. 49,349 observations:
+
+| arm | 12S | 18S | COI | new species | swaps |
+|---|---|---|---|---|---|
+| G4 (current main) | 15,015 | 265 | 4,054 | 0 | 0 |
+| G5 | 13,962 | 201 | 3,629 | 0 | 0 |
+| G6 | 10,528 | 195 | 3,249 | 0 | 0 |
+| G5+G6 | 10,469 | 195 | 3,230 | 0 | 0 |
+
+Against the pre-item-b baseline (10,541 / 364 / 3,819), G5+G6 puts 12S back
+within half a percent of where it started, 18S 46% below it and COI 15% below.
+The cumulative 12S +42% reported on the morning of 10-08 is expected to be given
+back almost entirely. That is the guards working, not a regression.
+
+### Why "reproduce 10,469/195/3,230" is the WRONG acceptance test
+
+Measured G6 is a **two-pass oracle**. It picks its capped observations using the
+G4 *final* consensus rank:
+
+```r
+cap <- fin$observation_id[fin$consensus_rank %in% "species" & !lr %in% "species"]
+```
+
+run consensus, see which came out species, undo the raises there, re-run
+consensus. A built G6 inside `update_prior_from_consensus` cannot do this: at the
+moment it decides a raise the final call does not exist yet. It can only test the
+likelihood-only rank, so it blocks on a strict **superset** -- every observation
+whose likelihood-only call is coarser than species, including those whose G4
+final was already coarser. The measurement never touched those: it NA-filled them
+with their G4 values, which is exactly why G6's `changed` equals its `lost`
+(5,362 = 5,362) and why `new species` is 0.
+
+On that complement, the mechanism found on 10-08 runs the other way: removing a
+raise that overturned the likelihood ordering lets the likelihood leader win
+cleanly and **can create a species call** -- that is how G4 added 4,474 12S
+species calls. So a correct build may land above 10,469 with genuinely new
+species calls. **"0 new species" is not a property the build must have.** It was
+only ever measured inside the capped set.
+
+### The decisive split
+
+1. **On the capped set** (G4 final species AND likelihood-only coarser): built
+   and measured perform the identical operation -- restore the Round 1 prior on
+   every raised row -- so they must agree **exactly**. Disagreement is a real
+   finding: an implementation difference, or frame dependence, since the
+   measurement ran `posterior_consensus` on a SUBSET while the build runs it on
+   the whole frame. That is precisely what §7i is investigating, so a
+   disagreement here is also a possible §7i sighting. HOLD on this.
+2. **On the complement**: whatever the build does is new information, not a
+   mismatch. Report species added, species removed and coarse calls changed as
+   its own figure; do not score it against the arms and do not hold the run for
+   it. Holding because an unmeasured set behaved unlike a set it was never
+   measured on would be holding for the wrong reason.
+
+G5 carries a milder version: the measurement joined `score_likelihood_sd` from
+`CalIntertidal_lik.rds` through a two-try observation-id match (`j`, then `j2` on
+a stripped prefix) and printed an unmatched count; the build has `sd` natively.
+Check the saved `g5_measure_z1.96.rds` for unmatched rows before comparing.
+
+Memory: the arms file is 572 KB and every comparison object is under 250 KB, so
+the capped-set check sits well inside the 3 GB the coordinator set. Re-running
+the built consensus over the full frame is the workflow's job, not this
+session's.
+
+
 ## 8. Findings to carry into the manuscript (not to fix)
 
 - **18S V9's poor species discrimination is a property of the marker, not a
