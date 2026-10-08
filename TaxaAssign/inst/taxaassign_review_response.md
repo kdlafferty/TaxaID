@@ -1147,3 +1147,41 @@ matches the earlier measurement on 17,124 of 17,126 calls. The 2 that differ, pl
 only in the measurement, come from the built code testing node membership with .extract_rank_values (the
 helper the node is built with, which derives genus/species from the binomial) where the measurement read
 raw columns.
+
+### 2026-10-07: G4 -- a prior boost must not overturn the likelihood ordering
+
+Approved by the maintainer (2026-10-07, relayed by the peer coordinator: "OK. let's do G4."). This is a principle of its
+own, separate from the occurrence-record and likelihood-node guards: a prior boost must not overturn the
+likelihood ordering.
+Problem (tonight's run, with the likelihood-node and occurrence-record guards installed and holding, 0 violations): 70
+COI Acrochaetium catenulatum calls at posterior 0.96-0.99 whose winner scored below A. humile (median 86.6 vs
+91.4). In COI_ESV_194374, catenulatum's likelihood was 0.0046 against humile's 0.20 (44-fold lower). Site-level
+support from other ESVs that really are catenulatum raised its rare-but-recorded prior about 160,000-fold
+inside a CLASS-level likelihood node, so the node guard could not see the inversion. The same mechanism also
+worked the other way: a weaker recorded congener raised alongside the better-scoring species split the mass
+and held that species at genus (Gibbonsia montereyensis, Citharichthys spp., Aglaophenia struthionides).
+Change (under require_support_columns, alongside the two guards): a row is raised only if its score_likelihood is
+at least that of every other REFERENCED candidate in its observation, ties allowed. Unreferenced rows are not
+in the comparison. An NA-likelihood comparator is left out; an NA-likelihood receiver is never raised (package
+review). The message counts the rows held back. No constant.
+Tests: the Acrochaetium inversion is blocked (raised with the guards off); a tie is allowed; of two supported
+congeners only the better-likelihood one is raised (both with the guards off); a higher-likelihood
+unreferenced row does not block; NA comparator and NA receiver. Two existing guard tests now use ties so they
+still isolate the node and record guards. The inversion, splitting and NA-receiver tests fail on main's code.
+Real data (g4_before_after.R; tonight's update input, 6,134,732 rows, run one Site at a time, n_sims = 0, then
+the Section 8c consensus). BASELINE IS PRODUCTION: main's update code reproduces tonight's stored Round 2 priors
+and point posteriors exactly (max difference 0 over every row). NA likelihood: 0 of 224,354 referenced rows,
+so the NA rules are untested on this dataset but specified and unit-tested. G4 removes 26,752 raises; 570,284
+rows change in 10,399 observations.
+Error side: all 70 Acrochaetium catenulatum calls that scored below the runner-up become class calls. Of the
+258 confident species calls whose winner scored more than 1 point below the runner-up, every 18S one but 1 and
+all 143 COI ones that G4 touches change (8 COI untouched); in 12S only 19 of 73 change, because 52 are not
+touched: their winner leads on calibrated likelihood although it trails on raw score. 23 calls move to another
+species, all to a better-scoring SIBLING (Xiphister atropurpureus -> X. mucosus x11, Clinocottus recalvus -> C.
+globiceps x6, Syngnathus californiensis -> S. exilis x5, Artedius x1).
+Species calls in the changed observations: 1,739 -> 4,466 (607 withheld, 3,334 new). Most new calls are the
+best-scoring recorded species once a weaker congener's raise no longer splits the mass. Whole dataset,
+species calls per marker (12S / 18S / COI): 10-06 before item b 10,541 / 364 / 3,819; 10-07 am after item b
+12,238 / 1,079 / 4,670; 10-07 pm with C1 and the node and record guards 12,143 / 356 / 4,108; pm with G4
+15,015 / 265 / 4,054. The built code matches the earlier measurement on all 10,399 observations both touch;
+90 further observations touched only by the measurement have no call change.
