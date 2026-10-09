@@ -4,7 +4,7 @@
 
 Identifies and flags anomalous detections in taxonomic assignment results from biological surveys. Detects laboratory and field contamination by comparing read proportions against control samples, flags handler-related artifacts near equipment setup or collection events, and provides LLM-based expert review of habitat fit, geographic plausibility, contaminant risk, and taxonomic scope. Operates on consensus data frames and appends categorical flag columns for user-driven filtering. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 15 exported function(s).
+Version 0.1.0. 16 exported function(s).
 
 ## Functions
 
@@ -103,6 +103,23 @@ For each taxon in 'taxon_names', finds the nearest record of that taxon already 
 | date_col | no | NULL | Character or NULL. Optional column in occurrence_data giving the nearest record's collection date/year (e.g. GBIF's own "year" standard column). When supplied and present, the matched nearest record's raw value is surfaced as nearest_date -- lets a caller weigh a fresh vs. a decades-old nearest record differently without a second lookup. Default NULL (no age column requested; nearest_date is simply absent from the output). No parsing/normalization is done on the raw value; a "year" column comes back as whatever numeric/character type it already was. |
 
 **Value:** A data frame, one row per unique entry in 'taxon_names': taxon_name As supplied. n_local_records Count of 'occurrence_data' rows for this taxon with non-missing coordinates. '0' for a taxon with no local record at all - for a genuinely unprecedented taxon this IS the answer, not a failure to find one. dist_nearest_km Geodesic (great-circle) distance in km from the query point to the nearest ...
+
+### flag_backbone_conflicts(consensus, taxonomy, rank_system = NULL, observation_col = "observation_id", posterior_col = NULL, placeholder_rank_count = 3L)
+
+Flag Taxa Whose Backbone Placement Disagrees With Itself
+
+Asks whether a name in the taxonomy actually denotes one place in the tree. Two failures are detected, both learned from the backbone present in the data rather than from any list of taxa: a name carried at MORE THAN ONE RANK (a clade treated as a phylum on some rows and as a lower rank inside another phylum on others, or a true homonym such as a phylum name reused as a genus), and a name carried under MORE THAN ONE PARENT at the same rank.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| consensus | yes |  | Data frame of consensus calls, one row per observation, as returned by TaxaAssign::posterior_consensus() or TaxaAssign::score_consensus(). Only observation_col is required; consensus_limit and consensus_rank are used when present. |
+| taxonomy | yes |  | Data frame of the candidate rows the consensus was computed from (the posterior or match table), carrying observation_col and the rank columns. This is where placement is learned: the consensus alone cannot show a disagreement. |
+| rank_system | no | NULL | Character vector of rank column names, coarse to fine. NULL (default) auto-detects via TaxaTools::detect_ranks(), falling back to the standard ladder intersected with the columns present. |
+| observation_col | no | "observation_id" | Character. Observation identifier shared by consensus and taxonomy. Default "observation_id". |
+| posterior_col | no | NULL | Character or NULL. Posterior/weight column in taxonomy used for backbone_conflict_mass. NULL (default) auto-detects "posterior_point_est" then "posterior_mean"; when neither is present the mass column is NA and the flag is unaffected. |
+| placeholder_rank_count | no | 3L | Integer >= 2. Number of distinct ranks at which a name is labelled "placeholder" rather than "cross_rank". Default 3: a real homonym occupies two ranks, while a control or placeholder string occupies as many as it is written into. Presentation only -- it changes category, never the flag. |
+
+**Value:** 'consensus' with these columns added (existing columns of the same name are overwritten, with a warning): 'backbone_conflict' Logical. 'TRUE' when any candidate row of the observation carries a conflicted name at any rank. 'backbone_conflict_kind' '"cross_rank"', '"multi_parent"', '"both"', '"placeholder"', or 'NA' when not flagged. '"placeholder"' wins over the others. ...
 
 ### flag_contaminant(input_df, event_col = "event_id", taxon_col = "taxon_name", count_col = "count", control_samples = NULL, sample_type_col = NULL, control_types = NULL, exclude_samples = NULL, contaminant_type = "lab_contaminant", score_thresholds = c(0.5, 0.9), prior_weight = 20, require_control_evidence = FALSE, site_col = NULL, min_sites_systemic = 2L, min_control_obs = 2L, verbose = TRUE)
 
