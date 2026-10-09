@@ -21,7 +21,8 @@ posterior_consensus(
   unnamed_in_threshold = TRUE,
   consensus_method = c("lca", "credible_node"),
   likelihood_consensus = TRUE,
-  robust_prior_s = 1
+  robust_prior_s = 1,
+  cross_phylum_eps = 0.05
 )
 }
 \arguments{
@@ -227,6 +228,35 @@ worse, because one record then moves the prior noticeably. The bound is
 reported as \code{robust_lower_posterior}. Skipped (plain credible node) when
 \code{score_likelihood}, \code{prior_mean}, \code{prior_alpha} or \code{prior_beta} is
 missing, or when no record count is available.}
+
+\item{cross_phylum_eps}{Numeric in \verb{[0, 0.5)} (default \code{0.05}; \code{0} turns
+it off). Used with \code{consensus_method = "credible_node"}. When the
+runner-up phylum holds at least this share of an observation's total
+posterior, a call finer than phylum would rest on a choice between
+phyla that the evidence barely makes (typically a low-identity sequence
+whose best candidates from two phyla score almost alike). Such a call is
+withheld: the call becomes the finest node at phylum or coarser in
+\code{rank_system} that holds \code{cumulative_threshold} (the leading phylum when
+it does, else a clade both phyla share, e.g. a kingdom), or no call when
+none does, and \code{consensus_limit} is \code{"cross_phylum"}. A phylum call that
+holds the threshold is kept. The share is the plain posterior
+share (the robust-prior check does not change it). The value is an error
+tolerance: smaller withholds more calls. Applied in the likelihood-only
+pass too, so \code{prior_role} compares calls made under the same rule. Not
+applied (with a message) when \code{rank_system} has no \code{"phylum"} carried by
+\code{posterior_df}. Evaluated AFTER any \code{species_reference} downranking, so a
+phylum call that downranking moves finer is withheld rather than exempted.
+
+Known limitation: phyla are compared by NAME. Where a backbone places one
+lineage inconsistently -- the same clade carried as a phylum on some rows
+and as a lower rank inside another phylum on others -- two name strings
+describe one lineage and the comparison is on the wrong key, so the rule
+can fire on a conflict that is nomenclatural rather than evidential. Seen
+in CalIntertidal COI, where sipunculan rows carry \code{phylum = "Sipuncula"}
+while a sibling row carries \verb{phylum = "Annelida", class = "Sipuncula"}.
+No value of \code{cross_phylum_eps} distinguishes the two cases; the fix is
+upstream, in making the backbone placement consistent before the call.
+\code{lineage_conflict} reports the related within-rank case.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -299,7 +329,11 @@ only finer rank that could have given a call is one no row of
 \code{posterior_df} carries at all (the column is absent or empty
 throughout); the rank was never provided, which differs from
 \code{"backbone"}, where it is missing from some lineages (e.g. a backbone
-with no class for ray-finned fishes). A message names such ranks.}
+with no class for ray-finned fishes). A message names such ranks.
+\code{"cross_phylum"}: a call finer than phylum was withheld because the
+runner-up phylum holds at least \code{cross_phylum_eps} of the posterior;
+the call is the finest node at phylum or coarser holding the
+threshold, or none.}
 \item{\code{robust_lower_posterior}}{With \code{consensus_method = "credible_node"} and \code{robust_prior_s > 0}: the lower bound of the
 reported taxon's posterior over the imprecise-prior neighbourhood
 (see \code{robust_prior_s}). \code{NA} otherwise.}

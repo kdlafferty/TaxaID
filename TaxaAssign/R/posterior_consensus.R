@@ -152,6 +152,34 @@
 #'   reported as `robust_lower_posterior`. Skipped (plain credible node) when
 #'   `score_likelihood`, `prior_mean`, `prior_alpha` or `prior_beta` is
 #'   missing, or when no record count is available.
+#' @param cross_phylum_eps Numeric in `[0, 0.5)` (default `0.05`; `0` turns
+#'   it off). Used with `consensus_method = "credible_node"`. When the
+#'   runner-up phylum holds at least this share of an observation's total
+#'   posterior, a call finer than phylum would rest on a choice between
+#'   phyla that the evidence barely makes (typically a low-identity sequence
+#'   whose best candidates from two phyla score almost alike). Such a call is
+#'   withheld: the call becomes the finest node at phylum or coarser in
+#'   `rank_system` that holds `cumulative_threshold` (the leading phylum when
+#'   it does, else a clade both phyla share, e.g. a kingdom), or no call when
+#'   none does, and `consensus_limit` is `"cross_phylum"`. A phylum call that
+#'   holds the threshold is kept. The share is the plain posterior
+#'   share (the robust-prior check does not change it). The value is an error
+#'   tolerance: smaller withholds more calls. Applied in the likelihood-only
+#'   pass too, so `prior_role` compares calls made under the same rule. Not
+#'   applied (with a message) when `rank_system` has no `"phylum"` carried by
+#'   `posterior_df`. Evaluated AFTER any `species_reference` downranking, so a
+#'   phylum call that downranking moves finer is withheld rather than exempted.
+#'
+#'   Known limitation: phyla are compared by NAME. Where a backbone places one
+#'   lineage inconsistently -- the same clade carried as a phylum on some rows
+#'   and as a lower rank inside another phylum on others -- two name strings
+#'   describe one lineage and the comparison is on the wrong key, so the rule
+#'   can fire on a conflict that is nomenclatural rather than evidential. Seen
+#'   in CalIntertidal COI, where sipunculan rows carry `phylum = "Sipuncula"`
+#'   while a sibling row carries `phylum = "Annelida", class = "Sipuncula"`.
+#'   No value of `cross_phylum_eps` distinguishes the two cases; the fix is
+#'   upstream, in making the backbone placement consistent before the call.
+#'   `lineage_conflict` reports the related within-rank case.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -399,7 +427,11 @@
 #'       `posterior_df` carries at all (the column is absent or empty
 #'       throughout); the rank was never provided, which differs from
 #'       `"backbone"`, where it is missing from some lineages (e.g. a backbone
-#'       with no class for ray-finned fishes). A message names such ranks.}
+#'       with no class for ray-finned fishes). A message names such ranks.
+#'       `"cross_phylum"`: a call finer than phylum was withheld because the
+#'       runner-up phylum holds at least `cross_phylum_eps` of the posterior;
+#'       the call is the finest node at phylum or coarser holding the
+#'       threshold, or none.}
 #'     \item{`robust_lower_posterior`}{With `consensus_method =
 #'       "credible_node"` and `robust_prior_s > 0`: the lower bound of the
 #'       reported taxon's posterior over the imprecise-prior neighbourhood
@@ -658,10 +690,16 @@ posterior_consensus <- function(posterior_df,
                                 unnamed_in_threshold = TRUE,
                                 consensus_method = c("lca", "credible_node"),
                                 likelihood_consensus = TRUE,
-                                robust_prior_s = 1) {
+                                robust_prior_s = 1,
+                                cross_phylum_eps = 0.05) {
   consensus_method <- match.arg(consensus_method)
+  if (!is.numeric(cross_phylum_eps) || length(cross_phylum_eps) != 1L ||
+    is.na(cross_phylum_eps) || cross_phylum_eps < 0 || cross_phylum_eps >= 0.5) {
+    cli::cli_abort("{.arg cross_phylum_eps} must be a single number in [0, 0.5) (0 turns it off).")
+  }
   # This call's own settings, attached to the result for Round 2's species
-  # guard (update_prior_from_consensus() reads them back).
+  # guard (update_prior_from_consensus() reads them back). Captured AFTER the
+  # cross_phylum_eps check so an invalid value aborts before it is recorded.
   consensus_settings <- mget(setdiff(names(formals(posterior_consensus)), "posterior_df"),
     envir = environment())
   if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
@@ -771,6 +809,11 @@ posterior_consensus <- function(posterior_df,
       "posterior_consensus: rank_system includes %s, but no row of posterior_df carries a value there; no call can resolve at that rank, and calls held coarse by it are stamped consensus_limit = \"rank_not_supplied\".",
       paste(sprintf("\"%s\"", unsupplied), collapse = ", ")
     ))
+  }
+  # The cross-phylum rule needs phylum values; say so when it cannot apply.
+  if (consensus_method == "credible_node" && cross_phylum_eps > 0 &&
+    (!"phylum" %in% rank_system_eff || "phylum" %in% unsupplied)) {
+    message("posterior_consensus: cross_phylum_eps is not applied: rank_system has no \"phylum\" carried by posterior_df.")
   }
   if (length(rank_system_eff) == 0L) {
     # detect_ranks() correctly returns character(0) when posterior_df has no
@@ -907,7 +950,7 @@ posterior_consensus <- function(posterior_df,
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
       group_priors, min_effective_records, pool_tail, unnamed_in_threshold,
-      consensus_method, robust_prior_s, unsupplied
+      consensus_method, robust_prior_s, unsupplied, cross_phylum_eps
     )
   })
 
@@ -931,25 +974,52 @@ posterior_consensus <- function(posterior_df,
   if (!is.null(species_reference)) {
     species_ref <- .build_species_ref(species_reference, rank_system_eff)
     if (!is.null(species_ref)) {
+      # Kept so a cross-phylum withholding can be restored EXACTLY rather than
+      # recomputed: .downrank_consensus() mutates these four in place.
+      .pre_taxon <- result$consensus_taxon
+      .pre_rank <- result$consensus_rank
+      .pre_resolved <- result$is_resolved
       result <- .downrank_consensus(
         result, species_ref, rank_system_eff,
         require_candidate = downrank_requires_candidate
       )
+      # Cross-phylum, second half: a call that sat AT phylum with a runner-up
+      # phylum over cross_phylum_eps was flagged, not withheld, because the
+      # amendment lets a phylum call stand. If downranking has now moved it
+      # FINER than phylum, the rule applies after all, and the node it must
+      # fall back to is the phylum call we just replaced.
+      .ph_pos <- match("phylum", rank_system_eff)
+      if (!is.na(.ph_pos) && ".cross_phylum_pending" %in% names(result)) {
+        .fi <- match(result$consensus_rank, rank_system_eff)
+        .moved <- result$.cross_phylum_pending %in% TRUE & !is.na(.fi) & .fi > .ph_pos
+        if (any(.moved)) {
+          result$consensus_taxon[.moved] <- .pre_taxon[.moved]
+          result$consensus_rank[.moved] <- .pre_rank[.moved]
+          result$is_resolved[.moved] <- .pre_resolved[.moved]
+          result$consensus_limit[.moved] <- "cross_phylum"
+          if ("downranked" %in% names(result)) result$downranked[.moved] <- FALSE
+        }
+      }
     }
   }
 
   result <- .add_prior_role(
     result, posterior_df, rank_system_eff, likelihood_consensus,
     cumulative_threshold, min_posterior, pool_tail,
-    unnamed_in_threshold, consensus_method
+    unnamed_in_threshold, consensus_method, cross_phylum_eps
   )
 
   attr(result, "report_params") <- list(
     cumulative_threshold = cumulative_threshold,
     min_posterior        = min_posterior,
-    posterior_col        = posterior_col
+    posterior_col        = posterior_col,
+    cross_phylum_eps     = cross_phylum_eps
   )
   attr(result, "consensus_settings") <- consensus_settings
+  # internal plumbing for the cross-phylum / downranking interaction; never
+  # part of the returned contract. Dropped after the attributes are set, since
+  # `[`-style column removal preserves them.
+  result$.cross_phylum_pending <- NULL
   result
 }
 
@@ -985,8 +1055,9 @@ posterior_consensus <- function(posterior_df,
 # input carries: the rank was never provided, so no lineage is incomplete);
 # otherwise "threshold" (the weight is spread across named alternatives).
 .credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
-                           unsupplied = character(0)) {
-  out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_)
+                           unsupplied = character(0), cross_phylum_eps = 0) {
+  out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_,
+    cross_phylum_pending = FALSE)
   w[is.na(w) | w < 0] <- 0
   tot <- sum(w)
   if (!is.finite(tot) || tot <= 0) return(out)
@@ -1023,6 +1094,49 @@ posterior_consensus <- function(posterior_df,
       break
     }
   }
+  # Cross-phylum rule: a call FINER than phylum is withheld when the
+  # runner-up phylum holds at least cross_phylum_eps of the total (plain
+  # shares). The call moves to the finest node at phylum or coarser that holds
+  # the threshold (the leading phylum when it does, else a clade both phyla
+  # share when rank_system has one), else no call. A phylum call that holds
+  # the threshold stands.
+  ph_i <- match("phylum", rank_system)
+  # The test also has to be evaluated when the call sits exactly AT phylum,
+  # because .downrank_consensus() runs later (posterior_consensus(), after the
+  # per-observation loop) and can move that call FINER than phylum -- which is
+  # precisely what this rule withholds. Deciding the exemption on the
+  # pre-downranking rank let such a call through: measured 2026-10-08 on the
+  # CalIntertidal 24,739-observation frame, 2 observations were delivered at
+  # order after being exempted as phylum calls. A call AT phylum is therefore
+  # only FLAGGED here; the withholding is applied after downranking, and a
+  # phylum call that is never downranked still stands, as amended.
+  if (cross_phylum_eps > 0 && !is.na(call_i) && !is.na(ph_i) && call_i >= ph_i) {
+    v <- vals[[ph_i]]
+    ph_share <- sort(vapply(unique(v[!is.na(v)]), function(nd) sum(w[!is.na(v) & v == nd]) / tot, numeric(1)),
+      decreasing = TRUE)
+    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps && call_i == ph_i) {
+      # the call IS the leading phylum node holding the threshold, so the rule's
+      # "finest node at phylum or coarser that holds the threshold" is this very
+      # node: nothing to recompute after downranking, only to restore.
+      out$cross_phylum_pending <- TRUE
+    }
+    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps && call_i > ph_i) {
+      out$taxon <- NA_character_
+      out$rank <- NA_character_
+      out$lower <- NA_real_
+      for (i in rev(seq_len(ph_i))) {
+        b <- best_at(i, eps)
+        if (b$p >= threshold) {
+          out$taxon <- b$node
+          out$rank <- rank_system[i]
+          if (eps > 0) out$lower <- b$p
+          break
+        }
+      }
+      out$limit <- "cross_phylum"
+      return(out)
+    }
+  }
   finer <- if (is.na(call_i)) seq_along(rank_system) else seq_len(length(rank_system))[-seq_len(call_i)]
   if (!length(finer)) return(out)
   plain <- lapply(finer, best_at, e = 0)
@@ -1052,7 +1166,8 @@ posterior_consensus <- function(posterior_df,
 # muffled.
 .add_prior_role <- function(result, posterior_df, rank_system, enabled,
                             cumulative_threshold, min_posterior, pool_tail,
-                            unnamed_in_threshold = TRUE, consensus_method = "lca") {
+                            unnamed_in_threshold = TRUE, consensus_method = "lca",
+                            cross_phylum_eps = 0) {
   result$likelihood_consensus_taxon <- NA_character_
   result$likelihood_consensus_rank <- NA_character_
   result$prior_role <- NA_character_
@@ -1093,7 +1208,8 @@ posterior_consensus <- function(posterior_df,
     if (is.null(ch)) return(.empty_consensus_row(sid))
     .consensus_one_observation(
       ch, sid, rank_system, cumulative_threshold, min_posterior,
-      ".lik_post", NULL, 0, pool_tail, unnamed_in_threshold, consensus_method
+      ".lik_post", NULL, 0, pool_tail, unnamed_in_threshold, consensus_method,
+      cross_phylum_eps = cross_phylum_eps
     )
   }))
   result$likelihood_consensus_taxon <- vapply(lik_rows, function(r) as.character(r$consensus_taxon[[1L]]), character(1))
@@ -1194,7 +1310,8 @@ posterior_consensus <- function(posterior_df,
 # puts all of eps on the best-fitting hypothesis outside the node:
 #   lower(v) = (1 - eps) A_v / ((1 - eps) sum(L pi) + eps max_{h not in v} L_h).
 # Returns the finest node whose lower posterior reaches the threshold.
-.credible_node_robust <- function(chunk, rank_system, s, threshold, unsupplied = character(0)) {
+.credible_node_robust <- function(chunk, rank_system, s, threshold, unsupplied = character(0),
+                                  cross_phylum_eps = 0) {
   L <- chunk$score_likelihood
   L[is.na(L) | L < 0] <- 0
   pi <- chunk$prior_mean
@@ -1216,7 +1333,8 @@ posterior_consensus <- function(posterior_df,
   if (!is.finite(N) || N <= 0) {
     return(NULL)
   }
-  .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied)
+  .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied,
+    cross_phylum_eps = cross_phylum_eps)
 }
 
 .row_col_or <- function(row, col, default = NA_real_) {
@@ -1233,7 +1351,8 @@ posterior_consensus <- function(posterior_df,
                                        unnamed_in_threshold = TRUE,
                                        consensus_method = "lca",
                                        robust_prior_s = 0,
-                                       unsupplied = character(0)) {
+                                       unsupplied = character(0),
+                                       cross_phylum_eps = 0) {
   # credible_node sums every hypothesis, so no hypothesis is dropped below
   # min_posterior: the tail is always part of the plausible set.
   if (consensus_method == "credible_node") pool_tail <- TRUE
@@ -1390,23 +1509,27 @@ posterior_consensus <- function(posterior_df,
   }
   robust_lower <- NA_real_
   consensus_limit <- NA_character_
+  cross_phylum_pending <- FALSE
   if (consensus_method == "credible_node") {
     can_robust <- robust_prior_s > 0 &&
       all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
-    node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold, unsupplied)
+    node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold, unsupplied,
+      cross_phylum_eps)
     if (is.null(node)) can_robust <- FALSE
     node <- if (can_robust) {
       node
     } else {
       # every row is in the denominator, named or not (unnamed_in_threshold
       # governs the "lca" method only)
-      .credible_node(chunk, chunk[[posterior_col]], rank_system, cumulative_threshold, unsupplied = unsupplied)
+      .credible_node(chunk, chunk[[posterior_col]], rank_system, cumulative_threshold, unsupplied = unsupplied,
+        cross_phylum_eps = cross_phylum_eps)
     }
     lca$taxon <- node$taxon
     lca$rank <- node$rank
     lca$consensus_reason <- if (is.na(node$taxon)) "no_credible_node" else "credible_node"
     if (can_robust) robust_lower <- node$lower
     consensus_limit <- node$limit
+    cross_phylum_pending <- isTRUE(node$cross_phylum_pending)
   }
 
   # --- Discrimination diagnostics ------------------------------------------
@@ -1651,6 +1774,8 @@ posterior_consensus <- function(posterior_df,
     unnamed_mass = unnamed_mass,
     robust_lower_posterior = robust_lower,
     consensus_limit = consensus_limit,
+    # internal only: dropped before posterior_consensus() returns
+    .cross_phylum_pending = cross_phylum_pending,
     lineage_conflict = .lineage_conflicts(chunk, rank_system),
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,

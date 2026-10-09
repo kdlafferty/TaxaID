@@ -178,9 +178,11 @@ test_that("a placeholder rank value never forms a credible node", {
   expect_equal(only$consensus_limit, "rank_not_supplied")
   # CONTROL: the same shape with a REAL shared class does form that node, so
   # the assertions above distinguish "placeholder suppressed" from "no node
-  # could ever form here".
+  # could ever form here". (The fixture's two rows sit in different phyla, so
+  # the cross-phylum rule, which is not under test here, is turned off.)
   ctl <- suppressMessages(posterior_consensus(
-    .placeholder_node_df("Mammalia"), rank_system = rs, consensus_method = "credible_node"))
+    .placeholder_node_df("Mammalia"), rank_system = rs, consensus_method = "credible_node",
+    cross_phylum_eps = 0))
   expect_equal(ctl$consensus_taxon, "Mammalia")
   expect_equal(ctl$consensus_rank, "class")
 })
