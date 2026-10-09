@@ -31,13 +31,13 @@ TAXAID_PACKAGES <- c(
 #' file serving stale text indefinitely (and a user who never clears
 #' the cache would never see the fix). Part of the cache file name.
 #'
-#' Current schema (3): \arguments are parsed structurally (walking the
-#' parsed Rd tree rather than re-parsing rendered \code{Rd2txt()} output),
-#' and Rd text is rendered with useFancyQuotes pinned off so it does not
-#' vary with a global option.
+#' Current schema (5): \value is no longer truncated. \arguments are parsed
+#' structurally (walking the parsed Rd tree rather than re-parsing rendered
+#' \code{Rd2txt()} output), and Rd text is rendered with useFancyQuotes
+#' pinned off so it does not vary with a global option.
 #'
 #' @noRd
-REGISTRY_SCHEMA <- 4L
+REGISTRY_SCHEMA <- 5L
 
 # Cut `x` to at most `n` characters at a word boundary and mark the cut with
 # " ...", so a registry field is never left ending mid-word. Anything of `n`
@@ -270,7 +270,7 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 #'
 #' @param rd_entry Parsed Rd object (one package's one \code{.Rd} file).
 #' @return A list with \code{title}, \code{description} (<= 600 chars,
-#'   first paragraph only), \code{value} (<= 400 chars), and
+#'   first paragraph only), \code{value} (untruncated), and
 #'   \code{arguments} (named list: parameter name -> doc text), or
 #'   \code{NULL} if rendering failed.
 #' @noRd
@@ -377,8 +377,17 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 
   value <- NULL
   if (!is.null(segments[["Value"]])) {
+    # NOT truncated, unlike description. A \value block is an ENUMERATION of
+    # what the call returns -- typically one entry per returned column -- and
+    # a prefix of an enumeration is not a shorter version of it, it is a
+    # wrong one: it reads as "these are the columns" when it means "some of
+    # them". The 400-character cap cut 110 of 217 blocks, naming 2 of 5
+    # returned columns for TaxaFlag::flag_backbone_conflicts() and 3 of 31
+    # for TaxaAssign::posterior_consensus(), whose load-bearing
+    # consensus_settings attribute is documented at character 15,843 of
+    # 16,135 and so was unreachable by any cap worth setting. A description
+    # is prose, where the first 600 characters do convey the gist.
     value <- .clean_rd_text(paste(segments[["Value"]], collapse = " "))
-    value <- .truncate_at_word(value, 400L)
     if (!nzchar(value)) value <- NULL
   }
 
