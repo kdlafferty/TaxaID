@@ -38,6 +38,50 @@ supports three hypothesis types:
 -   H3 (Unreferenced genus): a taxon from a different genus
     entirely
 
+### How TaxaLikely compares with softmax and Anacapa/BLCA
+
+Softmax over match scores (`assign_scores(score_type =
+"similarity_softmax")`) and Anacapa/BLCA (Gao et al. 2017,
+doi:10.1186/s12859-017-1670-4; Curd et al. 2019,
+doi:10.1111/2041-210X.13214) improve on raw percent identity because
+they give graded confidence instead of a hard cutoff, and Anacapa also
+curates its reference library and reports bootstrap confidence. But
+neither learns how match scores behave for a given marker: BLCA treats
+a normalised alignment score as its likelihood, with no error model,
+and softmax uses a sharpness constant the user chooses. Neither models
+species missing from the reference library: BLCA considers only
+reference hits, and softmax's unreferenced hypotheses borrow the scores
+of their referenced relatives.
+
+The words "prior" and "posterior" also mean different things. BLCA
+calls each reference hit's similarity-based weight a "Bayesian
+posterior probability", but that weight is a normalised alignment
+score, not a posterior in the sense used by TaxaAssign (likelihood x
+prior, normalised over all hypotheses). BLCA's flat prior is meant to
+keep commonly sequenced taxa from dominating the assignment. TaxaID
+accounts for that bias separately, by scoring one hypothesis per taxon
+rather than one per reference sequence: `evaluate_likelihoods()`
+collapses a taxon's reference matches to their median score before any
+likelihood is computed, so a taxon with hundreds of reference
+sequences carries no more weight than one with a single sequence. Its
+prior (from TaxaExpect) is a different parameter altogether: the
+plausibility of each taxon at the site, entered into Bayes' theorem.
+
+TaxaLikely learns marker-specific score distributions from
+reference-vs-reference pairs and models unreferenced congeners (H2) and
+genera (H3), at the cost of training time, memory and more moving
+parts. No head-to-head benchmark against Anacapa/BLCA has been run. On
+one benchmark (Great Lakes 12S), softmax was less precise than the
+trained model at every sharpness tried.
+
+| | % identity cutoff | Softmax | Anacapa/BLCA | TaxaLikely |
+|---|---|---|---|---|
+| Graded confidence | no | yes | yes (bootstrap) | yes |
+| Learned per marker | no | no | no | yes |
+| Missing species | no | borrowed scores | no | modelled (H2/H3) |
+| Prior | none | none | flat (against sequencing bias) | site plausibility (TaxaExpect) |
+| Needs training | no | no | no | yes |
+
 ## Installation
 
 ``` r
