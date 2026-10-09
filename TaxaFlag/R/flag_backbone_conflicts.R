@@ -167,15 +167,25 @@ flag_backbone_conflicts <- function(consensus,
   # which conflicted name(s) each hit row carries
   row_names_hit <- rep(NA_character_, nrow(taxonomy))
   if (any(any_hit)) {
-    collected <- vector("list", length(ranks))
-    for (i in seq_along(ranks)) {
-      v <- as.character(taxonomy[[ranks[i]]])
-      collected[[i]] <- ifelse(hit_rank[[i]], v, NA_character_)
-    }
-    row_names_hit <- apply(do.call(cbind, collected), 1L, function(x) {
-      x <- unique(x[!is.na(x)])
-      if (!length(x)) NA_character_ else paste(sort(x), collapse = "; ")
+    idx <- which(any_hit)
+    collected <- lapply(seq_along(ranks), function(i) {
+      v <- as.character(taxonomy[[ranks[i]]])[idx]
+      ifelse(hit_rank[[i]][idx], v, NA_character_)
     })
+    m <- do.call(cbind, collected)
+    # A row's label depends only on its own tuple of conflicted names, and the
+    # distinct tuples are far fewer than the rows, so each is resolved once and
+    # joined back. This replaces a per-row apply() over the whole frame; rows
+    # that carry no conflicted name keep the NA they were initialised with,
+    # which is what the per-row call returned for them.
+    key <- do.call(paste, c(as.data.frame(m, stringsAsFactors = FALSE), sep = "\r"))
+    uk <- unique(key)
+    um <- m[match(uk, key), , drop = FALSE]
+    vals <- vapply(seq_len(nrow(um)), function(j) {
+      x <- unique(um[j, ][!is.na(um[j, ])])
+      if (!length(x)) NA_character_ else paste(sort(x), collapse = "; ")
+    }, character(1))
+    row_names_hit[idx] <- vals[match(key, uk)]
   }
 
   obs <- as.character(taxonomy[[observation_col]])
@@ -288,7 +298,15 @@ flag_backbone_conflicts <- function(consensus,
             "names are reported.", call. = FALSE)
     return(empty)
   }
-  cf <- try(TaxaTools::find_taxonomy_conflicts(taxonomy[, ranks, drop = FALSE],
+  # Deduplicated first. Whether a name sits under more than one parent is a
+  # property of the SET of (name, rank, parent) tuples present, so it cannot
+  # depend on how many rows carry a tuple -- and this helper keeps only
+  # name/rank/parents, no counts, so nothing downstream sees multiplicity
+  # either. find_taxonomy_conflicts() scales super-linearly in rows: measured
+  # 1.9s at 25k, 9.2s at 100k and 54.1s at 400k, which projects to hours on a
+  # real posterior frame (6.1M rows, 34k distinct tuples), where the
+  # deduplicated call is ~1s. unique() itself is cheap (0.6s at 400k).
+  cf <- try(TaxaTools::find_taxonomy_conflicts(unique(taxonomy[, ranks, drop = FALSE]),
                                                rank_system = ranks), silent = TRUE)
   if (inherits(cf, "try-error") || !is.data.frame(cf) || !nrow(cf)) return(empty)
   need <- c("taxon_name", "taxon_rank", "parent_values")
