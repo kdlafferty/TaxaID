@@ -64,27 +64,76 @@ testthat::test_that("a multi-name \\item (e.g. \\item{a, b}{...}) gives every na
   testthat::expect_identical(doc_by_name[["occurrence_data"]], doc_by_name[["taxon_col"]])
 })
 
-testthat::test_that("no registry description/value is truncated mid-word (word-boundary + ' ...' contract)", {
+testthat::test_that("no registry description is truncated mid-word (word-boundary + ' ...' contract)", {
   for (p in TAXAID_PACKAGES) testthat::skip_if_not_installed(p)
   reg <- workflow_registry(refresh = TRUE)
   offenders <- character()
   for (pkg in reg) {
     for (fn in pkg$functions) {
-      for (field in c("description", "value")) {
-        txt <- fn[[field]]
-        if (is.null(txt) || !nzchar(txt)) next
-        max_chars <- if (field == "description") 600L else 400L
-        # Anything at/over the cap must have been truncated, and every
-        # truncation appends " ..." -- so a long field with no trailing
-        # " ..." means it was hard-cut (possibly mid-word) without the
-        # marker: the mid-word cut this guards against ("...can be combined safely wit").
-        if (nchar(txt) >= max_chars && !grepl(" \\.\\.\\.$", txt)) {
-          offenders <- c(offenders, paste0(pkg$package, "::", fn$name, "$", field))
-        }
+      txt <- fn$description
+      if (is.null(txt) || !nzchar(txt)) next
+      # Anything at/over the cap must have been truncated, and every
+      # truncation appends " ..." -- so a long field with no trailing
+      # " ..." means it was hard-cut (possibly mid-word) without the
+      # marker: the mid-word cut this guards against ("...can be combined safely wit").
+      if (nchar(txt) >= 600L && !grepl(" \\.\\.\\.$", txt)) {
+        offenders <- c(offenders, paste0(pkg$package, "::", fn$name, "$description"))
       }
     }
   }
   testthat::expect_length(offenders, 0)
+})
+
+testthat::test_that("a registry value is never truncated: no cap marker, and long enumerations arrive whole", {
+  for (p in TAXAID_PACKAGES) testthat::skip_if_not_installed(p)
+  reg <- workflow_registry(refresh = TRUE)
+
+  # A \value block enumerates what the call returns, usually one entry per
+  # returned column. A prefix of an enumeration is not a shorter version of
+  # it but a wrong one, so value carries no cap and must never carry the
+  # " ..." cap marker that .truncate_at_word() appends.
+  marked <- character()
+  longest <- 0L
+  for (pkg in reg) {
+    for (fn in pkg$functions) {
+      txt <- fn$value
+      if (is.null(txt) || !nzchar(txt)) next
+      longest <- max(longest, nchar(txt))
+      if (grepl(" \\.\\.\\.$", txt)) {
+        marked <- c(marked, paste0(pkg$package, "::", fn$name))
+      }
+    }
+  }
+  testthat::expect_length(marked, 0)
+  # Under the old 400-character cap every value was <= 400; the longest in
+  # the ecosystem is several thousand, so this would fail if a cap returned.
+  testthat::expect_gt(longest, 1000L)
+
+  find_fn <- function(pkg_name, fn_name) {
+    for (pkg in reg) if (identical(pkg$package, pkg_name)) {
+      for (fn in pkg$functions) if (identical(fn$name, fn_name)) return(fn)
+    }
+    NULL
+  }
+
+  # The two cases that prompted removing the cap. posterior_consensus()
+  # documents its load-bearing consensus_settings attribute in the last
+  # ~300 characters of a ~16,000-character block, so no cap worth setting
+  # reached it; update_prior_from_consensus() ABORTS when it is missing,
+  # which made this the one omission a caller could not work around.
+  pc <- find_fn("TaxaAssign", "posterior_consensus")
+  if (!is.null(pc) && !is.null(pc$value)) {
+    testthat::expect_true(grepl("consensus_settings", pc$value, fixed = TRUE))
+    testthat::expect_true(grepl("cross_phylum", pc$value, fixed = TRUE))
+  }
+  bc <- find_fn("TaxaFlag", "flag_backbone_conflicts")
+  if (!is.null(bc) && !is.null(bc$value)) {
+    for (col in c("backbone_conflict", "backbone_conflict_kind",
+                  "backbone_conflict_names", "backbone_conflict_mass",
+                  "cross_phylum_conflicted")) {
+      testthat::expect_true(grepl(col, bc$value, fixed = TRUE))
+    }
+  }
 })
 
 testthat::test_that(".truncate_at_word(): word-boundary cut, n-char cap, and the documented mid-word fallback", {

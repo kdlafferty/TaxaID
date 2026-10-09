@@ -444,3 +444,39 @@ id and the path-with-spaces defect.
   comments and roxygen, all predating this review). `Encoding: UTF-8` is
   declared and `R CMD check --as-cran` is clean, so these are a house-style
   item rather than a defect.
+
+### 2026-10-08: `\value` is no longer truncated in the registry or the prompt pack
+
+`.rd_sections()` capped every Rd field at a character count -- `description`
+at 600, `value` at 400 -- and marked the cut with a trailing `" ..."`. That is
+right for a description, which is prose whose first 600 characters do convey
+the gist, and wrong for `\value`, which is an ENUMERATION of what the call
+returns, usually one entry per returned column. A prefix of an enumeration is
+not a shorter version of it but a wrong one: it reads as "these are the
+columns" when it means "some of them", and nothing in the rendered text says
+which columns are missing.
+
+Measured before the change: **110 of 217** Value blocks in the ecosystem were
+truncated, discarding 98,826 characters. `TaxaFlag::flag_backbone_conflicts()`
+named 2 of its 5 added columns; `TaxaAssign::posterior_consensus()` named 3 of
+31. The decisive case is `posterior_consensus()`'s `consensus_settings`
+attribute, which `TaxaAssign::update_prior_from_consensus()` ABORTS without:
+it is documented at character 15,843 of a 16,135-character block, so no cap
+worth setting could have reached it, and a caller reading only the pack could
+not have known the attribute exists.
+
+- `value` now carries no cap. `description` keeps its 600-character cap.
+- `REGISTRY_SCHEMA` 4 -> 5. Required, not cosmetic: the per-package cache is
+  keyed on the sibling package's version and `Built` stamp, neither of which
+  moves when this package's extraction code changes, so without the bump every
+  existing cache file would have gone on serving the truncated text
+  indefinitely.
+- The registry invariant test was split. The `" ..."` word-boundary contract
+  still applies to `description`; a new test asserts no `value` ever carries
+  the cap marker, that the longest is over 1,000 characters (a returned cap
+  would fail it), and that the two cases above arrive whole.
+- `llm_prompts/` regenerated: 694,632 -> 793,464 bytes across the nine
+  `CONTEXT_<Package>.md` files, +14.2%, in 110 Value blocks. That growth is
+  the cost of the fix and is stated here rather than discovered later.
+
+No new export, no new argument, no change to any user-facing signature.
