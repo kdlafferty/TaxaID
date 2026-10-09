@@ -7,6 +7,8 @@
 fill_higher_ranks(
   taxon_names,
   local_sources = list(),
+  ranks = "family",
+  record_source = FALSE,
   backbone_id = 4L,
   fallback_backbone_id = 11L,
   verbose = TRUE,
@@ -22,6 +24,24 @@ are expected; genus is extracted as the first word.  Single-word names
 Each element must contain at least \code{genus} and \code{family} columns; elements
 lacking those columns are silently skipped.  Sources are consulted in
 order; the first non-NA family for each genus wins.}
+
+\item{ranks}{Character vector of higher ranks to resolve.  Default
+\code{"family"}, which reproduces this function's original behaviour
+exactly.  Any rank label the backbone reports is accepted, e.g.
+\code{c("family", "class")}.  \code{"genus"} is rejected (it is derived
+from \code{taxon_names}, not looked up) and so is \code{"species"}.
+Each rank is resolved down the same chain and recorded in its own column.}
+
+\item{record_source}{Logical.  \code{FALSE} (default) returns only the rank
+columns, so the default output is byte-identical to earlier versions.
+\code{TRUE} adds one \code{<rank>_source} column per entry in
+\code{ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
+\code{NA} where the rank was never resolved.  It is off by default
+because \code{TaxaAssign::join_priors()} joins EVERY non-\code{taxon_name}
+column of its \code{expansion_taxonomy} argument onto the priors table,
+so an unwanted source column would travel into the posteriors.  Turn it on
+when you want provenance, and drop the columns before passing the frame to
+\code{join_priors()}.}
 
 \item{backbone_id}{Integer.  Primary backbone for API fallback.
 Default \code{4L} (NCBI).  Set \code{NULL} to skip the API entirely.}
@@ -50,10 +70,13 @@ in that case the backbone's own currently-accepted genus name is
 returned instead (see \verb{@section Genus correction} below).
 Local-source-only lookups (no API call needed) always keep the
 locally-extracted genus unchanged.}
-\item{\code{family}}{Looked-up family, or \code{NA} if unresolved.}
+\item{\verb{<rank>}}{One column per entry in \code{ranks} (by default just
+\code{family}), holding the looked-up value or \code{NA} if unresolved.}
+\item{\verb{<rank>_source}}{Only when \code{record_source = TRUE}: where that
+value came from -- \code{"local"}, \code{"backbone_<id>"}, or \code{NA}.}
 }
-A warning is issued for any names whose family could not be resolved after
-all fallbacks.
+A warning is issued, per rank, for any names that rank could not be
+resolved for after all fallbacks.
 }
 \description{
 Given a character vector of taxon names (typically species binomials), derives
@@ -81,6 +104,53 @@ a species absent from NCBI is still resolved provided its genus is present
 \strong{Column name conflicts in local sources} (e.g. a source has both \code{genus}
 and \code{Genus}) are handled by \code{tolower(names(...))} before joining.
 }
+\section{Filling only where a backbone is silent}{
+
+A rank is filled only where the backbone above it in the chain said
+NOTHING.  A value the primary backbone supplied is never replaced by the
+fallback's, and a value already present is never overwritten.  Silence and
+contradiction are different things and only the first is filled here.
+
+This is the opposite emphasis from
+\code{TaxaAssign::posterior_consensus()}'s \code{cross_phylum_eps}, where
+the backbone WINS over a disagreeing input: GBIF makes Sipuncula a phylum in
+its own right, so a sipunculan row carrying \verb{phylum = "Annelida", class = "Sipuncula"} is treated as a genuine cross-phylum conflict rather
+than reconciled.  The two rules are consistent because they answer different
+questions.  There, two sources disagree and the backbone is trusted; here,
+one source is silent and another is asked.  Nothing in this function
+adjudicates a disagreement.
+
+The motivating case is GBIF's treatment of the ray-finned fishes.  GBIF
+returns \code{kingdom|phylum|order|family|genus} for them with no class
+entry at all -- its Actinopterygii/Actinopteri node is not an accepted
+backbone class -- so \code{class} comes back \code{NA} and a consensus keyed on
+class lands at phylum Chordata.  NCBI supplies \code{Actinopteri}, and
+because GBIF is silent rather than contradictory, filling it is safe.
+}
+
+\section{Homonyms, and what the agreement check does and does not cover}{
+
+A bare genus name is not a key.  GBIF carries a polychaete worm genus
+\code{"Corallina"} (\code{Animalia|Annelida|Polychaeta|...}) alongside the
+red algal genus NCBI resolves (\code{Rhodophyta|Florideophyceae|...}), and
+BOTH match at genus rank, so \code{matched_rank} cannot separate them.
+
+Before a FALLBACK value is accepted, its lineage must therefore not
+contradict the primary's at \code{phylum} (or \code{division}), and a
+rejected genus raises a warning naming it.  Coarser ranks are deliberately
+not compared: the backbones use different vocabulary for the same kingdom
+("Metazoa" against "Animalia"), and finer ranks disagree routinely for the
+same organism (NCBI places Girella in Centrarchiformes, GBIF in
+Perciformes), so both produced false contradictions when tried.
+
+The check cannot protect against a wrong PRIMARY backbone, which is
+authoritative by construction: query with \code{backbone_id = 11}
+(GBIF) and \code{"Corallina"} resolves to class \code{"Polychaeta"} with
+nothing to compare it against.  Choose the primary backbone for the group
+being resolved; the default (NCBI primary, GBIF fallback) answers all of the
+above correctly.
+}
+
 \section{Genus correction}{
 
 \code{genus} reflects the backbone's currently-accepted name whenever an API
