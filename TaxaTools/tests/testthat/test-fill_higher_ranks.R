@@ -616,8 +616,12 @@ test_that(".lineages_agree rejects a phylum contradiction and tolerates the rest
   got <- TaxaTools:::.lineages_agree(prim, fb)
   expect_false("Corallina" %in% got)
   expect_true("Girella" %in% got)
-  # a genus the primary never placed has nothing to contradict
-  expect_true("Unseen" %in% got)
+  # A genus the primary could not place at all is REFUSED, not trusted. This
+  # is not the same as the primary being silent about one rank: NCBI refuses
+  # "Liparis" as ambiguous and GBIF resolves the same string to an insect
+  # genus, so a "nothing to contradict" allowance filled class = "Insecta" on
+  # a fish (measured 2026-10-08, caught in the fill map).
+  expect_false("Unseen" %in% got)
   # no primary at all means nothing to check against
   expect_setequal(TaxaTools:::.lineages_agree(NULL, fb), fb$genus)
   expect_identical(TaxaTools:::.lineages_agree(prim, NULL), character(0))
