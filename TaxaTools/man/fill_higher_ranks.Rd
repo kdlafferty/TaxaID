@@ -135,9 +135,16 @@ A bare genus name is not a key.  GBIF carries a polychaete worm genus
 red algal genus NCBI resolves (\code{Rhodophyta|Florideophyceae|...}), and
 BOTH match at genus rank, so \code{matched_rank} cannot separate them.
 
-Before a FALLBACK value is accepted, its lineage must therefore not
-contradict the primary's at \code{phylum} (or \code{division}), and a
-rejected genus raises a warning naming it.  Coarser ranks are deliberately
+Before a FALLBACK value is accepted the primary must have PLACED that genus,
+and the fallback's lineage must not contradict the primary's at
+\code{phylum} (or \code{division}); a rejected genus raises a warning
+naming it.  A genus the primary could not place at all is refused rather
+than trusted -- that is not the same as the primary being silent about one
+rank, and it is when the fallback is least safe: NCBI refuses
+\code{"Liparis"} as ambiguous (a snailfish and an orchid), and GBIF
+resolves the same string to an insect genus, so trusting it would put
+\code{class = "Insecta"} on a fish.  When no primary backbone is configured
+at all the fallback is the only source and is used as given.  Coarser ranks are deliberately
 not compared: the backbones use different vocabulary for the same kingdom
 ("Metazoa" against "Animalia"), and finer ranks disagree routinely for the
 same organism (NCBI places Girella in Centrarchiformes, GBIF in
