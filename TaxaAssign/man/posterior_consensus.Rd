@@ -247,16 +247,37 @@ applied (with a message) when \code{rank_system} has no \code{"phylum"} carried 
 \code{posterior_df}. Evaluated AFTER any \code{species_reference} downranking, so a
 phylum call that downranking moves finer is withheld rather than exempted.
 
-Known limitation: phyla are compared by NAME. Where a backbone places one
-lineage inconsistently -- the same clade carried as a phylum on some rows
-and as a lower rank inside another phylum on others -- two name strings
-describe one lineage and the comparison is on the wrong key, so the rule
-can fire on a conflict that is nomenclatural rather than evidential. Seen
-in CalIntertidal COI, where sipunculan rows carry \code{phylum = "Sipuncula"}
-while a sibling row carries \verb{phylum = "Annelida", class = "Sipuncula"}.
-No value of \code{cross_phylum_eps} distinguishes the two cases; the fix is
-upstream, in making the backbone placement consistent before the call.
-\code{lineage_conflict} reports the related within-rank case.}
+Competitors are compared by LINEAGE, not by name string. Each distinct
+value of the \code{phylum} column is placed on the backbone named by
+\code{backbone_id} (via \code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}}, using
+\code{taxonomy_cache_dir}, resolved once for the whole input rather than per
+observation), and a competitor the backbone places ON the leader's
+classification path -- a clade carried as a phylum on some rows and as a
+lower rank inside the leading phylum on others -- is not a competing
+phylum at all, so the call stands. Measured on the CalIntertidal G5+G6
+run: 3 of 84 withholdings released, all \code{Discosea} against phylum
+\code{Amoebozoa}, which the backbone places as a class inside it; 0 new
+species calls.
+
+Two deliberate choices, because both cut against releasing a call:
+\itemize{
+\item A competitor the backbone CANNOT place is treated as a different
+lineage and the call is still withheld. Unresolvable is not evidence of
+sameness. In the same run \code{Apicomplexa} has no match in the GBIF
+backbone and its 9 withholdings therefore stand.
+\item Where the backbone and the input disagree, the BACKBONE decides. The
+input carries sipunculan rows both as \code{phylum = "Sipuncula"} and as
+\verb{phylum = "Annelida", class = "Sipuncula"}, but GBIF makes Sipuncula a
+phylum in its own right, so Annelida and Sipuncula remain two lineages
+and that withholding stands.
+}
+
+With no \code{backbone_id}, no TaxaTools, or a lookup that fails, no phylum can
+be placed, every comparison is false and the rule compares names exactly
+as it did before -- it degrades toward withholding more, never less. A
+message says so. \code{lineage_conflict} reports the related within-rank case,
+and \code{TaxaFlag::flag_backbone_conflicts()} reports both this cross-rank
+case and the same-rank multi-parent one over a whole study.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:

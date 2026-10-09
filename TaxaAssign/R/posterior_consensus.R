@@ -170,16 +170,35 @@
 #'   `posterior_df`. Evaluated AFTER any `species_reference` downranking, so a
 #'   phylum call that downranking moves finer is withheld rather than exempted.
 #'
-#'   Known limitation: phyla are compared by NAME. Where a backbone places one
-#'   lineage inconsistently -- the same clade carried as a phylum on some rows
-#'   and as a lower rank inside another phylum on others -- two name strings
-#'   describe one lineage and the comparison is on the wrong key, so the rule
-#'   can fire on a conflict that is nomenclatural rather than evidential. Seen
-#'   in CalIntertidal COI, where sipunculan rows carry `phylum = "Sipuncula"`
-#'   while a sibling row carries `phylum = "Annelida", class = "Sipuncula"`.
-#'   No value of `cross_phylum_eps` distinguishes the two cases; the fix is
-#'   upstream, in making the backbone placement consistent before the call.
-#'   `lineage_conflict` reports the related within-rank case.
+#'   Competitors are compared by LINEAGE, not by name string. Each distinct
+#'   value of the `phylum` column is placed on the backbone named by
+#'   `backbone_id` (via [TaxaTools::verify_taxon_names()], using
+#'   `taxonomy_cache_dir`, resolved once for the whole input rather than per
+#'   observation), and a competitor the backbone places ON the leader's
+#'   classification path -- a clade carried as a phylum on some rows and as a
+#'   lower rank inside the leading phylum on others -- is not a competing
+#'   phylum at all, so the call stands. Measured on the CalIntertidal G5+G6
+#'   run: 3 of 84 withholdings released, all `Discosea` against phylum
+#'   `Amoebozoa`, which the backbone places as a class inside it; 0 new
+#'   species calls.
+#'
+#'   Two deliberate choices, because both cut against releasing a call:
+#'   * A competitor the backbone CANNOT place is treated as a different
+#'     lineage and the call is still withheld. Unresolvable is not evidence of
+#'     sameness. In the same run `Apicomplexa` has no match in the GBIF
+#'     backbone and its 9 withholdings therefore stand.
+#'   * Where the backbone and the input disagree, the BACKBONE decides. The
+#'     input carries sipunculan rows both as `phylum = "Sipuncula"` and as
+#'     `phylum = "Annelida", class = "Sipuncula"`, but GBIF makes Sipuncula a
+#'     phylum in its own right, so Annelida and Sipuncula remain two lineages
+#'     and that withholding stands.
+#'
+#'   With no `backbone_id`, no TaxaTools, or a lookup that fails, no phylum can
+#'   be placed, every comparison is false and the rule compares names exactly
+#'   as it did before -- it degrades toward withholding more, never less. A
+#'   message says so. `lineage_conflict` reports the related within-rank case,
+#'   and `TaxaFlag::flag_backbone_conflicts()` reports both this cross-rank
+#'   case and the same-rank multi-parent one over a whole study.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -942,6 +961,24 @@ posterior_consensus <- function(posterior_df,
   # path, where `==` selects differently.
   row_idx <- if (anyNA(observation_ids)) NULL else
     split(seq_len(nrow(posterior_df)), factor(posterior_df$observation_id, levels = observation_ids))
+  # Backbone lineages for the cross-phylum rule, resolved ONCE for the whole
+  # frame rather than per observation: a per-observation lookup would make the
+  # result depend on which rows happen to be in the frame, which is the class
+  # of defect that produced the two sipunculan calls. Empty unless the rule is
+  # on and a backbone is available, and when empty every comparison is FALSE,
+  # so the rule behaves exactly as the name-keyed version did.
+  lineage_map <- list()
+  if (consensus_method == "credible_node" && cross_phylum_eps > 0 &&
+    "phylum" %in% rank_system_eff && "phylum" %in% names(posterior_df)) {
+    lineage_map <- .phylum_lineage_map(
+      posterior_df$phylum[!is.na(posterior_df$taxon_name)],
+      backbone_id, taxonomy_cache_dir
+    )
+    if (!length(lineage_map)) {
+      message("posterior_consensus: cross_phylum_eps could not place any phylum on the backbone; it compares names, as before.")
+    }
+  }
+
   results <- lapply(seq_along(observation_ids), function(i) {
     sid <- observation_ids[[i]]
     chunk <- if (is.null(row_idx)) posterior_df[posterior_df$observation_id == sid, ] else
@@ -950,7 +987,8 @@ posterior_consensus <- function(posterior_df,
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
       group_priors, min_effective_records, pool_tail, unnamed_in_threshold,
-      consensus_method, robust_prior_s, unsupplied, cross_phylum_eps
+      consensus_method, robust_prior_s, unsupplied, cross_phylum_eps,
+      lineage_map = lineage_map
     )
   })
 
@@ -1006,7 +1044,8 @@ posterior_consensus <- function(posterior_df,
   result <- .add_prior_role(
     result, posterior_df, rank_system_eff, likelihood_consensus,
     cumulative_threshold, min_posterior, pool_tail,
-    unnamed_in_threshold, consensus_method, cross_phylum_eps
+    unnamed_in_threshold, consensus_method, cross_phylum_eps,
+    lineage_map = lineage_map
   )
 
   attr(result, "report_params") <- list(
@@ -1054,8 +1093,77 @@ posterior_consensus <- function(posterior_df,
 # when the only such ranks are in `unsupplied` (ranks no row of the whole
 # input carries: the rank was never provided, so no lineage is incomplete);
 # otherwise "threshold" (the weight is spread across named alternatives).
+# Backbone lineage for each distinct value of the phylum column, used by the
+# cross-phylum rule so it compares LINEAGES rather than name strings. Returns a
+# named list: name -> the character vector of names on its backbone
+# classification path (itself included), for the names the backbone could
+# place. A name the backbone cannot place is ABSENT from the list, and
+# .same_lineage() then reports FALSE for it -- the deliberate choice (K.
+# Lafferty, 2026-10-08, relayed): unresolvable does not mean same lineage, so
+# the withholding stands. With no backbone_id, no TaxaTools, or a failed
+# lookup the map is empty and every comparison is FALSE, which reproduces the
+# name-keyed behaviour exactly.
+#' @noRd
+.phylum_lineage_map <- function(phyla, backbone_id, taxonomy_cache_dir = NULL) {
+  phyla <- unique(phyla[!is.na(phyla) & nzchar(phyla)])
+  if (!length(phyla) || is.null(backbone_id) ||
+    !requireNamespace("TaxaTools", quietly = TRUE)) {
+    return(list())
+  }
+  args <- list(phyla, backbone_id = backbone_id)
+  if (!is.null(taxonomy_cache_dir)) args$cache_dir <- taxonomy_cache_dir
+  v <- tryCatch(
+    suppressWarnings(suppressMessages(do.call(TaxaTools::verify_taxon_names, args))),
+    error = function(e) NULL
+  )
+  if (is.null(v) || !is.data.frame(v) ||
+    !all(c("user_supplied_name", "classification_path") %in% names(v))) {
+    return(list())
+  }
+  i <- match(phyla, v$user_supplied_name)
+  out <- stats::setNames(vector("list", length(phyla)), phyla)
+  for (j in seq_along(phyla)) {
+    if (is.na(i[j])) next
+    path <- v$classification_path[[i[j]]]
+    if (is.na(path) || !nzchar(path)) next
+    out[[j]] <- trimws(strsplit(path, "|", fixed = TRUE)[[1L]])
+  }
+  out[!vapply(out, is.null, logical(1))]
+}
+
+# TRUE only when the backbone PLACES both names and one lies on the other's
+# classification path, i.e. they are two names for one lineage (Discosea, a
+# class, sits under phylum Amoebozoa). The backbone is authoritative: where it
+# and the input disagree -- Sipuncula is its own phylum in GBIF but appears as
+# a class under Annelida in some inputs -- this is FALSE and the call is still
+# withheld.
+#' @noRd
+.same_lineage <- function(a, b, lineage_map) {
+  if (!length(lineage_map) || is.na(a) || is.na(b)) return(FALSE)
+  if (identical(a, b)) return(TRUE)
+  pa <- lineage_map[[a]]; pb <- lineage_map[[b]]
+  if (is.null(pa) || is.null(pb)) return(FALSE)
+  a %in% pb || b %in% pa
+}
+
+# Does a GENUINE competing lineage reach eps? `ph_share` is the named, sorted
+# vector of plain phylum shares. The leader is names(ph_share)[1]; any other
+# name at or above eps that the backbone does NOT confirm to be the leader's
+# lineage is a real competitor. Without a map this is identical to the old
+# "length >= 2 && ph_share[[2]] >= eps" test.
+#' @noRd
+.cross_phylum_competes <- function(ph_share, eps, lineage_map) {
+  if (length(ph_share) < 2L) return(FALSE)
+  lead <- names(ph_share)[[1L]]
+  others <- names(ph_share)[-1L][ph_share[-1L] >= eps]
+  if (!length(others)) return(FALSE)
+  if (is.null(lead) || !length(lineage_map)) return(TRUE)
+  any(!vapply(others, .same_lineage, logical(1), b = lead, lineage_map = lineage_map))
+}
+
 .credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
-                           unsupplied = character(0), cross_phylum_eps = 0) {
+                           unsupplied = character(0), cross_phylum_eps = 0,
+                           lineage_map = NULL) {
   out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_,
     cross_phylum_pending = FALSE)
   w[is.na(w) | w < 0] <- 0
@@ -1114,13 +1222,14 @@ posterior_consensus <- function(posterior_df,
     v <- vals[[ph_i]]
     ph_share <- sort(vapply(unique(v[!is.na(v)]), function(nd) sum(w[!is.na(v) & v == nd]) / tot, numeric(1)),
       decreasing = TRUE)
-    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps && call_i == ph_i) {
+    .competes <- .cross_phylum_competes(ph_share, cross_phylum_eps, lineage_map)
+    if (.competes && call_i == ph_i) {
       # the call IS the leading phylum node holding the threshold, so the rule's
       # "finest node at phylum or coarser that holds the threshold" is this very
       # node: nothing to recompute after downranking, only to restore.
       out$cross_phylum_pending <- TRUE
     }
-    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps && call_i > ph_i) {
+    if (.competes && call_i > ph_i) {
       out$taxon <- NA_character_
       out$rank <- NA_character_
       out$lower <- NA_real_
@@ -1167,7 +1276,7 @@ posterior_consensus <- function(posterior_df,
 .add_prior_role <- function(result, posterior_df, rank_system, enabled,
                             cumulative_threshold, min_posterior, pool_tail,
                             unnamed_in_threshold = TRUE, consensus_method = "lca",
-                            cross_phylum_eps = 0) {
+                            cross_phylum_eps = 0, lineage_map = NULL) {
   result$likelihood_consensus_taxon <- NA_character_
   result$likelihood_consensus_rank <- NA_character_
   result$prior_role <- NA_character_
@@ -1209,7 +1318,7 @@ posterior_consensus <- function(posterior_df,
     .consensus_one_observation(
       ch, sid, rank_system, cumulative_threshold, min_posterior,
       ".lik_post", NULL, 0, pool_tail, unnamed_in_threshold, consensus_method,
-      cross_phylum_eps = cross_phylum_eps
+      cross_phylum_eps = cross_phylum_eps, lineage_map = lineage_map
     )
   }))
   result$likelihood_consensus_taxon <- vapply(lik_rows, function(r) as.character(r$consensus_taxon[[1L]]), character(1))
@@ -1311,7 +1420,7 @@ posterior_consensus <- function(posterior_df,
 #   lower(v) = (1 - eps) A_v / ((1 - eps) sum(L pi) + eps max_{h not in v} L_h).
 # Returns the finest node whose lower posterior reaches the threshold.
 .credible_node_robust <- function(chunk, rank_system, s, threshold, unsupplied = character(0),
-                                  cross_phylum_eps = 0) {
+                                  cross_phylum_eps = 0, lineage_map = NULL) {
   L <- chunk$score_likelihood
   L[is.na(L) | L < 0] <- 0
   pi <- chunk$prior_mean
@@ -1334,6 +1443,7 @@ posterior_consensus <- function(posterior_df,
     return(NULL)
   }
   .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied,
+    lineage_map = lineage_map,
     cross_phylum_eps = cross_phylum_eps)
 }
 
@@ -1352,7 +1462,8 @@ posterior_consensus <- function(posterior_df,
                                        consensus_method = "lca",
                                        robust_prior_s = 0,
                                        unsupplied = character(0),
-                                       cross_phylum_eps = 0) {
+                                       cross_phylum_eps = 0,
+                                       lineage_map = NULL) {
   # credible_node sums every hypothesis, so no hypothesis is dropped below
   # min_posterior: the tail is always part of the plausible set.
   if (consensus_method == "credible_node") pool_tail <- TRUE
@@ -1514,7 +1625,7 @@ posterior_consensus <- function(posterior_df,
     can_robust <- robust_prior_s > 0 &&
       all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
     node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold, unsupplied,
-      cross_phylum_eps)
+      cross_phylum_eps, lineage_map = lineage_map)
     if (is.null(node)) can_robust <- FALSE
     node <- if (can_robust) {
       node
@@ -1522,6 +1633,7 @@ posterior_consensus <- function(posterior_df,
       # every row is in the denominator, named or not (unnamed_in_threshold
       # governs the "lca" method only)
       .credible_node(chunk, chunk[[posterior_col]], rank_system, cumulative_threshold, unsupplied = unsupplied,
+        lineage_map = lineage_map,
         cross_phylum_eps = cross_phylum_eps)
     }
     lca$taxon <- node$taxon

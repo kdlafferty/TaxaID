@@ -1968,3 +1968,114 @@ test_that("cross_phylum_eps is validated and says when it cannot apply", {
     "cross_phylum_eps is not applied")
   expect_equal(attr(.xp(df, cross_phylum_eps = 0.1), "report_params")$cross_phylum_eps, 0.1)
 })
+
+test_that("cross_phylum_eps compares LINEAGES, not phylum name strings", {
+  # Invented names throughout. mp stands in for the backbone map that
+  # .phylum_lineage_map() builds from verify_taxon_names(), so the logic is
+  # tested without a network call or a cache.
+  mp <- list(
+    Pa = c("Kk", "Pa"),            # a phylum
+    Cx = c("Kk", "Pa", "Cx"),      # a CLASS inside Pa, also carried as a phylum
+    Pb = c("Kk", "Pb"),            # a second, genuinely distinct phylum
+    Pc = c("Kk", "Pc")
+  )
+  sl <- function(a, b, m = mp) TaxaAssign:::.same_lineage(a, b, m)
+  cpc <- function(v, m = mp, eps = 0.05) {
+    TaxaAssign:::.cross_phylum_competes(sort(v, decreasing = TRUE), eps, m)
+  }
+
+  # a name on the leader's path is the same lineage, in both directions
+  expect_true(sl("Cx", "Pa"))
+  expect_true(sl("Pa", "Cx"))
+  expect_true(sl("Pa", "Pa"))
+  # two real phyla are not
+  expect_false(sl("Pa", "Pb"))
+  # a name the backbone cannot place is NOT the same lineage: unresolvable is
+  # not evidence of sameness, so the withholding stands
+  expect_false(sl("Zz", "Pa"))
+  expect_false(sl("Pa", "Zz"))
+  # with no map at all nothing is confirmed, which is the old name-keyed rule
+  expect_false(sl("Cx", "Pa", list()))
+
+  # one lineage carried under two names does not compete
+  expect_false(cpc(c(Pa = 0.60, Cx = 0.40)))
+  # ... but it did before the map existed
+  expect_true(cpc(c(Pa = 0.60, Cx = 0.40), m = list()))
+  # two real phyla compete
+  expect_true(cpc(c(Pa = 0.92, Pb = 0.08)))
+  # an unplaceable competitor competes
+  expect_true(cpc(c(Pa = 0.55, Zz = 0.45)))
+  # a single phylum, and a runner-up below eps, never compete
+  expect_false(cpc(c(Pa = 1)))
+  expect_false(cpc(c(Pa = 0.97, Pb = 0.03)))
+  # three-way: same-lineage runner-up plus a real third competitor still competes
+  expect_true(cpc(c(Pa = 0.50, Cx = 0.30, Pb = 0.20)))
+  # ... and a third competitor below eps is ignored
+  expect_false(cpc(c(Pa = 0.60, Cx = 0.38, Pb = 0.02)))
+})
+
+test_that("a lineage-confirmed competitor does not withhold the call, an unplaceable one does", {
+  # A SPECIES call that holds the threshold, with a runner-up phylum over eps.
+  # Pa 0.91 / Cx 0.06 / Pb 0.03: species "Aa aa" holds 0.91, so there is a call
+  # finer than phylum for the rule to act on, and Cx at 0.06 clears eps = 0.05
+  # while Pb at 0.03 does not.
+  d <- data.frame(
+    observation_id = rep("o1", 3L),
+    taxon_name = c("Aa aa", "Bb bb", "Cc cc"),
+    taxon_name_rank = rep("species", 3L),
+    phylum = c("Pa", "Cx", "Pb"),
+    class = c("Ca", "Cb", "Cy"),
+    species = c("Aa aa", "Bb bb", "Cc cc"),
+    posterior_point_est = c(0.91, 0.06, 0.03),
+    stringsAsFactors = FALSE
+  )
+  rs <- c("phylum", "class", "species")
+  cn <- function(e, m) TaxaAssign:::.credible_node(
+    d, d$posterior_point_est, rs, threshold = 0.90,
+    cross_phylum_eps = e, lineage_map = m
+  )
+  mp <- list(Pa = c("Kk", "Pa"), Cx = c("Kk", "Pa", "Cx"), Pb = c("Kk", "Pb"))
+
+  # Baseline: with the rule off the call is the species node.
+  base <- cn(0, mp)
+  expect_identical(base$taxon, "Aa aa")
+  expect_identical(base$rank, "species")
+
+  # Name-keyed (no map): Cx clears eps, so the species call is withheld and
+  # falls back to phylum Pa, which holds 0.91.
+  off <- cn(0.05, list())
+  expect_identical(off$limit, "cross_phylum")
+  expect_identical(off$taxon, "Pa")
+  expect_identical(off$rank, "phylum")
+
+  # Lineage-aware: the backbone places Cx inside Pa, so it is not a competing
+  # phylum and the species call stands, exactly as with the rule off.
+  on <- cn(0.05, mp)
+  expect_identical(on$taxon, "Aa aa")
+  expect_identical(on$rank, "species")
+  expect_false(isTRUE(on$limit == "cross_phylum"))
+
+  # Unplaceable competitor: still withheld. Unresolvable is not sameness.
+  unp <- cn(0.05, list(Pa = c("Kk", "Pa"), Pb = c("Kk", "Pb")))
+  expect_identical(unp$limit, "cross_phylum")
+
+  # Backbone disagrees with the input (the Sipuncula shape): the input would
+  # nest Cx under Pa, but a backbone that makes Cx its own phylum decides, so
+  # the call is withheld.
+  disagree <- list(Pa = c("Kk", "Pa"), Cx = c("Kk", "Cx"), Pb = c("Kk", "Pb"))
+  expect_identical(cn(0.05, disagree)$limit, "cross_phylum")
+
+  # NOT a guarantee of "no new species": releasing a withholding restores
+  # whatever node the evidence supports, which here IS a species call. It was
+  # 0 new species on the CalIntertidal run because those 3 observations had no
+  # species node, not because the rule cannot produce one.
+  expect_identical(on$rank, "species")
+})
+
+test_that(".phylum_lineage_map degrades to an empty map instead of failing", {
+  # No backbone_id: nothing can be placed, and the caller then compares names.
+  expect_identical(TaxaAssign:::.phylum_lineage_map(c("Pa", "Cx"), backbone_id = NULL), list())
+  # Nothing to resolve.
+  expect_identical(TaxaAssign:::.phylum_lineage_map(character(0), backbone_id = 11L), list())
+  expect_identical(TaxaAssign:::.phylum_lineage_map(c(NA_character_, ""), backbone_id = 11L), list())
+})
