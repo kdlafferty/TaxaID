@@ -244,7 +244,19 @@ share (the robust-prior check does not change it). The value is an error
 tolerance: smaller withholds more calls. Applied in the likelihood-only
 pass too, so \code{prior_role} compares calls made under the same rule. Not
 applied (with a message) when \code{rank_system} has no \code{"phylum"} carried by
-\code{posterior_df}.}
+\code{posterior_df}. Evaluated AFTER any \code{species_reference} downranking, so a
+phylum call that downranking moves finer is withheld rather than exempted.
+
+Known limitation: phyla are compared by NAME. Where a backbone places one
+lineage inconsistently -- the same clade carried as a phylum on some rows
+and as a lower rank inside another phylum on others -- two name strings
+describe one lineage and the comparison is on the wrong key, so the rule
+can fire on a conflict that is nomenclatural rather than evidential. Seen
+in CalIntertidal COI, where sipunculan rows carry \code{phylum = "Sipuncula"}
+while a sibling row carries \verb{phylum = "Annelida", class = "Sipuncula"}.
+No value of \code{cross_phylum_eps} distinguishes the two cases; the fix is
+upstream, in making the backbone placement consistent before the call.
+\code{lineage_conflict} reports the related within-rank case.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:

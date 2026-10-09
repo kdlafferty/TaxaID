@@ -1137,3 +1137,48 @@ version withheld now stand. Every one of the 31 new phylum calls is the GBIF par
 (e.g. Hydrozoa -> Cnidaria, Dinophyceae -> Myzozoa, Neoporphyra -> Rhodophyta), checked by hand: the
 script's automatic ancestor check flagged 11 of them only because it reads the input rows' phylum before
 lookup_missing_taxonomy fills it inside posterior_consensus. Peak 3.95 GB, 26 s.
+
+### 2026-10-08: cross_phylum_eps is evaluated AFTER downranking, not before
+
+The maintainer approved including this with item k ("I agree with your suggestions", relayed via the
+coordinator, answering a proposal that named the ordering fix and the known-limitation note explicitly;
+the new public argument `cross_phylum_eps` was approved separately as "merge k." against an option that
+named it).
+
+The cross-phylum test ran inside the per-observation credible-node call, while `.downrank_consensus()`
+runs afterwards on the whole result frame. The amendment keeps a PHYLUM call that holds the threshold, so
+an observation whose credible node sat at phylum was exempted -- and downranking could then move that same
+call FINER than phylum, which is exactly what the rule withholds. Measured on the CalIntertidal
+24,739-observation frame the rule can touch: 2 observations were delivered at order
+(COI_ESV_293811 / COI_ESV_293820 @ Jalama Beach, Golfingiiformes, `consensus_limit = "threshold"`) after
+being exempted as phylum calls. They were the "2 unexplained" left open on 2026-10-07; the cause was
+neither the frame, the taxonomy lookup, nor non-determinism (all three refuted by measurement: the
+109-observation frame reproduces identically twice, all 109 calls are identical between the 109- and
+24,739-observation frames on every column, and 0 of 24,739 observations hit `lookup_failed`).
+
+A call AT phylum with a runner-up phylum over `cross_phylum_eps` is now flagged rather than withheld, and
+the withholding is applied after downranking. Nothing is recomputed: the exempted call IS the leading
+phylum node holding the threshold, so the rule's "finest node at phylum or coarser that holds the
+threshold" is that same node, and the fix restores it exactly. A phylum call that is never downranked
+still stands, as amended. The flag travels on an internal column that is dropped before the function
+returns; no formals were added or changed.
+
+Effect on the 24,739-observation frame: exactly 2 observations change, both to
+`Sipuncula`/`phylum`/`cross_phylum`. `consensus_limit = "cross_phylum"` goes 91 -> 93 and `"threshold"`
+19,115 -> 19,113; `consensus_posterior` moves on 0 observations (the reported value was already the
+phylum-level share); `unreferenced_taxonomy_lookup` moves on 0. `cross_phylum_eps = 0` reproduces the old
+output exactly. Peak 3.41 GB, 376 s. Suite 1,176 passed / 0 failed (the one recycling warning in
+test-posterior_consensus.R is present identically at `6cd806d` and is not from this change).
+
+Regression test: `cross_phylum_eps is applied AFTER downranking, not before it`. Its fixture is sharper
+than the real case -- with `cross_phylum_eps = 0` downranking reaches a SPECIES call that rests on a
+cross-phylum choice, and the default withholds it at phylum.
+
+KNOWN LIMITATION, documented on `cross_phylum_eps` and kept as a separate item: phyla are compared by
+NAME. Where a backbone places one lineage inconsistently -- the same clade carried as a phylum on some
+rows and as a lower rank inside another phylum on others -- two name strings describe one lineage and the
+comparison is on the wrong key. In this data the sipunculan rows carry `phylum = "Sipuncula"` while a
+sibling row carries `phylum = "Annelida", class = "Sipuncula"`. No value of `cross_phylum_eps`
+distinguishes that from a real conflict; the fix is upstream, in consistent backbone placement.
+`lineage_conflict` already reports the related within-rank case (one name under several parents at the
+same rank, within an observation) but not a name carried at two different ranks.

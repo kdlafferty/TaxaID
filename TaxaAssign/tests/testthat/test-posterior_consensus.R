@@ -1885,6 +1885,50 @@ test_that("cross_phylum_eps leaves single-phylum observations and phylum-or-coar
   expect_identical(nop(.xp(k, rs = rs7)), nop(.xp(k, rs = rs7, cross_phylum_eps = 0)))
 })
 
+test_that("cross_phylum_eps is applied AFTER downranking, not before it", {
+  # Regression, 2026-10-08. Shape taken from the two CalIntertidal COI
+  # sipunculan observations (COI_ESV_293811/293820 @ Jalama Beach): the
+  # credible node sits exactly AT phylum, which the amendment exempts, but
+  # species_reference downranking then moves the call FINER than phylum --
+  # precisely what this rule exists to withhold. Deciding the exemption on the
+  # pre-downranking rank let the call through: on the real data the pair came
+  # out at order with consensus_limit "threshold", and on this fixture
+  # downranking reaches a SPECIES call that rests on a cross-phylum choice.
+  df <- data.frame(
+    observation_id = "E_dr",
+    taxon_name = c("Aa aa", "Ab ab", "Ba ba"),
+    taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate",
+    phylum = c("Pa", "Pa", "Pb"),
+    class = c("Ca", "Cb", "Cy"),
+    posterior_point_est = c(0.60, 0.31, 0.09),
+    stringsAsFactors = FALSE
+  )
+  ref <- data.frame(taxon_name = "Aa aa", class = "Ca", phylum = "Pa",
+    stringsAsFactors = FALSE)
+  rs <- c("phylum", "class", "species")
+  run <- function(e) suppressWarnings(suppressMessages(posterior_consensus(
+    df, rank_system = rs, consensus_method = "credible_node",
+    likelihood_consensus = FALSE, robust_prior_s = 0,
+    species_reference = ref, cross_phylum_eps = e)))
+
+  # phylum Pa holds 0.91 and no finer rank holds 0.90, so the credible node is
+  # the phylum; the runner-up phylum Pb holds 0.09, over the 0.05 default.
+  off <- run(0)
+  expect_true(off$downranked)
+  expect_true(match(off$consensus_rank, rs) > match("phylum", rs))
+  expect_false(identical(off$consensus_limit, "cross_phylum"))
+
+  on <- run(0.05)
+  expect_equal(on$consensus_taxon, "Pa")
+  expect_equal(on$consensus_rank, "phylum")
+  expect_equal(on$consensus_limit, "cross_phylum")
+  expect_false(on$downranked)
+  expect_false(on$is_resolved)
+  # the flag that carries this across the downranking step is internal
+  expect_false(".cross_phylum_pending" %in% names(on))
+})
+
 test_that("cross_phylum_eps is applied in the robust-prior path too", {
   df <- .xp_df(c(0.93, 0.07))
   df$score_likelihood <- c(0.93, 0.07); df$prior_mean <- 0.5

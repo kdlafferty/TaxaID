@@ -167,7 +167,19 @@
 #'   tolerance: smaller withholds more calls. Applied in the likelihood-only
 #'   pass too, so `prior_role` compares calls made under the same rule. Not
 #'   applied (with a message) when `rank_system` has no `"phylum"` carried by
-#'   `posterior_df`.
+#'   `posterior_df`. Evaluated AFTER any `species_reference` downranking, so a
+#'   phylum call that downranking moves finer is withheld rather than exempted.
+#'
+#'   Known limitation: phyla are compared by NAME. Where a backbone places one
+#'   lineage inconsistently -- the same clade carried as a phylum on some rows
+#'   and as a lower rank inside another phylum on others -- two name strings
+#'   describe one lineage and the comparison is on the wrong key, so the rule
+#'   can fire on a conflict that is nomenclatural rather than evidential. Seen
+#'   in CalIntertidal COI, where sipunculan rows carry `phylum = "Sipuncula"`
+#'   while a sibling row carries `phylum = "Annelida", class = "Sipuncula"`.
+#'   No value of `cross_phylum_eps` distinguishes the two cases; the fix is
+#'   upstream, in making the backbone placement consistent before the call.
+#'   `lineage_conflict` reports the related within-rank case.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -951,10 +963,32 @@ posterior_consensus <- function(posterior_df,
   if (!is.null(species_reference)) {
     species_ref <- .build_species_ref(species_reference, rank_system_eff)
     if (!is.null(species_ref)) {
+      # Kept so a cross-phylum withholding can be restored EXACTLY rather than
+      # recomputed: .downrank_consensus() mutates these four in place.
+      .pre_taxon <- result$consensus_taxon
+      .pre_rank <- result$consensus_rank
+      .pre_resolved <- result$is_resolved
       result <- .downrank_consensus(
         result, species_ref, rank_system_eff,
         require_candidate = downrank_requires_candidate
       )
+      # Cross-phylum, second half: a call that sat AT phylum with a runner-up
+      # phylum over cross_phylum_eps was flagged, not withheld, because the
+      # amendment lets a phylum call stand. If downranking has now moved it
+      # FINER than phylum, the rule applies after all, and the node it must
+      # fall back to is the phylum call we just replaced.
+      .ph_pos <- match("phylum", rank_system_eff)
+      if (!is.na(.ph_pos) && ".cross_phylum_pending" %in% names(result)) {
+        .fi <- match(result$consensus_rank, rank_system_eff)
+        .moved <- result$.cross_phylum_pending %in% TRUE & !is.na(.fi) & .fi > .ph_pos
+        if (any(.moved)) {
+          result$consensus_taxon[.moved] <- .pre_taxon[.moved]
+          result$consensus_rank[.moved] <- .pre_rank[.moved]
+          result$is_resolved[.moved] <- .pre_resolved[.moved]
+          result$consensus_limit[.moved] <- "cross_phylum"
+          if ("downranked" %in% names(result)) result$downranked[.moved] <- FALSE
+        }
+      }
     }
   }
 
@@ -970,6 +1004,9 @@ posterior_consensus <- function(posterior_df,
     posterior_col        = posterior_col,
     cross_phylum_eps     = cross_phylum_eps
   )
+  # internal plumbing for the cross-phylum / downranking interaction; never
+  # part of the returned contract.
+  result$.cross_phylum_pending <- NULL
   result
 }
 
@@ -1006,7 +1043,8 @@ posterior_consensus <- function(posterior_df,
 # otherwise "threshold" (the weight is spread across named alternatives).
 .credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
                            unsupplied = character(0), cross_phylum_eps = 0) {
-  out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_)
+  out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_,
+    cross_phylum_pending = FALSE)
   w[is.na(w) | w < 0] <- 0
   tot <- sum(w)
   if (!is.finite(tot) || tot <= 0) return(out)
@@ -1050,11 +1088,26 @@ posterior_consensus <- function(posterior_df,
   # share when rank_system has one), else no call. A phylum call that holds
   # the threshold stands.
   ph_i <- match("phylum", rank_system)
-  if (cross_phylum_eps > 0 && !is.na(call_i) && !is.na(ph_i) && call_i > ph_i) {
+  # The test also has to be evaluated when the call sits exactly AT phylum,
+  # because .downrank_consensus() runs later (posterior_consensus(), after the
+  # per-observation loop) and can move that call FINER than phylum -- which is
+  # precisely what this rule withholds. Deciding the exemption on the
+  # pre-downranking rank let such a call through: measured 2026-10-08 on the
+  # CalIntertidal 24,739-observation frame, 2 observations were delivered at
+  # order after being exempted as phylum calls. A call AT phylum is therefore
+  # only FLAGGED here; the withholding is applied after downranking, and a
+  # phylum call that is never downranked still stands, as amended.
+  if (cross_phylum_eps > 0 && !is.na(call_i) && !is.na(ph_i) && call_i >= ph_i) {
     v <- vals[[ph_i]]
     ph_share <- sort(vapply(unique(v[!is.na(v)]), function(nd) sum(w[!is.na(v) & v == nd]) / tot, numeric(1)),
       decreasing = TRUE)
-    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps) {
+    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps && call_i == ph_i) {
+      # the call IS the leading phylum node holding the threshold, so the rule's
+      # "finest node at phylum or coarser that holds the threshold" is this very
+      # node: nothing to recompute after downranking, only to restore.
+      out$cross_phylum_pending <- TRUE
+    }
+    if (length(ph_share) >= 2L && ph_share[[2L]] >= cross_phylum_eps && call_i > ph_i) {
       out$taxon <- NA_character_
       out$rank <- NA_character_
       out$lower <- NA_real_
@@ -1443,6 +1496,7 @@ posterior_consensus <- function(posterior_df,
   }
   robust_lower <- NA_real_
   consensus_limit <- NA_character_
+  cross_phylum_pending <- FALSE
   if (consensus_method == "credible_node") {
     can_robust <- robust_prior_s > 0 &&
       all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
@@ -1462,6 +1516,7 @@ posterior_consensus <- function(posterior_df,
     lca$consensus_reason <- if (is.na(node$taxon)) "no_credible_node" else "credible_node"
     if (can_robust) robust_lower <- node$lower
     consensus_limit <- node$limit
+    cross_phylum_pending <- isTRUE(node$cross_phylum_pending)
   }
 
   # --- Discrimination diagnostics ------------------------------------------
@@ -1706,6 +1761,8 @@ posterior_consensus <- function(posterior_df,
     unnamed_mass = unnamed_mass,
     robust_lower_posterior = robust_lower,
     consensus_limit = consensus_limit,
+    # internal only: dropped before posterior_consensus() returns
+    .cross_phylum_pending = cross_phylum_pending,
     lineage_conflict = .lineage_conflicts(chunk, rank_system),
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
