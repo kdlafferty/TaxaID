@@ -1325,3 +1325,59 @@ sibling row carries `phylum = "Annelida", class = "Sipuncula"`. No value of `cro
 distinguishes that from a real conflict; the fix is upstream, in consistent backbone placement.
 `lineage_conflict` already reports the related within-rank case (one name under several parents at the
 same rank, within an observation) but not a name carried at two different ranks.
+
+### 2026-10-08: cross_phylum_eps compares LINEAGES, not phylum name strings
+
+This closes the known limitation recorded in the entry above. K. Lafferty approved the change ("OK",
+relayed by the package-review coordinator) and then chose between the two ways of handling a name the
+backbone cannot place, verbatim: "1) a".
+
+Each distinct value of the `phylum` column is placed on the backbone named by `backbone_id`, via
+`TaxaTools::verify_taxon_names()` with `taxonomy_cache_dir`, and a competitor the backbone puts ON the
+leading phylum's classification path is not a competing phylum at all, so the call stands. The map is
+resolved ONCE for the whole input, not per observation: a per-observation lookup would make the verdict
+depend on which rows happen to be in the frame, and that is exactly the defect class that produced the
+two sipunculan calls in the entry above.
+
+Two choices, both of which cut AGAINST releasing a call, and both his:
+
+- A competitor the backbone cannot place is treated as a different lineage, so the call is still
+  withheld. Unresolvable is not evidence of sameness. In this data `Apicomplexa` has no match in GBIF
+  backbone 11 at all, and its 9 withholdings therefore stand.
+- Where the backbone and the input disagree, the BACKBONE decides. The input carries sipunculan rows
+  both as `phylum = "Sipuncula"` and as `phylum = "Annelida", class = "Sipuncula"`, but GBIF makes
+  Sipuncula a phylum in its own right, so that withholding also stands -- the very case that motivated
+  the work. Documented on the argument so no one expects otherwise.
+
+Degrades toward withholding, never away from it. With no `backbone_id`, no TaxaTools, or a lookup that
+fails, nothing can be placed, every comparison is FALSE, and the rule compares names exactly as before,
+with a message saying so.
+
+No new public surface: `.phylum_lineage_map()`, `.same_lineage()` and `.cross_phylum_competes()` are
+internal, and `lineage_map` is an internal argument threaded through `.credible_node()`,
+`.credible_node_robust()`, `.consensus_one_observation()` and `.add_prior_role()`. The exported formals
+of `posterior_consensus()` are unchanged.
+
+Before/after on the G5+G6 run's own inputs, the 84 `cross_phylum` withholdings re-run with production's
+recorded `consensus_settings`: **84 -> 81, 3 released, 0 new species calls.** The three are `Discosea`
+against phylum `Amoebozoa`, which GBIF places as a class inside it -- `COI_ESV_285024@Government Point`,
+`COI_ESV_291443@Cojo` and `COI_ESV_291443@Landing Cove, Santa Barbara I.` -- each moving from no call to
+`Himatismenida/order/threshold`. `cross_phylum_eps = 0` is unaffected. The subset frame was validated
+before it was trusted: under the installed pre-change build it reproduces all 84 with identical taxon
+and rank, and no rank of `rank_system` is unsupplied within it.
+
+Stated rather than left to be discovered: **this is not a guarantee of "no new species".** Releasing a
+withholding restores whatever node the evidence supports, and that can be a species call. It was 0 here
+because those three observations have no species node, not because the rule cannot produce one. A test
+fixture pins that case explicitly so the claim is not mistaken for an invariant.
+
+Tests: three new blocks on invented names. The helpers are exercised directly (same lineage in both
+directions, two real phyla, an unplaceable name, an empty map, and three-way competition where one
+competitor is same-lineage and another is not), and `.credible_node()` is driven through a fixture where
+a species node holds the threshold -- so the rule has a finer-than-phylum call to act on -- confirming
+that the call stands when the backbone confirms the nesting, is withheld when the competitor is
+unplaceable, is withheld when the backbone contradicts the input, and is untouched at `eps = 0`. My first
+fixture was wrong and the test caught it: with shares 0.60/0.31/0.09 nothing reaches the 0.90 threshold,
+so there was no call for the rule to act on and all four arms returned `limit = "threshold"`.
+
+Suite at this tip: 1,276 pass / 0 fail / 0 error / 1 skip.
