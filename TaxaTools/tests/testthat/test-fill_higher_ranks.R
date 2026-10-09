@@ -1,6 +1,6 @@
 # test-fill_higher_ranks.R
-# Tests for fill_higher_ranks(), .build_genus_family_lookup(),
-# .lookup_family_from_backbone(), and .extract_classified_rank().
+# Tests for fill_higher_ranks(), .build_genus_rank_lookup(),
+# .lookup_rank_from_backbone(), and .extract_classified_rank().
 # Fully offline -- backbone API calls are mocked.
 
 library(testthat)
@@ -433,10 +433,27 @@ test_that(".extract_classified_rank extracts correct rank", {
   )
 })
 
-test_that(".build_genus_family_lookup returns empty tibble for empty list", {
-  result <- TaxaTools:::.build_genus_family_lookup(list())
+test_that(".build_genus_rank_lookup returns an empty, correctly-named tibble for an empty list", {
+  result <- TaxaTools:::.build_genus_rank_lookup(list(), "family")
   expect_s3_class(result, "tbl_df")
   expect_equal(nrow(result), 0L)
+  expect_identical(names(result), c("genus", "family"))
+  # the same for a rank other than family
+  r2 <- TaxaTools:::.build_genus_rank_lookup(list(), "class")
+  expect_equal(nrow(r2), 0L)
+  expect_identical(names(r2), c("genus", "class"))
+})
+
+test_that(".build_genus_rank_lookup reads the requested rank and skips sources lacking it", {
+  src_ok <- data.frame(genus = c("Cottus", "Girella"), class = c("Actinopteri", "Actinopteri"),
+                       stringsAsFactors = FALSE)
+  src_no_rank <- data.frame(genus = "Scomber", family = "Scombridae", stringsAsFactors = FALSE)
+  got <- TaxaTools:::.build_genus_rank_lookup(list(src_no_rank, src_ok), "class")
+  expect_identical(names(got), c("genus", "class"))
+  expect_setequal(got$genus, c("Cottus", "Girella"))
+  expect_true(all(got$class == "Actinopteri"))
+  # a source lacking the rank column contributes nothing rather than erroring
+  expect_equal(nrow(TaxaTools:::.build_genus_rank_lookup(list(src_no_rank), "class")), 0L)
 })
 
 # =============================================================================
@@ -481,4 +498,127 @@ test_that("parse_classification_path returns NA for NA inputs", {
     parse_classification_path(NA, NA, "family"),
     NA_character_
   )
+})
+
+# =============================================================================
+# ranks= / record_source= (added 2026-10-08)
+# =============================================================================
+
+test_that("ranks must be a usable set of higher ranks", {
+  expect_error(fill_higher_ranks("Aa aa", ranks = character(0)), "non-empty character vector")
+  expect_error(fill_higher_ranks("Aa aa", ranks = c("family", NA)), "non-empty character vector")
+  expect_error(fill_higher_ranks("Aa aa", ranks = 1), "non-empty character vector")
+  # genus is derived from the input, not looked up; species IS the input
+  expect_error(fill_higher_ranks("Aa aa", ranks = c("family", "genus")), "must not include 'genus'")
+  expect_error(fill_higher_ranks("Aa aa", ranks = "species"), "must not include 'species'")
+  expect_error(fill_higher_ranks("Aa aa", record_source = NA), "record_source must be TRUE or FALSE")
+  expect_error(fill_higher_ranks("Aa aa", record_source = "yes"), "record_source must be TRUE or FALSE")
+})
+
+test_that("record_source controls the source columns, and local sources win", {
+  # Entirely offline: local_sources supply both ranks, so no API is reached and
+  # both backbones are switched off.
+  loc <- data.frame(
+    genus = c("Girella", "Corallina"),
+    family = c("LocalFam", "LocalFam2"),
+    class = c("LocalClass", "LocalClass2"),
+    stringsAsFactors = FALSE
+  )
+  off <- fill_higher_ranks(
+    c("Girella nigricans", "Corallina caespitosa"),
+    local_sources = list(loc), ranks = c("family", "class"),
+    backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+  )
+  expect_identical(names(off), c("taxon_name", "genus", "family", "class"))
+  expect_identical(off$class, c("LocalClass", "LocalClass2"))
+
+  on <- fill_higher_ranks(
+    c("Girella nigricans", "Corallina caespitosa"),
+    local_sources = list(loc), ranks = c("family", "class"), record_source = TRUE,
+    backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+  )
+  expect_identical(
+    names(on),
+    c("taxon_name", "genus", "family", "class", "family_source", "class_source")
+  )
+  expect_true(all(on$class_source == "local"))
+  # the rank columns themselves are unaffected by record_source
+  expect_identical(on$class, off$class)
+  expect_identical(on$family, off$family)
+})
+
+test_that("an unresolved rank is NA, warns, and carries no source", {
+  expect_warning(
+    res <- fill_higher_ranks("Zzzz qqqq", ranks = "class", record_source = TRUE,
+                             backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE),
+    "no class after all lookups"
+  )
+  expect_true(is.na(res$class))
+  expect_true(is.na(res$class_source))
+})
+
+test_that("NA and blank inputs stay NA across every added column", {
+  loc <- data.frame(genus = "Girella", family = "F", class = "C", stringsAsFactors = FALSE)
+  res <- suppressWarnings(fill_higher_ranks(
+    c("Girella nigricans", NA, ""), local_sources = list(loc),
+    ranks = c("family", "class"), record_source = TRUE,
+    backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+  ))
+  expect_equal(nrow(res), 3L)
+  for (cc in c("genus", "family", "class", "family_source", "class_source")) {
+    expect_true(all(is.na(res[[cc]][2:3])), info = cc)
+  }
+  expect_identical(res$class[1], "C")
+})
+
+test_that(".rank_from_lineage reads a rank off a lineage and is NA when silent", {
+  lin <- tibble::tibble(
+    genus = c("Girella", "Scomber"),
+    resolved_genus = c(NA_character_, NA_character_),
+    # GBIF's shape for a ray-finned fish: no class entry at all
+    path  = c("Animalia|Chordata|Perciformes|Girellidae|Girella",
+              "Animalia|Chordata|Actinopteri|Perciformes|Scombridae|Scomber"),
+    ranks = c("kingdom|phylum|order|family|genus",
+              "kingdom|phylum|class|order|family|genus")
+  )
+  expect_identical(TaxaTools:::.rank_from_lineage(lin, c("Girella", "Scomber"), "class"),
+                   c(NA_character_, "Actinopteri"))
+  expect_identical(TaxaTools:::.rank_from_lineage(lin, c("Girella", "Scomber"), "phylum"),
+                   c("Chordata", "Chordata"))
+  # a genus the lineage table does not contain
+  expect_identical(TaxaTools:::.rank_from_lineage(lin, "Nope", "class"), NA_character_)
+})
+
+test_that(".lineages_agree rejects a phylum contradiction and tolerates the rest", {
+  prim <- tibble::tibble(
+    genus = c("Corallina", "Girella", "Onlyhere"),
+    resolved_genus = NA_character_,
+    path  = c("Rhodophyta|Florideophyceae|Corallinales|Corallina",
+              "Metazoa|Chordata|Centrarchiformes|Girellidae|Girella",
+              "Rhodophyta|Florideophyceae|Onlyhere"),
+    ranks = c("phylum|class|order|genus",
+              "kingdom|phylum|order|family|genus",
+              "phylum|class|genus")
+  )
+  fb <- tibble::tibble(
+    genus = c("Corallina", "Girella", "Unseen"),
+    resolved_genus = NA_character_,
+    # Corallina: a DIFFERENT phylum -- the worm homonym. Girella: same phylum,
+    # different kingdom vocabulary (Animalia vs Metazoa) and a different order,
+    # both of which must be tolerated. Unseen: absent from the primary.
+    path  = c("Animalia|Annelida|Polychaeta|Sabellida|Corallina",
+              "Animalia|Chordata|Perciformes|Kyphosidae|Girella",
+              "Animalia|Chordata|Perciformes|Xx|Unseen"),
+    ranks = c("kingdom|phylum|class|order|genus",
+              "kingdom|phylum|order|family|genus",
+              "kingdom|phylum|order|family|genus")
+  )
+  got <- TaxaTools:::.lineages_agree(prim, fb)
+  expect_false("Corallina" %in% got)
+  expect_true("Girella" %in% got)
+  # a genus the primary never placed has nothing to contradict
+  expect_true("Unseen" %in% got)
+  # no primary at all means nothing to check against
+  expect_setequal(TaxaTools:::.lineages_agree(NULL, fb), fb$genus)
+  expect_identical(TaxaTools:::.lineages_agree(prim, NULL), character(0))
 })

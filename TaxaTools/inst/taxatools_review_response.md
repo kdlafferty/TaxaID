@@ -337,3 +337,68 @@ NOT changed: failure paths that warn at call time with the user present (input
 validation), and single-shot failures that abort rather than continue. The
 maintainer's condition was that this must not produce thousands of repeat lines,
 so the choice of sites is deliberate -- see the volume note where it applies.
+
+### 2026-10-08: `fill_higher_ranks(ranks=, record_source=)` -- fill a rank the primary backbone leaves silent
+
+K. Lafferty approved both pieces of new public surface, relayed by the package-review coordinator
+("1) approve (a)"): a `ranks` argument and a source-recording output column.
+
+**The problem.** GBIF's backbone carries no class at all for the ray-finned fishes -- its
+Actinopterygii/Actinopteri node is not an accepted backbone class, a gap already documented in
+`sampling_group.R`. A genus-level query returns `kingdom|phylum|order|family|genus` with no class
+entry, so `class` arrives `NA` and a consensus keyed on class lands at phylum Chordata. NCBI supplies
+`Actinopteri`.
+
+**The rule.** A rank is filled only where the source above it in the chain said NOTHING: local
+sources, then the primary backbone, then the fallback, each touching only cells still `NA`. A value
+the primary supplied is never replaced by the fallback's. This is the opposite emphasis from
+`cross_phylum_eps`, where the backbone WINS over a disagreeing input, and the two are consistent
+because they answer different questions -- there two sources disagree and the backbone is trusted,
+here one source is silent and another is asked. Nothing in this function adjudicates a disagreement.
+Both sections are in the Rd.
+
+**Backward compatibility is exact.** `ranks` defaults to `"family"` and `record_source` to `FALSE`,
+and the default call is `identical()` to the previous version's output on the same input, with the
+same three columns. `record_source` is off by default for a specific reason:
+`TaxaAssign::join_priors()` joins EVERY non-`taxon_name` column of its `expansion_taxonomy` argument
+onto the priors table, so a source column left on by default would travel into the posteriors. The Rd
+says so and says to drop the columns before that call.
+
+**Two defects found by measurement, both fixed here.**
+
+- *A homonym could have been filled.* A bare genus name is not a key: GBIF carries a polychaete worm
+  genus `Corallina` (`Animalia|Annelida|Polychaeta|...`) beside the red algal genus NCBI resolves
+  (`Rhodophyta|Florideophyceae|...`), and BOTH match at genus rank, so `matched_rank` cannot separate
+  them. A fallback value is now accepted only if its lineage does not contradict the primary's at
+  `phylum` (or `division`), and a rejected genus warns by name. Coarser and finer ranks are
+  deliberately not compared, each because a first attempt failed: the backbones use different
+  vocabulary for the same kingdom ("Metazoa" against "Animalia"), and they disagree routinely on
+  intermediate ranks for the same organism (NCBI puts Girella in Centrarchiformes, GBIF in
+  Perciformes). Both produced false contradictions that rejected a correct class for every fish
+  tried. The check cannot protect against a wrong PRIMARY, which is authoritative by construction --
+  querying with GBIF primary resolves `Corallina` to `Polychaeta` with nothing to compare against --
+  and the Rd says that plainly.
+- *One ambiguous name aborted the whole batch.* `verify_taxon_names()` refuses to guess between NCBI
+  homonyms and errors for the CALL, not the name. Measured: 7 ambiguous genera (Apogon, Coris,
+  Liparis, Microstoma, Decodon, Hirundichthys, Appendicularia -- fish names that are also plant or
+  tunicate genera) cost all 374 resolvable genera in the same request, and every class came back
+  `NA`. The batch is now retried name by name on failure, keeping the resolvable ones and reporting
+  the rest. This does NOT add homonym-resolution logic: an ambiguous name is reported and left
+  unfilled, as the `decisions` contract requires.
+
+Also: one lineage query per BACKBONE rather than per rank, since a single classification path answers
+every requested rank at once.
+
+**Before/after on the CalIntertidal G5+G6 run.** 316 observations call phylum Chordata in the current
+final (12S 132, 18S 53, COI 131 -- measured here, not carried over). 301 of them carry
+`consensus_limit = "backbone"`, which is the code already reporting that a finer rank value is
+missing. Filling class for their candidate rows (619 of 631 named taxa resolved, 617 from NCBI, 603 of
+them `Actinopteri`; 26,062 of 35,020 rows filled) and recomputing with production's own
+`consensus_settings`: **99 observations change, every one Chordata/phylum -> Actinopteri/class, and 0
+new species calls.** `consensus_limit = "backbone"` falls 301 -> 83. The 217 that stay at phylum now
+do so with limit `"threshold"` rather than `"backbone"` -- the call is still coarse, but for the
+honest reason that the mass is spread rather than because a rank was missing. The subset was validated
+first: under the installed pre-change build it reproduces all 316 as Chordata at phylum.
+
+12 taxa remain unresolved and are reported by warning (the Apogon group above). Suite 1,295 pass / 0
+fail / 19 skip; `rcmdcheck --as-cran` 0 errors / 0 warnings / 1 pre-existing note.

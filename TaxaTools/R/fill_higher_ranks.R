@@ -28,6 +28,22 @@ utils::globalVariables(c(
 #'   Each element must contain at least `genus` and `family` columns; elements
 #'   lacking those columns are silently skipped.  Sources are consulted in
 #'   order; the first non-NA family for each genus wins.
+#' @param ranks Character vector of higher ranks to resolve.  Default
+#'   \code{"family"}, which reproduces this function's original behaviour
+#'   exactly.  Any rank label the backbone reports is accepted, e.g.
+#'   \code{c("family", "class")}.  \code{"genus"} is rejected (it is derived
+#'   from \code{taxon_names}, not looked up) and so is \code{"species"}.
+#'   Each rank is resolved down the same chain and recorded in its own column.
+#' @param record_source Logical.  \code{FALSE} (default) returns only the rank
+#'   columns, so the default output is byte-identical to earlier versions.
+#'   \code{TRUE} adds one \code{<rank>_source} column per entry in
+#'   \code{ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
+#'   \code{NA} where the rank was never resolved.  It is off by default
+#'   because \code{TaxaAssign::join_priors()} joins EVERY non-\code{taxon_name}
+#'   column of its \code{expansion_taxonomy} argument onto the priors table,
+#'   so an unwanted source column would travel into the posteriors.  Turn it on
+#'   when you want provenance, and drop the columns before passing the frame to
+#'   \code{join_priors()}.
 #' @param backbone_id Integer.  Primary backbone for API fallback.
 #'   Default `4L` (NCBI).  Set `NULL` to skip the API entirely.
 #' @param fallback_backbone_id Integer.  Secondary backbone used when
@@ -51,10 +67,57 @@ utils::globalVariables(c(
 #'       returned instead (see `@section Genus correction` below).
 #'       Local-source-only lookups (no API call needed) always keep the
 #'       locally-extracted genus unchanged.}
-#'     \item{`family`}{Looked-up family, or `NA` if unresolved.}
+#'     \item{`<rank>`}{One column per entry in `ranks` (by default just
+#'       `family`), holding the looked-up value or `NA` if unresolved.}
+#'     \item{`<rank>_source`}{Only when `record_source = TRUE`: where that
+#'       value came from -- `"local"`, `"backbone_<id>"`, or `NA`.}
 #'   }
-#'   A warning is issued for any names whose family could not be resolved after
-#'   all fallbacks.
+#'   A warning is issued, per rank, for any names that rank could not be
+#'   resolved for after all fallbacks.
+#'
+#' @section Filling only where a backbone is silent:
+#' A rank is filled only where the backbone above it in the chain said
+#' NOTHING.  A value the primary backbone supplied is never replaced by the
+#' fallback's, and a value already present is never overwritten.  Silence and
+#' contradiction are different things and only the first is filled here.
+#'
+#' This is the opposite emphasis from
+#' \code{TaxaAssign::posterior_consensus()}'s \code{cross_phylum_eps}, where
+#' the backbone WINS over a disagreeing input: GBIF makes Sipuncula a phylum in
+#' its own right, so a sipunculan row carrying `phylum = "Annelida",
+#' class = "Sipuncula"` is treated as a genuine cross-phylum conflict rather
+#' than reconciled.  The two rules are consistent because they answer different
+#' questions.  There, two sources disagree and the backbone is trusted; here,
+#' one source is silent and another is asked.  Nothing in this function
+#' adjudicates a disagreement.
+#'
+#' The motivating case is GBIF's treatment of the ray-finned fishes.  GBIF
+#' returns \code{kingdom|phylum|order|family|genus} for them with no class
+#' entry at all -- its Actinopterygii/Actinopteri node is not an accepted
+#' backbone class -- so \code{class} comes back `NA` and a consensus keyed on
+#' class lands at phylum Chordata.  NCBI supplies \code{Actinopteri}, and
+#' because GBIF is silent rather than contradictory, filling it is safe.
+#'
+#' @section Homonyms, and what the agreement check does and does not cover:
+#' A bare genus name is not a key.  GBIF carries a polychaete worm genus
+#' \code{"Corallina"} (\code{Animalia|Annelida|Polychaeta|...}) alongside the
+#' red algal genus NCBI resolves (\code{Rhodophyta|Florideophyceae|...}), and
+#' BOTH match at genus rank, so \code{matched_rank} cannot separate them.
+#'
+#' Before a FALLBACK value is accepted, its lineage must therefore not
+#' contradict the primary's at \code{phylum} (or \code{division}), and a
+#' rejected genus raises a warning naming it.  Coarser ranks are deliberately
+#' not compared: the backbones use different vocabulary for the same kingdom
+#' ("Metazoa" against "Animalia"), and finer ranks disagree routinely for the
+#' same organism (NCBI places Girella in Centrarchiformes, GBIF in
+#' Perciformes), so both produced false contradictions when tried.
+#'
+#' The check cannot protect against a wrong PRIMARY backbone, which is
+#' authoritative by construction: query with \code{backbone_id = 11}
+#' (GBIF) and \code{"Corallina"} resolves to class \code{"Polychaeta"} with
+#' nothing to compare it against.  Choose the primary backbone for the group
+#' being resolved; the default (NCBI primary, GBIF fallback) answers all of the
+#' above correctly.
 #'
 #' @section Genus correction:
 #' `genus` reflects the backbone's currently-accepted name whenever an API
@@ -102,6 +165,8 @@ utils::globalVariables(c(
 #' @export
 fill_higher_ranks <- function(taxon_names,
                               local_sources = list(),
+                              ranks = "family",
+                              record_source = FALSE,
                               backbone_id = 4L,
                               fallback_backbone_id = 11L,
                               verbose = TRUE,
@@ -112,6 +177,20 @@ fill_higher_ranks <- function(taxon_names,
   }
   if (!is.list(local_sources)) {
     stop("local_sources must be a list of data frames")
+  }
+  if (!is.character(ranks) || length(ranks) == 0L || anyNA(ranks) ||
+    !all(nzchar(ranks))) {
+    stop("ranks must be a non-empty character vector of rank names")
+  }
+  ranks <- unique(ranks)
+  if ("genus" %in% ranks) {
+    stop("ranks must not include 'genus': genus is derived from taxon_names, not looked up")
+  }
+  if ("species" %in% ranks) {
+    stop("ranks must not include 'species': a species is the input, not a higher rank")
+  }
+  if (!is.logical(record_source) || length(record_source) != 1L || is.na(record_source)) {
+    stop("record_source must be TRUE or FALSE")
   }
   if (!is.null(backbone_id) && (!is.numeric(backbone_id) ||
     length(backbone_id) != 1L || is.na(backbone_id))) {
@@ -128,113 +207,137 @@ fill_higher_ranks <- function(taxon_names,
   # ---- Working table: unique non-NA names + extracted genus ------------------
   all_names <- taxon_names
   valid_mask <- !is.na(taxon_names) & nzchar(trimws(taxon_names))
+  uniq <- unique(taxon_names[valid_mask])
 
   work <- tibble::tibble(
-    taxon_name = unique(taxon_names[valid_mask]),
-    genus      = sub(" .*", "", unique(taxon_names[valid_mask])),
-    family     = NA_character_
+    taxon_name = uniq,
+    genus      = sub(" .*", "", uniq)
   )
-
-  # ---- Step 1: Local sources -------------------------------------------------
-  local_lookup <- .build_genus_family_lookup(local_sources)
-
-  if (nrow(local_lookup) > 0L) {
-    na_idx <- is.na(work$family)
-    if (any(na_idx)) {
-      filled <- dplyr::left_join(
-        work[na_idx, c("taxon_name", "genus"), drop = FALSE],
-        local_lookup,
-        by = "genus"
-      )
-      work$family[na_idx] <- filled$family
-    }
+  for (r in ranks) {
+    work[[r]] <- NA_character_
+    work[[paste0(r, "_source")]] <- NA_character_
   }
 
-  # ---- Step 2: Primary backbone API (genus-level query) ----------------------
-  missing_genera <- unique(work$genus[is.na(work$family)])
+  # Local sources first, per rank: they are offline and authoritative for the
+  # caller's own data.
+  for (r in ranks) {
+    local_lookup <- .build_genus_rank_lookup(local_sources, r)
+    if (nrow(local_lookup) == 0L) next
+    na_idx <- which(is.na(work[[r]]))
+    if (!length(na_idx)) next
+    filled <- dplyr::left_join(
+      work[na_idx, c("taxon_name", "genus"), drop = FALSE],
+      local_lookup, by = "genus"
+    )
+    work[[r]][na_idx] <- filled[[r]]
+    work[[paste0(r, "_source")]][na_idx[!is.na(filled[[r]])]] <- "local"
+  }
 
-  if (length(missing_genera) > 0L && !is.null(backbone_id)) {
+  # One lineage query per BACKBONE, not per rank: a single classification path
+  # answers every requested rank at once, so asking for three ranks costs one
+  # API round per backbone rather than three.
+  need <- unique(work$genus[Reduce(`|`, lapply(ranks, function(r) is.na(work[[r]])))])
+  lin_primary <- NULL
+  if (length(need) > 0L && !is.null(backbone_id)) {
     if (verbose) {
       message(sprintf(
-        "fill_higher_ranks: %d genera not in local sources; querying backbone %d...",
-        length(missing_genera), as.integer(backbone_id)
+        "fill_higher_ranks: %d genera unresolved in local sources; querying backbone %d for %s...",
+        length(need), as.integer(backbone_id), paste(ranks, collapse = "/")
       ))
     }
-    api_lookup <- .lookup_family_from_backbone(
-      missing_genera,
-      as.integer(backbone_id),
-      decisions = decisions
-    )
-    if (nrow(api_lookup) > 0L) {
-      na_idx <- is.na(work$family)
-      if (any(na_idx)) {
-        filled <- dplyr::left_join(
-          work[na_idx, c("taxon_name", "genus"), drop = FALSE],
-          api_lookup,
-          by = "genus"
-        )
-        work$family[na_idx] <- filled$family
-        # Correct genus to the backbone's resolved form wherever a match was
-        # actually found (in lockstep with family above -- resolved_genus is
-        # only non-NA for rows that also passed the family filter inside
-        # .lookup_family_from_backbone()); coalesce leaves genus unchanged
-        # for any row that didn't match at all.
-        work$genus[na_idx] <- dplyr::coalesce(filled$resolved_genus, work$genus[na_idx])
-      }
+    lin_primary <- .lookup_lineage_from_backbone(need, as.integer(backbone_id), decisions)
+    for (r in ranks) {
+      na_idx <- which(is.na(work[[r]]))
+      if (!length(na_idx) || is.null(lin_primary) || nrow(lin_primary) == 0L) next
+      val <- .rank_from_lineage(lin_primary, work$genus[na_idx], r)
+      work[[r]][na_idx] <- val
+      work[[paste0(r, "_source")]][na_idx[!is.na(val)]] <-
+        paste0("backbone_", as.integer(backbone_id))
+    }
+    # genus correction, in lockstep with the primary lookup as before
+    if (!is.null(lin_primary) && nrow(lin_primary) > 0L) {
+      j <- match(work$genus, lin_primary$genus)
+      work$genus <- dplyr::coalesce(lin_primary$resolved_genus[j], work$genus)
     }
   }
 
-  # ---- Step 3: Fallback backbone ---------------------------------------------
-  still_missing <- unique(work$genus[is.na(work$family)])
-
-  if (length(still_missing) > 0L &&
+  # Fallback backbone, ONLY for ranks the primary left silent -- and only when
+  # its lineage AGREES with the primary's on every rank the two share.
+  #
+  # That guard is not decoration. A bare genus name is not a key: GBIF carries
+  # a polychaete worm genus "Corallina" (Animalia|Annelida|Polychaeta|...)
+  # alongside the red algal genus NCBI resolves (Rhodophyta|Florideophyceae|
+  # ...), and BOTH match at genus rank, so matched_rank cannot tell them apart.
+  # Without the check, a genus the primary backbone could not place would take
+  # a homonym's class from the fallback -- writing "Polychaeta" into a red
+  # alga. Requiring agreement on the ranks both backbones DID supply catches
+  # exactly that: it is the same evidence a reader would use.
+  still <- unique(work$genus[Reduce(`|`, lapply(ranks, function(r) is.na(work[[r]])))])
+  if (length(still) > 0L &&
     !is.null(fallback_backbone_id) &&
     !identical(as.integer(fallback_backbone_id), as.integer(backbone_id))) {
     if (verbose) {
       message(sprintf(
         "fill_higher_ranks: %d genera still unresolved; trying fallback backbone %d...",
-        length(still_missing), as.integer(fallback_backbone_id)
+        length(still), as.integer(fallback_backbone_id)
       ))
     }
-    fb_lookup <- .lookup_family_from_backbone(
-      still_missing,
-      as.integer(fallback_backbone_id),
-      decisions = decisions
-    )
-    if (nrow(fb_lookup) > 0L) {
-      na_idx <- is.na(work$family)
-      if (any(na_idx)) {
-        filled <- dplyr::left_join(
-          work[na_idx, c("taxon_name", "genus"), drop = FALSE],
-          fb_lookup,
-          by = "genus"
-        )
-        work$family[na_idx] <- filled$family
-        work$genus[na_idx] <- dplyr::coalesce(filled$resolved_genus, work$genus[na_idx])
+    lin_fb <- .lookup_lineage_from_backbone(still, as.integer(fallback_backbone_id), decisions)
+    if (!is.null(lin_fb) && nrow(lin_fb) > 0L) {
+      ok_genus <- .lineages_agree(lin_primary, lin_fb)
+      rejected <- setdiff(lin_fb$genus, ok_genus)
+      if (length(rejected) > 0L) {
+        warning(sprintf(
+          paste0("fill_higher_ranks: backbone %d's lineage contradicts backbone %d's for ",
+                 "%d genus/genera, so no value was filled from it (likely a homonym):\n  %s"),
+          as.integer(fallback_backbone_id), as.integer(backbone_id),
+          length(rejected), paste(rejected, collapse = "\n  ")
+        ), call. = FALSE)
+      }
+      lin_fb <- lin_fb[lin_fb$genus %in% ok_genus, , drop = FALSE]
+      for (r in ranks) {
+        na_idx <- which(is.na(work[[r]]))
+        if (!length(na_idx) || nrow(lin_fb) == 0L) next
+        val <- .rank_from_lineage(lin_fb, work$genus[na_idx], r)
+        work[[r]][na_idx] <- val
+        work[[paste0(r, "_source")]][na_idx[!is.na(val)]] <-
+          paste0("backbone_", as.integer(fallback_backbone_id))
+      }
+      if (nrow(lin_fb) > 0L) {
+        j <- match(work$genus, lin_fb$genus)
+        work$genus <- dplyr::coalesce(lin_fb$resolved_genus[j], work$genus)
       }
     }
   }
 
-  # ---- Warn about any remaining NAs ------------------------------------------
-  n_na <- sum(is.na(work$family))
-  if (n_na > 0L) {
-    unresolved <- work$taxon_name[is.na(work$family)]
-    warning(sprintf(
-      "fill_higher_ranks: %d taxon(s) have no family after all lookups:\n  %s",
-      n_na, paste(unresolved, collapse = "\n  ")
-    ), call. = FALSE)
+  # ---- Warn about any remaining NAs, per rank -------------------------------
+  for (r in ranks) {
+    n_na <- sum(is.na(work[[r]]))
+    if (n_na > 0L) {
+      unresolved <- work$taxon_name[is.na(work[[r]])]
+      warning(sprintf(
+        "fill_higher_ranks: %d taxon(s) have no %s after all lookups:\n  %s",
+        n_na, r, paste(unresolved, collapse = "\n  ")
+      ), call. = FALSE)
+    }
   }
 
   # ---- Re-expand to original length (preserve duplicates and order) ----------
-  result_map <- work[, c("taxon_name", "genus", "family"), drop = FALSE]
-
+  i <- match(all_names, work$taxon_name)
   out <- tibble::tibble(taxon_name = all_names)
-  out$genus <- result_map$genus[match(all_names, result_map$taxon_name)]
-  out$family <- result_map$family[match(all_names, result_map$taxon_name)]
-
-  # NAs for originally-NA/blank inputs
+  out$genus <- work$genus[i]
   out$genus[!valid_mask] <- NA_character_
-  out$family[!valid_mask] <- NA_character_
+  for (r in ranks) {
+    out[[r]] <- work[[r]][i]
+    out[[r]][!valid_mask] <- NA_character_
+  }
+  if (record_source) {
+    for (r in ranks) {
+      sc <- paste0(r, "_source")
+      out[[sc]] <- work[[sc]][i]
+      out[[sc]][!valid_mask] <- NA_character_
+    }
+  }
 
   out
 }
@@ -306,28 +409,31 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # Each source must have genus + family columns (case-insensitive check).
 # Returns a tibble(genus, family) with no NAs and first-source-wins dedup.
 #' @noRd
-.build_genus_family_lookup <- function(sources) {
+.build_genus_rank_lookup <- function(sources, rank) {
   parts <- lapply(sources, function(df) {
     if (!is.data.frame(df)) {
       return(NULL)
     }
     names(df) <- tolower(names(df))
-    if (!all(c("genus", "family") %in% names(df))) {
+    if (!all(c("genus", rank) %in% names(df))) {
       return(NULL)
     }
-    df[, c("genus", "family"), drop = FALSE]
+    df[, c("genus", rank), drop = FALSE]
   })
   parts <- Filter(Negate(is.null), parts)
   if (length(parts) == 0L) {
-    return(tibble::tibble(genus = character(), family = character()))
+    out <- tibble::tibble(genus = character(), x = character())
+    names(out)[2L] <- rank
+    return(out)
   }
 
-  dplyr::bind_rows(parts) |>
-    dplyr::filter(
-      !is.na(genus), !is.na(family),
-      nzchar(trimws(genus)), nzchar(trimws(family))
-    ) |>
-    dplyr::distinct(genus, .keep_all = TRUE)
+  all <- dplyr::bind_rows(parts)
+  keep <- !is.na(all$genus) & !is.na(all[[rank]]) &
+    nzchar(all$genus) & nzchar(all[[rank]])
+  all <- all[keep, , drop = FALSE]
+  # first occurrence wins, matching the documented "sources are consulted in
+  # order; the first non-NA value for each genus wins"
+  all[!duplicated(all$genus), , drop = FALSE]
 }
 
 
@@ -339,75 +445,158 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # genus rank, NA otherwise -- kept separate from `genus` so the caller can
 # still join on the original spelling while writing the corrected value back.
 #' @noRd
-.lookup_family_from_backbone <- function(genera, backbone_id, decisions = NULL) {
-  empty <- tibble::tibble(
-    genus = character(), resolved_genus = character(),
-    family = character()
-  )
-
-  verified <- tryCatch(
-    verify_taxon_names(
-      genera, backbone_id = backbone_id,
-      # decisions only means anything for backbone_id = 4 -- forwarding it
-      # unconditionally would trip verify_taxon_names()'s own "unused"
-      # warning when this call targets a non-NCBI backbone.
-      decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
-    ),
-    error = function(e) {
-      warning(sprintf(
-        "fill_higher_ranks: backbone %d query failed: %s",
-        backbone_id, conditionMessage(e)
-      ), call. = FALSE)
-      NULL
-    }
-  )
-
-  if (is.null(verified) || nrow(verified) == 0L) {
-    return(empty)
+# Prefer the backbone's own resolved genus over the query genus when the match
+# cleanly resolved at genus rank -- keeps this function consistent with
+# TaxaMatch::convert_taxonomy_backbone()'s own current-name preference: a genus
+# that is a taxonomic synonym under this backbone (confirmed real case: GBIF
+# resolves "Inu" to "Luciogobius") is reported the same way regardless of which
+# function in the ecosystem touched it, rather than being split across two
+# different labels depending on whether a taxon's genus was derived here or via
+# convert_taxonomy_backbone() -- exactly the mismatch that would silently break
+# TaxaAssign::join_priors()'s exact-string genus/family match between the
+# likelihood side and the priors side. `matched_rank` may be absent from
+# `verified` depending on what `verify_taxon_names()` returns; when absent this
+# is a no-op and `genus` passes through unchanged.
+#' @noRd
+.resolved_genus_at_rank <- function(verified) {
+  if (!"matched_rank" %in% names(verified)) {
+    return(rep(NA_character_, nrow(verified)))
   }
-
-  families <- mapply(
-    .extract_classified_rank,
-    verified$classification_path,
-    verified$classification_ranks,
-    MoreArgs = list(target_rank = "family"),
-    SIMPLIFY = TRUE
+  ifelse(
+    !is.na(verified$matched_rank) & verified$matched_rank == "genus" &
+      !is.na(verified$matched_name) & nzchar(verified$matched_name),
+    verified$matched_name,
+    NA_character_
   )
+}
 
-  # Prefer the backbone's own resolved genus over the query genus when the
-  # match cleanly resolved at genus rank -- keeps this function consistent
-  # with TaxaMatch::convert_taxonomy_backbone()'s own current-name
-  # preference: a genus that is a taxonomic synonym under this backbone
-  # (confirmed real case: GBIF resolves "Inu" to "Luciogobius") is reported
-  # the same way regardless of which function in the ecosystem touched it,
-  # rather than being split across two different labels depending on
-  # whether a taxon's genus was derived here or via convert_taxonomy_
-  # backbone() -- exactly the mismatch that would silently break
-  # TaxaAssign::join_priors()'s exact-string genus/family match between the
-  # likelihood side and the priors side. `matched_rank` may be absent from
-  # `verified` depending on what `verify_taxon_names()` returns; when
-  # absent, this is a no-op and `genus` passes through unchanged.
-  has_matched_rank <- "matched_rank" %in% names(verified)
-  resolved_genus <- if (has_matched_rank) {
-    ifelse(
-      !is.na(verified$matched_rank) & verified$matched_rank == "genus" &
-        !is.na(verified$matched_name) & nzchar(verified$matched_name),
-      verified$matched_name,
-      NA_character_
+# One query per backbone: returns genus, the backbone's resolved genus, and the
+# raw pipe-delimited path/ranks so every requested rank can be read off the
+# same lineage without a second round trip.
+#' @noRd
+.lookup_lineage_from_backbone <- function(genera, backbone_id, decisions = NULL) {
+  ask <- function(nm) {
+    tryCatch(
+      verify_taxon_names(
+        nm, backbone_id = backbone_id,
+        # decisions only means anything for backbone_id = 4 -- forwarding it
+        # unconditionally would trip verify_taxon_names()'s own "unused"
+        # warning when this call targets a non-NCBI backbone.
+        decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
+      ),
+      error = function(e) NULL
     )
-  } else {
-    rep(NA_character_, nrow(verified))
   }
+  verified <- ask(genera)
+  if (is.null(verified)) {
+    # One name can abort the whole batch. verify_taxon_names() refuses to guess
+    # between NCBI homonyms and errors out asking for a `decisions` entry, and
+    # that error is raised for the CALL, not the name: measured 2026-10-08,
+    # 7 ambiguous genera (Apogon, Coris, Liparis, Microstoma, Decodon,
+    # Hirundichthys, Appendicularia -- fish names that are also plant or
+    # tunicate genera) cost all 374 resolvable genera in the same request, and
+    # every rank came back NA. Retrying name by name keeps the resolvable ones
+    # and isolates the ambiguous ones, WITHOUT this function choosing between
+    # homonyms: an unresolvable name is simply reported and left unfilled, as
+    # the `decisions` contract requires.
+    parts <- lapply(genera, ask)
+    failed <- genera[vapply(parts, is.null, logical(1))]
+    parts <- Filter(Negate(is.null), parts)
+    if (length(failed) > 0L) {
+      warning(sprintf(
+        paste0("fill_higher_ranks: backbone %d could not resolve %d name(s) ",
+               "unambiguously; they are left unfilled. Pass `decisions` to choose ",
+               "between NCBI homonyms:\n  %s"),
+        backbone_id, length(failed), paste(failed, collapse = "\n  ")
+      ), call. = FALSE)
+    }
+    if (length(parts) == 0L) {
+      return(NULL)
+    }
+    verified <- dplyr::bind_rows(parts)
+  }
+  if (is.null(verified) || nrow(verified) == 0L ||
+    !all(c("classification_path", "classification_ranks") %in% names(verified))) {
+    return(NULL)
+  }
+  out <- tibble::tibble(
+    genus = as.character(verified$user_supplied_name),
+    resolved_genus = .resolved_genus_at_rank(verified),
+    path = as.character(verified$classification_path),
+    ranks = as.character(verified$classification_ranks)
+  )
+  out[!duplicated(out$genus), , drop = FALSE]
+}
 
-  result <- tibble::tibble(
-    genus          = verified$user_supplied_name,
-    resolved_genus = resolved_genus,
-    family         = families
-  ) |>
-    dplyr::filter(!is.na(family), nzchar(trimws(family))) |>
-    dplyr::distinct(genus, .keep_all = TRUE)
+# Read one rank off a lineage table, for each genus in `genera` (NA when the
+# backbone is silent on that rank, which is the case this whole function
+# exists to fill).
+#' @noRd
+.rank_from_lineage <- function(lineage, genera, rank) {
+  i <- match(genera, lineage$genus)
+  out <- rep(NA_character_, length(genera))
+  ok <- !is.na(i)
+  if (!any(ok)) return(out)
+  out[ok] <- mapply(
+    .extract_classified_rank,
+    lineage$path[i[ok]], lineage$ranks[i[ok]],
+    MoreArgs = list(target_rank = rank),
+    SIMPLIFY = TRUE, USE.NAMES = FALSE
+  )
+  out[!is.na(out) & !nzchar(trimws(out))] <- NA_character_
+  out
+}
 
-  result
+# Which genera of `fb` may be trusted: those whose lineage does not contradict
+# the primary's HIGH-LEVEL placement. Only the ranks in .LINEAGE_AGREEMENT_RANKS
+# are compared, and only where both backbones supply one.
+#
+# Two narrowings, both forced by measurement rather than chosen:
+#
+# Comparing EVERY shared rank is too strict. NCBI and GBIF routinely disagree on
+# intermediate ranks for the same organism -- NCBI puts Girella in
+# Centrarchiformes where GBIF says Perciformes -- so an any-shared-rank test
+# rejected a correct class for every fish tried. Disagreement above the filled
+# rank means a different organism; disagreement below it is classification
+# churn.
+#
+# KINGDOM is also excluded, for a different reason: the two backbones use
+# different vocabulary for the same kingdom. NCBI says "Metazoa" where GBIF
+# says "Animalia", which is not a contradiction at all, and including kingdom
+# rejected every fish a second time. Normalising that would mean hard-coding a
+# synonym list for particular taxa, which this codebase deliberately avoids.
+#
+# What is left is phylum (and division, its botanical equivalent) -- the
+# highest rank the backbones actually name alike, and the rank immediately
+# above class. It is enough to catch the case worth catching: GBIF's polychaete
+# worm genus "Corallina" is phylum Annelida where NCBI's red alga of the same
+# name is phylum Rhodophyta. When neither backbone names a comparable rank
+# there is nothing to contradict and the fill is allowed.
+#' @noRd
+.LINEAGE_AGREEMENT_RANKS <- c("phylum", "division")
+
+#' @noRd
+.lineages_agree <- function(primary, fb) {
+  if (is.null(fb) || nrow(fb) == 0L) return(character(0))
+  if (is.null(primary) || nrow(primary) == 0L) return(fb$genus)
+  split_named <- function(path, ranks) {
+    if (is.na(path) || is.na(ranks)) return(character(0))
+    p <- strsplit(path, "|", fixed = TRUE)[[1L]]
+    r <- strsplit(ranks, "|", fixed = TRUE)[[1L]]
+    n <- min(length(p), length(r))
+    if (n == 0L) return(character(0))
+    stats::setNames(trimws(p[seq_len(n)]), tolower(trimws(r[seq_len(n)])))
+  }
+  keep <- vapply(seq_len(nrow(fb)), function(k) {
+    j <- match(fb$genus[k], primary$genus)
+    if (is.na(j)) return(TRUE)
+    a <- split_named(primary$path[j], primary$ranks[j])
+    b <- split_named(fb$path[k], fb$ranks[k])
+    shared <- intersect(intersect(names(a), names(b)), .LINEAGE_AGREEMENT_RANKS)
+    if (!length(shared)) return(TRUE)
+    all(a[shared] == b[shared])
+  }, logical(1))
+  fb$genus[keep]
 }
 
 
