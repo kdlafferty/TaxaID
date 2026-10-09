@@ -39,6 +39,7 @@ once here rather than repeated per file below.
 | `check_gbif_tile_range()` | `R/check_gbif_tile_range.R` | Spatial-isolation signal for a taxon from GBIF's occurrence-density map tiles | test-check_gbif_tile_range.R, test-check_gbif_tile_range_cache.R, test-review_spatial_context.R |
 | `classify_sample_identity()` | `R/classify_sample_identity.R` | Gate each sample x marker x run on whether it looks like its label (blank / sample); hold discordant/suspect units until a recorded decision; units no test could judge (untested/inconclusive, with a reason) are admitted by default and reported as such (`untested_policy`); identity is per tube, but control usability (`control_usability`) and sample viability (`sample_viability`) are per marker | test-classify_sample_identity.R |
 | `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Distance from a query point to the nearest already-fetched GBIF occurrence | test-compute_local_occurrence_distance.R, test-review_spatial_context.R |
+| `flag_backbone_conflicts()` | `R/flag_backbone_conflicts.R` | Flag observations whose taxonomy carries a name at more than one rank, or under more than one parent at the same rank, so a reader can see which calls -- and which `cross_phylum` withholdings -- stand on a name that is not a key | test-flag_backbone_conflicts.R |
 | `flag_hopped_detections()` | `R/flag_hopped_detections.R` | Flag individual detections explained by read spillover (index hopping, tag jumps) from the same feature elsewhere on the run | test-flag_hopped_detections.R |
 | `flag_failed_libraries()` | `R/flag_failed_libraries.R` | Flag libraries and runs that failed to sequence, using the same extract's other markers to tell failure from low biomass | test-flag_failed_libraries.R |
 | `flag_watch_candidates()` | `R/flag_watch_candidates.R` | Flag observations where a watch-list species outscores the consensus winner | test-flag_watch_candidates.R |
@@ -182,6 +183,53 @@ Tests for `validate_controls()` are in `test-validate_controls.R`; tests for
 - "Suggest requiring specific column names": see the package-wide note above.
 
 ------------------------------------------------------------------------
+
+## `flag_backbone_conflicts.R`
+
+Approved by the maintainer as a new export: "ok. but it could arise in other contexts. So making
+TaxaFlag aware seems useful (unless it costs a lot of time)." (2026-10-08, relayed by the peer
+coordinator, answering the question "Is there a way to flag when there is a disagreement to alert the
+reader? Or perhaps something TaxaFlag should be made aware of?")
+
+Why it exists: any rule that compares taxonomy by NAME is wrong wherever a name is not a key.
+`TaxaAssign::posterior_consensus(cross_phylum_eps=)` withholds a call that rests on a choice between
+phyla and compares the phylum column by name, so where one lineage carries two names at different ranks
+it sees two phyla where biology has one. Measured on CalIntertidal (6,134,732 candidate rows, 49,346
+observations): 18 of 28,610 distinct names are carried at MORE THAN ONE RANK, four of them used as a
+phylum somewhere; those four touch 1,054 of the 24,739 observations the rule can reach (a chromist class
+also carried as a phylum, 606 observations; another, 338; a comb-jelly phylum reused as a crane-fly
+genus, 148; the sipunculan case that prompted this, 37 -- the SMALLEST of the four). 35 of the 93
+cross-phylum withholdings in that frame sit in such observations. Separately, at least 33 name/rank
+combinations sit under more than one parent, three of them one inconsistent placement appearing at three
+consecutive ranks.
+
+Detection is learned from the backbone present in the data: names at more than one rank, and names under
+more than one parent at the same rank. No taxon list, no marker list, nothing named in the code or the
+defaults. The same-rank case is DELEGATED to `TaxaTools::find_taxonomy_conflicts()`, which already does
+exactly that and compares against every coarser rank rather than only the parent, so it is not
+reimplemented here; only the cross-rank half is new. `posterior_consensus()`'s `lineage_conflict` column
+reports the same-rank case WITHIN one observation, whereas this learns placement across the whole table.
+
+Output: the consensus plus `backbone_conflict`, `backbone_conflict_kind`, `backbone_conflict_names`,
+`backbone_conflict_mass` (share of the observation's candidate mass on conflicted names) and
+`cross_phylum_conflicted` -- the last marking, for rows withheld as `"cross_phylum"`, whether the phyla
+compared may be two names for one lineage. The conflict table is attached as attribute
+`"backbone_conflicts"`.
+
+Control and placeholder names are found by the same rule because they genuinely occupy many ranks, and
+they are reported in their own `category` rather than suppressed: a control name in a phylum column is
+itself worth a reader's attention. In the study above the placeholders sat at four and six ranks while
+every genuine homonym sat at exactly two, which is where `placeholder_rank_count = 3` comes from. That
+argument changes the LABEL only; the flag does not depend on it.
+
+This function does not fix taxonomy. The fix for an inconsistent placement is upstream, and that is
+stated in the Rd and in `cross_phylum_eps`'s own known-limitation note.
+
+Tests: 41 expectations across 12 test_that blocks, all on invented names so the detector must find what
+the data carries -- cross-rank, same-rank delegation, the placeholder label and its independence from the
+flag, `cross_phylum_conflicted` TRUE/FALSE/NA, mass as a share and NA without a posterior column, a clean
+taxonomy giving an empty table, the attribute row-keep/column-drop rules, every input error, the
+overwrite warning, and an explicit `rank_system`.
 
 ## `flag_contaminant.R`
 

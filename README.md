@@ -919,7 +919,7 @@ describe each in full.
 | TaxaLikely  | 33                 | 35         | Yes      |
 | TaxaExpect  | 18                 | 18         | Yes      |
 | TaxaAssign  | 16                 | 20         | Yes      |
-| TaxaFlag    | 15                 | 17         | Yes      |
+| TaxaFlag    | 16                 | 18         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 # U.S. Geological Survey Disclaimer
