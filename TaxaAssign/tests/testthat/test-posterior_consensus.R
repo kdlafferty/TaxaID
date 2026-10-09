@@ -1876,7 +1876,13 @@ test_that("cross_phylum_eps gives no call, or a shared clade above phylum, when 
 
 test_that("cross_phylum_eps leaves single-phylum observations and phylum-or-coarser calls alone", {
   one <- .xp_df(c(0.93, 0.07), phylum = c("Ochrophyta", "Ochrophyta"))
-  nop <- function(x) { attr(x, "report_params") <- NULL; x }
+  # Both attributes RECORD the call's own arguments, so two calls that differ
+  # only in cross_phylum_eps necessarily differ in them even when every column
+  # is identical -- which is what this test is actually asserting. Strip both.
+  # (consensus_settings arrived with G5+G6; this test predates it, and the two
+  # only meet after the merge.)
+  nop <- function(x) { attr(x, "report_params") <- NULL
+    attr(x, "consensus_settings") <- NULL; x }
   expect_identical(nop(.xp(one)), nop(.xp(one, cross_phylum_eps = 0)))
   # already above phylum (kingdom call): nothing to withhold
   k <- .xp_df(c(0.5, 0.5))
