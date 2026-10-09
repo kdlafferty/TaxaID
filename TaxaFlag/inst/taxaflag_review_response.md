@@ -231,6 +231,32 @@ flag, `cross_phylum_conflicted` TRUE/FALSE/NA, mass as a share and NA without a 
 taxonomy giving an empty table, the attribute row-keep/column-drop rules, every input error, the
 overwrite warning, and an explicit `rank_system`.
 
+**2026-10-08, performance only, output byte-identical.** First use on a real posterior frame
+(6,134,732 candidate rows, 49,346 observations) did not finish in 20 minutes. Measured cause: the
+same-rank half delegates to `TaxaTools::find_taxonomy_conflicts()`, which scales super-linearly in
+ROWS -- 1.9 s at 25,000 rows, 9.2 s at 100,000, 54.1 s at 400,000, projecting to roughly three and a
+half hours at 6.1M. Two changes, neither touching the interface:
+
+- The delegated call now receives `unique(taxonomy[, ranks])`. Whether a name sits under more than
+  one parent is a property of the SET of (name, rank, parent) tuples present, so it cannot depend on
+  row multiplicity, and `.bc_multi_parent()` keeps only name/rank/parents with no counts, so nothing
+  downstream can see the difference. The real frame holds 34,000 distinct tuples behind 6.1M rows.
+  `unique()` itself is cheap (0.6 s at 400,000 rows); the deduplicated conflict search is about 1 s.
+- The per-row name roll-up no longer calls `apply(..., 1L, ...)` over every row. A row's label depends
+  only on its own tuple of conflicted names, so each distinct tuple is resolved once and joined back,
+  and rows carrying no conflicted name keep their initialised `NA` -- which is what the per-row call
+  returned for them.
+
+Exactness was proved against the previous INSTALLED build rather than against the new code itself:
+old and new run on the same inputs and compared with `identical()`, which on a data frame also
+compares `row.names`. Identical on the whole object, on `attributes()`, on the `"backbone_conflicts"`
+table and on `"backbone_conflict_params"`, for real slices of 25,000 / 100,000 / 400,000 rows, for
+the 84 `cross_phylum` withholdings with a posterior column present, and on the auto-detected
+`rank_system` path. Full frame now 44.5 s at 1.97 GB peak; speedup grows with n (3.9x at 25,000,
+8.4x at 100,000, 16.6x at 400,000) because the cost removed was the super-linear term. Package suite
+966 pass / 0 fail, the 41 backbone expectations among them; `rcmdcheck --as-cran` 0 errors /
+1 pre-existing warning / 0 notes; `document()` a no-op.
+
 ## `flag_contaminant.R`
 
 **Fixed:**
