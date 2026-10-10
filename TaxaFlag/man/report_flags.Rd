@@ -38,7 +38,11 @@ least reference support of all). None of it is added to
 Summarizes the quality flags applied by TaxaFlag into a structured
 \code{report_section} object (from TaxaTools). Auto-detects which flag
 types are present in the data. Works standalone or feeds into
-\code{TaxaTools::assemble_report()} for a unified pipeline report.
+\code{TaxaTools::assemble_report()} for a unified pipeline report. Any
+reference-support columns from
+\code{TaxaLikely::annotate_reference_support()} are reported next to the
+flags and kept out of every flag count: they are information, not a flag,
+and \strong{a low reference count does not mean a call is wrong}.
 
 If the data carries reference-support columns from
 \code{TaxaLikely::annotate_reference_support()} -- any
