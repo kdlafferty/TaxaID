@@ -79,3 +79,67 @@ Things the four research agents found that change an existing assumption or surf
 -   **Greengenes2 and GTDB both carry habitat-like fields**, but in metadata layers (`empo_0`-`empo_3` EMP-sample layer; `ncbi_isolation_source` genome-metadata TSV) that this ecosystem's current parsing (`subset_local_database()`, taxonomy-string only) doesn't reach -- the fields exist in the source's data universe but aren't currently wired to anything here.
 -   **PR2 has the richest habitat-adjacent metadata of any source in this table** (ENVO-coded environment, biotic relationship, sample type, trophic mode) but is not integrated anywhere yet, despite being named as relevant to the 18S phytoplankton workflow. **Update (Session 136): PR2 is now integrated** via `TaxaLikely::subset_local_database()` -- see its row above.
 -   **BOLD migrated to a new v5 API in 2024 -- not a temporary outage (Session 136, corrected from an earlier same-session finding).** The `bold` R package's `bold_seqspec()`/`bold_identify()` target BOLD's old v3/v4 API, which is now permanently retired ("BOLD Public Offline" is a retirement message, not a downtime message). The real, current API is BOLD's v5 Data Portal (`portal.boldsystems.org/api`, documented by its own public OpenAPI spec) -- confirmed fully live via a real 3-stage round trip. **`fetch_bold_reference_sequences()` is now built and shipped** directly against this API via `httr2`, no `bold` package dependency needed. **`identify_bold_sequences()` (the query/ID-engine side) has no public API to build against** -- confirmed via BOLD's complete OpenAPI paths list (20 endpoints, none for sequence identification); the "Barcode ID" tool is web-form-only under v5. See `project_bold_v5_migration_resolved` memory for the full record.
+
+## Citation provenance: logged 2026-10-09, not built
+
+Requested by Kevin via the CalIntertidal reporting coordinator: a fetched data
+set must carry enough provenance to be CITED and reproduced. Verified against
+real artifacts before logging; both items confirmed, with two corrections to the
+request as received.
+
+### 1. GBIF -- per-record dataset provenance is absent (TaxaFetch)
+
+`CalIntertidal_occurrences_clean.rds` is 932,752 x 23 and carries only
+`datasource = "GBIF"` on every row. Absent: `datasetKey`, `gbifID`,
+`publishingOrgKey`, `license`, `occurrenceID`. So the pool cannot be cited either
+way GBIF accepts -- no download DOI, and no datasetKey/record-count listing from
+which to register a "derived dataset".
+
+Where it is lost: not in the workflow. `occurrences_clean` is built from
+`occurrences_std` by ROW subsetting (`CaliforniaIntertidalWorkflow_multi_marker.R:1340`),
+so the columns were already gone upstream. And `gbifID` is obtainable --
+`TaxaFetch::check_geographic_outliers()` requests it explicitly
+(`check_geographic_outliers.R:198`) -- so this is a standardisation/column-
+selection loss inside TaxaFetch, not a limit of the API.
+
+Worth noting while fixing it: `dedupe_occurrences()` dedupes on `gbifID`, so
+dropping that column downstream also removes the audit trail for a step that
+silently changes row counts.
+
+What to record: `datasetKey` and `gbifID` on every retained record; the download
+key/DOI whenever `download_gbif_occurrences()` is the path used (that function
+already keeps per-query metadata beside its cached zip, so the key may be
+recoverable there); and, for the API path, `datasetKey` plus a per-key record
+count, which is exactly what registering a derived dataset needs.
+
+### 2. NCBI -- no fetch date and no database release (TaxaLikely, NOT TaxaFetch)
+
+Correction to the request: the reference-sequence fetch is
+`TaxaLikely::fetch_ncbi_reference_sequences()`, so this item belongs to
+TaxaLikely. TaxaFetch owns occurrence acquisition, not reference sequences.
+
+A real cache metadata file
+(`Aaptos_COI_Leray_l300_900_d_oor2_l200000_rk-family-genus-species_meta.rds`)
+holds 11 columns: `taxid`, `acc`, `acc_version`, `title`, `slen`, `organism`,
+`create_date`, `in_barcode_range`, `family`, `genus`, `species`. There is no
+fetch date, no query date, and no database or release. `create_date` is the
+GenBank RECORD's own creation date, not when we retrieved it.
+
+The only fetch-time record is the file's mtime, and it is not usable for
+citation: a warm run rewrites nothing, so the mtime is the FIRST fetch rather
+than the last verification, and both `taxafetch_clear_cache(older_than_days=)`
+and `taxalikely_clear_cache()` prune on that same mtime. The QUERY itself is
+recoverable, since the cache filename encodes taxon, barcode term, length
+window, out-of-range caps and rank system.
+
+What to record: a retrieval timestamp per cache entry, the E-utilities database
+queried, and the release/build string where NCBI exposes one.
+
+### Status
+
+Logged only. No code written, nothing scheduled. Both items are additive
+(new recorded fields, no behaviour change), so neither needs a new export; under
+the release freeze they are fixes inside existing functions. Item 1 would widen
+the GBIF cache's stored columns, so check whether it invalidates cached
+occurrence downloads before implementing -- the same trap that cost ~10 h of COI
+refetch when a fetch-time cap was switched on mid-project.
