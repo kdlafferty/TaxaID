@@ -455,7 +455,13 @@ trained model parameters -
 cross-genus draw (the one `build_sequence_matrix(by_genus = TRUE)`
 uses to build the H3 sample) moves the resulting pair distribution
 across repeated draws - `report_likelihood()`: generate report
-section for `assemble_report()`
+section for `assemble_report()` -
+`annotate_reference_support()`: add information-only columns saying how much
+per-species reference data the model had for each call's taxon. Nothing
+thresholds or filters on them, and a low count is not evidence a call is
+wrong; read the `reference_basis` column, since a missing count marks taxa
+too thinly referenced for a per-species row at all, and a count at the
+model's maximum is censored by the matrix build's `max_seqs_per_taxon`.
 
 Cache: `fetch_ncbi_reference_sequences()` and `audit_barcode_coverage()`
 cache to a persistent, per-user directory so re-running the same

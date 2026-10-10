@@ -9,7 +9,12 @@ report_flags(flagged_data, verbose = FALSE)
 \arguments{
 \item{flagged_data}{Data frame. Assignment data with flag columns from
 \code{\link{flag_contaminant}}, \code{\link{flag_handler}}, and/or
-\code{\link{review_assignments}}.}
+\code{\link{review_assignments}}, optionally also carrying
+reference-support columns from
+\code{TaxaLikely::annotate_reference_support()}. Those columns are
+additive and order-independent, so annotating before or after any
+\code{flag_*()} call or \code{\link{add_posthoc_assessment}} gives
+the same result.}
 
 \item{verbose}{Logical. Print summary messages. Default \code{FALSE}.}
 }
@@ -19,7 +24,14 @@ A \code{report_section} object with:
 \item{methods}{Template text describing which flags were applied.}
 \item{results}{Template text summarizing flag counts.}
 \item{params}{Named list of flagging parameters.}
-\item{statistics}{Named list of flag counts.}
+\item{statistics}{Named list of flag counts. When reference-support
+columns are present, also \code{reference_support}: one entry per
+column prefix giving \code{n_rows}, \code{n_with_count}, the
+\code{min}/\code{median}/\code{max} count, \code{n_at_model_max}
+(censored rows), and \code{basis} (how many rows fall in each
+situation, including the \code{"no_model_row"} rows that have the
+least reference support of all). None of it is added to
+\code{n_flagged}.}
 }
 }
 \description{
@@ -27,6 +39,23 @@ Summarizes the quality flags applied by TaxaFlag into a structured
 \code{report_section} object (from TaxaTools). Auto-detects which flag
 types are present in the data. Works standalone or feeds into
 \code{TaxaTools::assemble_report()} for a unified pipeline report.
+
+If the data carries reference-support columns from
+\code{TaxaLikely::annotate_reference_support()} -- any
+\code{*_n_references} column and its companions -- their distribution is
+reported next to the flags, and kept out of every flag count. They are
+information, not a flag: they say how many per-species training
+observations the likelihood model fitted that call's taxon from.
+\strong{A low count does not mean a call is wrong}, and nothing in TaxaID
+thresholds or filters on one; under-sequenced species that are
+nonetheless correctly called are ordinary. Two readings in particular
+invert the truth: a row whose basis is \code{"no_model_row"} has
+\emph{less} reference support than any row carrying a number (too few
+observations for a per-species row at all, typically one reference
+sequence), not more; and a count sitting at the model's maximum is
+censored by the sequence-matrix build, so it means "this many or more"
+rather than an exact total. Read the basis column, never a bare
+\code{NA}.
 }
 \examples{
 flagged <- data.frame(
@@ -36,8 +65,20 @@ flagged <- data.frame(
 sec <- report_flags(flagged)
 print(sec)
 
+# With reference support annotated: reported, but not flagged. Salmo salar
+# here is the thinnest of the three despite carrying no count.
+flagged$winner_n_references <- c(3L, 20L, NA_integer_)
+flagged$winner_reference_basis <- c(
+  "model_species_row", "model_species_row", "no_model_row"
+)
+flagged$winner_at_model_max <- c(FALSE, TRUE, NA)
+sec2 <- report_flags(flagged)
+sec2$statistics$reference_support$winner
+
 }
 \seealso{
 \code{\link{flag_contaminant}}, \code{\link{flag_handler}},
-\code{\link{review_assignments}}
+\code{\link{review_assignments}}, and
+\code{TaxaLikely::annotate_reference_support()} for the
+reference-support columns this function reports but never flags on
 }

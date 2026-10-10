@@ -9,14 +9,37 @@
 
 #' Generate a Report Section for Quality Flagging
 #'
+#' @description
 #' Summarizes the quality flags applied by TaxaFlag into a structured
 #' \code{report_section} object (from TaxaTools). Auto-detects which flag
 #' types are present in the data. Works standalone or feeds into
 #' \code{TaxaTools::assemble_report()} for a unified pipeline report.
 #'
+#' If the data carries reference-support columns from
+#' \code{TaxaLikely::annotate_reference_support()} -- any
+#' \code{*_n_references} column and its companions -- their distribution is
+#' reported next to the flags, and kept out of every flag count. They are
+#' information, not a flag: they say how many per-species training
+#' observations the likelihood model fitted that call's taxon from.
+#' \strong{A low count does not mean a call is wrong}, and nothing in TaxaID
+#' thresholds or filters on one; under-sequenced species that are
+#' nonetheless correctly called are ordinary. Two readings in particular
+#' invert the truth: a row whose basis is \code{"no_model_row"} has
+#' \emph{less} reference support than any row carrying a number (too few
+#' observations for a per-species row at all, typically one reference
+#' sequence), not more; and a count sitting at the model's maximum is
+#' censored by the sequence-matrix build, so it means "this many or more"
+#' rather than an exact total. Read the basis column, never a bare
+#' \code{NA}.
+#'
 #' @param flagged_data Data frame. Assignment data with flag columns from
 #'   \code{\link{flag_contaminant}}, \code{\link{flag_handler}}, and/or
-#'   \code{\link{review_assignments}}.
+#'   \code{\link{review_assignments}}, optionally also carrying
+#'   reference-support columns from
+#'   \code{TaxaLikely::annotate_reference_support()}. Those columns are
+#'   additive and order-independent, so annotating before or after any
+#'   \code{flag_*()} call or \code{\link{add_posthoc_assessment}} gives
+#'   the same result.
 #' @param verbose Logical. Print summary messages. Default \code{FALSE}.
 #'
 #' @return A \code{report_section} object with:
@@ -24,11 +47,20 @@
 #'   \item{methods}{Template text describing which flags were applied.}
 #'   \item{results}{Template text summarizing flag counts.}
 #'   \item{params}{Named list of flagging parameters.}
-#'   \item{statistics}{Named list of flag counts.}
+#'   \item{statistics}{Named list of flag counts. When reference-support
+#'     columns are present, also \code{reference_support}: one entry per
+#'     column prefix giving \code{n_rows}, \code{n_with_count}, the
+#'     \code{min}/\code{median}/\code{max} count, \code{n_at_model_max}
+#'     (censored rows), and \code{basis} (how many rows fall in each
+#'     situation, including the \code{"no_model_row"} rows that have the
+#'     least reference support of all). None of it is added to
+#'     \code{n_flagged}.}
 #' }
 #'
 #' @seealso \code{\link{flag_contaminant}}, \code{\link{flag_handler}},
-#'   \code{\link{review_assignments}}
+#'   \code{\link{review_assignments}}, and
+#'   \code{TaxaLikely::annotate_reference_support()} for the
+#'   reference-support columns this function reports but never flags on
 #'
 #' @examples
 #' flagged <- data.frame(
@@ -37,6 +69,16 @@
 #' )
 #' sec <- report_flags(flagged)
 #' print(sec)
+#'
+#' # With reference support annotated: reported, but not flagged. Salmo salar
+#' # here is the thinnest of the three despite carrying no count.
+#' flagged$winner_n_references <- c(3L, 20L, NA_integer_)
+#' flagged$winner_reference_basis <- c(
+#'   "model_species_row", "model_species_row", "no_model_row"
+#' )
+#' flagged$winner_at_model_max <- c(FALSE, TRUE, NA)
+#' sec2 <- report_flags(flagged)
+#' sec2$statistics$reference_support$winner
 #'
 #' @export
 report_flags <- function(flagged_data,
@@ -76,6 +118,15 @@ report_flags <- function(flagged_data,
 
   # Review metadata columns: review_confidence, review_comment, etc.
   review_cols <- grep("^review_", all_cols, value = TRUE)
+
+  # Reference-support columns from TaxaLikely::annotate_reference_support().
+  # Suffix-matched on the count column, so any prefix is picked up (the
+  # function's own `prefix` argument lets one table carry several, e.g.
+  # winner_ and primary_), matching the suffix convention used for
+  # plausibility columns above. These are NOT flags and are deliberately
+  # kept out of every flag count below: they report how much reference data
+  # the likelihood model had, which neither accuses nor clears a call.
+  ref_count_cols <- grep("_n_references$", all_cols, value = TRUE)
 
   # Unified validity schema (flag_contaminant()/flag_handler()): every
   # TaxaFlag flag_*() mechanism shares one literal column name
@@ -180,6 +231,34 @@ report_flags <- function(flagged_data,
   )
   if (length(flag_counts) > 0L) statistics$flag_counts <- flag_counts
 
+  # Reference support: distribution only. Reported per count column, each
+  # alongside the basis breakdown that says why a row has no count -- the
+  # breakdown is not optional context, because one of its values
+  # ("no_model_row") marks calls with LESS reference support than any row
+  # carrying a number, and a bare NA count would read as the opposite.
+  ref_support <- list()
+  for (cnt_col in ref_count_cols) {
+    pfx <- sub("_n_references$", "", cnt_col)
+    cnt <- suppressWarnings(as.numeric(flagged_data[[cnt_col]]))
+    entry <- list(n_rows = n_total, n_with_count = sum(!is.na(cnt)))
+    if (entry$n_with_count > 0L) {
+      entry$min <- min(cnt, na.rm = TRUE)
+      entry$median <- stats::median(cnt, na.rm = TRUE)
+      entry$max <- max(cnt, na.rm = TRUE)
+    }
+    basis_col <- paste0(pfx, "_reference_basis")
+    if (basis_col %in% all_cols) {
+      bt <- table(as.character(flagged_data[[basis_col]]), useNA = "ifany")
+      entry$basis <- as.list(stats::setNames(as.integer(bt), names(bt)))
+    }
+    max_col <- paste0(pfx, "_at_model_max")
+    if (max_col %in% all_cols) {
+      entry$n_at_model_max <- sum(as.logical(flagged_data[[max_col]]), na.rm = TRUE)
+    }
+    ref_support[[pfx]] <- entry
+  }
+  if (length(ref_support) > 0L) statistics$reference_support <- ref_support
+
   # --- Params -----------------------------------------------------------------
   params <- list(flag_types = flag_types)
   rp <- attr(flagged_data, "report_params")
@@ -193,6 +272,18 @@ report_flags <- function(flagged_data,
     )
   } else {
     methods_text <- "No quality flags were detected in the data."
+  }
+  if (length(ref_count_cols) > 0L) {
+    methods_text <- paste(
+      methods_text,
+      paste0(
+        "Reference support -- how many per-species training observations ",
+        "the likelihood model fitted each call's taxon from -- is reported ",
+        "alongside these flags for information only: no flag, threshold or ",
+        "filter reads it, and a low count is not evidence that a call is ",
+        "wrong."
+      )
+    )
   }
 
   # --- Results text -----------------------------------------------------------
@@ -218,6 +309,44 @@ report_flags <- function(flagged_data,
     results_parts <- c(results_parts, sprintf(
       "Of %s assignments, none were flagged.", format(n_total, big.mark = ",")
     ))
+  }
+
+  for (pfx in names(ref_support)) {
+    e <- ref_support[[pfx]]
+    if (e$n_with_count > 0L) {
+      results_parts <- c(results_parts, sprintf(
+        paste0(
+          "Reference support (%s): %d of %s calls carry a per-species ",
+          "reference count, median %s (range %s-%s)%s."
+        ),
+        pfx, e$n_with_count, format(e$n_rows, big.mark = ","),
+        format(e$median), format(e$min), format(e$max),
+        if (!is.null(e$n_at_model_max) && e$n_at_model_max > 0L) {
+          sprintf(
+            "; %d at the model's maximum, where the build censors the count",
+            e$n_at_model_max
+          )
+        } else {
+          ""
+        }
+      ))
+    } else {
+      results_parts <- c(results_parts, sprintf(
+        "Reference support (%s): no call carries a per-species reference count.",
+        pfx
+      ))
+    }
+    no_row <- if (!is.null(e$basis)) e$basis[["no_model_row"]] else NULL
+    if (!is.null(no_row) && no_row > 0L) {
+      results_parts <- c(results_parts, sprintf(
+        paste0(
+          "A further %d call(s) have no per-species row in the model at all ",
+          "-- fewer training observations than it fits, so less reference ",
+          "support than any counted call, not more."
+        ),
+        no_row
+      ))
+    }
   }
 
   results_text <- paste(results_parts, collapse = " ")
