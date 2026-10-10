@@ -11,12 +11,21 @@
 #'
 #' @description
 #' Appends four information-only columns reporting how much per-species
-#' reference data the trained likelihood model had for each row's taxon:
-#' the number of training observations behind that species' fitted mean, the
-#' empirical-Bayes weight those observations earned, which of six situations
-#' the row is in, and whether the count is at the model's ceiling. The
-#' annotation is a lookup into the model that already scored the data, so it
-#' needs no re-evaluation and can be applied to results produced earlier.
+#' reference data the trained likelihood model had for each row's taxon.
+#' Nothing in TaxaID reads them: there is no threshold, filter, gate or
+#' re-ranking on them anywhere. \strong{A low count does not imply the call
+#' is wrong}, and a high one does not imply it is right -- thinly referenced
+#' and correctly called is an ordinary combination. Always read
+#' \code{<prefix>_reference_basis} alongside a count, because \code{NA} has
+#' five different reasons and one of them means thinner than any number, not
+#' better.
+#'
+#' The four columns are the number of training observations behind that
+#' species' fitted mean, the empirical-Bayes weight those observations
+#' earned, which of six situations the row is in, and whether the count is at
+#' the model's ceiling. The annotation is a lookup into the model that already
+#' scored the data, so it needs no re-evaluation and can be applied to results
+#' produced earlier.
 #'
 #' Nothing in TaxaID reads these columns. They do not gate, filter, re-rank
 #' or alter a call, there is no threshold on them anywhere, and
