@@ -242,14 +242,14 @@ This function implements the likelihood-side half of the watch-list surveillance
 
 Generate a Report Section for Quality Flagging
 
-Summarizes the quality flags applied by TaxaFlag into a structured 'report_section' object (from TaxaTools). Auto-detects which flag types are present in the data. Works standalone or feeds into 'TaxaTools::assemble_report()' for a unified pipeline report.
+Summarizes the quality flags applied by TaxaFlag into a structured 'report_section' object (from TaxaTools). Auto-detects which flag types are present in the data. Works standalone or feeds into 'TaxaTools::assemble_report()' for a unified pipeline report. Any reference-support columns from 'TaxaLikely::annotate_reference_support()' are reported next to the flags and kept out of every flag count: they are information, not a flag, and *a low reference count does not mean a call is wrong*.
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| flagged_data | yes |  | Data frame. Assignment data with flag columns from flag_contaminant, flag_handler, and/or review_assignments. |
+| flagged_data | yes |  | Data frame. Assignment data with flag columns from flag_contaminant, flag_handler, and/or review_assignments, optionally also carrying reference-support columns from TaxaLikely::annotate_reference_support(). Those columns are additive and order-independent, so annotating before or after any flag_*() call or add_posthoc_assessment gives the same result. |
 | verbose | no | FALSE | Logical. Print summary messages. Default FALSE. |
 
-**Value:** A 'report_section' object with: methods Template text describing which flags were applied. results Template text summarizing flag counts. params Named list of flagging parameters. statistics Named list of flag counts.
+**Value:** A 'report_section' object with: methods Template text describing which flags were applied. results Template text summarizing flag counts. params Named list of flagging parameters. statistics Named list of flag counts. When reference-support columns are present, also 'reference_support': one entry per column prefix giving 'n_rows', 'n_with_count', the 'min'/'median'/'max' count, 'n_at_model_max' (censored rows), and 'basis' (how many rows fall in each situation, including the '"no_model_row"' rows that have the least reference support of all). None of it is added to 'n_flagged'.
 
 ### review_assignments(input_df, taxon_col = "consensus_taxon", taxon_rank_col = NULL, plausible_taxa_col = NULL, irreducible_only = TRUE, consensus_posterior_col = "consensus_posterior", winner_prior_col = "winner_prior", winner_rank_expanded_col = "winner_rank_expanded", plausible_posteriors_col = "plausible_posteriors", consensus_plausibility_col = "consensus_plausibility", consensus_discrimination_col = "consensus_discrimination", dist_nearest_occupied_km_col = "dist_nearest_occupied_km", patch_diameter_km_col = "patch_diameter_km", beyond_buffer_col = "beyond_buffer", inat_in_range_col = "in_range", inat_n_observations_col = "n_observations", inat_matched_name_col = "matched_name", context, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), model_label = NULL, taxa_per_call = 15L, max_tokens = NULL, max_retries = 2L, pause_seconds = 1, cache_dir = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
 
