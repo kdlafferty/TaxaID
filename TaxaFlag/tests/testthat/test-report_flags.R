@@ -169,3 +169,59 @@ test_that("report_flags: unified validity schema still works alongside an old-er
   expect_true("handler artifacts" %in% sec$params$flag_types)
   expect_equal(sec$statistics$n_flagged, 2L) # row 2 (old-era) + row 3 (new-era)
 })
+
+
+# ---- reference support (information only) ------------------------------------
+
+.rf_ref <- function() {
+  data.frame(
+    taxon_name = c("Girella nigricans", "Homo sapiens", "Mytilus", "Sarda chiliensis"),
+    validity_flag = c("valid", "invalid_lab_contaminant", "valid", "valid"),
+    winner_n_references = c(3L, 20L, NA_integer_, NA_integer_),
+    winner_reference_basis = c(
+      "model_species_row", "model_species_row", "rank_not_in_model",
+      "no_model_row"
+    ),
+    winner_at_model_max = c(FALSE, TRUE, NA, NA),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("report_flags summarises reference support without counting it as a flag", {
+  sec <- report_flags(.rf_ref())
+  rs <- sec$statistics$reference_support$winner
+
+  expect_equal(rs$n_rows, 4L)
+  expect_equal(rs$n_with_count, 2L)
+  expect_equal(rs$min, 3)
+  expect_equal(rs$max, 20)
+  expect_equal(rs$n_at_model_max, 1L)
+  expect_equal(rs$basis$no_model_row, 1L)
+  expect_equal(rs$basis$rank_not_in_model, 1L)
+
+  # The one real flag is the contaminant row. Reference support must not
+  # inflate it -- the whole point of the column is that it accuses nobody.
+  expect_equal(sec$statistics$n_flagged, 1L)
+})
+
+test_that("the report text says a low count is not evidence a call is wrong", {
+  sec <- report_flags(.rf_ref())
+  expect_match(sec$methods, "information only", fixed = TRUE)
+  expect_match(sec$methods, "not evidence that a call is", fixed = TRUE)
+  expect_match(sec$results, "Reference support (winner)", fixed = TRUE)
+  # ...and that the uncounted rows are the thinner ones, not the better ones.
+  expect_match(sec$results, "not more", fixed = TRUE)
+})
+
+test_that("a prefix other than winner_ is detected too", {
+  d <- .rf_ref()
+  names(d) <- sub("^winner_", "primary_", names(d))
+  sec <- report_flags(d)
+  expect_equal(sec$statistics$reference_support$primary$n_with_count, 2L)
+})
+
+test_that("data with no reference-support columns reports none", {
+  sec <- report_flags(.rf_ref()[, c("taxon_name", "validity_flag")])
+  expect_null(sec$statistics$reference_support)
+  expect_false(grepl("Reference support", sec$results, fixed = TRUE))
+})

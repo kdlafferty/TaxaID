@@ -1,6 +1,15 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `annotate_reference_support()` adds four information-only columns saying how
+  much per-species reference data the trained model had for a call's taxon:
+  `n_references` (`H1_Lookup$n_obs_species`), `reference_weight` (the
+  empirical-Bayes weight those observations earned), `reference_basis` (the
+  documented reason for every `NA`, including `"no_model_row"` for taxa too
+  thinly referenced to have a row at all) and `at_model_max` (the count is
+  censored by the matrix build's `max_seqs_per_taxon`). A post-hoc lookup, so
+  it annotates results produced earlier without re-evaluating; nothing
+  thresholds or filters on it, and a low count is not evidence a call is wrong.
 * `restore_suppressed_candidates()` scores a restored congener by aligning the
   query to the candidate's own references (`sequence_col`, `min_query_coverage`),
   reported in `restored_score_source` / `restored_reason`. The hierarchy's
