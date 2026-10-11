@@ -2260,6 +2260,144 @@ test_that("evaluate_reference_accessions() records the submitted length and whic
   expect_equal(out$query_trim_path, "as_deposited")
 })
 
+# ---- query_over_amplicon: the COI-Leray wrong-region footprint ---------------
+# The trimming gate asks whether a deposit exceeds the marker's longest
+# plausible length (max_bp = 900 for COI), not whether it exceeds the amplicon
+# the queries cover (350-370 for Leray). A typical 658 bp Folmer record is
+# therefore never offered to the trimmer, and its identities describe a wider
+# region than a correctly trimmed row's. These tests pin the REPORTING of that;
+# what gets submitted is deliberately unchanged, because changing it would move
+# every cached identity.
+
+test_that("a Folmer-length COI query is marked over the Leray amplicon, and warns once", {
+  SEQ <- strrep("ACGT", 165L) # 660 bp: under COI max_bp (900), far over Leray's amplicon
+  local_mocked_bindings(
+    .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,
+                                                  ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(
+        accession = "ACC1", organism = "Testus testus",
+        create_date = "2020/01/01", sequence = SEQ,
+        stringsAsFactors = FALSE
+      )
+    },
+    blast_sequences = function(seq_df, ...) {
+      data.frame(
+        observation_id = character(0), accession = character(0),
+        score = numeric(0), stringsAsFactors = FALSE
+      )
+    },
+    .resolve_taxonomy_by_acc = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = character(0), stringsAsFactors = FALSE)
+    },
+    .extract_feature_table_fallback = function(accessions, sequences, barcode_term,
+                                               ncbi_api_key = NULL, verbose = TRUE) {
+      # The real fallback cannot shorten a Folmer record: its own feature table
+      # reads "COI" for the whole deposit. Mocked to decline, as it does there.
+      out <- sequences
+      attr(out, "decline_reason") <- rep("no_matching_feature", length(sequences))
+      out
+    },
+    .package = "TaxaMatch"
+  )
+  expect_warning(
+    out <- evaluate_reference_accessions("ACC1",
+      barcode_term = "COI-Leray", cache_dir = NULL, verbose = FALSE
+    ),
+    "longer than the target amplicon"
+  )
+  expect_true(isTRUE(out$query_over_amplicon))
+  # Deliberately NOT shortened: the submitted length is the deposit's own.
+  expect_equal(out$query_len_submitted, 660L)
+})
+
+test_that("a correctly-sized Leray query is not marked and does not warn", {
+  SEQ <- strrep("ACGT", 83L) # 332 bp: inside the Leray amplicon span
+  local_mocked_bindings(
+    .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,
+                                                  ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(
+        accession = "ACC1", organism = "Testus testus",
+        create_date = "2020/01/01", sequence = SEQ,
+        stringsAsFactors = FALSE
+      )
+    },
+    blast_sequences = function(seq_df, ...) {
+      data.frame(
+        observation_id = character(0), accession = character(0),
+        score = numeric(0), stringsAsFactors = FALSE
+      )
+    },
+    .resolve_taxonomy_by_acc = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = character(0), stringsAsFactors = FALSE)
+    },
+    .extract_feature_table_fallback = function(accessions, sequences, barcode_term,
+                                               ncbi_api_key = NULL, verbose = TRUE) {
+      # The real fallback cannot shorten a Folmer record: its own feature table
+      # reads "COI" for the whole deposit. Mocked to decline, as it does there.
+      out <- sequences
+      attr(out, "decline_reason") <- rep("no_matching_feature", length(sequences))
+      out
+    },
+    .package = "TaxaMatch"
+  )
+  out <- evaluate_reference_accessions("ACC1",
+    barcode_term = "COI-Leray", cache_dir = NULL, verbose = FALSE
+  )
+  expect_false(isTRUE(out$query_over_amplicon))
+  expect_equal(out$query_len_submitted, 332L)
+})
+
+test_that("query_over_amplicon is NA when no barcode_term fixes an amplicon", {
+  SEQ <- strrep("ACGT", 165L)
+  local_mocked_bindings(
+    .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,
+                                                  ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(
+        accession = "ACC1", organism = "Testus testus",
+        create_date = "2020/01/01", sequence = SEQ,
+        stringsAsFactors = FALSE
+      )
+    },
+    blast_sequences = function(seq_df, ...) {
+      data.frame(
+        observation_id = character(0), accession = character(0),
+        score = numeric(0), stringsAsFactors = FALSE
+      )
+    },
+    .resolve_taxonomy_by_acc = function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+      data.frame(accession = character(0), stringsAsFactors = FALSE)
+    },
+    .extract_feature_table_fallback = function(accessions, sequences, barcode_term,
+                                               ncbi_api_key = NULL, verbose = TRUE) {
+      # The real fallback cannot shorten a Folmer record: its own feature table
+      # reads "COI" for the whole deposit. Mocked to decline, as it does there.
+      out <- sequences
+      attr(out, "decline_reason") <- rep("no_matching_feature", length(sequences))
+      out
+    },
+    .package = "TaxaMatch"
+  )
+  out <- evaluate_reference_accessions("ACC1", cache_dir = NULL, verbose = FALSE)
+  expect_true(is.na(out$query_over_amplicon))
+})
+
+test_that("the over-amplicon gap is not COI-specific: every primer-paired marker has one", {
+  # The defect is the gate's NARROWNESS, not a wrong value for one marker, so
+  # pin the relationship rather than one number. COI-Leray is simply the worst.
+  gaps <- vapply(names(TaxaTools::barcode_primer_defaults), function(t) {
+    amp <- TaxaTools::barcode_primer_defaults[[t]]$amplicon_range[2]
+    max_bp <- TaxaTools::resolve_barcode_lengths(t)[["max_bp"]]
+    as.numeric(max_bp) - as.numeric(amp)
+  }, numeric(1))
+  # Every marker's trimming gate sits at or above its own amplicon bound, so a
+  # deposit can always land between the two and go untrimmed.
+  expect_true(all(gaps >= 0))
+  # COI-Leray is the worst by a wide margin -- 530 bp of room, against 25 for
+  # MiFish-U -- which is why it is the marker the defect was found on.
+  expect_gt(gaps[["coi-leray"]], gaps[["mifish-u"]])
+  expect_gt(gaps[["coi-leray"]], 500)
+})
+
 test_that(".compute_hierarchy_congruence() partitions excluded hits by the filter that removed them", {
   ranks <- c("family", "genus", "species")
   # Three hits for one query: one from its own submission batch, one
