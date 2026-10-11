@@ -3907,7 +3907,7 @@ in the memory system.
 **If only TaxaTools changed:**
 ```r
 .rs.restartR()
-devtools::install("~/My Drive/Rscripts/projects/TaxaID/TaxaTools")
+devtools::install("<your TaxaID checkout>/TaxaTools")
 .rs.restartR()
 library(TaxaTools)
 packageDescription("TaxaTools")$Built   # confirm this session picked up the fresh build, not a stale one
@@ -3916,7 +3916,7 @@ packageDescription("TaxaTools")$Built   # confirm this session picked up the fre
 **If multiple packages changed, or if unsure which downstream packages are affected:**
 ```r
 .rs.restartR()
-source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")
+source("<your TaxaID checkout>/ecosystem_docs/install_all.R")
 .rs.restartR()
 library(TaxaTools)  # repeat for every touched package
 packageDescription("TaxaTools")$Built
@@ -3925,6 +3925,11 @@ packageDescription("TaxaTools")$Built
 **Always include two `.rs.restartR()` calls** — the first clears the stale session before
 installing, the second ensures the freshly installed packages are loaded cleanly.
 The `source()` line installs all packages in dependency order without opening each project.
+**Name the checkout you mean, and read the line it prints.** `install_all.R` acts on the
+checkout it is part of (override with `TAXAID_ROOT`) and prints the path, branch and
+commit before installing anything -- so sourcing a copy that sits on an old branch is
+visible in that line and nowhere else. An installed package records no commit, and
+`devtools::install()` succeeds whichever tree it was handed.
 Do not tell the user to use Session → Restart R or Cmd+Shift+F10 (does not work on this machine).
 
 **Always include an explicit `library(Package)` + `packageDescription()$Built` check as its
