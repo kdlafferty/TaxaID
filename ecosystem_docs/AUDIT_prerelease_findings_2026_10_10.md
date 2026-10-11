@@ -38,6 +38,31 @@ placeholder is now publicly 404. A previously reported companion defect,
 `https://claude.ai/code` tool-attribution links in the nine package READMEs, has
 since been fixed -- 0 occurrences remain.
 
+### Update, 2026-10-11: the package is not a citable object
+
+The maintainer settled the framing: TaxaID is public but **not currently
+citable**; the citable object will be the USGS release. The repository's posture
+already matches that -- `DISCLAIMER.md` carries the Provisional text, `code.json`
+says `"status": "Preliminary"`, and all nine `inst/CITATION` files point at the
+GitHub URL with the manuscript "In preparation". The printed DOI is the only
+thing in the repository that contradicts it.
+
+It is also one location more than reported above: **15**, not 14. The fifteenth
+is not documentation but code --
+
+```
+TaxaWizard/R/shiny.R:1327
+    '            "software release, https://doi.org/10.5066/xxxxxx."',
+```
+
+-- which writes the placeholder into citation text the app hands the user, so a
+workflow built through the Shiny interface carries the 404 outward.
+
+**Decision needed (narrowed to wording):** replace the DOI line, in all 15
+locations, with a statement that the software is provisional and not yet citable
+plus the GitHub URL, keeping the USGS software-release framing for the eventual
+official release. One commit, no exports touched.
+
 ## 2. Files the packages ship that look like review scaffolding
 
 These live in `inst/` and therefore install into every user's library.
