@@ -144,6 +144,7 @@ utils::globalVariables(c(
   "migrated_from", # provenance of a migrated row
   "query_len_submitted", # diagnostic: bp actually sent to BLAST
   "query_trim_path", # diagnostic: which rescue produced it
+  "query_over_amplicon", # diagnostic: submitted longer than the target amplicon
   "n_excluded_same_batch", # diagnostic: hits lost to the independence filter
   "n_excluded_not_species_resolved", # diagnostic: hits lost to the species-resolution filter
   "local_corroborator_accession" # provenance: which accession vouches for a locally_corroborated row
@@ -689,6 +690,7 @@ utils::globalVariables(c(
     evaluated_at = as.POSIXct(character(0L)), params_key = character(0L),
     taxonomy_resolution_source = character(0L),
     query_len_submitted = integer(0L), query_trim_path = character(0L),
+    query_over_amplicon = logical(0L),
     n_excluded_same_batch = integer(0L),
     n_excluded_not_species_resolved = integer(0L),
     local_corroborator_accession = character(0L),
@@ -1006,6 +1008,7 @@ utils::globalVariables(c(
         taxonomy_resolution_source = NA_character_,
         query_len_submitted = NA_integer_, # never submitted
         query_trim_path = oversized_meta$trim_path,
+        query_over_amplicon = NA, # never submitted, so no submitted length to judge
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
         local_corroborator_accession = NA_character_,
@@ -1037,6 +1040,47 @@ utils::globalVariables(c(
         }
       }
       query_meta <- query_meta[!is_oversized, , drop = FALSE]
+    }
+  }
+
+  # Is the query that WILL BE SUBMITTED longer than the target amplicon? The
+  # trimming gate asks whether a record exceeds the marker's longest plausible
+  # deposit (`max_bp`), not whether it exceeds the amplicon the queries
+  # actually cover, and the two differ for every registered marker with a
+  # primer pair -- by 25 bp for MiFish-U and by 530 for COI-Leray, where a
+  # typical 658 bp Folmer deposit is under `max_bp` (900), is never offered to
+  # the primer trimmer at all, and whose feature table says "COI" for the
+  # whole record so the annotation fallback cannot shorten it either. Its
+  # percent identities then describe a wider region than the queries being
+  # screened -- the same shape as the old MiFish 92/92 miscalibration.
+  #
+  # RECORDED, NOT ACTED ON. Changing what gets submitted would move every
+  # cached identity and force a re-screen of every cache, so this reports the
+  # footprint and leaves the submission alone. `.resolve_trimmed_span_max()`
+  # is the same bound mechanism 1 uses, so this reads one definition rather
+  # than introducing a second. Placed AFTER mechanism 2 on purpose: a row the
+  # submission cap already refused has no identities to mis-describe, and
+  # warning about one would be a false alarm.
+  query_meta$over_amplicon <- rep(NA, nrow(query_meta))
+  if (!is.null(barcode_term) && nrow(query_meta) > 0L) {
+    amp_max <- .resolve_trimmed_span_max(barcode_term, strip_primers = strip_primers)
+    if (!is.na(amp_max)) {
+      sub_len <- nchar(query_meta$sequence)
+      query_meta$over_amplicon <- !is.na(sub_len) & sub_len > amp_max
+      over_len <- sub_len[query_meta$over_amplicon %in% TRUE]
+      if (length(over_len) > 0L) {
+        warning(sprintf(
+          paste0(
+            "evaluate_reference_accessions(barcode_term = '%s'): %d of %d query ",
+            "sequence(s) are longer than the target amplicon (%.0f bp); median %.0f bp, ",
+            "longest %.0f bp. Percent identities for those rows describe a wider region ",
+            "than the amplicon, so they are not comparable with a correctly trimmed ",
+            "row. Marked per row in query_over_amplicon."
+          ),
+          paste(barcode_term, collapse = "/"), length(over_len), nrow(query_meta),
+          amp_max, stats::median(over_len), max(over_len)
+        ), call. = FALSE)
+      }
     }
   }
 
@@ -1352,6 +1396,8 @@ utils::globalVariables(c(
           as.integer(nchar(query_meta$sequence[match(congruence$id_x, query_meta$accession)])),
         query_trim_path =
           query_meta$trim_path[match(congruence$id_x, query_meta$accession)],
+        query_over_amplicon =
+          query_meta$over_amplicon[match(congruence$id_x, query_meta$accession)],
         n_excluded_same_batch = as.integer(congruence$n_excluded_same_batch),
         n_excluded_not_species_resolved =
           as.integer(congruence$n_excluded_not_species_resolved),
@@ -1839,6 +1885,28 @@ utils::globalVariables(c(
 #'       extracted from the label, so the accession's own -- structurally
 #'       incomplete -- NCBI lineage is used as-is), or `NA` for a fetch
 #'       failure.}
+#'     \item{`query_len_submitted`}{Integer. Base pairs actually sent to
+#'       BLAST for this accession, after primer trimming and the
+#'       annotation fallback. `NA` for a row that was never submitted.}
+#'     \item{`query_trim_path`}{Which rescue produced the submitted
+#'       sequence: `"as_deposited"`, `"primer_match"` or
+#'       `"feature_table"`.}
+#'     \item{`query_over_amplicon`}{Logical. `TRUE` when the sequence
+#'       submitted for this accession is longer than the marker's target
+#'       amplicon, so its percent identities describe a WIDER REGION than
+#'       a correctly trimmed row's and the two are not comparable. The
+#'       trimming gate asks whether a deposit exceeds the marker's longest
+#'       plausible length, not whether it exceeds the amplicon, and those
+#'       differ for every registered marker with a primer pair -- by 25 bp
+#'       for MiFish-U and by 530 for COI-Leray, where a typical 658 bp
+#'       Folmer deposit is never offered to the trimmer and whose feature
+#'       table reads `"COI"` for the whole record, so neither rescue can
+#'       shorten it. This column reports that footprint; it does not change
+#'       what is submitted, because that would move every cached identity.
+#'       A call with any such row also warns once, with the count and the
+#'       median and longest submitted length. `NA` for a row that was never
+#'       submitted, and for a `barcode_term` with no registered amplicon
+#'       range.}
 #'     \item{`listed_taxon_is_species`}{Logical. `FALSE` when `listed_taxon`
 #'       does not structurally look like a species-level binomial (via
 #'       [TaxaTools::is_plausible_binomial()] -- e.g. a family name used in
@@ -2408,6 +2476,7 @@ evaluate_reference_accessions <- function(accessions,
         taxonomy_resolution_source = NA_character_,
         query_len_submitted = NA_integer_,
         query_trim_path = NA_character_, # never fetched, so never trimmed
+        query_over_amplicon = NA,
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
         # Provenance: WHICH
@@ -2459,6 +2528,7 @@ evaluate_reference_accessions <- function(accessions,
     "congruent_evidence_exists_anywhere",
     "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
     "taxonomy_resolution_source", "query_len_submitted", "query_trim_path",
+    "query_over_amplicon",
     "n_excluded_same_batch", "n_excluded_not_species_resolved",
     "local_corroborator_accession"
   )
@@ -2588,6 +2658,7 @@ evaluate_reference_accessions <- function(accessions,
       evaluated_at = as.POSIXct(NA), cache_hit = FALSE,
       taxonomy_resolution_source = NA_character_,
       query_len_submitted = NA_integer_, query_trim_path = NA_character_,
+      query_over_amplicon = NA,
       n_excluded_same_batch = NA_integer_, n_excluded_not_species_resolved = NA_integer_,
       local_corroborator_accession = NA_character_,
       stringsAsFactors = FALSE

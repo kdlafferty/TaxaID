@@ -320,6 +320,28 @@ as hybrid-labeled but no usable parent species name could be
 extracted from the label, so the accession's own -- structurally
 incomplete -- NCBI lineage is used as-is), or \code{NA} for a fetch
 failure.}
+\item{\code{query_len_submitted}}{Integer. Base pairs actually sent to
+BLAST for this accession, after primer trimming and the
+annotation fallback. \code{NA} for a row that was never submitted.}
+\item{\code{query_trim_path}}{Which rescue produced the submitted
+sequence: \code{"as_deposited"}, \code{"primer_match"} or
+\code{"feature_table"}.}
+\item{\code{query_over_amplicon}}{Logical. \code{TRUE} when the sequence
+submitted for this accession is longer than the marker's target
+amplicon, so its percent identities describe a WIDER REGION than
+a correctly trimmed row's and the two are not comparable. The
+trimming gate asks whether a deposit exceeds the marker's longest
+plausible length, not whether it exceeds the amplicon, and those
+differ for every registered marker with a primer pair -- by 25 bp
+for MiFish-U and by 530 for COI-Leray, where a typical 658 bp
+Folmer deposit is never offered to the trimmer and whose feature
+table reads \code{"COI"} for the whole record, so neither rescue can
+shorten it. This column reports that footprint; it does not change
+what is submitted, because that would move every cached identity.
+A call with any such row also warns once, with the count and the
+median and longest submitted length. \code{NA} for a row that was never
+submitted, and for a \code{barcode_term} with no registered amplicon
+range.}
 \item{\code{listed_taxon_is_species}}{Logical. \code{FALSE} when \code{listed_taxon}
 does not structurally look like a species-level binomial (via
 \code{\link[TaxaTools:is_plausible_binomial]{TaxaTools::is_plausible_binomial()}} -- e.g. a family name used in
