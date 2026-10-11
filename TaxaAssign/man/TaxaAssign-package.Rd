@@ -49,14 +49,6 @@ likelihoods for named unreferenced taxa (lives in TaxaLikely, next to
 }
 }
 
-\section{High-level wrappers}{
-
-\itemize{
-\item \code{\link{run_bayesian_pipeline}} -- full Bayesian workflow
-\item \code{\link{run_llm_pipeline}} -- LLM-shortcut workflow
-}
-}
-
 \section{Reporting}{
 
 \itemize{

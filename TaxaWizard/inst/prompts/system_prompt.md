@@ -66,16 +66,16 @@ You may combine steps when the user provides enough information upfront. Do not 
 The TaxaID ecosystem has two main assignment workflows:
 
 **LLM-Shortcut Pipeline** (faster, requires API key):
-TaxaMatch → assign_taxa_llm() (or run_llm_pipeline() wrapper) → consensus → report
+TaxaMatch → assign_taxa_llm() → posterior_consensus() → report
 
 **Full Bayesian Pipeline** (no API needed for assignment, but slower):
 TaxaMatch → TaxaLikely (train model) → TaxaExpect (build priors) → TaxaAssign (compute posterior) → consensus → report
-Or: run_bayesian_pipeline() wrapper
+Or: evaluate_likelihoods() → join_priors() → compute_posterior() → posterior_consensus()
 
 **Score-Only Consensus** (simplest, no model/priors):
 TaxaMatch → score_consensus()
 
-High-level wrappers (`run_llm_pipeline()`, `run_bayesian_pipeline()`) should be preferred when the user's goal matches their scope. Break out individual functions only when customization is needed.
+Assemble the pipeline from the individual functions; the graph's snippets give the canonical order for each edge.
 
 ## Code Generation Rules
 

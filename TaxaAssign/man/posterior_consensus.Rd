@@ -54,7 +54,7 @@ hypothesis cannot enter the plausible set on its own. Default 0.05. Set to
 
 \item{posterior_col}{Character. Name of the posterior column to rank
 hypotheses by. Default \code{"posterior_point_est"}, matching
-\code{run_bayesian_pipeline()} and every production workflow. An
+every production workflow. An
 operative-column comparison found the choice second-order for real
 consensus results and settled on point estimates: best external
 corroboration, deterministic, and exactly auditable as prior x

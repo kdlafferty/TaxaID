@@ -41,8 +41,7 @@ produced -- selects which Methods-text template to use. Default
 \code{NULL} auto-detects from column presence (\code{range_status},
 \code{habitat_fit}, \code{information_quality} all present -> \code{"llm"}; otherwise
 \code{"bayesian"}), which is reliable for output produced by this package's
-own \code{run_bayesian_pipeline()}/\code{run_llm_pipeline()}/
-\code{assign_taxa_llm()}, but can misclassify a hand-built or
+own \code{assign_taxa_llm()}, but can misclassify a hand-built or
 third-party \code{result} that happens to share (or omit) those column
 names. Pass this explicitly to avoid relying on the guess. Ignored when
 \code{consensus} comes from \code{\link{score_consensus}} (workflow is

@@ -43,7 +43,8 @@ utils::globalVariables(c(
 #' This is the **LLM-shortcut pathway** -- a fast *approximation* of the Full
 #' Bayesian pipeline (`TaxaLikely::train_likelihood_model()`/
 #' `evaluate_likelihoods()` -> `TaxaExpect`'s occurrence-modelled priors ->
-#' `run_bayesian_pipeline()`), used in place of that modeled effort when no
+#' `join_priors()` -> `compute_posterior()`), used in place of that modeled
+#' effort when no
 #' trained TaxaLikely model or TaxaExpect priors exist yet, or as a quick
 #' comparison against a Full Bayesian result already in hand. It is **not** a
 #' parallel, equally-supported first-class pipeline: replaces the trained

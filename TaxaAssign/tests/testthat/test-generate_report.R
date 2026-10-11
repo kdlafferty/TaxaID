@@ -337,7 +337,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
   # Found stale on a real report: the bayesian-workflow likelihood paragraph
   # unconditionally said "logit-transformed" regardless of what
   # train_likelihood_model(score_transform=) was actually set to. Now reads
-  # params$score_transform (threaded through by run_bayesian_pipeline() from
+  # params$score_transform (threaded through by the caller from
   # the trained model's own Score_Transform field).
   base_params <- list(n_sims = 1000L, cumulative_threshold = 0.9, min_posterior = 0.05)
 

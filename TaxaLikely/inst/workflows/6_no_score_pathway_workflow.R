@@ -174,8 +174,8 @@ message("Saved likelihoods_no_score.rds")
 
 # Pass directly to TaxaAssign::compute_posterior().
 # Posteriors will be proportional to priors (uniform likelihoods cancel out).
-# Supply TaxaExpect priors via join_priors() or run_bayesian_pipeline() before
-# calling compute_posterior().
+# Supply TaxaExpect priors via TaxaAssign::join_priors() before calling
+# compute_posterior().
 #
 # Example:
 # priors_joined <- TaxaAssign::join_priors(

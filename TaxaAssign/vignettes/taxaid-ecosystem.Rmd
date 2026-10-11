@@ -247,24 +247,6 @@ result_updated <- update_prior_from_consensus(result, consensus)
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
 ```
 
-### Step 6 (alternative): One-call wrapper
-
-```{r run_bayesian}
-# run_bayesian_pipeline() wraps Step 6 into a single call
-pipeline <- run_bayesian_pipeline(
-  match_df = match_df,
-  model_params = model,
-  taxaexpect_priors = priors,
-  site = list(main_habitat = "Marine"),
-  barcode_term = "MiFish",
-  backbone_id = 11L, # GBIF; match whichever backbone your input taxonomy used
-  verbose = TRUE
-)
-consensus_final <- pipeline$consensus
-```
-
----
-
 ## LLM Pathway: Quick Assignment
 
 The LLM pathway skips the occurrence data pipeline entirely. An LLM assigns
@@ -297,26 +279,6 @@ consensus <- posterior_consensus(posterior, cumulative_threshold = 0.95)
 result_updated <- update_prior_from_consensus(posterior, consensus, require_support_columns = FALSE)
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
 ```
-
-### LLM one-call wrapper
-
-```{r run_llm}
-pipeline <- run_llm_pipeline(
-  match_df = match_df,
-  llm_fn = call_anthropic_api,
-  geographic_hint = "Southern California estuaries",
-  data_type = "eDNA",
-  detect_unreferenced = TRUE,
-  barcode_term = "MiFish",
-  backbone_id = 11L, # GBIF; match whichever backbone your input taxonomy used
-  generate_report = TRUE,
-  verbose = TRUE
-)
-consensus_final <- pipeline$consensus
-report <- pipeline$report
-```
-
----
 
 ## Comparing Approaches
 

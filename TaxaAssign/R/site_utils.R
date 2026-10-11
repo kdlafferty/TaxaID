@@ -1,6 +1,5 @@
 # Internal helpers for resolving `site` parameter and shared utilities
 
-
 #' Warn if a user-supplied rank_system disagrees in relative order with
 #' TaxaTools::standard_ranks
 #'
@@ -46,7 +45,6 @@
   invisible(NULL)
 }
 
-
 #' Beta distribution mean from alpha/beta
 #'
 #' Duplicated (not shared via a dependency) from `TaxaExpect:::.beta_mean()` --
@@ -59,7 +57,6 @@
 #' @noRd
 .beta_mean <- function(a, b) a / (a + b)
 
-
 #' Resolve llm_fn default: NULL -> TaxaTools::call_api with clear error
 #'
 #' Known footgun: TaxaTools'
@@ -67,7 +64,7 @@
 #' `TaxaTools::.onAttach()`, which only fires via `library(TaxaTools)` --
 #' never via a bare `TaxaTools::` namespace reference. A caller that never
 #' explicitly loads TaxaTools (e.g. a fully-namespaced script calling only
-#' `TaxaAssign::run_llm_pipeline()`) will find `getOption("TaxaID.llm_fn")`
+#' `TaxaAssign::assign_taxa_llm()`) will find `getOption("TaxaID.llm_fn")`
 #' unset here even with a real API key configured, and fall through to the
 #' bare `TaxaTools::call_api` below -- which itself has no provider
 #' configured either, and (per that package's own documented behavior)
@@ -110,7 +107,6 @@
   TaxaTools::call_api
 }
 
-
 #' Build a "Context:" prompt block from a context list
 #'
 #' Shared context-formatting logic for LLM prompts. Used by
@@ -150,7 +146,6 @@
   }
   paste0("Context:\n", paste0("  ", header_parts, collapse = "\n"), "\n\n")
 }
-
 
 #' Parse grid_id strings back to lat/lon coordinates
 #' @noRd
@@ -229,112 +224,6 @@
   }
   invisible(TRUE)
 }
-
-#' Resolve `site` parameter to a standardized event_meta data frame
-#'
-#' Accepts multiple formats:
-#'   - list(grid_id, main_habitat) -- existing single-site
-#'   - list(lat, lon) -- auto-derive grid_id + auto-select best habitat from priors
-#'   - list(lat, lon, main_habitat) -- auto-derive grid_id, use specified habitat
-#'     (falls back to auto-select if habitat not available at resolved grid)
-#'   - data.frame(observation_id, grid_id, main_habitat) -- existing multi-site
-#'   - data.frame(observation_id, lat, lon) -- auto-derive per row
-#'   - data.frame(observation_id, lat, lon, main_habitat) -- auto-derive with hint
-#'
-#' @return data.frame with observation_id, grid_id, main_habitat
-#' @noRd
-.resolve_site <- function(site, observation_ids, taxaexpect_priors) {
-  # --- Case: list (single-site) ---
-
-  if (is.list(site) && !is.data.frame(site)) {
-    # Existing format: grid_id + main_habitat
-    if (all(c("grid_id", "main_habitat") %in% names(site))) {
-      .assert_site_has_priors(site$grid_id, site$main_habitat, taxaexpect_priors)
-      return(data.frame(
-        observation_id = observation_ids,
-        grid_id = site$grid_id,
-        main_habitat = site$main_habitat,
-        stringsAsFactors = FALSE
-      ))
-    }
-
-    # lat + lon + main_habitat (main_habitat required by .latlon_to_grid)
-    if (all(c("lat", "lon") %in% names(site))) {
-      resolved <- .latlon_to_grid(
-        lat = site$lat,
-        lon = site$lon,
-        main_habitat = site$main_habitat, # errors if NULL
-        taxaexpect_priors = taxaexpect_priors
-      )
-      return(data.frame(
-        observation_id = observation_ids,
-        grid_id = resolved$grid_id,
-        main_habitat = resolved$main_habitat,
-        stringsAsFactors = FALSE
-      ))
-    }
-
-    cli::cli_abort(
-      "{.arg site} list must have either (grid_id + main_habitat) or \\
-      (lat + lon + main_habitat)."
-    )
-  }
-
-  # --- Case: data.frame (multi-site) ---
-  if (is.data.frame(site)) {
-    if (!"observation_id" %in% names(site)) {
-      cli::cli_abort("{.arg site} data frame must have an {.field observation_id} column.")
-    }
-
-    # Existing format: already has grid_id + main_habitat
-    if (all(c("grid_id", "main_habitat") %in% names(site))) {
-      return(site[, c("observation_id", "grid_id", "main_habitat"), drop = FALSE])
-    }
-
-    # lat + lon + main_habitat per observation (main_habitat required)
-    if (all(c("lat", "lon") %in% names(site))) {
-      if (!"main_habitat" %in% names(site)) {
-        cli::cli_abort(c(
-          "{.arg site} data frame with lat/lon must also include a \\
-          {.field main_habitat} column.",
-          "i" = "Each row should specify the habitat for that observation's location."
-        ))
-      }
-      has_habitat <- TRUE
-      loc_cols <- c("lat", "lon", "main_habitat")
-      unique_locs <- unique(site[, loc_cols, drop = FALSE])
-      resolved_list <- lapply(seq_len(nrow(unique_locs)), function(i) {
-        .latlon_to_grid(
-          lat = unique_locs$lat[i],
-          lon = unique_locs$lon[i],
-          main_habitat = if (has_habitat) unique_locs$main_habitat[i] else NULL,
-          taxaexpect_priors = taxaexpect_priors
-        )
-      })
-      coord_lookup <- unique_locs
-      coord_lookup$grid_id <- vapply(resolved_list, `[[`, character(1L), "grid_id")
-      coord_lookup$resolved_habitat <- vapply(
-        resolved_list, `[[`, character(1L),
-        "main_habitat"
-      )
-      merge_cols <- loc_cols
-      site_merge <- site[, c("observation_id", loc_cols), drop = FALSE]
-      result <- merge(site_merge, coord_lookup, by = merge_cols)
-      result$main_habitat <- result$resolved_habitat
-      return(result[, c("observation_id", "grid_id", "main_habitat"), drop = FALSE])
-    }
-
-    cli::cli_abort(
-      "{.arg site} data frame must have either (grid_id + main_habitat) or \\
-      (lat + lon + main_habitat) columns."
-    )
-  }
-
-  cli::cli_abort(
-    "{.arg site} must be a named list (single-site) or a data frame (multi-site)."
-  )
-}
-
 
 #' Map lat/lon to nearest grid_id + main_habitat from taxaexpect_priors
 #'

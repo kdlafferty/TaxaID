@@ -56,8 +56,7 @@ utils::globalVariables(c(
 #'   \code{NULL} auto-detects from column presence (`range_status`,
 #'   `habitat_fit`, `information_quality` all present -> `"llm"`; otherwise
 #'   `"bayesian"`), which is reliable for output produced by this package's
-#'   own \code{run_bayesian_pipeline()}/\code{run_llm_pipeline()}/
-#'   \code{assign_taxa_llm()}, but can misclassify a hand-built or
+#'   own \code{assign_taxa_llm()}, but can misclassify a hand-built or
 #'   third-party \code{result} that happens to share (or omit) those column
 #'   names. Pass this explicitly to avoid relying on the guess. Ignored when
 #'   \code{consensus} comes from \code{\link{score_consensus}} (workflow is
@@ -645,8 +644,8 @@ generate_report <- function(result,
     )
   } else {
     # score_transform ("logit"/"sqrt_mismatch") comes from the trained model's
-    # own Score_Transform field, threaded through via report_params (see
-    # run_bayesian_pipeline()'s own modifyList() call) -- NOT assumed. Falls
+    # own Score_Transform field, threaded through via report_params by the
+    # caller -- NOT assumed. Falls
     # back to "logit" when report_params carries no score_transform field,
     # rather than erroring.
     score_transform <- if (!is.null(params$score_transform)) params$score_transform else "logit"
