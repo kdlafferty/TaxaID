@@ -4,7 +4,7 @@
 
 Stores and standardizes raw match data produced by external tools that compare biological observations (eDNA sequences, images, acoustic recordings) against reference databases. Outputs a canonical match object (one row per sample x reference match, with standard column names) for input to TaxaLikely. Match data sources include DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers. Also screens reference accessions for taxonomic mislabeling via independent BLAST-based congruence checking before the reference set is used for likelihood model training. Score-to-likelihood conversion itself lives in TaxaLikely. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 31 exported function(s).
+Version 0.1.0. 30 exported function(s).
 
 ## Functions
 
@@ -556,20 +556,6 @@ Reads raw match data (from a data frame or file), renames the observation identi
 | lowercase_names | no | TRUE | Logical. When TRUE (default), all column names in the output are converted to lowercase as the final step. This produces a fully consistent canonical object (e.g. kingdom, testid, accession) and avoids case-sensitivity surprises in downstream joins. Set to FALSE to preserve original column name casing. |
 
 **Value:** A data frame with at minimum: 'observation_id' Unique query identifier (renamed from 'observation_id_col'). 'score_original' Raw match score (renamed from 'score_col'). Preserved unchanged throughout the pipeline; downstream functions add 'score_norm', 'score_softmax', and 'score_likelihood' columns as transformations are applied. 'taxon_name' Most specific non-NA taxon name (derived). 'taxon_name_rank' Rank of 'taxon_name', lowercase (derived). Useful for reporting what proportion of observations resolved to species/genus/family level, per eDNA minimum-information reporting guidelines (e.g. Thalinger et al. 2021). All other input columns are retained unchanged - *except* that when 'lowercase_names = TRUE' (the default), every column name in the output, including retained ones, is converted to lowercase; the underlying data is untouched, only the names.
-
-### verify_local_corroborations(cache_dir, max_corroborators = 2L, verbose = TRUE)
-
-Audit thin locally-corroborated rows against their own corroborator's verdict
-
-'"locally_corroborated"' skips BLASTing an accession entirely when the caller's own reference set already has an independent conspecific deposit for it - cached with TTL 'Inf' and exempt from 'refine_reference_verdicts()''s trust-weighted refinement, since the MATCH itself, once observed, is permanent. But the _corroborator's own label_ is exactly as falsifiable as any other accession's (this is the same 'KJ135626'/'MZ605481' shape 'verify_removal_candidates()' closed for the removal veto, showing up in a different, larger population). Nothing today ever asks whether a corroborator's own ...
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| cache_dir | yes |  | The same persistent cache directory evaluate_reference_accessions() was called with. Required -- a "locally_corroborated" verdict only ever exists inside a persistent cache (the skip mechanism has nothing to record it in otherwise). |
-| max_corroborators | no | 2L | Integer (default 2L). A "locally_corroborated" row resting on more than this many independent corroborators is left out of the audit entirely -- many independent partners all being wrong the same way is implausible, matching verify_removal_candidates()'s identical threshold. |
-| verbose | no | TRUE | Logical (default TRUE). |
-
-**Value:** A data frame, one row per thin '"locally_corroborated"' accession: 'accession', 'listed_taxon', 'n_corroborators', 'local_corroborator_accession', 'corroborator_reference_action', 'corroborator_hierarchy_flag', and 'status' ('"flagged"' - the corroborator's own evidence reads something other than a clean '"keep"' or '"untested"'; '"clean"' - the corroborator has a real '"keep"' verdict; '"unchecked"' - the corroborator has never been independently evaluated in this cache, so nothing is known either way). Never '"flagged"' for '"untested"': no usable evidence about a corroborator is not evidence AGAINST it, the same distinction 'verify_removal_candidates()' draws for its own thin corroborators. Zero rows, and zero NCBI calls always, when the cache has no thin '"locally_corroborated"' rows.
 
 ### verify_removal_candidates(evaluation, ..., audit_max_hits = 100L, cache_dir = NULL, screen_corroborators = TRUE, verbose = TRUE)
 

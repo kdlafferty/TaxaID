@@ -4,7 +4,7 @@
 
 Estimates theta priors -- each taxon's expected share of the detections at a site -- for taxonomic assignment, from occurrence records (see TaxaFetch). A site-centered kernel estimator weights occurrence points by distance, with optional depth and habitat conditioning, and evidence layers add undetected diversity, regional proximity, iNaturalist ranges, invasive watch lists and domestic or food species. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 18 exported function(s).
+Version 0.1.0. 17 exported function(s).
 
 ## Functions
 
@@ -358,21 +358,6 @@ Summarizes the prior estimation produced by TaxaExpect into a structured 'report
 
 **Value:** A 'report_section' object with: methods Template text describing prior estimation approach. results Template text summarizing prior coverage. citations Propagated from occurrence data if available. params Named list of prior parameters. statistics Named list of summary counts.
 
-### theta_surface_at(x, lon, lat, taxon = NULL)
-
-Theta (and support) at specific points of interest, from an already-built surface
-
-Looks up the NEAREST lattice cell to each query point - exact for a point that falls inside a cell, approximate elsewhere, honestly so: 'dist_km' reports how far the query point actually was from the matched cell centre, so a caller can tell whether that distance is small relative to 'n_grid''s own resolution or large enough that the lookup is a poor stand-in for a fresh evaluation there. This is deliberately NOT interpolated (bilinear or otherwise) - a lattice this fine (the default 'n_grid = 256') is already far finer than the kernel bandwidth that produced it, so nearest-cell error is ...
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| x | yes |  | A taxaexpect_theta_surface object from plot_theta_surface(). |
-| lon | yes |  | Numeric vectors of query-point coordinates (recycled to a common length). |
-| lat | yes |  | Numeric vectors of query-point coordinates (recycled to a common length). |
-| taxon | no | NULL | Optional character vector restricting the output to specific taxa (must be a subset of the taxa x was built with). Default NULL: every taxon in x. |
-
-**Value:** A data frame with one row per query point x taxon: 'lon'/'lat' (the query), 'taxon', 'theta', 'n_eff', 'W' (at the matched cell), 'lon_cell'/'lat_cell' (the matched cell's own centre), and 'dist_km' (how far the query point was from that centre).
-
 ## Quick Start
 
 ``` r
@@ -412,14 +397,10 @@ plot_theta_surface(kernel_fit, occurrence_data = occurrences,
 A rendered surface is also data. `as.data.frame()` returns the whole
 lattice as a long table (lon, lat, taxon, theta, n_eff, W), with masked
 cells dropped, so "inside the polygon" comes for free.
-`theta_surface_at()` returns theta and support at points of interest,
-matched to the nearest cell, with the distance to that cell reported so a
-query outside the lattice is visible as such.
 
 ``` r
 r <- plot_theta_surface(kernel_fit, occurrence_data = occurrences,
                         taxon = c("Girella nigricans", "Pisaster ochraceus"))
 grid <- as.data.frame(r)                  # one row per cell x taxon
-theta_surface_at(r, lon = -120.47, lat = 34.45)   # both taxa at one point
 ```
 
