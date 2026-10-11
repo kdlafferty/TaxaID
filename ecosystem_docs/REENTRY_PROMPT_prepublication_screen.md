@@ -1,6 +1,8 @@
 # Pre-publication screen for TaxaID 1.0
 
-**Status: OPEN. Re-baselined 2026-10-11 against `main` at `7a3d13f`.** The
+**Status: OPEN. Re-baselined 2026-10-11 against `main` at `7a3d13f`; the
+export surface was then pruned (section 12), so `main` is now at `b31f188` and
+the ecosystem has 223 exports, not 232.** The
 2026-10-04 to 2026-10-08 run log (the old sections 7c to 7o, 1,154 lines of merge
 ledgers and resolved investigations) moved to
 `ARCHIVE_screen_run_log_2026_10.md`; git has every earlier version. The screen
@@ -1747,6 +1749,19 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
 - A chat's finding about another chat's work is itself a claim; verify it
   before propagating it (the "column never renamed" claim lived two sessions
   and produced dead code).
+- Deciding an export is unused takes FIVE searches, not one. A census of the
+  production workflows answers none of these on its own, and three removal
+  calls on 2026-10-11 were wrong until each was checked: (1) cross-package
+  call sites -- `new_report_section()` is called by seven packages'
+  `report_*()` functions; (2) intra-package call sites --
+  `estimate_sequence_matrix_size()` by `fetch.R`, `annotate_script()` by
+  `workflow_app()`; (3) accepted INPUT CLASSES -- removing
+  `suggest_unreferenced_species()` orphans a class four live functions take;
+  (4) the external workflow directories, which are outside this repo and are
+  where `consensus_method = "credible_node"` was hiding, live in CalIntertidal
+  by the maintainer's own decision, while a repo-root grep showed zero
+  callers; (5) ARGUMENTS, separately from functions -- the 227 exports carry
+  1,641 arguments, and an exports diff cannot see any of them.
 
 ## 10. Execution plan
 
@@ -1803,3 +1818,58 @@ The screen's own purpose is upstream of this: what it produces is the
 pre-submission package for the USGS technical code review and domain review (see
 the statement at the top of this document). "Found nothing material" means
 nothing a reviewer would raise.
+
+## 12. Export surface pruned (2026-10-11, merged `a6d7ca7` and `b31f188`)
+
+The maintainer's framing, which is the standard to apply to any future export:
+the package is already too large for a user to understand well, so a function
+earns its place only if a workflow uses it, or it was validated and the result
+held, or there is an obvious use nobody has reached yet. A function tried
+against a problem and then abandoned goes; a function written for a temporary
+internal task goes; a validated function with no workflow caller may stay.
+
+**Removed, nine exports, 232 -> 223.** `correct_training_bias()` (TaxaLikely --
+ships at `tau = 0`, which is no correction, because every calibration run found
+that exponent optimal, so it had no setting at which it changed a result);
+`theta_surface_at()` (TaxaExpect); `verify_local_corroborations()` (TaxaMatch);
+`model_cache_info()` (TaxaTools); `build_scheme_prompt()`,
+`parse_scheme_response()`, `build_iucn_scheme()` and the orphaned
+`print.scheme_prompt()` (TaxaHabitat -- the LLM habitat-scheme generator; the
+shipped IUCN scheme and the three-realm default are what callers use); and
+`run_bayesian_pipeline()` with `run_llm_pipeline()` (TaxaAssign). The two
+wrappers were the advertised front door and no production workflow called
+either: of nine current subsystems, SEVEN were absent from them -- the whole
+reference screen, `calibrate_query_noise()`,
+`restore_suppressed_candidates()`, `apply_undetected_evidence()`,
+`compute_group_priors()` and `annotate_reference_support()`. Keeping a second
+definition of the pipeline is what let it drift, so everything that advertised
+a wrapper now shows the sequence instead, TaxaWizard's two consensus snippets
+included. `-60 arguments`, 37 of them on `run_llm_pipeline()` alone.
+
+**Kept deliberately, and not to be re-proposed without new argument.**
+`new_report_section()`, `build_report_context()`,
+`estimate_sequence_matrix_size()`, `taxaid_build_manifest()`,
+`annotate_script()`, `refresh_models()` and `example_habitat_scheme` all have
+real callers (see the five-search note in section 9).
+`suggest_unreferenced_species()` is kept THOUGH IT NOW HAS NO CALLER AT ALL: it
+is the only producer of the `unreferenced_species_result` class that
+`posterior_consensus(species_reference=)`, `generate_report()`,
+`assign_taxa_llm()` and `TaxaLikely::expand_unreferenced_hypotheses()` accept
+as input, so removing it orphans a class four live functions take and means
+surgery on `posterior_consensus()` inside the freeze. Maintainer's decision:
+keep.
+
+**Verification.** `R CMD check --as-cran` 0 errors on all seven touched
+packages, warnings and notes the standing CRAN-incoming ones; 0 test failures
+across the nine (TaxaLikely 1986, TaxaAssign 1257, TaxaMatch 1498, TaxaTools
+1353, TaxaWizard 1164, TaxaExpect 750, TaxaHabitat 563). All nine reinstalled
+from the branch and checked against the INSTALLED namespaces, not the source.
+`llm_prompts/` regenerated afterwards, since it is generated from the installed
+packages.
+
+**Still open from this thread.** Group 4 of `TRIAGE_board_2026_10_11.md`'s
+successor analysis: the DataONE/PDF/literature subsystem (17 exports) is KEPT
+by decision; `to_faire()` KEPT; the counts-path prior KEPT (validated within
+10x for ~99% of species with `theta >= 1e-4` against the full record set);
+TaxaWizard KEPT; the BOLD/CRABS/local-FASTA readers KEPT. A second pass on the
+five widest functions' ARGUMENT lists has not been done.
