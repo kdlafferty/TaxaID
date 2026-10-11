@@ -6,7 +6,6 @@
 #   list_models()          Show current tier->model mapping for detected providers
 #   refresh_models()       Re-discover models from provider APIs; update local cache
 #   set_model()            Pin a specific model version for reproducibility
-#   model_cache_info()     Show local cache path, age, and session source
 #   register_provider()    Add a custom OpenAI-compatible provider for this session
 #
 # Internal helpers (@noRd):
@@ -32,7 +31,6 @@
 #   4. Bundled inst/model_tiers.json    -- ships with package; warn if stale
 # ==============================================================================
 
-
 # ------------------------------------------------------------------------------
 # Session cache environment
 # Slots:
@@ -44,7 +42,6 @@
 # ------------------------------------------------------------------------------
 
 .registry_env <- new.env(parent = emptyenv())
-
 
 # ------------------------------------------------------------------------------
 # JSON I/O
@@ -102,7 +99,6 @@
   )
 }
 
-
 # ------------------------------------------------------------------------------
 # Registry loader (lazy, once per session)
 # ------------------------------------------------------------------------------
@@ -158,7 +154,6 @@
   .registry_env$registry_loaded <- TRUE
   reg
 }
-
 
 # ------------------------------------------------------------------------------
 # Provider model discovery
@@ -292,7 +287,6 @@
   vapply(models, function(m) m$id %||% "", character(1))
 }
 
-
 #' @noRd
 .fetch_openai_compat_models <- function(api_key, models_endpoint) {
   # Generic fetch for any OpenAI-compatible /v1/models endpoint.
@@ -320,7 +314,6 @@
   ids <- vapply(models, function(m) m$id %||% "", character(1))
   ids[nzchar(ids)]
 }
-
 
 # ------------------------------------------------------------------------------
 # Tier pattern matching
@@ -361,7 +354,6 @@
 
   result
 }
-
 
 # ------------------------------------------------------------------------------
 # Resolution chain
@@ -458,11 +450,9 @@
   ))
 }
 
-
 # ==============================================================================
 # Exported functions
 # ==============================================================================
-
 
 #' List Current LLM Model Tier Assignments
 #'
@@ -481,8 +471,7 @@
 #' @return A data frame (invisibly) with columns \code{provider}, \code{tier},
 #'   \code{model}, \code{source}.
 #'
-#' @seealso \code{\link{refresh_models}}, \code{\link{set_model}},
-#'   \code{\link{model_cache_info}}
+#' @seealso \code{\link{refresh_models}}, \code{\link{set_model}}
 #' @export
 #'
 #' @examples
@@ -554,7 +543,6 @@ list_models <- function(provider = NULL) {
   invisible(result)
 }
 
-
 #' Refresh LLM Model Discovery from Provider APIs
 #'
 #' Queries each provider's \code{/models} endpoint to find the latest available
@@ -571,8 +559,7 @@ list_models <- function(provider = NULL) {
 #' @return A data frame of updated tier assignments (invisibly), as from
 #'   \code{\link{list_models}}.
 #'
-#' @seealso \code{\link{list_models}}, \code{\link{set_model}},
-#'   \code{\link{model_cache_info}}
+#' @seealso \code{\link{list_models}}, \code{\link{set_model}}
 #' @export
 #'
 #' @examples
@@ -658,7 +645,6 @@ refresh_models <- function(providers = NULL) {
   invisible(list_models(to_refresh))
 }
 
-
 #' Pin a Specific Model Version for Reproducibility
 #'
 #' Overrides dynamic tier resolution for the current R session. Use at the top
@@ -727,42 +713,6 @@ set_model <- function(provider, tier, model) {
   ))
   invisible(model)
 }
-
-
-#' Show Model Cache Information
-#'
-#' Reports the location and age of the local persistent model cache, and the
-#' source used by the current session (\code{"local_cache"} or
-#' \code{"bundled"}).
-#'
-#' @return A named list (invisibly) with elements \code{path}, \code{exists},
-#'   \code{age_days}, and \code{source}.
-#'
-#' @seealso \code{\link{refresh_models}}, \code{\link{list_models}}
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' model_cache_info()
-#' }
-model_cache_info <- function() {
-  path <- .local_cache_path()
-  exists <- file.exists(path)
-  age_days <- if (exists) {
-    as.numeric(difftime(Sys.time(), file.info(path)$mtime, units = "days"))
-  } else {
-    NA_real_
-  }
-  src <- .registry_env$registry_source %||% "(not yet loaded this session)"
-
-  cat(sprintf("Local cache path : %s\n", path))
-  cat(sprintf("Cache exists     : %s\n", exists))
-  if (exists) cat(sprintf("Cache age        : %.0f days\n", age_days))
-  cat(sprintf("Session source   : %s\n", src))
-
-  invisible(list(path = path, exists = exists, age_days = age_days, source = src))
-}
-
 
 #' Register a Custom OpenAI-Compatible LLM Provider
 #'

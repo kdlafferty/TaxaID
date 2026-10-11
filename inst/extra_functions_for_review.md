@@ -386,7 +386,6 @@ Review pulled: 2026-07-13
 - resolve_review_overrides (file: TaxaMatch/R/review_flagged_accessions.R, introduced: 2026-08-30)
 - review_flagged_accessions (file: TaxaMatch/R/review_flagged_accessions.R, introduced: 2026-08-13)
 - score_reference_labels (file: TaxaMatch/R/reference_label_verdict.R, introduced: 2026-09-02)
-- verify_local_corroborations (file: TaxaMatch/R/reference_label_verdict.R, introduced: 2026-09-07)
 - verify_removal_candidates (file: TaxaMatch/R/reference_label_verdict.R, introduced: 2026-09-04)
 
 (Note carried from the previous version of this doc: TaxaMatch's review is the oldest of

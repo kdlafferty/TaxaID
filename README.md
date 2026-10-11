@@ -907,7 +907,7 @@ describe each in full.
 |----|----|
 | Occurrence records standardized to Darwin Core columns, with habitat assignments and spatial quality flags | TaxaFetch `stack_occurrences()`; TaxaHabitat `assign_habitat_biological()`, `flag_habitat_inconsistencies()` |
 | Reference-library assessment: mislabel verdicts, coverage audits, model diagnostics | TaxaMatch `corroborate_references_locally()`, `evaluate_reference_accessions()`; TaxaLikely `audit_barcode_coverage()`, `interpret_model()` |
-| Priors: a Beta prior per taxon at the focal site, including undetected diversity, and the prior field as a map or data frame | TaxaExpect `estimate_kernel_priors()`, `generate_undetected_diversity()`, `plot_theta_surface()`, `theta_surface_at()` |
+| Priors: a Beta prior per taxon at the focal site, including undetected diversity, and the prior field as a map or data frame | TaxaExpect `estimate_kernel_priors()`, `generate_undetected_diversity()`, `plot_theta_surface()` |
 | Assignment: calibrated likelihoods, posterior probabilities with uncertainty, and a consensus taxon per detection with every competing candidate retained | TaxaLikely `evaluate_likelihoods()`; TaxaAssign `compute_posterior()`, `posterior_consensus()`, `score_consensus()` |
 | Quality flags and a Methods and Results report | TaxaFlag `flag_contaminant()`, `flag_handler()`, `review_assignments()`; TaxaAssign `generate_report()`; TaxaTools `assemble_report()` |
 

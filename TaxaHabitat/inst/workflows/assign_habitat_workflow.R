@@ -153,8 +153,8 @@ message(sprintf("  %d unique taxa to classify.", length(taxa_in_data)))
 
 # habitat_scheme = NULL -> package default: Marine / Freshwater / Terrestrial.
 # Always a valid starting point and always interpretable in a model. For finer
-# resolution, build a custom scheme dataframe (see example_habitat_scheme) or
-# use TaxaHabitat::build_iucn_scheme().
+# resolution, pass "IUCN_L1" or build a custom scheme dataframe (see
+# example_habitat_scheme).
 habitat_prompt_a <- TaxaHabitat::build_habitat_prompt(
   taxon_list     = taxa_in_data,
   habitat_scheme = NULL

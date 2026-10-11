@@ -3,7 +3,7 @@
 # =============================================================================
 #
 # These are drop-in replacements for the LLM submission block in any workflow.
-# Everything before (build_habitat_prompt, build_scheme_prompt, etc.) and
+# Everything before (build_habitat_prompt, screen_pdf_structure, etc.) and
 # everything after (parse_hierarchical_habitat_response, assign_habitat_biological,
 # etc.) is identical regardless of provider.
 #
@@ -158,7 +158,7 @@ habitat_lookup <- parse_hierarchical_habitat_response(
 #   - Response quality is lower than cloud APIs for the same task complexity
 #
 # Practical advice: Ollama works well for the cheap screening steps
-# (screen_pdf_structure, build_scheme_prompt). For habitat assignment with
+# (screen_pdf_structure, build_taxon_screen_prompt). For habitat assignment with
 # many columns, a 14B+ model is recommended; smaller models may not reliably
 # produce well-formed CSV.
 
@@ -251,16 +251,11 @@ raw_responses <- call_api_pdf(pdf_structure, build_pdf_extract_prompt(pdf_struct
 pdf_content <- extract_pdf_text("my_paper.pdf")
 pdf_structure <- screen_pdf_structure(pdf_content, llm_fn = call_gemini_api)
 
-# Step 2: cheap habitat scheme generation — Gemini (free)
-sp <- build_scheme_prompt(taxa_in_data, realm = "marine")
-raw_s <- prompt_api(sp, llm_fn = call_gemini_api)
-scheme <- parse_scheme_response(raw_s, sp)
-
-# Step 3: habitat assignment — Gemini (free) or Anthropic if quality insufficient
-prompt <- build_habitat_prompt(taxa_in_data, habitat_scheme = scheme)
+# Step 2: habitat assignment — Gemini (free) or Anthropic if quality insufficient
+prompt <- build_habitat_prompt(taxa_in_data, habitat_scheme = "IUCN_L1")
 llm_output <- prompt_api(prompt, llm_fn = call_gemini_api)
 
-# Step 4: PDF extraction — Anthropic only (vision API)
+# Step 3: PDF extraction — Anthropic only (vision API)
 extract_prompt <- build_pdf_extract_prompt(pdf_structure)
 raw_response <- call_api_pdf(pdf_structure, extract_prompt)
 occurrences <- parse_pdf_extract_response(raw_response, pdf_structure)

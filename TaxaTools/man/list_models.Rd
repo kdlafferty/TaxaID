@@ -32,6 +32,5 @@ list_models("anthropic")
 }
 }
 \seealso{
-\code{\link{refresh_models}}, \code{\link{set_model}},
-\code{\link{model_cache_info}}
+\code{\link{refresh_models}}, \code{\link{set_model}}
 }

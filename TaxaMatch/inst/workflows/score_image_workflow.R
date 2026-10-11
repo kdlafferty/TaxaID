@@ -30,9 +30,8 @@
 # (Otospermophilus beecheyi, Sciuridae, 5), and Virginia Opossum (Didelphis
 # virginiana, Didelphidae, 6). EXPANDED from an original 6-photo/5-species
 # diversity-only set specifically to get enough replicate photos per species
-# to move past a single-flip small-n result on whether
-# TaxaLikely::correct_training_bias() is safe to enable by default for the
-# image pathway, a question that first came up at n=6.
+# to move past a single-flip small-n result on the image pathway's
+# training-count bias, a question that first came up at n=6.
 #
 # These photos ARE bundled in inst/extdata/example_images/camera_trap_photos/
 # (unlike an earlier iteration of this script, which used bird photos of
