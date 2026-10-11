@@ -1,7 +1,5 @@
 # tests/testthat/test-site_utils.R
-# New file (code review, 2026-08): these internal helpers had no dedicated
-# test coverage before -- only indirectly exercised via run_bayesian_pipeline()/
-# join_priors() test fixtures.
+# Dedicated coverage for these internal helpers.
 
 # ---- .parse_grid_ids() -------------------------------------------------------
 
@@ -87,8 +85,6 @@ test_that(".beta_mean computes alpha / (alpha + beta)", {
   expect_equal(.beta_mean(c(1, 9), c(1, 1)), c(0.5, 0.9))
 })
 
-# ---- .resolve_site() -----------------------------------------------------------
-
 .make_taxaexpect_priors_for_site <- function() {
   data.frame(
     taxon_name = "Gadus morhua",
@@ -97,49 +93,6 @@ test_that(".beta_mean computes alpha / (alpha + beta)", {
     stringsAsFactors = FALSE
   )
 }
-
-test_that(".resolve_site handles list(grid_id, main_habitat)", {
-  out <- .resolve_site(
-    list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
-    c("S1", "S2"), .make_taxaexpect_priors_for_site()
-  )
-  expect_equal(nrow(out), 2L)
-  expect_true(all(out$grid_id == "Grid_34p1_m119p1"))
-})
-
-test_that(".resolve_site handles list(lat, lon, main_habitat)", {
-  out <- suppressWarnings(.resolve_site(
-    list(lat = 34.1, lon = -119.1, main_habitat = "Estuarine Bay"),
-    "S1", .make_taxaexpect_priors_for_site()
-  ))
-  expect_equal(out$grid_id, "Grid_34p1_m119p1")
-  expect_equal(out$main_habitat, "Estuarine Bay")
-})
-
-test_that(".resolve_site handles a multi-site data frame with grid_id/main_habitat", {
-  site_df <- data.frame(
-    observation_id = c("S1", "S2"),
-    grid_id = c("Grid_34p1_m119p1", "Grid_34p1_m119p1"),
-    main_habitat = c("Estuarine Bay", "Estuarine Bay"),
-    stringsAsFactors = FALSE
-  )
-  out <- .resolve_site(site_df, c("S1", "S2"), .make_taxaexpect_priors_for_site())
-  expect_equal(nrow(out), 2L)
-})
-
-test_that(".resolve_site errors on an unsupported site format", {
-  expect_error(
-    .resolve_site("not_a_list_or_df", "S1", .make_taxaexpect_priors_for_site()),
-    "must be a named list"
-  )
-})
-
-test_that(".resolve_site errors when a list lacks both grid_id/main_habitat and lat/lon", {
-  expect_error(
-    .resolve_site(list(main_habitat = "Estuarine Bay"), "S1", .make_taxaexpect_priors_for_site()),
-    "must have either"
-  )
-})
 
 # ---- .latlon_to_grid() ----------------------------------------------------------
 
@@ -181,4 +134,19 @@ test_that(".latlon_to_grid warns when the nearest grid is far from the provided 
     .latlon_to_grid(0, 0, "Estuarine Bay", .make_taxaexpect_priors_for_site()),
     "degrees from provided coordinates"
   )
+})
+
+# ---- .resolve_llm_fn() ---------------------------------------------------------
+
+test_that(".resolve_llm_fn: returns user-supplied function unchanged", {
+  my_fn <- function(x) paste("echo:", x)
+  result <- TaxaAssign:::.resolve_llm_fn(my_fn, "test")
+  expect_identical(result, my_fn)
+})
+
+test_that(".resolve_llm_fn: NULL resolves to TaxaTools provider when available", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
+  skip_if_not_installed("TaxaTools")
+  result <- TaxaAssign:::.resolve_llm_fn(NULL, "test")
+  expect_true(is.function(result))
 })

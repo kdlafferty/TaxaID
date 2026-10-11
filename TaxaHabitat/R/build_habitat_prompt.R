@@ -239,7 +239,6 @@
   stringsAsFactors = FALSE
 )
 
-
 # ==============================================================================
 # build_habitat_prompt() -- returns a habitat_prompt S3 object
 # ==============================================================================
@@ -273,9 +272,6 @@
 #'   \code{"IUCN_L1"} uses the 18 IUCN Level 1 group names as a
 #'   single-level scheme. Pass a dataframe for a custom scheme (must contain
 #'   \code{l1_name}; optional: \code{l2_name}, \code{l2_code}, \code{realm}).
-#'   To generate a scheme automatically from the taxon list, use
-#'   \code{\link{build_scheme_prompt}} + \code{\link{parse_scheme_response}}
-#'   first, then pass the result here.
 #'   See \code{\link{example_habitat_scheme}} for a dataframe template.
 #' @param chunk_size Integer. Maximum taxa per prompt chunk. Default 60.
 #'   Larger lists are split into multiple chunks automatically. Reduce if
@@ -378,7 +374,7 @@ build_habitat_prompt <- function(
   # Handle habitat_scheme shortcuts and NULL default
   if (is.null(habitat_scheme)) {
     # Default: three broad realm categories -- always valid, always interpretable.
-    # For finer resolution use build_scheme_prompt() or supply a custom scheme.
+    # For finer resolution pass "IUCN_L1" or supply a custom scheme.
     habitat_scheme <- data.frame(
       l1_name = c("Marine", "Freshwater", "Terrestrial"),
       l2_name = NA_character_,
@@ -418,7 +414,7 @@ build_habitat_prompt <- function(
   chunk_size <- as.integer(chunk_size)
 
   # Derive the ordered vector of habitat column names the LLM will produce.
-  # Mixed schemes (from build_iucn_scheme with both L1 and L2 rows):
+  # Mixed schemes (both L1 and L2 rows):
   #   L2 names for rows where l2_name is non-NA, PLUS L1 names for rows where
   #   l2_name is NA (the L1-only fallback rows). This preserves the ability
   #   for the LLM to assign at L1 when it cannot distinguish L2 subcategories.
@@ -467,7 +463,6 @@ build_habitat_prompt <- function(
   )
 }
 
-
 #' Print a habitat_prompt Object
 #'
 #' @param x A \code{habitat_prompt} object.
@@ -503,7 +498,6 @@ print.habitat_prompt <- function(x, ...) {
   ))
   invisible(x)
 }
-
 
 # ==============================================================================
 # Internal: build one prompt string for a single chunk of taxa
@@ -591,16 +585,14 @@ print.habitat_prompt <- function(x, ...) {
 
   # ---- Custom / default scheme -----------------------------------------------
   # Handles: 3-category default, IUCN_L1, user custom (single or two-level),
-  # mixed L1+L2 from build_iucn_scheme(), and auto-generated from build_scheme_prompt.
+  # and mixed schemes carrying both L1 fallback rows and L2 rows.
   two_level <- .is_two_level(scheme)
 
   if (two_level) {
-    # A mixed-scale scheme (e.g. from build_iucn_scheme() with both L1
-    # fallback rows and L2 rows present) has l2_name = NA on its L1-only
+    # A mixed-scale scheme (both L1 fallback rows and L2 rows present) has l2_name = NA on its L1-only
     # rows -- display_name falls back to l1_name for those specific rows
     # so the prompt shows the real group name instead of literal "NA".
-    # Without this fallback, build_iucn_scheme(realm = "terrestrial", l2 =
-    # "Temperate") followed by build_habitat_prompt() would send
+    # Without this fallback, build_habitat_prompt() would send
     # "NA  [Forest]", "NA  [Savanna]", etc. to the LLM for every L1 fallback
     # row.
     display_name <- ifelse(is.na(scheme$l2_name), scheme$l1_name, scheme$l2_name)
@@ -654,7 +646,6 @@ print.habitat_prompt <- function(x, ...) {
     species_block
   )
 }
-
 
 # ==============================================================================
 # .validate_habitat_scheme() -- internal helper
@@ -713,13 +704,11 @@ print.habitat_prompt <- function(x, ...) {
   scheme[, c("l1_name", "l2_code", "l2_name", "realm")]
 }
 
-
 #' Is a normalised scheme two-level (has any non-NA l2_name)?
 #' @noRd
 .is_two_level <- function(scheme) {
   any(!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name)))
 }
-
 
 #' Is a scheme derived from the IUCN lookup?
 #' Checked by presence of an l2_code column populated with IUCN-style
@@ -731,7 +720,7 @@ print.habitat_prompt <- function(x, ...) {
 #' an \code{l1_code} column, so neither an \code{identical()} comparison
 #' against the raw (differently-shaped) \code{.iucn_habitat_lookup} nor an
 #' \code{l1_code} membership check could ever succeed here. Confirmed via
-#' \code{build_iucn_scheme()}'s own \code{@return} (only
+#' the column set every validated scheme carries (only
 #' \code{l1_name}/\code{l2_name}/\code{l2_code}/\code{realm}) and a grep of
 #' every call site.
 #' @noRd
@@ -739,7 +728,6 @@ print.habitat_prompt <- function(x, ...) {
   all(c("l2_code", "l1_name", "l2_name") %in% names(scheme)) &&
     any(grepl("^[0-9]+\\.[0-9]+$", scheme$l2_code, perl = TRUE))
 }
-
 
 # ==============================================================================
 # example_habitat_scheme -- exported template for custom habitat classifications
@@ -820,7 +808,6 @@ example_habitat_scheme <- data.frame(
   stringsAsFactors = FALSE
 )
 
-
 #' Map IUCN L1 group names to realm values for flag_habitat_inconsistencies
 #'
 #' Only "marine", "freshwater", and "terrestrial" are valid values for the
@@ -854,752 +841,4 @@ example_habitat_scheme <- data.frame(
       )
     )
   )
-}
-
-
-# ==============================================================================
-# build_iucn_scheme() -- construct a habitat_scheme from the IUCN classification
-# ==============================================================================
-
-#' Build a Habitat Scheme from the IUCN Red List Classification
-#'
-#' Constructs a \code{habitat_scheme} dataframe by subsetting the IUCN Red List
-#' Habitat Classification v3.1 to the realms, Level 1 groups, and Level 2
-#' subcategories you specify. The result can be passed directly to
-#' \code{\link{build_habitat_prompt}} as \code{habitat_scheme}.
-#'
-#' Call with no arguments (or just \code{realm}) to discover what is available
-#' before committing to a specific selection. The printed output lists the
-#' available L1 groups and L2 subcategories at each level of filtering.
-#'
-#' @param realm Character or \code{NULL}. Filter to one ecological realm:
-#'   \code{"marine"}, \code{"freshwater"}, \code{"terrestrial"},
-#'   \code{"artificial"}, or \code{NULL} (all realms, default). Realm
-#'   groupings:
-#'   \itemize{
-#'     \item \code{"marine"}: Marine Neritic, Marine Oceanic, Marine Deep
-#'       Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal
-#'     \item \code{"freshwater"}: Wetlands (inland)
-#'     \item \code{"terrestrial"}: Forest, Savanna, Shrubland, Grassland,
-#'       Rocky Areas (inland), Caves and Subterranean Habitats, Desert,
-#'       Introduced Vegetation
-#'     \item \code{"artificial"}: Artificial - Terrestrial, Artificial - Aquatic
-#'   }
-#'   \code{"Other"} and \code{"Unknown"} are excluded from all realm filters
-#'   and must be requested explicitly via \code{l1}.
-#' @param l1 Character, \code{"all"}, or \code{"none"}. Which Level 1 groups
-#'   to include in the scheme. \code{"all"} (default) includes all L1 groups
-#'   in the selected realm as single-level categories. \code{"none"} excludes
-#'   all L1 groups (only L2 subcategories will be present; requires \code{l2}
-#'   to be non-\code{"none"}). A character vector of L1 group names includes
-#'   only those groups as fallback L1 columns alongside any L2 subcategories
-#'   requested. Names are validated against the filtered lookup and a helpful
-#'   error is given for unrecognised values.
-#' @param l2 Character, \code{"all"}, or \code{"none"}. Which Level 2
-#'   subcategories to include. \code{"none"} (default) produces a single-level
-#'   scheme using only L1 group names. \code{"all"} adds all L2 subcategories
-#'   under the selected L1 groups. A character vector of specific L2 names
-#'   adds only those subcategories; their L1 parent groups are automatically
-#'   added as fallback columns unless \code{l1 = "none"}. Names are validated
-#'   and an error lists the correct L1 parent for any unrecognised value.
-#'
-#' @return A \code{habitat_scheme} data.frame with columns \code{l1_name},
-#'   \code{l2_name}, \code{l2_code}, and \code{realm}, ready for
-#'   \code{\link{build_habitat_prompt}}. Rows with \code{l2_name = NA} are
-#'   L1-only entries (single-level fallback); rows with non-NA \code{l2_name}
-#'   are L2 entries. Print the result to inspect the scheme before use.
-#'
-#' @details
-#' \strong{Iterative discovery:} Call with broad filters first to see what is
-#' available, then narrow:
-#' \preformatted{
-#' build_iucn_scheme()                           # all 16 L1 groups (Other/Unknown excluded by default)
-#' build_iucn_scheme(realm = "marine")           # 5 marine L1 groups
-#' build_iucn_scheme(realm = "marine", l2 = "all")  # marine L1 + all 32 L2
-#' build_iucn_scheme(realm = "marine",
-#'   l2 = c("Subtidal Rock and Rocky Reefs", "Estuaries",
-#'           "Macroalgal/Kelp"))                 # specific marine L2 + parent L1
-#' }
-#'
-#' \strong{Scale mixing:} When both L1 and L2 entries are present, the scheme
-#' is mixed-scale. This is valid as long as no two species in your dataset
-#' share an L1 group where one is assigned at L1 and another at L2 (which
-#' would create nested predictors in the model). For focused single-realm
-#' datasets, use \code{l1 = "none", l2 = "all"} to get a flat L2-only scheme,
-#' or \code{l2 = "none"} for a flat L1-only scheme.
-#'
-#' \strong{A common surprise:} \code{l1} defaults to \code{"all"}, so
-#' supplying \code{l2} \emph{without} also setting \code{l1 = "none"}
-#' returns BOTH an L1-only fallback row for every L1 group in the realm
-#' (\code{l2_name = NA}) AND the specific L2 rows you asked for -- e.g.
-#' \code{build_iucn_scheme(realm = "terrestrial", l2 = "Temperate")} returns
-#' all 8 terrestrial L1 groups as single-level rows PLUS 4 disambiguated
-#' \code{"Temperate (...)"} L2 rows (Forest/Shrubland/Grassland/Desert all
-#' have a "Temperate" subcategory). This is the documented mixed-scale
-#' behaviour above, not a bug -- but if you only want the L2 rows, pass
-#' \code{l1 = "none"} explicitly.
-#'
-#' \strong{Duplicate L2 names:} Some L2 names (e.g. "Boreal", "Temperate")
-#' appear under multiple L1 groups. When these are selected, the function
-#' disambiguates by appending the L1 parent in parentheses:
-#' e.g. "Boreal (Forest)" and "Boreal (Shrubland)".
-#'
-#' @seealso \code{\link{build_habitat_prompt}}, \code{\link{build_scheme_prompt}}
-#'
-#' @export
-#'
-#' @examples
-#' # Discover what is available
-#' build_iucn_scheme()
-#' build_iucn_scheme(realm = "marine")
-#' build_iucn_scheme(realm = "freshwater", l2 = "all")
-#'
-#' # Build a specific marine scheme with selected L2 subcategories
-#' scheme <- build_iucn_scheme(
-#'   realm = "marine",
-#'   l2 = c(
-#'     "Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
-#'     "Subtidal Sandy", "Rocky Shoreline"
-#'   )
-#' )
-#' print(scheme)
-#' taxa <- c("Gadus morhua", "Oncorhynchus mykiss")
-#' prompt <- build_habitat_prompt(taxa, habitat_scheme = scheme)
-build_iucn_scheme <- function(realm = NULL,
-                              l1 = "all",
-                              l2 = "none") {
-  # ---------------------------------------------------------------------------
-  # Realm groupings
-  # ---------------------------------------------------------------------------
-  .realm_to_l1 <- list(
-    marine = c(
-      "Marine Neritic", "Marine Oceanic", "Marine Deep Ocean Floor",
-      "Marine Intertidal", "Marine Coastal/Supratidal"
-    ),
-    freshwater = c("Wetlands (inland)"),
-    terrestrial = c(
-      "Forest", "Savanna", "Shrubland", "Grassland",
-      "Rocky Areas (inland)", "Caves and Subterranean Habitats",
-      "Desert", "Introduced Vegetation"
-    ),
-    artificial = c("Artificial - Terrestrial", "Artificial - Aquatic")
-  )
-  # "Other" and "Unknown" excluded from realm filters; must be requested via l1
-
-  valid_realms <- names(.realm_to_l1)
-
-  # ---------------------------------------------------------------------------
-  # Input checks
-  # ---------------------------------------------------------------------------
-  if (!is.null(realm)) {
-    if (!is.character(realm) || length(realm) != 1L ||
-      !realm %in% valid_realms) {
-      stop(sprintf(
-        "build_iucn_scheme: 'realm' must be one of: %s, or NULL.\nGot: %s",
-        paste(valid_realms, collapse = ", "),
-        if (is.null(realm)) "NULL" else realm
-      ))
-    }
-  }
-
-  if (!is.character(l1) || length(l1) == 0L) {
-    stop("build_iucn_scheme: 'l1' must be \"all\", \"none\", or a character vector of L1 names.")
-  }
-  if (!is.character(l2) || length(l2) == 0L) {
-    stop("build_iucn_scheme: 'l2' must be \"all\", \"none\", or a character vector of L2 names.")
-  }
-
-  if (identical(l1, "none") && identical(l2, "none")) {
-    stop("build_iucn_scheme: 'l1' and 'l2' cannot both be \"none\".")
-  }
-
-  # ---------------------------------------------------------------------------
-  # Step 1: filter lookup to realm
-  # ---------------------------------------------------------------------------
-  lookup <- .iucn_habitat_lookup
-
-  if (!is.null(realm)) {
-    realm_l1 <- .realm_to_l1[[realm]]
-    lookup <- lookup[lookup$l1_name %in% realm_l1, , drop = FALSE]
-  } else {
-    # Exclude Other/Unknown unless explicitly requested
-    lookup <- lookup[!lookup$l1_name %in% c("Other", "Unknown"), , drop = FALSE]
-  }
-
-  all_l1_in_scope <- unique(lookup$l1_name)
-  # Exclude NA: a handful of L1 groups (Rocky Areas (inland), Introduced
-  # Vegetation, Other, Unknown) have no real L2 subcategory at all in the
-  # source scheme and are represented by a single l2_name = NA row -- those
-  # groups are only reachable via 'l1', never via 'l2' (NA would otherwise
-  # match itself through %in%/match() and let 'l2 = "all"' silently pull in
-  # duplicate L1-only rows already added by the 'l1' argument).
-  all_l2_in_scope <- unique(lookup$l2_name[!is.na(lookup$l2_name)])
-
-  # ---------------------------------------------------------------------------
-  # Step 2: validate and resolve l1 argument
-  # ---------------------------------------------------------------------------
-  if (identical(l1, "all")) {
-    selected_l1 <- all_l1_in_scope
-  } else if (identical(l1, "none")) {
-    selected_l1 <- character(0)
-  } else {
-    bad_l1 <- setdiff(l1, all_l1_in_scope)
-    if (length(bad_l1) > 0L) {
-      # Helpful error: show valid options in the current realm scope
-      stop(sprintf(
-        paste0(
-          "build_iucn_scheme: unrecognised L1 name(s)%s: %s\n",
-          "Available L1 groups%s:\n  %s"
-        ),
-        if (!is.null(realm)) sprintf(" in realm '%s'", realm) else "",
-        paste(bad_l1, collapse = ", "),
-        if (!is.null(realm)) sprintf(" (realm = '%s')", realm) else "",
-        paste(all_l1_in_scope, collapse = "\n  ")
-      ))
-    }
-    selected_l1 <- l1
-  }
-
-  # ---------------------------------------------------------------------------
-  # Step 3: validate and resolve l2 argument
-  # ---------------------------------------------------------------------------
-  if (identical(l2, "none")) {
-    selected_l2 <- character(0)
-  } else if (identical(l2, "all")) {
-    selected_l2 <- all_l2_in_scope
-  } else {
-    bad_l2 <- setdiff(l2, all_l2_in_scope)
-    if (length(bad_l2) > 0L) {
-      # Check if they exist in a different realm/l1 to give a useful hint
-      all_lookup_l2 <- unique(.iucn_habitat_lookup$l2_name)
-      exists_elsewhere <- intersect(bad_l2, all_lookup_l2)
-      not_in_iucn <- setdiff(bad_l2, all_lookup_l2)
-
-      msg <- sprintf(
-        "build_iucn_scheme: unrecognised L2 name(s)%s: %s",
-        if (!is.null(realm)) sprintf(" in realm '%s'", realm) else "",
-        paste(bad_l2, collapse = ", ")
-      )
-      if (length(exists_elsewhere) > 0L) {
-        # Find the L1 parent(s) for each misplaced name
-        parents <- vapply(exists_elsewhere, function(nm) {
-          rows <- .iucn_habitat_lookup[.iucn_habitat_lookup$l2_name == nm, ]
-          paste(unique(rows$l1_name), collapse = " / ")
-        }, character(1))
-        msg <- paste0(
-          msg, "\nThese exist under a different L1 group:\n",
-          paste(sprintf("  '%s' -> parent: %s", exists_elsewhere, parents),
-            collapse = "\n"
-          )
-        )
-      }
-      if (length(not_in_iucn) > 0L) {
-        msg <- paste0(
-          msg, "\nThese are not in the IUCN classification at all: ",
-          paste(not_in_iucn, collapse = ", ")
-        )
-      }
-      msg <- paste0(
-        msg, "\nAvailable L2 names in current scope:\n  ",
-        paste(all_l2_in_scope, collapse = "\n  ")
-      )
-      stop(msg)
-    }
-    selected_l2 <- l2
-
-    # Auto-add L1 parents of selected L2 (unless l1 = "none")
-    if (!identical(l1, "none")) {
-      l2_parents <- unique(
-        lookup$l1_name[lookup$l2_name %in% selected_l2]
-      )
-      # Add parents not already in selected_l1
-      if (!identical(l1, "all")) {
-        new_parents <- setdiff(l2_parents, selected_l1)
-        if (length(new_parents) > 0L) {
-          message(sprintf(
-            "build_iucn_scheme: auto-adding L1 parent group(s) for selected L2: %s",
-            paste(new_parents, collapse = ", ")
-          ))
-          selected_l1 <- unique(c(selected_l1, new_parents))
-        }
-      }
-    }
-  }
-
-  # ---------------------------------------------------------------------------
-  # Step 4: handle duplicate L2 names (disambiguate with L1 parent)
-  # ---------------------------------------------------------------------------
-  if (length(selected_l2) > 0L) {
-    l2_rows <- lookup[lookup$l2_name %in% selected_l2, , drop = FALSE]
-    dup_l2 <- l2_rows$l2_name[duplicated(l2_rows$l2_name)]
-    if (length(dup_l2) > 0L) {
-      message(sprintf(
-        paste0(
-          "build_iucn_scheme: %d L2 name(s) appear under multiple L1 groups ",
-          "and have been disambiguated with '(L1 parent)': %s"
-        ),
-        length(unique(dup_l2)),
-        paste(unique(dup_l2), collapse = ", ")
-      ))
-      # Rename duplicates in the lookup subset
-      for (i in seq_len(nrow(l2_rows))) {
-        if (l2_rows$l2_name[i] %in% dup_l2) {
-          l2_rows$l2_name[i] <- sprintf(
-            "%s (%s)",
-            l2_rows$l2_name[i],
-            l2_rows$l1_name[i]
-          )
-        }
-      }
-    }
-  } else {
-    l2_rows <- NULL
-  }
-
-  # ---------------------------------------------------------------------------
-  # Step 5: build the scheme dataframe
-  # ---------------------------------------------------------------------------
-  # L1-only rows: one row per selected L1 group with l2_name = NA
-  # L2 rows: from the filtered lookup (with possible disambiguation)
-  # If l1 = "none", only L2 rows are included (flat L2-only scheme)
-
-  # realm column: when the caller supplied a specific 'realm' argument, every
-  # row in this scheme belongs to that realm by construction (Step 1 already
-  # filtered `lookup` down to that realm's own L1 groups) -- use it directly.
-  # `.l1_to_realm()` only recognises marine/freshwater L1 group names and
-  # returns NA for everything else (including "terrestrial" and "artificial"
-  # groups), so relying on it here silently produced realm = NA for every
-  # row of a realm = "terrestrial" (or "artificial") scheme even though the
-  # caller had explicitly said which realm it was. When realm is NULL (all
-  # realms requested), the per-L1-group mapping is still needed since rows
-  # span more than one realm.
-  rows_l1 <- if (length(selected_l1) > 0L) {
-    data.frame(
-      l1_name = selected_l1,
-      l2_name = NA_character_,
-      l2_code = NA_character_,
-      realm = if (!is.null(realm)) realm else .l1_to_realm(selected_l1),
-      stringsAsFactors = FALSE
-    )
-  } else {
-    NULL
-  }
-
-  rows_l2 <- if (!is.null(l2_rows) && nrow(l2_rows) > 0L) {
-    data.frame(
-      l1_name = l2_rows$l1_name,
-      l2_name = l2_rows$l2_name,
-      l2_code = l2_rows$l2_code,
-      realm = if (!is.null(realm)) realm else .l1_to_realm(l2_rows$l1_name),
-      stringsAsFactors = FALSE
-    )
-  } else {
-    NULL
-  }
-
-  scheme <- rbind(rows_l1, rows_l2)
-
-  # ---------------------------------------------------------------------------
-  # Step 6: print discovery summary and return
-  # ---------------------------------------------------------------------------
-  n_l1_cols <- if (!is.null(rows_l1)) nrow(rows_l1) else 0L
-  n_l2_cols <- if (!is.null(rows_l2)) nrow(rows_l2) else 0L
-
-  cat("<iucn_scheme>\n")
-  if (!is.null(realm)) cat(sprintf("  Realm:    %s\n", realm))
-  cat(sprintf("  L1 cols:  %d  (fallback group names)\n", n_l1_cols))
-  cat(sprintf("  L2 cols:  %d  (subcategory names)\n", n_l2_cols))
-  cat(sprintf("  Total:    %d habitat columns\n", n_l1_cols + n_l2_cols))
-
-  if (n_l1_cols > 0L) {
-    cat("\nL1 GROUPS (single-level / fallback):\n")
-    cat(paste(sprintf("  %s", rows_l1$l1_name), collapse = "\n"), "\n")
-  }
-  if (n_l2_cols > 0L) {
-    cat("\nL2 SUBCATEGORIES (grouped by L1 parent):\n")
-    for (grp in unique(rows_l2$l1_name)) {
-      sub <- rows_l2[rows_l2$l1_name == grp, , drop = FALSE]
-      cat(sprintf("  [%s]\n", grp))
-      cat(paste(
-        sprintf(
-          "    %s  %s",
-          ifelse(is.na(sub$l2_code), "    ", sub$l2_code),
-          sub$l2_name
-        ),
-        collapse = "\n"
-      ), "\n")
-    }
-  }
-  cat("\nPass to build_habitat_prompt(taxa, habitat_scheme = scheme)\n")
-
-  invisible(scheme)
-}
-
-
-#' Build a Habitat Scheme Generation Prompt
-#'
-#' Asks an LLM to propose a compact, ecologically appropriate set of habitat
-#' categories for a given taxon list. The suggested scheme is then passed to
-#' \code{\link{build_habitat_prompt}} as \code{habitat_scheme}, replacing the
-#' need for a user-supplied custom scheme or the full IUCN classification.
-#'
-#' This is the recommended starting point when you do not have a pre-existing
-#' habitat scheme. The LLM scales the number and specificity of categories to
-#' the ecological diversity of the taxon list -- a single-community dataset gets
-#' 3-5 focused categories; a mixed multi-realm dataset gets 7-10 broader ones.
-#'
-#' @param taxon_list Character vector of scientific names.
-#' @param min_habitats Integer. Minimum number of habitat categories to
-#'   generate. Default \code{2L}.
-#' @param max_habitats Integer. Maximum number of habitat categories to
-#'   generate. Default \code{10L}. Reduce to force coarser resolution;
-#'   increase if the LLM is merging ecologically distinct habitats.
-#' @param realm Character or \code{NULL}. Optional hint to constrain the
-#'   scheme to a single ecological realm: \code{"marine"},
-#'   \code{"freshwater"}, or \code{"terrestrial"}. Use when all taxa are
-#'   known to belong to one realm and you want to prevent the LLM from
-#'   generating irrelevant cross-realm categories. Default \code{NULL}
-#'   (no constraint; the LLM infers realm from the taxon list).
-#'
-#' @return An object of class \code{c("scheme_prompt", "llm_prompt")} with
-#'   elements:
-#'   \describe{
-#'     \item{prompts}{List of length 1 containing the prompt string.}
-#'     \item{taxa}{The deduplicated taxon list.}
-#'     \item{chunks}{List of length 1.}
-#'     \item{min_habitats}{The minimum supplied.}
-#'     \item{max_habitats}{The maximum supplied.}
-#'     \item{realm}{The realm hint supplied (or \code{NULL}).}
-#'     \item{n_chunks}{Always \code{1L}.}
-#'     \item{n_items}{Number of taxa.}
-#'   }
-#'   Pass to \code{\link[TaxaTools]{prompt_api}} or \code{\link[TaxaTools]{prompt_manual}},
-#'   then pass the raw response to \code{\link{parse_scheme_response}}.
-#'
-#' @details
-#' \strong{Reproducibility:} Because the LLM generates the scheme, two runs
-#' on the same taxon list may produce slightly different category names. The
-#' generated scheme is stored in the \code{habitat_prompt} object returned by
-#' \code{\link{parse_scheme_response}} and printed for inspection. Review and
-#' edit it before proceeding to the weighted assignment step if exact
-#' reproducibility matters.
-#'
-#' \strong{Full auto-scheme workflow:}
-#' \preformatted{
-#' # Stage 0: generate scheme
-#' sp       <- build_scheme_prompt(taxa_in_data)
-#' scheme   <- parse_scheme_response(TaxaTools::prompt_api(sp), sp)
-#' print(scheme)   # inspect suggested categories
-#'
-#' # Stage 1: weighted assignment (scheme flows through automatically)
-#' prompt   <- build_habitat_prompt(taxa_in_data, habitat_scheme = scheme)
-#' raw_text <- TaxaTools::prompt_api(prompt)
-#' hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
-#'                                                 habitat_scheme = prompt)
-#' }
-#'
-#' @seealso \code{\link{parse_scheme_response}},
-#'   \code{\link{build_habitat_prompt}},
-#'   \code{\link{example_habitat_scheme}}
-#'
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' taxa <- unique(occurrence_data$taxon_name)
-#' sp <- build_scheme_prompt(taxa, realm = "marine")
-#' print(sp)
-#' raw <- TaxaTools::prompt_api(sp)
-#' scheme <- parse_scheme_response(raw, sp)
-#' print(scheme)
-#' }
-build_scheme_prompt <- function(taxon_list,
-                                min_habitats = 2L,
-                                max_habitats = 10L,
-                                realm = NULL) {
-  if (!is.character(taxon_list) || length(taxon_list) == 0) {
-    stop("build_scheme_prompt: 'taxon_list' must be a non-empty character vector.")
-  }
-  if (!is.numeric(min_habitats) || min_habitats < 1) {
-    stop("build_scheme_prompt: 'min_habitats' must be a positive integer.")
-  }
-  if (!is.numeric(max_habitats) || max_habitats < min_habitats) {
-    stop("build_scheme_prompt: 'max_habitats' must be >= 'min_habitats'.")
-  }
-  if (!is.null(realm)) {
-    valid_realms <- c("marine", "freshwater", "terrestrial")
-    if (!realm %in% valid_realms) {
-      stop(sprintf(
-        "build_scheme_prompt: 'realm' must be one of: %s, or NULL.",
-        paste(valid_realms, collapse = ", ")
-      ))
-    }
-  }
-
-  taxon_list <- unique(trimws(taxon_list))
-  taxon_list <- taxon_list[nzchar(taxon_list)]
-  min_habitats <- as.integer(min_habitats)
-  max_habitats <- as.integer(max_habitats)
-
-  species_block <- paste(paste0('"', taxon_list, '"'), collapse = ", ")
-
-  realm_instruction <- if (!is.null(realm)) {
-    sprintf(
-      "All species in this list belong to the %s realm. ",
-      realm
-    )
-  } else {
-    ""
-  }
-
-  prompt_str <- paste0(
-    "Act as an expert ecologist and taxonomist.\n\n",
-    "I will provide a list of species. Your task is to propose a compact set ",
-    "of habitat categories that together cover the ecological diversity of this ",
-    "community. These categories will be used as predictors in a statistical ",
-    "model, so they should be:\n",
-    "  - Mutually exclusive (a species clearly belongs to one primary category)\n",
-    "  - Collectively exhaustive for this community\n",
-    "  - All at the same ecological scale (do not mix broad and fine categories)\n",
-    "  - Plain English, suitable as factor level names (no special characters)\n\n",
-    "IMPORTANT -- MACROHABITAT SCALE ONLY:\n",
-    "Categories must describe the ecosystem or macrohabitat type, NOT the ",
-    "microhabitat or substrate the species physically occupies within it. ",
-    "For example: a species that lives in burrows within an estuary belongs to ",
-    "an ESTUARINE category, not a 'burrow' or 'subterranean' category. ",
-    "A species that lives in kelp holdfasts on a rocky reef belongs to a ",
-    "ROCKY REEF category, not a 'crevice' or 'cave' category. ",
-    "Valid examples: Rocky Reef, Sandy Subtidal, Estuary, Kelp Forest, ",
-    "Pelagic, Freshwater Stream, Wetland, Grassland, Forest. ",
-    "Invalid examples: Burrow, Cave, Crevice, Root Zone, Interstitial -- ",
-    "these are microhabitats within a macrohabitat, not categories.\n\n",
-    realm_instruction,
-    sprintf(
-      "Propose between %d and %d habitat categories. ",
-      min_habitats, max_habitats
-    ),
-    "Fewer categories are better when species ecology is similar; ",
-    "use more only when the community genuinely spans distinct habitats.\n\n",
-    "OUTPUT FORMAT: Return ONLY a raw CSV block with exactly two columns and ",
-    "no preamble or postamble:\n",
-    "  habitat_name  -- your proposed category name (plain English)\n",
-    if (!is.null(realm)) {
-      sprintf(
-        "  realm         -- always \"%s\" (all species in this list are in the %s realm)\n\n",
-        realm, realm
-      )
-    } else {
-      "  realm         -- one of: marine, freshwater, terrestrial, or NA if mixed\n\n"
-    },
-    "The first line must be the header: habitat_name,realm\n",
-    "Each subsequent line is one habitat category.\n\n",
-    "SPECIES LIST:\n",
-    species_block
-  )
-
-  structure(
-    list(
-      prompts      = list(prompt_str),
-      taxa         = taxon_list,
-      chunks       = list(taxon_list),
-      min_habitats = min_habitats,
-      max_habitats = max_habitats,
-      realm        = realm,
-      n_chunks     = 1L,
-      n_items      = length(taxon_list)
-    ),
-    class = c("scheme_prompt", "llm_prompt")
-  )
-}
-
-
-#' Print a scheme_prompt Object
-#'
-#' @param x A \code{scheme_prompt} object.
-#' @param ... Ignored.
-#' @return \code{x}, invisibly.
-#' @export
-print.scheme_prompt <- function(x, ...) {
-  cat("<scheme_prompt>\n")
-  cat(sprintf("  Taxa:         %d species\n", length(x$taxa)))
-  cat(sprintf(
-    "  Habitats:     %d to %d categories requested\n",
-    x$min_habitats, x$max_habitats
-  ))
-  if (!is.null(x$realm)) {
-    cat(sprintf("  Realm hint:   %s\n", x$realm))
-  } else {
-    cat("  Realm hint:   (none -- LLM infers from taxa)\n")
-  }
-  cat(sprintf(
-    "  Prompt tokens (approx): ~%d\n",
-    nchar(x$prompts[[1]]) %/% 4L
-  ))
-  invisible(x)
-}
-
-
-# ==============================================================================
-# parse_scheme_response() -- parse LLM-generated habitat scheme
-# ==============================================================================
-
-#' Parse a Habitat Scheme Response from an LLM
-#'
-#' Parses the raw CSV text returned by an LLM in response to a
-#' \code{\link{build_scheme_prompt}} prompt into a \code{habitat_scheme}
-#' dataframe ready for \code{\link{build_habitat_prompt}}.
-#'
-#' @param raw_text Character. Raw LLM response from
-#'   \code{\link[TaxaTools]{prompt_api}} or \code{\link[TaxaTools]{read_llm_response}}.
-#' @param scheme_prompt A \code{scheme_prompt} object from
-#'   \code{\link{build_scheme_prompt}}. Used to validate the response against
-#'   the requested min/max habitat counts. If \code{NULL}, validation is
-#'   skipped.
-#'
-#' @return A \code{habitat_scheme} data.frame with columns \code{l1_name}
-#'   and \code{realm}, suitable for passing directly to
-#'   \code{\link{build_habitat_prompt}} as \code{habitat_scheme}. The
-#'   \code{l2_name} and \code{l2_code} columns are set to \code{NA}
-#'   (single-level scheme). Print the result to inspect and verify the
-#'   suggested categories before proceeding.
-#'
-#' @details
-#' The returned dataframe is a standard single-level \code{habitat_scheme}.
-#' Edit it in R before passing to \code{\link{build_habitat_prompt}} if you
-#' want to rename, merge, or split categories:
-#' \preformatted{
-#' scheme <- parse_scheme_response(raw, sp)
-#' print(scheme)
-#'
-#' # Edit if needed:
-#' scheme$l1_name[scheme$l1_name == "Rocky Reef"] <- "Rocky Subtidal"
-#'
-#' # Then use as normal:
-#' prompt <- build_habitat_prompt(taxa, habitat_scheme = scheme)
-#' }
-#'
-#' @seealso \code{\link{build_scheme_prompt}}, \code{\link{build_habitat_prompt}}
-#'
-#' @importFrom utils read.csv
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' sp <- build_scheme_prompt(taxa, realm = "marine")
-#' raw <- TaxaTools::prompt_api(sp)
-#' scheme <- parse_scheme_response(raw, sp)
-#' print(scheme)
-#' }
-parse_scheme_response <- function(raw_text, scheme_prompt = NULL) {
-  if (!is.character(raw_text) || length(raw_text) != 1L ||
-    !nzchar(trimws(raw_text))) {
-    stop("parse_scheme_response: 'raw_text' must be a length-1 non-empty string.")
-  }
-
-  min_h <- if (inherits(scheme_prompt, "scheme_prompt")) scheme_prompt$min_habitats else 1L
-  max_h <- if (inherits(scheme_prompt, "scheme_prompt")) scheme_prompt$max_habitats else Inf
-
-  # Strip markdown fences
-  txt <- gsub("```[a-zA-Z]*\n?", "", raw_text)
-  txt <- gsub("```", "", txt)
-
-  # Find header row containing habitat_name
-  lines <- trimws(strsplit(txt, "\n")[[1]])
-  lines <- lines[nzchar(lines)]
-  hdr_idx <- which(grepl("habitat_name", lines, ignore.case = TRUE) &
-    grepl(",", lines, fixed = TRUE))[1]
-
-  if (is.na(hdr_idx)) {
-    stop(
-      "parse_scheme_response: could not find a header row containing ",
-      "'habitat_name'. Check the LLM response."
-    )
-  }
-
-  # Trim preamble/postamble
-  lines <- lines[hdr_idx:length(lines)]
-  is_data <- grepl(",", lines, fixed = TRUE) | seq_along(lines) == 1L
-  lines <- lines[1:max(which(is_data))]
-
-  # Strip duplicate headers (shouldn't happen for single-chunk but be safe)
-  header <- lines[1L]
-  lines <- c(header, lines[-1L][lines[-1L] != header])
-
-  parsed <- tryCatch(
-    utils::read.csv(
-      text = paste(lines, collapse = "\n"),
-      stringsAsFactors = FALSE, strip.white = TRUE,
-      na.strings = c("", "NA", "N/A")
-    ),
-    error = function(e) {
-      stop("parse_scheme_response: CSV parsing failed: ", e$message, call. = FALSE)
-    }
-  )
-
-  if (nrow(parsed) == 0L) {
-    stop("parse_scheme_response: response parsed successfully but contains no rows.")
-  }
-
-  # Normalise column name (allow habitat_name or name)
-  if (!"habitat_name" %in% names(parsed)) {
-    alt <- grep("name|habitat", names(parsed), ignore.case = TRUE, value = TRUE)[1]
-    if (!is.na(alt)) {
-      names(parsed)[names(parsed) == alt] <- "habitat_name"
-    } else {
-      stop("parse_scheme_response: could not identify a 'habitat_name' column.")
-    }
-  }
-
-  # Clean habitat names
-  parsed$habitat_name <- trimws(as.character(parsed$habitat_name))
-  parsed <- parsed[nzchar(parsed$habitat_name), , drop = FALSE]
-
-  # Validate count
-  n_cats <- nrow(parsed)
-  if (n_cats < min_h) {
-    warning(sprintf(
-      "parse_scheme_response: LLM returned %d category/categories, fewer than min_habitats = %d.",
-      n_cats, min_h
-    ), call. = FALSE)
-  }
-  if (n_cats > max_h) {
-    warning(sprintf(
-      "parse_scheme_response: LLM returned %d categories, more than max_habitats = %d. ",
-      n_cats, max_h
-    ), call. = FALSE)
-  }
-
-  # Validate realm column
-  valid_realms <- c("marine", "freshwater", "terrestrial", NA)
-  if ("realm" %in% names(parsed)) {
-    parsed$realm <- trimws(tolower(as.character(parsed$realm)))
-    parsed$realm[parsed$realm == "na" | parsed$realm == ""] <- NA_character_
-    bad <- !parsed$realm %in% valid_realms
-    if (any(bad)) {
-      warning(sprintf(
-        "parse_scheme_response: unrecognised realm value(s) set to NA: %s",
-        paste(unique(parsed$realm[bad]), collapse = ", ")
-      ), call. = FALSE)
-      parsed$realm[bad] <- NA_character_
-    }
-  } else {
-    parsed$realm <- NA_character_
-  }
-
-  # Build habitat_scheme dataframe
-  scheme <- data.frame(
-    l1_name = parsed$habitat_name,
-    l2_name = NA_character_,
-    l2_code = NA_character_,
-    realm = parsed$realm,
-    stringsAsFactors = FALSE
-  )
-
-  # Print a clear summary so the user can inspect before proceeding
-  message(sprintf(
-    "parse_scheme_response: %d habitat categories generated.", n_cats
-  ))
-  message("  Inspect with print(scheme) before passing to build_habitat_prompt().")
-
-  scheme
 }

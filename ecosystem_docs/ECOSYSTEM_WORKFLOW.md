@@ -20,7 +20,7 @@ The fastest workflow in TaxaAssign uses a large language model to estimate prior
 |---|---|---|---|---|
 | LLM | LLM-elicited scores, generated internally | LLM judgement | User enters manually (location + habitat label) | None |
 
-`TaxaAssign::run_llm_pipeline()` is the recommended single-call entry point: it standardizes `match_df`, infers ecological context, elicits priors and likelihoods from an LLM, and returns a consensus data frame in one call. `TaxaAssign::assign_taxa_llm()` is the lower-level function it wraps, for callers who want to control each step separately -- see `TaxaAssign/inst/TaxaAssign_llm_workflow.R` for a worked, step-by-step version of the same path.
+`TaxaAssign::build_context()` infers ecological context from the taxon list, `TaxaAssign::assign_taxa_llm()` elicits priors and likelihoods from an LLM, and `TaxaAssign::posterior_consensus()` turns the posteriors into a consensus data frame -- see `TaxaAssign/inst/TaxaAssign_llm_workflow.R` for a worked, step-by-step version of the path.
 
 ## LLM Pipeline Map
 
@@ -34,7 +34,7 @@ The fastest workflow in TaxaAssign uses a large language model to estimate prior
     │   → match_df                       │
     └────────────────────────────────────┘
                     |
-    TaxaAssign::run_llm_pipeline()
+    TaxaAssign::assign_taxa_llm()
     (habitat + location supplied manually;
      likelihoods and priors both LLM-elicited)
                     │
@@ -289,7 +289,7 @@ Non-DNA match data (image/acoustic classifier output) skips training and goes st
 ### CONVERGENCE -- TaxaAssign
 
 #### Option A: LLM workflow
-**Script:** `TaxaAssign/inst/TaxaAssign_llm_workflow.R`; recommended entry point `TaxaAssign::run_llm_pipeline()`.
+**Script:** `TaxaAssign/inst/TaxaAssign_llm_workflow.R`.
 
 Does **not** require TaxaLikely or TaxaExpect objects. The LLM generates both
 likelihood judgements and prior context internally from the match data.

@@ -4,7 +4,7 @@
 
 Trains a hierarchical Bayesian model on reference-vs-reference match scores (DNA percent identity, image similarity, acoustic scores) and uses it to convert per-observation match scores into likelihoods. For each observation (observation_id), produces score_likelihood, score_likelihood_mean, and score_likelihood_sd across candidate taxa - the columns required by TaxaAssign. Also provides reference database quality tools: detecting mislabeled references and auditing taxonomic completeness. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 34 exported function(s).
+Version 0.1.0. 33 exported function(s).
 
 ## Functions
 
@@ -208,21 +208,6 @@ A real, exported, marker-agnostic version of the 'score_floor_roc_sweep.R' diagn
 | threshold_grid | no | seq(0, 100, by = 1) | Numeric vector of percent-identity thresholds to search over. Default seq(0, 100, by = 1). |
 
 **Value:** A named numeric vector, a subset of 'c(species=, genus=, family=)' depending on what 'rank_system'/'seq_matrix' make computable - directly usable as 'TaxaAssign::score_consensus(rank_thresholds = ...)'. Errors if nothing is computable at all (fewer than 2 usable rank levels).
-
-### correct_training_bias(scored_df, count_col, score_col = "score_original", tau = 0)
-
-Correct classifier scores for training-database representation bias
-
-Discriminative classifiers (iNaturalist CV, BirdNET) trained by standard cross-entropy estimate a Bayes posterior: their raw output for species i is proportional to L(obs \mid species_i) \times n_i, where L(obs \mid species_i) is the true visual/acoustic likelihood and n_i is the number of training examples for species i. Raw classifier scores therefore favor well-represented (common, well- photographed/recorded) taxa over rare ones with equal true evidential support. This function divides out an estimate of that training-count bias so that scores across candidates are on a more ...
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| scored_df | yes |  | Data frame of raw classifier output, one row per candidate species per observation. Must contain score_col. |
-| count_col | yes |  | Character scalar. Name of the column holding each candidate's training-database representation count (e.g. "n_observations" for iNaturalist CV output, "n_recordings" for BirdNET/Xeno-canto output after joining audit_acoustic_coverage(xc_recordings = TRUE)'s census onto scored_df by taxon). If absent from scored_df, a warning is issued and every row falls through unchanged (equivalent to all counts being NA). |
-| score_col | no | "score_original" | Character scalar (default "score_original", matching assign_scores()'s default score_col). Name of the raw score column to correct. |
-| tau | no | 0 | Non-negative numeric scalar (default 0). Global exponent applied to every candidate's count (see Details) -- tau = 0 disables correction entirely (returns scores unchanged); tau = 1 is the theoretically Fisher-consistent full correction; values above 1 apply stronger-than-theoretical correction (Menon et al.'s own tuned optimum on one benchmark was 2.6). Every real calibration run against this function's own real classifier output (image, and acoustic on a properly powered test) found tau ~= 0 optimal -- raise it only after calibrating against real labeled data for your own data type (see Details). |
-
-**Value:** 'scored_df' with 'score_col' overwritten by the corrected score, plus three added columns: 'score_uncorrected' (pre-correction value), 'n_used' (count applied per row, 'NA' where unavailable), and 'tau_used' (exponent actually applied per row).
 
 ### detect_suppressed_candidates(match_obj, score_col = "score_original", observation_id_col = "observation_id", perfect_threshold = 100, purity_threshold = 0.99, singleton_threshold = 0.98)
 

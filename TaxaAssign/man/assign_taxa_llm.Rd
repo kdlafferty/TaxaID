@@ -248,7 +248,8 @@ site is available.
 This is the \strong{LLM-shortcut pathway} -- a fast \emph{approximation} of the Full
 Bayesian pipeline (\code{TaxaLikely::train_likelihood_model()}/
 \code{evaluate_likelihoods()} -> \code{TaxaExpect}'s occurrence-modelled priors ->
-\code{run_bayesian_pipeline()}), used in place of that modeled effort when no
+\code{join_priors()} -> \code{compute_posterior()}), used in place of that modeled
+effort when no
 trained TaxaLikely model or TaxaExpect priors exist yet, or as a quick
 comparison against a Full Bayesian result already in hand. It is \strong{not} a
 parallel, equally-supported first-class pipeline: replaces the trained

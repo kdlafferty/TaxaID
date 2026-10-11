@@ -57,16 +57,23 @@ devtools::install("path/to/TaxaAssign")
 
 ## Quick Start
 
-### Full Bayesian workflow (recommended)
+### Full Bayesian workflow
 
 ``` r
-out <- run_bayesian_pipeline(
-  match_df          = match_obj,         # from TaxaMatch
-  model_params      = trained_model,     # from TaxaLikely
-  taxaexpect_priors = priors,            # from TaxaExpect
-  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine")
-)
-head(out$consensus)
+library(TaxaAssign)
+
+# likelihoods from TaxaLikely::evaluate_likelihoods() |> filter_top_hypotheses()
+joined     <- join_priors(likelihoods, priors,       # priors from TaxaExpect
+                          site = list(grid_id = "Grid_34p1_m119p1",
+                                      main_habitat = "Marine"),
+                          backbone_id = 11)          # 11 = GBIF; 4 = NCBI
+posteriors <- compute_posterior(joined)
+consensus  <- posterior_consensus(posteriors, backbone_id = 11)
+
+# Round 2: confirmation update, then consensus again
+updated    <- update_prior_from_consensus(posteriors, consensus)
+consensus  <- posterior_consensus(updated, backbone_id = 11)
+head(consensus)
 ```
 
 ### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
@@ -74,31 +81,13 @@ head(out$consensus)
 ``` r
 library(TaxaAssign)
 
-out <- run_llm_pipeline(
-  match_df        = match_obj,      # from TaxaMatch
-  geographic_hint = "Point Conception, California (34.45 N, 120.47 W)",
-  data_type       = "eDNA",
-  barcode_term    = "12S",
-  backbone_id     = 11              # 11 = GBIF backbone; 4 = NCBI
+context <- build_context(
+  taxon_names     = unique(match_obj$taxon_name),
+  geographic_hint = "Point Conception, California (34.45 N, 120.47 W)"
 )
-head(out$consensus)
-```
-
-### Step-by-step
-
-``` r
-# 1. Join priors to likelihood output
-joined <- join_priors(likelihoods, priors,
-                      site = list(grid_id = "G1", main_habitat = "Marine"))
-
-# 2. Compute posteriors via Monte Carlo
-posteriors <- compute_posterior(joined, n_sims = 1000)
-
-# 3. Consensus taxonomy (LCA among plausible hypotheses)
-consensus <- posterior_consensus(posteriors)
-
-# 4. Generate report
-report <- generate_report(posteriors, consensus)
+result    <- assign_taxa_llm(match_obj, context = context)  # from TaxaMatch
+consensus <- posterior_consensus(result, backbone_id = 11)
+head(consensus)
 ```
 
 ## Key Functions
@@ -135,14 +124,6 @@ Consensus:
 -   `compute_group_priors()`: aggregate occurrence-model shares to
     genus/family level for use as `posterior_consensus()`'s
     `group_priors`
-
-High-level wrappers:
-
--   `run_bayesian_pipeline()`: Full Bayesian (TaxaLikely + TaxaExpect
-    -\> posteriors), recommended
--   `run_llm_pipeline()`: LLM-shortcut approximation (match_df -\>
-    posteriors in one call, no trained TaxaLikely model or TaxaExpect
-    priors needed)
 
 Context and reporting:
 

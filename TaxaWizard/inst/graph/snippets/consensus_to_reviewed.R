@@ -1,6 +1,6 @@
 # Edge: consensus + context_df -> reviewed
 # Source: TaxaFlag/inst/review_assignments_workflow.R
-# NOTE: When data comes from posterior_consensus(), run_llm_pipeline(), or
+# NOTE: When data comes from posterior_consensus() or
 #   score_consensus(), the taxon column is "consensus_taxon" and rank column
 #   is "consensus_rank". For external data (e.g. user-supplied CSV), use the
 #   actual column names from the data.

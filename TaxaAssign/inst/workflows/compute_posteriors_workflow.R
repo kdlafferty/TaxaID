@@ -27,8 +27,8 @@
 #     add_slash_taxon(). Consumes the real taxaexpect_priors checkpoint plus
 #     the synthetic likelihood object described above.
 #   VARIANT B (Step 5) -- THE LLM/NO-SCORE PATHWAY
-#     assign_taxa_llm() -> posterior_consensus() -> add_slash_taxon() (or the
-#     run_llm_pipeline() wrapper). IMPORTANT: this pathway has NO
+#     assign_taxa_llm() -> posterior_consensus() -> add_slash_taxon().
+#     IMPORTANT: this pathway has NO
 #     taxaexpect_priors parameter at all -- it asks the LLM directly for
 #     range_status/habitat_fit/information_quality per taxon and builds its
 #     OWN priors from that ecological reasoning, completely bypassing
@@ -549,8 +549,9 @@ context <- tibble::tibble(main_habitat = SITE_HABITAT)
 # (package loaded via :: not library())". This house style's fully-namespaced,
 # never-attached calling convention (TaxaTools::..., never library(TaxaTools))
 # is therefore incompatible with EVERY function's NULL-default llm_fn across
-# the ecosystem (assign_taxa_llm(), run_llm_pipeline(), build_context(),
-# suggest_unreferenced_species() all share .resolve_llm_fn()). Explicit
+# the ecosystem (assign_taxa_llm(), build_context() and
+# TaxaLikely::suggest_unreferenced_species() all share .resolve_llm_fn()).
+# Explicit
 # llm_fn -- exactly the pattern already used in TaxaHabitat's
 # assign_habitat_workflow.R -- avoids the auto-detection path entirely.
 message("  Requires ANTHROPIC_API_KEY to actually run.")
@@ -596,16 +597,6 @@ message(sprintf(
   "  To reuse without re-running this variant, paste:\n    taxaassign_consensus_llm <- readRDS(\"%s\")",
   taxaassign_consensus_llm_path
 ))
-
-# Equivalently, the high-level wrapper collapses Step 5's assign_taxa_llm() +
-# posterior_consensus() + add_slash_taxon() into one call (~7 calls -> 1):
-#
-#   taxaassign_consensus_llm <- TaxaAssign::run_llm_pipeline(
-#     match_df    = match_df,
-#     context     = context,
-#     data_type   = "eDNA",
-#     rank_system = RANK_SYSTEM
-#   )
 
 message("\nWorkflow complete.")
 message(

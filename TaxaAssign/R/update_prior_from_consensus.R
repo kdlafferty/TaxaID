@@ -923,8 +923,8 @@ update_prior_from_consensus <- function(result,
   # score_threshold/top_n. This function's own compute_posterior() call
   # above already set attr(updated_rows, "report_params") <- list(n_sims=...)
   # (compute_posterior()'s own, narrower default), which would otherwise
-  # silently discard those upstream values for every real
-  # run_llm_pipeline() call (it always calls this function), making
+  # silently discard those upstream values for every caller that reaches
+  # this function, making
   # generate_report()'s LLM Methods text fall back to hardcoded defaults
   # (e.g. score_sharpness = 0.1) instead of the values actually used --
   # found via code review, not a symptom anyone had reported yet.

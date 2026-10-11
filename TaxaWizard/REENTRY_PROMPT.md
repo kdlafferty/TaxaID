@@ -8,7 +8,7 @@ TaxaWizard is the conversational workflow designer for the TaxaID ecosystem. It 
 - **Session 73:** Bayesian pipeline end-to-end with real eDNA data. Found issues with: subspecies/hybrid names in match data (fixed via snippet cleaning), `finest_rank` scoping in `fetch_reference_sequences()` (fixed), habitat mismatch priors (fixed via min_phi + dark floor).
 
 ## What needs testing
-1. **LLM pipeline path** (`match_df → consensus` via `run_llm_pipeline()`): Has this path been tested with `workflow_create()`? Does the generated script correctly set up `llm_fn`, handle `build_context()`, and pass parameters?
+1. **LLM pipeline path** (`match_df → consensus` via `assign_taxa_llm()`): Has this path been tested with `workflow_create()`? Does the generated script correctly set up `llm_fn`, handle `build_context()`, and pass parameters?
 
 2. **Score-only path** (`match_df → consensus` via `score_consensus()`): Simplest path. Does the snippet produce a working script with correct `rank_thresholds`?
 

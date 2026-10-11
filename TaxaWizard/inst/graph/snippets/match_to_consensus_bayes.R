@@ -1,5 +1,6 @@
 # Edge: match_df + model_params + priors -> consensus (Bayesian wrapper)
-# Source: TaxaAssign run_bayesian_pipeline()
+# Source: TaxaLikely evaluate_likelihoods() -> TaxaAssign join_priors() ->
+#         compute_posterior() -> posterior_consensus()
 # Prerequisite: match_df must have observation_id, score_original, taxon_name, taxon_name_rank
 # NOTE: {{backbone_id}} is required — no default. Must match whichever
 #   taxonomic backbone the input taxonomy was verified against (e.g. 11
@@ -21,7 +22,7 @@ if (!"score_original" %in% names({{match_var}})) {
   }
 }
 
-# Detect rank columns (needed for run_bayesian_pipeline even if taxon_name exists)
+# Detect rank columns (needed downstream even if taxon_name already exists)
 detected_ranks <- TaxaTools::detect_ranks({{match_var}})
 message("Auto-detected rank columns: ", paste(detected_ranks, collapse = ", "))
 
@@ -43,16 +44,47 @@ if (!"taxon_name" %in% names({{match_var}})) {
   message("Created taxon_name column: ", length(unique({{match_var}}$taxon_name)), " unique taxa")
 }
 
-bayes_result <- TaxaAssign::run_bayesian_pipeline(
+# 1. Scores -> likelihoods under the trained model, then keep the finest-rank
+#    candidate set per observation
+likelihoods <- TaxaLikely::evaluate_likelihoods(
   match_df     = {{match_var}},
   model_params = {{model_var}},
-  taxaexpect_priors = {{priors_var}},
-  site         = {{site}},
-  rank_system  = detected_ranks,
-  backbone_id  = {{backbone_id}},
-  verbose      = TRUE
+  rank_system  = detected_ranks
+)$likelihoods
+top_likelihoods <- TaxaLikely::filter_top_hypotheses(
+  likelihoods,
+  rank_system = detected_ranks
 )
-consensus <- bayes_result$consensus
-message("Bayesian pipeline complete. ", sum(consensus$is_resolved), " of ",
-        nrow(consensus), " samples resolved")
+
+# 2. Join the occurrence priors, then compute posteriors.
+#    If your observations span more than one distinct site, call
+#    TaxaAssign::combine_multisite_priors() on the joined table before
+#    compute_posterior(), or per-site duplicate candidate rows arrive
+#    uncombined.
+likelihoods_ready <- TaxaAssign::join_priors(
+  likelihoods       = top_likelihoods,
+  taxaexpect_priors = {{priors_var}},
+  site              = {{site}},
+  rank_system       = detected_ranks,
+  backbone_id       = {{backbone_id}}
+)
+result <- TaxaAssign::compute_posterior(likelihoods_ready)
+
+# 3. Round 1 consensus
+consensus <- TaxaAssign::posterior_consensus(
+  result,
+  rank_system = detected_ranks,
+  backbone_id = {{backbone_id}}
+)
+
+# 4. Confirmation update, then Round 2 consensus
+result_updated <- TaxaAssign::update_prior_from_consensus(result, consensus)
+consensus <- TaxaAssign::posterior_consensus(
+  result_updated,
+  rank_system = detected_ranks,
+  backbone_id = {{backbone_id}}
+)
+
+message("Bayesian pathway complete. ", sum(consensus$is_resolved), " of ",
+        nrow(consensus), " observations resolved")
 consensus

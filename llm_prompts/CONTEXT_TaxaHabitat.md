@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 17 exported function(s).
+Version 0.1.0. 14 exported function(s).
 
 ## Functions
 
@@ -77,39 +77,10 @@ Creates a 'habitat_prompt' object containing one or more LLM prompt strings for 
 | taxon_list | yes |  | Character vector of scientific names. |
 | extra_covariates | no | character(0) | Character vector of additional binary (0/1) covariate names to request from the LLM alongside habitat weights. Default character(0) (no extra covariates). Provide a character vector (e.g. c("Invasive", "Migratory")) only when you intend to use the trait information downstream; extra covariates add tokens and output columns that are ignored by the rest of the habitat pipeline. |
 | chunk_size | no | 60L | Integer. Maximum taxa per prompt chunk. Default 60. Larger lists are split into multiple chunks automatically. Reduce if your LLM has a small context window; increase cautiously for APIs with large windows. |
-| habitat_scheme | no | NULL | A dataframe defining the habitat classification to use, the string "IUCN_L1", or NULL. NULL (default) uses a simple three-category scheme: Marine, Freshwater, Terrestrial. This is always a valid starting point and is always interpretable in a model. "IUCN_L1" uses the 18 IUCN Level 1 group names as a single-level scheme. Pass a dataframe for a custom scheme (must contain l1_name; optional: l2_name, l2_code, realm). To generate a scheme automatically from the taxon list, use build_scheme_prompt + parse_scheme_response first, then pass the result here. See example_habitat_scheme for a dataframe template. |
+| habitat_scheme | no | NULL | A dataframe defining the habitat classification to use, the string "IUCN_L1", or NULL. NULL (default) uses a simple three-category scheme: Marine, Freshwater, Terrestrial. This is always a valid starting point and is always interpretable in a model. "IUCN_L1" uses the 18 IUCN Level 1 group names as a single-level scheme. Pass a dataframe for a custom scheme (must contain l1_name; optional: l2_name, l2_code, realm). See example_habitat_scheme for a dataframe template. |
 | geographic_context | no | NULL | Optional character string describing the geographic region where these species were observed (e.g. "Southern California", "Chesapeake Bay watershed"). When non-NULL, the prompt includes a geographic context block and requests an additional ecoregion_best_guess column from the LLM. Default NULL (no geographic context). |
 
 **Value:** An object of class 'c("habitat_prompt", "llm_prompt")', which is a named list: prompts List of character strings, one per chunk. taxa Character vector of deduplicated, trimmed taxon names. chunks List of character vectors, taxa per chunk. scheme The validated habitat scheme dataframe. habitat_cols Character vector of habitat column names the LLM will produce (the scheme's working habitat names, in order). Used by 'parse_hierarchical_habitat_response' to identify weight columns. extra_covariates The covariate names used. geographic_context The geographic context string, or 'NULL'. chunk_size The chunk size used. n_chunks Integer. Number of chunks. Print the object for a summary. Pass to 'prompt_api' (Path 1/2) or 'prompt_manual' (Path 3).
-
-### build_iucn_scheme(realm = NULL, l1 = "all", l2 = "none")
-
-Build a Habitat Scheme from the IUCN Red List Classification
-
-Constructs a 'habitat_scheme' dataframe by subsetting the IUCN Red List Habitat Classification v3.1 to the realms, Level 1 groups, and Level 2 subcategories you specify. The result can be passed directly to 'build_habitat_prompt' as 'habitat_scheme'.
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| realm | no | NULL | Character or NULL. Filter to one ecological realm: "marine", "freshwater", "terrestrial", "artificial", or NULL (all realms, default). Realm groupings: "marine": Marine Neritic, Marine Oceanic, Marine Deep Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal "freshwater": Wetlands (inland) "terrestrial": Forest, Savanna, Shrubland, Grassland, Rocky Areas (inland), Caves and Subterranean Habitats, Desert, Introduced Vegetation "artificial": Artificial - Terrestrial, Artificial - Aquatic "Other" and "Unknown" are excluded from all realm filters and must be requested explicitly via l1. |
-| l1 | no | "all" | Character, "all", or "none". Which Level 1 groups to include in the scheme. "all" (default) includes all L1 groups in the selected realm as single-level categories. "none" excludes all L1 groups (only L2 subcategories will be present; requires l2 to be non-"none"). A character vector of L1 group names includes only those groups as fallback L1 columns alongside any L2 subcategories requested. Names are validated against the filtered lookup and a helpful error is given for unrecognised values. |
-| l2 | no | "none" | Character, "all", or "none". Which Level 2 subcategories to include. "none" (default) produces a single-level scheme using only L1 group names. "all" adds all L2 subcategories under the selected L1 groups. A character vector of specific L2 names adds only those subcategories; their L1 parent groups are automatically added as fallback columns unless l1 = "none". Names are validated and an error lists the correct L1 parent for any unrecognised value. |
-
-**Value:** A 'habitat_scheme' data.frame with columns 'l1_name', 'l2_name', 'l2_code', and 'realm', ready for 'build_habitat_prompt'. Rows with 'l2_name = NA' are L1-only entries (single-level fallback); rows with non-NA 'l2_name' are L2 entries. Print the result to inspect the scheme before use.
-
-### build_scheme_prompt(taxon_list, min_habitats = 2L, max_habitats = 10L, realm = NULL)
-
-Build a Habitat Scheme Generation Prompt
-
-Asks an LLM to propose a compact, ecologically appropriate set of habitat categories for a given taxon list. The suggested scheme is then passed to 'build_habitat_prompt' as 'habitat_scheme', replacing the need for a user-supplied custom scheme or the full IUCN classification.
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| taxon_list | yes |  | Character vector of scientific names. |
-| min_habitats | no | 2L | Integer. Minimum number of habitat categories to generate. Default 2L. |
-| max_habitats | no | 10L | Integer. Maximum number of habitat categories to generate. Default 10L. Reduce to force coarser resolution; increase if the LLM is merging ecologically distinct habitats. |
-| realm | no | NULL | Character or NULL. Optional hint to constrain the scheme to a single ecological realm: "marine", "freshwater", or "terrestrial". Use when all taxa are known to belong to one realm and you want to prevent the LLM from generating irrelevant cross-realm categories. Default NULL (no constraint; the LLM infers realm from the taxon list). |
-
-**Value:** An object of class 'c("scheme_prompt", "llm_prompt")' with elements: prompts List of length 1 containing the prompt string. taxa The deduplicated taxon list. chunks List of length 1. min_habitats The minimum supplied. max_habitats The maximum supplied. realm The realm hint supplied (or 'NULL'). n_chunks Always '1L'. n_items Number of taxa. Pass to 'prompt_api' or 'prompt_manual', then pass the raw response to 'parse_scheme_response'.
 
 ### consensus_habitat(habitats_df, habitat_cols = NULL, taxon_col = "taxon_name", threshold = 0.3)
 
@@ -176,19 +147,6 @@ Parses the raw text returned by any LLM in response to a 'build_habitat_prompt' 
 | extra_covariates | no | NULL | Character vector. Names of any additional binary covariate columns to retain from the parsed output. Default NULL (no extra columns retained). Ignored when no matching columns are found. |
 
 **Value:** A data.frame with one row per species and the following columns: taxon_name Character. Species name as returned by the LLM. Numeric. One column per habitat in the scheme, named exactly as in 'prompt$habitat_cols'. Values are 0.0-1.0. Other_weight Numeric. Weight assigned to habitats outside the scheme. 0 for specialists that fit the scheme. habitat_best_guess Character. Free-text description of the actual habitat for species with non-zero 'Other_weight'. Empty string otherwise. Habitat Character. Convenience column: name of the habitat column with the highest weight (argmax), ties broken by column order. '"Other"' when 'Other_weight' is the largest, 'NA' when all weights are zero. *Diagnostic only* - see Details; nothing in the pipeline consumes it as a habitat assignment. habitat_breadth Numeric. Levins' niche breadth, 'B = 1 / sum(p^2)', over the scheme's habitat columns with the weights renormalised to sum to 1, in units of *effective number of habitats*: '1' is a pure specialist and the maximum is the number of habitat columns. 'NA' when all scheme weights are zero. See Details for why it exists and how to read it with 'Other_weight'.
-
-### parse_scheme_response(raw_text, scheme_prompt = NULL)
-
-Parse a Habitat Scheme Response from an LLM
-
-Parses the raw CSV text returned by an LLM in response to a 'build_scheme_prompt' prompt into a 'habitat_scheme' dataframe ready for 'build_habitat_prompt'.
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| raw_text | yes |  | Character. Raw LLM response from prompt_api or read_llm_response. |
-| scheme_prompt | no | NULL | A scheme_prompt object from build_scheme_prompt. Used to validate the response against the requested min/max habitat counts. If NULL, validation is skipped. |
-
-**Value:** A 'habitat_scheme' data.frame with columns 'l1_name' and 'realm', suitable for passing directly to 'build_habitat_prompt' as 'habitat_scheme'. The 'l2_name' and 'l2_code' columns are set to 'NA' (single-level scheme). Print the result to inspect and verify the suggested categories before proceeding.
 
 ### report_habitat(habitat_data, taxon_col = "scientificName", verbose = FALSE)
 

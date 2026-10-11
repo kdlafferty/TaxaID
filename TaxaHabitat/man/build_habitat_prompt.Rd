@@ -35,9 +35,6 @@ and is always interpretable in a model.
 \code{"IUCN_L1"} uses the 18 IUCN Level 1 group names as a
 single-level scheme. Pass a dataframe for a custom scheme (must contain
 \code{l1_name}; optional: \code{l2_name}, \code{l2_code}, \code{realm}).
-To generate a scheme automatically from the taxon list, use
-\code{\link{build_scheme_prompt}} + \code{\link{parse_scheme_response}}
-first, then pass the result here.
 See \code{\link{example_habitat_scheme}} for a dataframe template.}
 
 \item{geographic_context}{Optional character string describing the geographic

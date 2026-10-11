@@ -85,7 +85,6 @@ downstream package needs solved consistently:
 | `refresh_models()` | Query each provider's models endpoint for its latest available models, assign `fast`/`mid`/`top` tiers, and save the result to the local persistent cache; only providers with an API key set are queried. |
 | `set_model()` | Pin a specific model version for the current session, overriding dynamic tier resolution, so a result can be reproduced regardless of what a provider currently returns as latest. |
 | `register_provider()` | Register a custom OpenAI-compatible provider so `list_models()`, `refresh_models()`, and `set_model()` work with it alongside the built-in providers; picked up automatically by `call_openai_api()` when its `base_url` matches. |
-| `model_cache_info()` | Report the location and age of the local persistent model cache, and whether the current session is using it or the bundled fallback. |
 
 In an interactive session, `library(TaxaTools)`'s `.onAttach()` scans
 `~/.Renviron` for API keys (priority: Anthropic \> Gemini \> OpenAI \>

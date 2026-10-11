@@ -38,12 +38,6 @@
 #'     \code{TaxaLikely::unreferenced_candidates()})
 #' }
 #'
-#' @section High-level wrappers:
-#' \itemize{
-#'   \item \code{\link{run_bayesian_pipeline}} -- full Bayesian workflow
-#'   \item \code{\link{run_llm_pipeline}} -- LLM-shortcut workflow
-#' }
-#'
 #' @section Reporting:
 #' \itemize{
 #'   \item \code{\link{generate_report}} -- full publication-ready report

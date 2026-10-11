@@ -61,28 +61,6 @@ message(
 )
 
 # ==============================================================================
-# 1a. correct_training_bias(), wired against real data
-# ==============================================================================
-# score_image_inat()'s output already carries n_observations per candidate (no
-# extra API call needed -- see TaxaMatch::score_image_inat()'s own docs).
-# tau = 1.0 default (Menon et al. 2020 logit adjustment) -- run at the
-# theoretical default first, before considering any empirical retune.
-# ==============================================================================
-
-message("\n--- Step 1a: correct_training_bias() (tau = 1.0) ---")
-
-taxamatch_image_match_obj <- TaxaLikely::correct_training_bias(
-  taxamatch_image_match_obj,
-  count_col = "n_observations"
-)
-
-message(sprintf(
-  "  n_observations across candidates: min %s, max %s.",
-  format(min(taxamatch_image_match_obj$n_used, na.rm = TRUE), big.mark = ","),
-  format(max(taxamatch_image_match_obj$n_used, na.rm = TRUE), big.mark = ",")
-))
-
-# ==============================================================================
 # 1b. unreferenced_candidates() -- ADD H2/H3 PLACEHOLDER ROWS
 # ==============================================================================
 # rank_system supplied explicitly (family, genus, species) rather than relying
@@ -138,52 +116,6 @@ message(sprintf(
   100 * mean(.top1$taxon_name == .top1$true_species)
 ))
 
-# ---- Grounding-truth check: does correction help, hurt, or change nothing? --
-# A real look at correct_training_bias() against real classifier output.
-# Rebuilds the SAME pipeline
-# using score_uncorrected in place of the corrected score_original, so the
-# only difference between the two likelihood objects is the bias correction
-# itself -- isolates its effect on the winning candidate per photo.
-.uncorrected_match_obj <- taxamatch_image_match_obj
-.uncorrected_match_obj$score_original <- .uncorrected_match_obj$score_uncorrected
-
-.uncorrected_hyp <- TaxaLikely::unreferenced_candidates(
-  .uncorrected_match_obj,
-  rank_system = c("family", "genus", "species")
-)
-.uncorrected_likelihoods <- TaxaLikely::assign_scores(
-  .uncorrected_hyp,
-  score_type = "similarity_softmax"
-)
-.top1_uncorrected <- .uncorrected_likelihoods[
-  .uncorrected_likelihoods$hypothesis_type == "specific_candidate",
-]
-.top1_uncorrected <- .top1_uncorrected[order(
-  .top1_uncorrected$observation_id, -.top1_uncorrected$score_likelihood
-), ]
-.top1_uncorrected <- .top1_uncorrected[!duplicated(.top1_uncorrected$observation_id), ]
-
-message(sprintf(
-  "  Top-likelihood accuracy (uncorrected, for comparison): %d/%d correct (%.0f%%).",
-  sum(.top1_uncorrected$taxon_name == .top1_uncorrected$true_species),
-  nrow(.top1_uncorrected),
-  100 * mean(.top1_uncorrected$taxon_name == .top1_uncorrected$true_species)
-))
-
-.winner_compare <- merge(
-  .top1[, c("observation_id", "true_species", "taxon_name")],
-  .top1_uncorrected[, c("observation_id", "taxon_name")],
-  by = "observation_id", suffixes = c("_corrected", "_uncorrected")
-)
-.flipped <- .winner_compare[
-  .winner_compare$taxon_name_corrected != .winner_compare$taxon_name_uncorrected,
-]
-message(sprintf(
-  "  Photos where correction changed the winning candidate: %d/%d.",
-  nrow(.flipped), nrow(.winner_compare)
-))
-if (nrow(.flipped) > 0L) print(.flipped)
-
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 IMAGE_LIKELIHOODS_PATH <- file.path(tempdir(), "tutorial_camtrap_taxalikely_image_likelihoods.rds")
 saveRDS(taxalikely_image_likelihoods, IMAGE_LIKELIHOODS_PATH)
@@ -208,12 +140,7 @@ message("\nSection 1 (IMAGE) complete.")
 #   taxon_name_rank    -- character
 #   hypothesis_type    -- character; "specific_candidate" / "unreferenced_species"
 #                         / "unreferenced_genus"
-#   score_original     -- numeric; NA for unreferenced_* rows; bias-corrected
-#                         by Step 1a's correct_training_bias() call
-#   score_uncorrected, n_used, tau_used -- numeric; ADDED in Step 1a, passed
-#                         through unchanged by unreferenced_candidates()/
-#                         assign_scores() (NA for unreferenced_* rows, which
-#                         have no real score to correct)
+#   score_original     -- numeric; NA for unreferenced_* rows
 #   score_likelihood   -- numeric; softmax-normalized point estimate, the
 #                         primary column TaxaAssign consumes. CONFIRMED BY
 #                         ACTUALLY RUNNING THIS SCRIPT: BOTH "similarity_softmax"
@@ -269,7 +196,7 @@ message(
 )
 
 # ==============================================================================
-# 2a. JOIN n_recordings + correct_training_bias()
+# 2a. JOIN the Xeno-canto n_recordings census
 # ==============================================================================
 # BirdNET has no training-count field of its own, so
 # audit_acoustic_coverage(xc_recordings = TRUE)'s real Xeno-canto
@@ -281,7 +208,7 @@ message(
 # separate, larger audit concern (Stage 3 of the reentry prompt).
 # ==============================================================================
 
-message("\n--- Step 2a: join n_recordings (Xeno-canto v3) + correct_training_bias() (tau = 1.0) ---")
+message("\n--- Step 2a: join n_recordings (Xeno-canto v3) ---")
 
 .acoustic_species <- unique(taxamatch_acoustic_match_obj$species)
 
@@ -297,15 +224,10 @@ taxamatch_acoustic_match_obj <- dplyr::left_join(
   by = "species"
 )
 
-taxamatch_acoustic_match_obj <- TaxaLikely::correct_training_bias(
-  taxamatch_acoustic_match_obj,
-  count_col = "n_recordings"
-)
-
 message(sprintf(
   "  n_recordings across candidates: min %s, max %s.",
-  format(min(taxamatch_acoustic_match_obj$n_used, na.rm = TRUE), big.mark = ","),
-  format(max(taxamatch_acoustic_match_obj$n_used, na.rm = TRUE), big.mark = ",")
+  format(min(taxamatch_acoustic_match_obj$n_recordings, na.rm = TRUE), big.mark = ","),
+  format(max(taxamatch_acoustic_match_obj$n_recordings, na.rm = TRUE), big.mark = ",")
 ))
 
 # ==============================================================================
@@ -367,51 +289,6 @@ message(sprintf(
 message("  Per-window results (winning taxon vs. known true species):")
 print(.top1[, c("observation_id", "true_species", "taxon_name")])
 
-# ---- Grounding-truth check: does correction help, hurt, or change nothing? --
-# Same before/after comparison methodology as Section 1 -- see that section's
-# comment for why this isolates the correction's effect. Only 3 confusable
-# congeners here, so treat this as the "first look, not a final calibration"
-# the reentry prompt anticipated, not a calibration result.
-.uncorrected_match_obj <- taxamatch_acoustic_match_obj
-.uncorrected_match_obj$score_original <- .uncorrected_match_obj$score_uncorrected
-
-.uncorrected_hyp <- TaxaLikely::unreferenced_candidates(
-  .uncorrected_match_obj,
-  rank_system = c("family", "genus", "species")
-)
-.uncorrected_likelihoods <- TaxaLikely::assign_scores(
-  .uncorrected_hyp,
-  score_type = "probability"
-)
-.top1_uncorrected <- .uncorrected_likelihoods[
-  .uncorrected_likelihoods$hypothesis_type == "specific_candidate",
-]
-.top1_uncorrected <- .top1_uncorrected[order(
-  .top1_uncorrected$observation_id, -.top1_uncorrected$score_likelihood
-), ]
-.top1_uncorrected <- .top1_uncorrected[!duplicated(.top1_uncorrected$observation_id), ]
-
-message(sprintf(
-  "  Top-candidate accuracy (uncorrected, for comparison): %d/%d correct (%.0f%%).",
-  sum(.top1_uncorrected$taxon_name == .top1_uncorrected$true_species),
-  nrow(.top1_uncorrected),
-  100 * mean(.top1_uncorrected$taxon_name == .top1_uncorrected$true_species)
-))
-
-.winner_compare <- merge(
-  .top1[, c("observation_id", "true_species", "taxon_name")],
-  .top1_uncorrected[, c("observation_id", "taxon_name")],
-  by = "observation_id", suffixes = c("_corrected", "_uncorrected")
-)
-.flipped <- .winner_compare[
-  .winner_compare$taxon_name_corrected != .winner_compare$taxon_name_uncorrected,
-]
-message(sprintf(
-  "  Detection windows where correction changed the winning candidate: %d/%d.",
-  nrow(.flipped), nrow(.winner_compare)
-))
-if (nrow(.flipped) > 0L) print(.flipped)
-
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 ACOUSTIC_LIKELIHOODS_PATH <- file.path(tempdir(), "tutorial_sandpiper_taxalikely_acoustic_likelihoods.rds")
 saveRDS(taxalikely_acoustic_likelihoods, ACOUSTIC_LIKELIHOODS_PATH)
@@ -436,13 +313,10 @@ message("\nSection 2 (ACOUSTIC) complete.")
 #   taxon_name_rank    -- character
 #   hypothesis_type    -- character; "specific_candidate" / "unreferenced_species"
 #                         / "unreferenced_genus"
-#   score_original     -- numeric; BirdNET confidence (0-1), bias-corrected
-#                         by Step 2a's correct_training_bias() call; NA for
+#   score_original     -- numeric; BirdNET confidence (0-1); NA for
 #                         unreferenced_* rows
-#   n_recordings, score_uncorrected, n_used, tau_used -- numeric; ADDED in
-#                         Step 2a (n_recordings from the new Xeno-canto join;
-#                         the other three from correct_training_bias(), same
-#                         as Section 1); NA for unreferenced_* rows
+#   n_recordings       -- numeric; ADDED in Step 2a from the Xeno-canto
+#                         census join; NA for unreferenced_* rows
 #   score_likelihood   -- numeric; ratio-normalized point estimate. Same
 #                         "winner is always 1.0" property documented in
 #                         Section 1's Output block applies here too -- compare

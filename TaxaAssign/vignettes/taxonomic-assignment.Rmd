@@ -27,46 +27,16 @@ TaxaAssign computes posterior probabilities for taxonomic assignments by
 combining likelihoods (from TaxaLikely or LLM-based scores) with priors (from
 TaxaExpect or LLM biogeographic knowledge). It provides two parallel workflows:
 
-1. **Bayesian pipeline** (`run_bayesian_pipeline()`): Full statistical model
-   using trained likelihoods from TaxaLikely and occurrence-based priors from
-   TaxaExpect. Best for publication-quality results.
+1. **Bayesian pathway**: Full statistical model using trained likelihoods from
+   TaxaLikely and occurrence-based priors from TaxaExpect. Best for
+   publication-quality results.
 
-2. **LLM pipeline** (`run_llm_pipeline()`): Fast approximation using
+2. **LLM pathway** (`assign_taxa_llm()`): Fast approximation using
    score-weighted likelihoods and LLM-estimated priors. Best for exploratory
    analysis with well-known taxa.
 
 Both workflows produce posterior probabilities, consensus taxonomy, and
 optional empirical Bayes refinement.
-
-## Quick Start: Bayesian Pipeline
-
-```{r quickstart-bayes}
-library(TaxaAssign)
-
-out <- run_bayesian_pipeline(
-  match_df = match_obj,
-  model_params = trained_model,
-  taxaexpect_priors = priors,
-  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
-  backbone_id = 11L # GBIF; match whichever backbone your input taxonomy used
-)
-
-head(out$consensus)
-```
-
-## Quick Start: LLM Pipeline
-
-```{r quickstart-llm}
-out <- run_llm_pipeline(
-  match_df        = match_obj,
-  geographic_hint = "Southern California",
-  data_type       = "eDNA",
-  barcode_term    = "12S",
-  backbone_id     = 11L # GBIF; match whichever backbone your input taxonomy used
-)
-
-head(out$consensus)
-```
 
 ## Detailed Walkthrough: Step-by-Step Bayesian
 

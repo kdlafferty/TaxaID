@@ -1,8 +1,9 @@
-# Edge: match_df -> consensus (LLM-shortcut wrapper, recommended)
-# Source: TaxaAssign run_llm_pipeline()
+# Edge: match_df -> consensus (LLM-shortcut pathway)
+# Source: TaxaAssign assign_taxa_llm() -> posterior_consensus() ->
+#         update_prior_from_consensus() -> posterior_consensus()
 # Prerequisite: match_df must have observation_id, score_original, taxon_name, taxon_name_rank
 # If taxon_name is missing, create it from taxonomy columns first.
-# NOTE: {{backbone_id}} is required — no default. Must match whichever
+# NOTE: {{backbone_id}} is required -- no default. Must match whichever
 #   taxonomic backbone the input taxonomy was verified against (e.g. 11
 #   for GBIF, 4 for NCBI).
 
@@ -42,18 +43,45 @@ if (!"taxon_name" %in% names({{input_var}})) {
   message("Created taxon_name column: ", length(unique({{input_var}}$taxon_name)), " unique taxa")
 }
 
-llm_result <- TaxaAssign::run_llm_pipeline(
-  match_df        = {{input_var}},
+# 1. Ecological context for the LLM, built once from the confident taxa
+context <- TaxaAssign::build_context(
+  taxon_names     = unique({{input_var}}$taxon_name[
+    {{input_var}}$score_original >= {{score_threshold}}
+  ]),
   geographic_hint = {{geographic_hint}},
   date            = {{date}},
   habitat_scheme  = {{habitat_scheme}},
-  llm_fn          = {{llm_fn}},
-  data_type       = "eDNA", # sequence matches; image/acoustic need unreferenced_taxa instead
-  score_threshold = {{score_threshold}},
-  backbone_id     = {{backbone_id}},
-  verbose         = TRUE
+  llm_fn          = {{llm_fn}}
 )
-consensus <- llm_result$consensus
-message("LLM pipeline complete. ", sum(consensus$is_resolved), " of ",
-        nrow(consensus), " samples resolved")
+
+# 2. LLM-generated priors and likelihood proxies, then posteriors
+#    data_type = "eDNA": sequence matches. Image or acoustic input needs
+#    its own unreferenced_taxa list instead.
+result <- TaxaAssign::assign_taxa_llm(
+  match_df        = {{input_var}},
+  context         = context,
+  llm_fn          = {{llm_fn}},
+  score_threshold = {{score_threshold}}
+)
+
+# 3. Round 1 consensus
+consensus <- TaxaAssign::posterior_consensus(
+  result,
+  backbone_id = {{backbone_id}}
+)
+
+# 4. Confirmation update, then Round 2 consensus.
+#    LLM priors are not occurrence-based (no theta_mean), so Round 2's
+#    support columns cannot be supplied here.
+result_updated <- TaxaAssign::update_prior_from_consensus(
+  result, consensus,
+  require_support_columns = FALSE
+)
+consensus <- TaxaAssign::posterior_consensus(
+  result_updated,
+  backbone_id = {{backbone_id}}
+)
+
+message("LLM pathway complete. ", sum(consensus$is_resolved), " of ",
+        nrow(consensus), " observations resolved")
 consensus

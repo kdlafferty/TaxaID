@@ -401,11 +401,7 @@ training pairs; optional `evidence_col` also establishes a baseline for
 trained model - `filter_top_hypotheses()`: keep finest-rank candidates
 per query - `unreferenced_candidates()`: expand a consensus assignment
 with H2/H3 placeholder rows (no model required; used in no-score and
-acoustic/image pathways) - `correct_training_bias()`: divide out an
-estimate of classifier training-count bias (discriminative classifiers
-like iNaturalist CV and BirdNET favor well-represented taxa over rare
-ones with equal true evidential support) so scores are more comparable
-before `assign_scores()` normalizes them - `detect_suppressed_candidates()`:
+acoustic/image pathways) - `detect_suppressed_candidates()`:
 detect whether an upstream tool suppressed lower-scoring candidate rows
 in a match object - `restore_suppressed_candidates()`: check whether a
 top candidate's apparent win is real or an artifact of upstream

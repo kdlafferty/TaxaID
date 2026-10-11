@@ -146,9 +146,6 @@ Reference accession quality, additional tools:
 -   `resolve_review_overrides()`: turn `review_flagged_accessions()`'s
     LLM second-look verdicts into `remove_incongruent_references()`'s
     `override_accessions` argument
--   `verify_local_corroborations()`: audit locally-corroborated
-    accessions against whether their own corroborator's label later
-    turned out wrong
 -   `verify_removal_candidates()`: re-evaluate only the accessions a
     screen would remove, at a wider evidence window, and report which
     stop being removable, without writing anything back

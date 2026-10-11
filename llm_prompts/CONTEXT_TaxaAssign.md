@@ -4,7 +4,7 @@
 
 Estimates the posterior probability that a biological sample (sequence, image, sound) was produced by a particular taxon, using Bayes' theorem. Combines per-taxon likelihoods (from TaxaLikely or an LLM) with spatial priors (from TaxaExpect or an LLM) to compute posteriors via Monte Carlo simulation. Provides consensus taxonomy assignment at the appropriate rank (species, genus, family, etc.), empirical Bayes prior refinement, score-based consensus for comparison, and automated report generation. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 16 exported function(s).
+Version 0.1.0. 14 exported function(s).
 
 ## Functions
 
@@ -158,7 +158,7 @@ Produces a Methods and Results text suitable for inclusion in a scientific paper
 | result | yes |  | Data frame or NULL. Posterior output from compute_posterior or assign_taxa_llm. Required when consensus comes from posterior_consensus. Pass NULL when consensus comes from score_consensus (no posterior data exists). |
 | consensus | yes |  | Data frame. Output from posterior_consensus or score_consensus. The consensus type is detected automatically from column presence (top_score for score-based; consensus_posterior for posterior-based) and the report adapts accordingly. |
 | unreferenced_result | no | NULL | Optional. An unreferenced_species_result S3 object from suggest_unreferenced_species. When provided, the report includes reference database completeness statistics and unreferenced species findings. |
-| workflow | no | NULL | Character or NULL. One of "bayesian" or "llm", describing how result/consensus were produced -- selects which Methods-text template to use. Default NULL auto-detects from column presence (range_status, habitat_fit, information_quality all present -> "llm"; otherwise "bayesian"), which is reliable for output produced by this package's own run_bayesian_pipeline()/run_llm_pipeline()/ assign_taxa_llm(), but can misclassify a hand-built or third-party result that happens to share (or omit) those column names. Pass this explicitly to avoid relying on the guess. Ignored when consensus comes from score_consensus (workflow is always "score" in that case, not a guess). |
+| workflow | no | NULL | Character or NULL. One of "bayesian" or "llm", describing how result/consensus were produced -- selects which Methods-text template to use. Default NULL auto-detects from column presence (range_status, habitat_fit, information_quality all present -> "llm"; otherwise "bayesian"), which is reliable for output produced by this package's own assign_taxa_llm(), but can misclassify a hand-built or third-party result that happens to share (or omit) those column names. Pass this explicitly to avoid relying on the guess. Ignored when consensus comes from score_consensus (workflow is always "score" in that case, not a guess). |
 | data_type | no | NULL | Character. One of "eDNA", "image", "acoustic", or NULL. Used to tailor methods language. |
 | marker | no | NULL | Character. Molecular marker name (e.g. "12S MiFish"). Used only when data_type = "eDNA". |
 | context_source | no | "user" | Character. One of "user" (user provided geographic context manually) or "llm" (context was inferred by build_context). Affects the methods description of how geographic context was determined. Default "user". |
@@ -201,7 +201,7 @@ For each 'observation_id', identifies the minimal set of top-ranked hypotheses t
 | rank_system | no | NULL | Optional character vector of taxonomy column names, coarse-to-fine (e.g. c("family", "genus", "species")). If NULL (default), standard taxonomy columns present in posterior_df are detected automatically from kingdom, phylum, class, order, family, genus, species. Genus is always derivable from species binomials even when the genus column is absent. |
 | cumulative_threshold | no | 0.9 | Numeric in (0, 1]. Cumulative posterior probability threshold for the plausible hypothesis set. Hypotheses are included in descending posterior order until this fraction of total probability is reached. At 0.90, the plausible set contains the fewest hypotheses accounting for at least 90% of posterior mass, analogous to a 90% credible interval. Default 0.9. For example, at 0.9 with posteriors (0.6, 0.25, 0.10, 0.05), the plausible set includes the top 2 hypotheses (0.6 + 0.25 = 0.85 < 0.9, so the third is also included: 0.6 + 0.25 + 0.10 = 0.95 >= 0.9). The LCA of these three hypotheses becomes the consensus. |
 | min_posterior | no | 0.05 | Numeric in [0, 1). Individual posterior below which a hypothesis cannot enter the plausible set on its own. Default 0.05. Set to 0 to disable. What happens to those hypotheses depends on pool_tail. |
-| posterior_col | no | "posterior_point_est" | Character. Name of the posterior column to rank hypotheses by. Default "posterior_point_est", matching run_bayesian_pipeline() and every production workflow. An operative-column comparison found the choice second-order for real consensus results and settled on point estimates: best external corroboration, deterministic, and exactly auditable as prior x likelihood products. Pass "posterior_mean" to rank by the Monte Carlo mean instead -- with presence-mixture priors that column integrates over presence states (see compute_posterior()). |
+| posterior_col | no | "posterior_point_est" | Character. Name of the posterior column to rank hypotheses by. Default "posterior_point_est", matching every production workflow. An operative-column comparison found the choice second-order for real consensus results and settled on point estimates: best external corroboration, deterministic, and exactly auditable as prior x likelihood products. Pass "posterior_mean" to rank by the Monte Carlo mean instead -- with presence-mixture priors that column integrates over presence states (see compute_posterior()). |
 | lookup_missing_taxonomy | no | FALSE | Logical. If TRUE, calls TaxaTools::verify_taxon_names() to fill in taxonomy columns for "unreferenced_species" rows that have NA in those columns. Requires TaxaTools to be installed and may make network requests. Default FALSE. |
 | backbone_id | no | NULL | Integer. Taxonomic backbone to use when lookup_missing_taxonomy = TRUE. Passed to TaxaTools::verify_taxon_names(). Required (errors) when lookup_missing_taxonomy = TRUE -- no default, since the correct backbone depends on which backbone your input taxonomy was verified against, which varies by project. Common values: 1 = Catalogue of Life, 4 = NCBI, 9 = WoRMS, 11 = GBIF. See TaxaTools::verify_taxon_names() for the full backbone list. Ignored (may be left NULL) when lookup_missing_taxonomy = FALSE. |
 | species_reference | no | NULL | Optional. A plausible-species reference used to downrank unresolved coarse-rank consensus assignments. Accepts two forms: unreferenced_species_result (from TaxaLikely::suggest_unreferenced_species()): the full LLM-generated plausible species list is extracted automatically from attr(x, "plausible"). This includes referenced species (e.g. Leptocottus armatus) that the LLM flagged as plausible but that were filtered out of the unreferenced vector by the NCBI step. Use in the LLM workflow by passing the same object supplied to assign_taxa_llm(unreferenced_taxa = ...). data.frame: must contain a taxon_name column (species-level names) and columns named after each coarser rank in rank_system (e.g. genus, family). Pass taxaexpect_species_df in the Bayesian workflow. For each unresolved row where consensus_rank is not the finest rank, the function looks up how many taxa at the next finer rank belong to the consensus taxon. If exactly one, it downranks (recursively -- e.g. family to unique genus to unique species in one pass). Stops at any rank with more than one option. Default NULL (no downranking). A narrowing must also survive downrank_requires_candidate. Callers building species_reference from a mix of observed and evidence-only rows should still exclude the evidence-only ones (prior_branch != "kernel_estimated") before passing it in, so a downrank reflects a species this observation could plausibly have produced, not merely one that is locally plausible in the abstract. |
@@ -233,88 +233,6 @@ Summarizes the taxonomic assignment results into a structured 'report_section' o
 | verbose | no | FALSE | Logical. Print summary messages. Default FALSE. |
 
 **Value:** A 'report_section' object with: methods Template text describing assignment method. results Template text summarizing assignment outcomes. params Named list of assignment parameters. statistics Named list of summary counts.
-
-### run_bayesian_pipeline(match_df, model_params, taxaexpect_priors, site, rank_system = c("order", "family", "genus", "species"), model_rank_system = NULL, n_sims = 1000L, ratio_threshold = 0.01, barcode_term = "12S", unreferenced_df = NULL, constraint_behavior = c("relabel", "zero"), cumulative_threshold = 0.9, min_posterior = 0.05, posterior_col = "posterior_point_est", backbone_id, lookup_missing_taxonomy = TRUE, confirmation_quantile = 0.9, confirmation_discount = 0.25, species_reference = NULL, generate_report = FALSE, report_params = list(), llm_fn = NULL, verbose = TRUE)
-
-Run the Full Bayesian Assignment Pipeline
-
-High-level wrapper that chains TaxaLikely likelihoods + TaxaExpect priors through the full TaxaAssign Bayesian workflow: evaluate likelihoods, audit coverage, expand unreferenced hypotheses, join priors, compute posteriors, derive consensus, and refine via empirical Bayes.
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| match_df | yes |  | Data frame. Standardized match object from standardize_match_data, with columns observation_id, score, taxon_name, taxon_name_rank, and taxonomy columns. |
-| model_params | yes |  | A taxa_model_params object from train_likelihood_model. |
-| taxaexpect_priors | yes |  | Priors from TaxaExpect. Accepts either a data frame (from estimate_kernel_priors's $priors element, or historically generate_full_priors()) or a full list with a $priors element (the shape estimate_kernel_priors() itself returns, or the archived build_priors()'s output if you have one cached -- the $priors element is extracted automatically either way). |
-| site | yes |  | Site context for prior joining, including habitat. main_habitat is always required -- the function does not guess which habitat your observations came from. Accepted formats: Named list with lat/lon: list(lat = 34.1, lon = -119.1, main_habitat = "Marine") -- auto-resolves to nearest grid cell. Named list with grid_id: list(grid_id = "...", main_habitat = "...") Data frame (multi-site): Columns observation_id, grid_id, main_habitat -- OR -- observation_id, lat, lon, main_habitat. If main_habitat is omitted, the error message lists available habitats at the resolved grid cell so you can choose the right one. |
-| rank_system | no | c("order", "family", "genus", "species") | Character vector of taxonomy ranks, coarse to fine. Used for taxonomy fill, prior join, and consensus LCA. Default c("order", "family", "genus", "species"). |
-| model_rank_system | no | NULL | Character vector of ranks present in match_df (and the trained model). Used for evaluate_likelihoods() and filter_top_hypotheses(). Default NULL auto-detects from the intersection of rank_system and names(match_df). |
-| n_sims | no | 1000L | Integer. Monte Carlo simulations for likelihood evaluation and posterior computation. Default 1000L. |
-| ratio_threshold | no | 0.01 | Numeric. Minimum likelihood ratio for retaining hypotheses in evaluate_likelihoods(). Default 0.01. |
-| barcode_term | no | "12S" | Character. Barcode marker for audit_barcode_coverage() when unreferenced_df is NULL. Default "12S". |
-| unreferenced_df | no | NULL | Optional data frame of unreferenced species (columns species, genus, family). When NULL (default), unreferenced species are auto-detected via audit_barcode_coverage. Set to an empty data frame to skip unreferenced expansion entirely. |
-| constraint_behavior | no | c("relabel", "zero") | Character. How to handle unreferenced species in fully-sampled genera: "relabel" (default) or "zero". Passed to apply_coverage_constraints. |
-| cumulative_threshold | no | 0.9 | Numeric. Posterior probability threshold for consensus. Default 0.90. |
-| min_posterior | no | 0.05 | Numeric. Minimum posterior to be considered plausible. Default 0.05. |
-| posterior_col | no | "posterior_point_est" | Character. Column name for posterior values. Default "posterior_point_est". |
-| backbone_id | yes |  | Integer. Backbone for taxonomy lookup in join_priors and consensus. Required, no default -- the correct value depends on which backbone your input taxonomy was verified against, which varies by project (e.g. 11 for GBIF, 4 for NCBI). See TaxaTools::verify_taxon_names()'s backbone_id docs, or https://verifier.globalnames.org/ for the full list. |
-| lookup_missing_taxonomy | no | TRUE | Logical. Look up missing taxonomy in consensus. Default TRUE. |
-| confirmation_quantile | no | 0.9 | Numeric in (0, 1]. Quantile of confirming observations' consensus_posterior used for the empirical Bayes prior boost of confirmed species. Default 0.9. See update_prior_from_consensus. |
-| confirmation_discount | no | 0.25 | Numeric in [0, 1]. Power-prior discount on the cross-observation support mass in the soft confirmation update. Default 0.25; 0 disables the update. See update_prior_from_consensus. |
-| species_reference | no | NULL | Optional. Passed to posterior_consensus for downranking. Accepts an unreferenced_species_result or data frame. |
-| generate_report | no | FALSE | Logical. Generate a Methods + Results report. Default FALSE. |
-| report_params | no | list() | Named list of additional arguments passed to generate_report (e.g. data_type, marker, study_description). |
-| llm_fn | no | NULL | Optional function. LLM provider for report generation. Only used when generate_report = TRUE. Default NULL (template-only report, no LLM Results text). |
-| verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
-
-**Value:** A named list with components: '$consensus' Final consensus data frame (one row per 'observation_id'), after empirical Bayes refinement. '$result' Full posterior data frame (after refinement), with all hypotheses per observation. '$coverage' Coverage audit result from 'audit_barcode_coverage()', or 'NULL' if 'unreferenced_df' was user-supplied. '$likelihoods' The expanded, constraint-applied likelihood data frame (for inspection). '$unreferenced' Data frame of unreferenced species used for expansion, or 'NULL' if skipped. '$report' Report text from 'generate_report()', or 'NULL' if 'generate_report = FALSE'.
-
-### run_llm_pipeline(match_df, context = NULL, auto_context = TRUE, geographic_hint = NULL, date = NULL, habitat_scheme = NULL, llm_fn = NULL, data_type, detect_unreferenced = TRUE, barcode_term = "12S", expand_to_family = TRUE, max_date = NULL, unreferenced_taxa = NULL, score_threshold = 80, top_n = 10L, score_sharpness = 0.1, unknown_lik_weight = 0.05, known_present = NULL, known_absent = NULL, absent_detection_prob = 0.8, taxa_per_call = 15L, pause_seconds = 1, prior_phi = c(high = 50, moderate = 10, low = 3), n_sims = 1000L, cache_dir = NULL, context_group = NULL, rank_system = c("family", "genus", "species"), cumulative_threshold = 0.9, min_posterior = 0.05, posterior_col = "posterior_point_est", backbone_id, lookup_missing_taxonomy = TRUE, confirmation_quantile = 0.9, confirmation_discount = 0.25, generate_report = FALSE, report_params = list(), verbose = TRUE)
-
-Run the Full LLM-Shortcut Assignment Pipeline
-
-High-level wrapper that chains the LLM-shortcut workflow into a single call: optionally build context, optionally detect unreferenced species, run 'assign_taxa_llm()', derive consensus, refine via empirical Bayes, and optionally generate a report.
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| match_df | yes |  | Data frame. Standardized match object from standardize_match_data, with columns observation_id, score, taxon_name, taxon_name_rank, and taxonomy columns. |
-| context | no | NULL | Optional data frame or list with location/habitat context. When NULL (default) and auto_context = TRUE, context is auto-populated via build_context. When supplied, passed directly to assign_taxa_llm. |
-| auto_context | no | TRUE | Logical. When TRUE (default) and context is NULL, automatically build context via build_context. Requires the TaxaHabitat package. |
-| geographic_hint | no | NULL | Optional character string for build_context (e.g. "Southern California"). Ignored when context is supplied. |
-| date | no | NULL | Optional character string for build_context (e.g. "2025"). Ignored when context is supplied. |
-| habitat_scheme | no | NULL | Passed to build_context for habitat assignment. Default NULL (3-category). |
-| llm_fn | no | NULL | Function or NULL. LLM provider following the TaxaTools llm_fn pattern. Default NULL resolves to getOption("TaxaID.llm_fn") when set, otherwise TaxaTools::call_api (requires TaxaTools). |
-| data_type | yes |  | Character, one of "eDNA", "image" or "acoustic": the kind of signal behind the matches. No default, since what counts as unreferenced depends on it; required when detect_unreferenced = TRUE and unreferenced_taxa is not supplied, and otherwise optional. Passed to suggest_unreferenced_species and, unless report_params sets it, to generate_report. Detection here runs only for "eDNA"; for image or acoustic data, call suggest_unreferenced_species() yourself with its reference_species list and pass the result as unreferenced_taxa. |
-| detect_unreferenced | no | TRUE | Logical. When TRUE (default), run suggest_unreferenced_species to detect taxa absent from the reference database (requires TaxaLikely). Set to FALSE to skip. |
-| barcode_term | no | "12S" | Character. Barcode marker for unreferenced species detection. Default "12S". |
-| expand_to_family | no | TRUE | Logical. Expand unreferenced search to family level. Default TRUE. Passed to suggest_unreferenced_species. |
-| max_date | no | NULL | Optional character. NCBI date filter for unreferenced species detection (e.g. "2024/12/31"). |
-| unreferenced_taxa | no | NULL | Optional character vector of known unreferenced species. When supplied, detect_unreferenced is ignored and these are passed directly to assign_taxa_llm. |
-| score_threshold | no | 80 | Numeric. Minimum score to include a candidate (0-100). Default 80. |
-| top_n | no | 10L | Integer. Maximum candidates per observation sent to LLM. Default 10. |
-| score_sharpness | no | 0.1 | Numeric. Exponential weight sharpness for likelihood proxy. Default 0.1. |
-| unknown_lik_weight | no | 0.05 | Numeric. Baseline likelihood for the unknown species hypothesis. Default 0.05. |
-| known_present | no | NULL | Optional character vector of confirmed present species. |
-| known_absent | no | NULL | Optional character vector or data frame of confirmed absent species. See assign_taxa_llm for details. |
-| absent_detection_prob | no | 0.8 | Numeric. Detection probability for known-absent species. Default 0.80. |
-| taxa_per_call | no | 15L | Integer. Maximum taxa per LLM call. Default 15 -- see assign_taxa_llm's own taxa_per_call docs for the real truncation evidence behind this default. |
-| pause_seconds | no | 1 | Numeric. Pause between LLM calls. Default 1. |
-| prior_phi | no | c(high = 50, moderate = 10, low = 3) | Named numeric vector mapping information_quality to Beta concentration. Default c(high = 50, moderate = 10, low = 3). |
-| n_sims | no | 1000L | Integer. Monte Carlo simulations. Default 1000L. |
-| cache_dir | no | NULL | Character or NULL. Passed to assign_taxa_llm, which caches its prior calls there. It does not cover the build_context() or unreferenced-species calls. Default NULL (no cache). |
-| context_group | no | NULL | Optional character vector of column names in context for grouping observations. Default NULL. |
-| rank_system | no | c("family", "genus", "species") | Character vector of taxonomy ranks, coarse to fine. Default c("family", "genus", "species"). |
-| cumulative_threshold | no | 0.9 | Numeric. Posterior probability threshold for consensus. Default 0.90. |
-| min_posterior | no | 0.05 | Numeric. Minimum posterior to be considered plausible. Default 0.05. |
-| posterior_col | no | "posterior_point_est" | Character. Column name for posterior values. Default "posterior_point_est". |
-| backbone_id | yes |  | Integer. Backbone for taxonomy lookup in consensus. Required, no default -- the correct value depends on which backbone your input taxonomy was verified against, which varies by project (e.g. 11 for GBIF, 4 for NCBI). See TaxaTools::verify_taxon_names()'s backbone_id docs, or https://verifier.globalnames.org/ for the full list. |
-| lookup_missing_taxonomy | no | TRUE | Logical. Look up missing taxonomy in consensus. Default TRUE. |
-| confirmation_quantile | no | 0.9 | Numeric in (0, 1]. Quantile of confirming observations' consensus_posterior used for the empirical Bayes prior boost of confirmed species. Default 0.9. See update_prior_from_consensus. |
-| confirmation_discount | no | 0.25 | Numeric in [0, 1]. Power-prior discount on the cross-observation support mass in the soft confirmation update. Default 0.25; 0 disables the update. See update_prior_from_consensus. |
-| generate_report | no | FALSE | Logical. Generate a Methods + Results report. Default FALSE. |
-| report_params | no | list() | Named list of additional arguments passed to generate_report (e.g. data_type, marker, study_description). When this function builds the context itself, context_source = "llm" is added unless you set it here, so the Methods text says the LLM chose the site context. |
-| verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
-
-**Value:** A named list with components: '$consensus' Final consensus data frame (one row per 'observation_id'), after empirical Bayes refinement. '$result' Full posterior data frame (after refinement), with all hypotheses per observation. '$context' The context data frame used (auto-built or user-supplied). '$unreferenced' The unreferenced species result, or 'NULL' if skipped. '$report' Report text from 'generate_report()', or 'NULL' if 'generate_report = FALSE'.
 
 ### score_consensus(match_df, min_score = 0, max_gap = Inf, whitelist = NULL, score_col = "score_original", rank_system = NULL, rank_thresholds, consensus_mode = c("gap", "bracket"), agreement_fraction = 1, bracket_width = 1, bracket_fallback = NULL)
 
@@ -361,16 +279,23 @@ A one-pass empirical Bayes refinement step. Every observation's posterior suppor
 
 ## Quick Start
 
-### Full Bayesian workflow (recommended)
+### Full Bayesian workflow
 
 ``` r
-out <- run_bayesian_pipeline(
-  match_df          = match_obj,         # from TaxaMatch
-  model_params      = trained_model,     # from TaxaLikely
-  taxaexpect_priors = priors,            # from TaxaExpect
-  site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine")
-)
-head(out$consensus)
+library(TaxaAssign)
+
+# likelihoods from TaxaLikely::evaluate_likelihoods() |> filter_top_hypotheses()
+joined     <- join_priors(likelihoods, priors,       # priors from TaxaExpect
+                          site = list(grid_id = "Grid_34p1_m119p1",
+                                      main_habitat = "Marine"),
+                          backbone_id = 11)          # 11 = GBIF; 4 = NCBI
+posteriors <- compute_posterior(joined)
+consensus  <- posterior_consensus(posteriors, backbone_id = 11)
+
+# Round 2: confirmation update, then consensus again
+updated    <- update_prior_from_consensus(posteriors, consensus)
+consensus  <- posterior_consensus(updated, backbone_id = 11)
+head(consensus)
 ```
 
 ### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
@@ -378,30 +303,12 @@ head(out$consensus)
 ``` r
 library(TaxaAssign)
 
-out <- run_llm_pipeline(
-  match_df        = match_obj,      # from TaxaMatch
-  geographic_hint = "Point Conception, California (34.45 N, 120.47 W)",
-  data_type       = "eDNA",
-  barcode_term    = "12S",
-  backbone_id     = 11              # 11 = GBIF backbone; 4 = NCBI
+context <- build_context(
+  taxon_names     = unique(match_obj$taxon_name),
+  geographic_hint = "Point Conception, California (34.45 N, 120.47 W)"
 )
-head(out$consensus)
-```
-
-### Step-by-step
-
-``` r
-# 1. Join priors to likelihood output
-joined <- join_priors(likelihoods, priors,
-                      site = list(grid_id = "G1", main_habitat = "Marine"))
-
-# 2. Compute posteriors via Monte Carlo
-posteriors <- compute_posterior(joined, n_sims = 1000)
-
-# 3. Consensus taxonomy (LCA among plausible hypotheses)
-consensus <- posterior_consensus(posteriors)
-
-# 4. Generate report
-report <- generate_report(posteriors, consensus)
+result    <- assign_taxa_llm(match_obj, context = context)  # from TaxaMatch
+consensus <- posterior_consensus(result, backbone_id = 11)
+head(consensus)
 ```
 

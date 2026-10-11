@@ -65,10 +65,6 @@ my_scheme <- data.frame(
 prompt <- build_habitat_prompt(taxa, habitat_scheme = my_scheme)
 ```
 
-Don't want to hand-build one? `build_scheme_prompt()` +
-`parse_scheme_response()` can draft a scheme from your taxon list via
-LLM first, and you edit the result before using it.
-
 ## Installation
 
 ``` r
@@ -144,10 +140,7 @@ Habitat classification:
 
 Custom schemes:
 
--   `build_iucn_scheme()`: generate IUCN Level 1 habitat scheme
 -   `example_habitat_scheme()`: example custom scheme for reference
--   `build_scheme_prompt()` / `parse_scheme_response()`: custom scheme
-    workflow
 
 Spatial QC:
 

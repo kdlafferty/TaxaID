@@ -388,31 +388,12 @@ sc_df[, c("taxon_name", "hypothesis_type", "score_norm")]
 
 
 # ==============================================================================
-# SECTION 4 -- Training-database bias correction
-# correct_training_bias()
+# SECTION 4 -- Training-database bias correction -- RETIRED
+# correct_training_bias() is not part of the live package. Every real
+# calibration run against it (image, then pooled acoustic at two sample
+# sizes) found its exponent tau ~= 0 optimal, i.e. no correction, so the
+# function had no setting at which it earned its place in a pipeline.
 # ==============================================================================
-
-## ---- correct_training_bias() ---- OFFLINE -----------------------------------
-# Real example from this function's own roxygen: a common species
-# (500,000 iNat observations) should not automatically outrank a much rarer
-# one (20 observations) purely because it's better-represented in the
-# classifier's training data.
-scored <- data.frame(
-  observation_id = c("obs1", "obs1", "obs2"),
-  taxon_name     = c("Turdus migratorius", "Turdus merula", "Limosa fedoa"),
-  score_original = c(0.9, 0.85, 0.6),
-  n_observations = c(500000, 20, 300)
-)
-corrected <- correct_training_bias(scored, count_col = "n_observations", tau = 1)
-corrected[, c("taxon_name", "score_uncorrected", "score_original", "n_used", "tau_used")]
-# Default tau = 0: every real calibration run so far (image,
-# acoustic) found tau ~= 0 optimal, so a caller who does nothing gets no
-# correction -- confirm this leaves scores unchanged:
-identical(
-  correct_training_bias(scored, count_col = "n_observations")$score_original,
-  scored$score_original
-)
-
 
 # ==============================================================================
 # SECTION 5 -- Query-side calibration

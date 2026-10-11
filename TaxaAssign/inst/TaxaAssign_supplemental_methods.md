@@ -150,8 +150,7 @@ determined by the LLM's `information_quality` rating (see Section 4.3).
 ## 3. Full Bayesian Workflow
 
 The full Bayesian workflow chains calibrated models from TaxaLikely and
-TaxaExpect. The pipeline, orchestrated by `run_bayesian_pipeline()`,
-proceeds through these stages:
+TaxaExpect, proceeding through these stages:
 
 ### 3.1 Likelihood Evaluation (TaxaLikely)
 
@@ -198,7 +197,8 @@ H2 and H3 rows are dropped rather than retained with unmatchable names.
 ### 3.3 GBIF Census Integration
 
 When TaxaExpect's prior generation includes a GBIF genus census,
-`run_bayesian_pipeline()` applies a three-tier logic to H2 hypotheses:
+`TaxaLikely::apply_coverage_constraints()` applies a three-tier logic to
+H2 hypotheses:
 
 -   **Complete genera** (all described species have observations): H2
     rows are suppressed entirely. Any unreferenced species in these
@@ -701,8 +701,6 @@ Within TaxaAssign:
 | `posterior_consensus()` | Posterior-based consensus: cumulative threshold + LCA |
 | `score_consensus()` | Score-based consensus: rank thresholds + LCA (no model required) |
 | `update_prior_from_consensus()` | Empirical Bayes: boost confirmed species in unresolved observations |
-| `run_bayesian_pipeline()` | High-level wrapper for full Bayesian workflow |
-| `run_llm_pipeline()` | High-level wrapper for LLM-shortcut workflow |
 | `TaxaLikely::suggest_unreferenced_species()` | LLM-first unreferenced species detection (implemented in TaxaLikely; TaxaAssign calls it directly) |
 | `build_context()` | Auto-populate ecological context from taxon names via LLM |
 

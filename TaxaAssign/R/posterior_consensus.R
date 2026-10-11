@@ -79,7 +79,7 @@
 #'   0 to disable. What happens to those hypotheses depends on `pool_tail`.
 #' @param posterior_col Character. Name of the posterior column to rank
 #'   hypotheses by. Default `"posterior_point_est"`, matching
-#'   `run_bayesian_pipeline()` and every production workflow. An
+#'   every production workflow. An
 #'   operative-column comparison found the choice second-order for real
 #'   consensus results and settled on point estimates: best external
 #'   corroboration, deterministic, and exactly auditable as prior x

@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 54 exported function(s).
+Version 0.1.0. 53 exported function(s).
 
 ## Functions
 
@@ -485,16 +485,6 @@ Shows the model name that each tier ('fast', 'mid', 'top') resolves to for each 
 | provider | no | NULL | Character vector. Provider name(s) to show. Default NULL shows all providers with an API key set in the environment. |
 
 **Value:** A data frame (invisibly) with columns 'provider', 'tier', 'model', 'source'.
-
-### model_cache_info()
-
-Show Model Cache Information
-
-Reports the location and age of the local persistent model cache, and the source used by the current session ('"local_cache"' or '"bundled"').
-
-(no parameters)
-
-**Value:** A named list (invisibly) with elements 'path', 'exists', 'age_days', and 'source'.
 
 ### new_report_section(package, section, methods, results = NULL, citations = NULL, params = NULL, statistics = NULL)
 
