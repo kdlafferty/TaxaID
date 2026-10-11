@@ -3963,6 +3963,12 @@ inputs), but say so explicitly rather than leaving it ambiguous.
 - `package::function()` style for cross-package calls
 - `%||%` exported from TaxaTools — never redefine in downstream packages; import via `@importFrom TaxaTools %||%`
 - **`llm_fn` pattern**: LLM-calling functions accept `llm_fn = call_api` param (default via `getOption("TaxaID.llm_fn")`); users pass compatible wrapper for other providers
+- **`dplyr::if_else()`, not `ifelse()`**, wherever either branch could be length-1.
+  `ifelse()` returns the length of its TEST, so a length-1 branch value silently
+  collapses the result to one row. Three occurrences in this project so far:
+  `.sig_dominance()`, `assign_taxa_llm()`'s prompt builder, and a CalIntertidal
+  helper. `dplyr::if_else()` errors on a length mismatch and would have caught all
+  three. Adopted as a house rule 2026-10-11.
 
 ---
 
