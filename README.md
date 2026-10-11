@@ -280,9 +280,12 @@ section below for the finer-grained, object-level version.
 
 # Citation
 
-Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
-taxonomic assignment: U.S. Geological Survey software release,
-<https://doi.org/10.5066/xxxxxx>.
+Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
+assignment: U.S. Geological Survey software, provisional release, not
+yet citable. <https://github.com/kdlafferty/TaxaID>
+
+A citable version with a DOI will be released through the USGS software
+release process.
 
 Kevin D. Lafferty
 [![ORCID](https://img.shields.io/badge/ORCID-0000--0001--7583--4593-green)](https://orcid.org/0000-0001-7583-4593)
@@ -1007,9 +1010,9 @@ and Cross, H. (2023). crabs: A software program to generate curated
 reference databases for metabarcoding sequencing data. *Molecular
 Ecology Resources*, 23(3), 725--738.
 
-Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
-taxonomic assignment: U.S. Geological Survey software release,
-<https://doi.org/10.5066/xxxxxx>.
+Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
+assignment: U.S. Geological Survey software, provisional release, not
+yet citable. <https://github.com/kdlafferty/TaxaID>
 
 Macher, T.-H., Beermann, A.J. and Leese, F. (2021). TaxonTableTools: a
 comprehensive, platform-independent graphical user interface software to

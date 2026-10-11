@@ -249,9 +249,12 @@ ecosystem overview and installation instructions.
 
 ## Citation
 
-Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
-taxonomic assignment: U.S. Geological Survey software release,
-<https://doi.org/10.5066/xxxxxx>.
+Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
+assignment: U.S. Geological Survey software, provisional release, not
+yet citable. <https://github.com/kdlafferty/TaxaID>
+
+A citable version with a DOI will be released through the USGS software
+release process.
 
 ## Software Requirements
 
