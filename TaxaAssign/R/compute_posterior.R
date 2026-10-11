@@ -278,140 +278,178 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   # --- Process each observation_id group ---
   cli::cli_inform("Computing posteriors for {dplyr::n_distinct(likelihood_w_prior$observation_id)} observation(s)...")
 
-  results_list <- likelihood_w_prior |>
-    dplyr::group_split(.data$observation_id) |>
-    lapply(function(chunk) {
-      n_rows <- nrow(chunk)
-      if (n_rows == 0) {
-        return(chunk)
-      }
+  # Each observation's rows by index, in group_split()'s group order (and each
+  # group's original row order), so the random draws are made in exactly the
+  # same sequence. Results go into preallocated vectors and the output is ONE
+  # row-slice of the input, instead of holding the split list, the per-chunk
+  # results and their bind_rows() at once (several full-width copies of the
+  # table). The output is identical: the same tibble that bind_rows() of the
+  # split chunks gave, before the same arrange().
+  n_tot <- nrow(likelihood_w_prior)
+  if (n_tot == 0L) {
+    out <- dplyr::bind_rows(list()) |>
+      dplyr::arrange(.data$observation_id, dplyr::desc(.data$posterior_mean))
+    attr(out, "report_params") <- list(n_sims = n_sims)
+    return(out)
+  }
+  grp_rows <- if (dplyr::is_grouped_df(likelihood_w_prior)) {
+    # The earlier group_split(.data$observation_id) on a grouped input
+    # ignored observation_id, said so in a warning, and split by the
+    # EXISTING groups. Kept as it was here (this rewrite changes no output);
+    # whether to fix it is a separate decision.
+    invisible(dplyr::group_split(likelihood_w_prior[0L, ], .data$observation_id))
+    dplyr::group_rows(likelihood_w_prior)
+  } else {
+    dplyr::group_rows(dplyr::group_by(likelihood_w_prior, .data$observation_id))
+  }
+  obs_col <- likelihood_w_prior$observation_id
+  s_lik <- likelihood_w_prior$score_likelihood
+  s_mean <- likelihood_w_prior$score_likelihood_mean
+  s_sd <- likelihood_w_prior$score_likelihood_sd
+  p_mean <- likelihood_w_prior$prior_mean
+  p_alpha <- if (use_beta_prior) likelihood_w_prior$prior_alpha else NULL
+  p_beta <- if (use_beta_prior) likelihood_w_prior$prior_beta else NULL
+  if (has_mix_cols) {
+    m_w <- likelihood_w_prior$prior_mix_w
+    m_tp <- likelihood_w_prior$prior_mix_theta_present
+    m_ta <- likelihood_w_prior$prior_mix_theta_absent
+  }
+  v_pt <- v_mean <- v_sd <- v_conf <- numeric(n_tot)
+  pos <- 0L
+  for (gi in seq_along(grp_rows)) {
+    i <- grp_rows[[gi]]
+    n_rows <- length(i)
+    k <- pos + seq_len(n_rows)
+    pos <- pos + n_rows
 
-      # --- Point estimate path ---
-      # Normalize likelihoods first, then multiply by prior, then normalize again
-      norm_lik <- normalize_vec(chunk$score_likelihood)
-      raw_post <- norm_lik * chunk$prior_mean
-      chunk$posterior_point_est <- normalize_vec(raw_post)
+    # --- Point estimate path ---
+    # Normalize likelihoods first, then multiply by prior, then normalize again
+    norm_lik <- normalize_vec(s_lik[i])
+    raw_post <- norm_lik * p_mean[i]
+    pt <- normalize_vec(raw_post)
+    v_pt[k] <- pt
 
-      # --- Monte Carlo path ---
-      if (run_sims) {
-        # Sample likelihoods: Normal(mean, sd) truncated at 0 (exact
-        # inverse-CDF sampling, not a post-hoc clamp; see
-        # rtruncnorm_at_zero() above for why a clamp would be a real bug).
-        sim_lik <- matrix(
-          rtruncnorm_at_zero(n_rows * n_sims, chunk$score_likelihood_mean, chunk$score_likelihood_sd),
+    # --- Monte Carlo path ---
+    if (run_sims) {
+      # Sample likelihoods: Normal(mean, sd) truncated at 0 (exact
+      # inverse-CDF sampling, not a post-hoc clamp; see
+      # rtruncnorm_at_zero() above for why a clamp would be a real bug).
+      sim_lik <- matrix(
+        rtruncnorm_at_zero(n_rows * n_sims, s_mean[i], s_sd[i]),
+        nrow = n_rows
+      )
+
+      # Sample priors: Beta(alpha, beta) -- bounded [0, 1] by construction.
+      # When prior_alpha <= 1 the Beta's density is at its maximum at (or
+      # strictly decreasing from) 0, making simulation draws unreliable: a
+      # species with prior_mean = 3e-4 almost never beats one with
+      # prior_mean = 6e-6 because its draws are almost always near 0. This
+      # arises when theta is tiny (e.g. 0.034%) and the model has high
+      # uncertainty (phi = alpha + beta is small).
+      # Fix: treat these rows as fixed at prior_mean in simulation. This
+      # threshold covers `prior_alpha == 1` exactly (e.g. TaxaExpect's
+      # global-floor Beta(1, N_total - 1)), which has the same "always
+      # decreasing away from 0" density shape. See compute_posterior()'s
+      # roxygen for the still-open question of whether this boundary
+      # should extend further.
+      if (use_beta_prior) {
+        sim_prior <- matrix(
+          rbeta(n_rows * n_sims,
+            shape1 = p_alpha[i],
+            shape2 = p_beta[i]
+          ),
           nrow = n_rows
         )
-
-        # Sample priors: Beta(alpha, beta) -- bounded [0, 1] by construction.
-        # When prior_alpha <= 1 the Beta's density is at its maximum at (or
-        # strictly decreasing from) 0, making simulation draws unreliable: a
-        # species with prior_mean = 3e-4 almost never beats one with
-        # prior_mean = 6e-6 because its draws are almost always near 0. This
-        # arises when theta is tiny (e.g. 0.034%) and the model has high
-        # uncertainty (phi = alpha + beta is small).
-        # Fix: treat these rows as fixed at prior_mean in simulation. This
-        # threshold covers `prior_alpha == 1` exactly (e.g. TaxaExpect's
-        # global-floor Beta(1, N_total - 1)), which has the same "always
-        # decreasing away from 0" density shape. See compute_posterior()'s
-        # roxygen for the still-open question of whether this boundary
-        # should extend further.
-        if (use_beta_prior) {
-          sim_prior <- matrix(
-            rbeta(n_rows * n_sims,
-              shape1 = chunk$prior_alpha,
-              shape2 = chunk$prior_beta
-            ),
-            nrow = n_rows
-          )
-          j_shaped <- chunk$prior_alpha <= 1
-          if (any(j_shaped)) {
-            sim_prior[j_shaped, ] <- chunk$prior_mean[j_shaped]
-          }
-        } else {
-          # Fixed priors: replicate prior_mean across all simulations
-          sim_prior <- matrix(
-            rep(chunk$prior_mean, n_sims),
-            nrow = n_rows
-          )
+        j_shaped <- p_alpha[i] <= 1
+        if (any(j_shaped)) {
+          sim_prior[j_shaped, ] <- p_mean[i][j_shaped]
         }
-
-        # Presence-mixture rows: explicit Bernoulli presence
-        # draw overrides the Beta/J-guard handling above for exactly these
-        # rows -- their alpha/beta summary is J-shaped by construction, so the
-        # guard would otherwise pin them at the mean and erase the bimodality
-        # the mixture exists to express. Vector-over-matrix recycling below is
-        # column-major, matching the n_mix-row layout.
-        if (has_mix_cols) {
-          chunk_mix <- !is.na(chunk$prior_mix_w) &
-            !is.na(chunk$prior_mix_theta_present) &
-            !is.na(chunk$prior_mix_theta_absent)
-          if (any(chunk_mix)) {
-            n_mix <- sum(chunk_mix)
-            z <- matrix(stats::runif(n_mix * n_sims), nrow = n_mix) <
-              chunk$prior_mix_w[chunk_mix]
-            sim_prior[chunk_mix, ] <- chunk$prior_mix_theta_absent[chunk_mix] +
-              z * (chunk$prior_mix_theta_present[chunk_mix] -
-                chunk$prior_mix_theta_absent[chunk_mix])
-          }
-        }
-
-        # Normalize likelihoods within each simulation (column = one simulation).
-        # When all likelihoods in a simulation are 0, assign uniform weights so
-        # the posterior falls back to the prior -- matching normalize_vec() in the
-        # point-estimate path.
-        col_sums_lik <- colSums(sim_lik)
-        all_zero_cols <- col_sums_lik == 0
-        n_zero_cols <- sum(all_zero_cols)
-        if (n_zero_cols > 0L) {
-          cli::cli_warn(
-            "{n_zero_cols} of {n_sims} simulation(s) for observation_id \\
-            {.val {chunk$observation_id[1L]}} had all-zero likelihoods; using \\
-            uniform fallback for those simulations."
-          )
-        }
-        sim_lik_norm <- sweep(
-          sim_lik, 2,
-          ifelse(all_zero_cols, 1, col_sums_lik), "/"
-        )
-        sim_lik_norm[, all_zero_cols] <- 1 / n_rows
-
-        # Bayesian update: normalized likelihood * prior
-        sim_raw <- sim_lik_norm * sim_prior
-
-        # Normalize posterior within each simulation.
-        # When a simulation draws zero prior for every hypothesis,
-        # assign uniform weight so the failed simulation is uninformative.
-        col_sums_post <- colSums(sim_raw)
-        zero_post_cols <- col_sums_post == 0
-        col_sums_post[zero_post_cols] <- 1
-        sim_probs <- sweep(sim_raw, 2, col_sums_post, "/")
-        sim_probs[, zero_post_cols] <- 1 / n_rows
-
-        # Summarize across simulations
-        chunk$posterior_mean <- rowMeans(sim_probs)
-        chunk$posterior_sd <- apply(sim_probs, 1, sd)
-
-        # Confidence score: fraction of MC simulations in which this hypothesis
-        # had the highest posterior. Complements posterior_mean: a hypothesis can
-        # have a high mean posterior but low confidence_score if another hypothesis
-        # frequently wins. Analogous to the "posterior probability of being the
-        # best hypothesis" in decision theory.
-        winners <- apply(sim_probs, 2, which.max)
-        win_counts <- table(factor(winners, levels = 1:n_rows))
-        chunk$confidence_score <- as.numeric(win_counts) / n_sims
       } else {
-        # No simulation: MC outputs mirror point estimate
-        chunk$posterior_mean <- chunk$posterior_point_est
-        chunk$posterior_sd <- 0
-        chunk$confidence_score <- as.numeric(chunk$posterior_point_est == max(chunk$posterior_point_est))
+        # Fixed priors: replicate prior_mean across all simulations
+        sim_prior <- matrix(
+          rep(p_mean[i], n_sims),
+          nrow = n_rows
+        )
       }
 
-      chunk
-    })
+      # Presence-mixture rows: explicit Bernoulli presence
+      # draw overrides the Beta/J-guard handling above for exactly these
+      # rows -- their alpha/beta summary is J-shaped by construction, so the
+      # guard would otherwise pin them at the mean and erase the bimodality
+      # the mixture exists to express. Vector-over-matrix recycling below is
+      # column-major, matching the n_mix-row layout.
+      if (has_mix_cols) {
+        chunk_mix <- !is.na(m_w[i]) & !is.na(m_tp[i]) & !is.na(m_ta[i])
+        if (any(chunk_mix)) {
+          n_mix <- sum(chunk_mix)
+          z <- matrix(stats::runif(n_mix * n_sims), nrow = n_mix) <
+            m_w[i][chunk_mix]
+          sim_prior[chunk_mix, ] <- m_ta[i][chunk_mix] +
+            z * (m_tp[i][chunk_mix] - m_ta[i][chunk_mix])
+        }
+      }
+
+      # Normalize likelihoods within each simulation (column = one simulation).
+      # When all likelihoods in a simulation are 0, assign uniform weights so
+      # the posterior falls back to the prior -- matching normalize_vec() in the
+      # point-estimate path.
+      col_sums_lik <- colSums(sim_lik)
+      all_zero_cols <- col_sums_lik == 0
+      n_zero_cols <- sum(all_zero_cols)
+      if (n_zero_cols > 0L) {
+        cli::cli_warn(
+          "{n_zero_cols} of {n_sims} simulation(s) for observation_id \\
+          {.val {obs_col[i][1L]}} had all-zero likelihoods; using \\
+          uniform fallback for those simulations."
+        )
+      }
+      sim_lik_norm <- sweep(
+        sim_lik, 2,
+        ifelse(all_zero_cols, 1, col_sums_lik), "/"
+      )
+      sim_lik_norm[, all_zero_cols] <- 1 / n_rows
+
+      # Bayesian update: normalized likelihood * prior
+      sim_raw <- sim_lik_norm * sim_prior
+
+      # Normalize posterior within each simulation.
+      # When a simulation draws zero prior for every hypothesis,
+      # assign uniform weight so the failed simulation is uninformative.
+      col_sums_post <- colSums(sim_raw)
+      zero_post_cols <- col_sums_post == 0
+      col_sums_post[zero_post_cols] <- 1
+      sim_probs <- sweep(sim_raw, 2, col_sums_post, "/")
+      sim_probs[, zero_post_cols] <- 1 / n_rows
+
+      # Summarize across simulations
+      v_mean[k] <- rowMeans(sim_probs)
+      v_sd[k] <- apply(sim_probs, 1, sd)
+
+      # Confidence score: fraction of MC simulations in which this hypothesis
+      # had the highest posterior. Complements posterior_mean: a hypothesis can
+      # have a high mean posterior but low confidence_score if another hypothesis
+      # frequently wins. Analogous to the "posterior probability of being the
+      # best hypothesis" in decision theory.
+      winners <- apply(sim_probs, 2, which.max)
+      win_counts <- table(factor(winners, levels = 1:n_rows))
+      v_conf[k] <- as.numeric(win_counts) / n_sims
+    } else {
+      # No simulation: MC outputs mirror point estimate
+      v_mean[k] <- pt
+      v_sd[k] <- 0
+      v_conf[k] <- as.numeric(pt == max(pt))
+    }
+  }
 
   # Return full dataframe sorted by observation_id, then best hypothesis first
-  out <- dplyr::bind_rows(results_list) |>
-    dplyr::arrange(.data$observation_id, dplyr::desc(.data$posterior_mean))
+  out <- dplyr::dplyr_row_slice(dplyr::as_tibble(dplyr::ungroup(likelihood_w_prior)), unlist(grp_rows, use.names = FALSE))
+  # bind_rows() of the split chunks kept no custom attribute of the input
+  attributes(out) <- attributes(out)[c("names", "row.names", "class")]
+  out$posterior_point_est <- v_pt
+  out$posterior_mean <- v_mean
+  out$posterior_sd <- v_sd
+  out$confidence_score <- v_conf
+  out <- dplyr::arrange(out, .data$observation_id, dplyr::desc(.data$posterior_mean))
 
   attr(out, "report_params") <- list(n_sims = n_sims)
   out

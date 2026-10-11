@@ -497,3 +497,40 @@ test_that("prior_mix_w outside [0,1] errors", {
   df$prior_mix_w[2] <- 1.5
   expect_error(suppressMessages(compute_posterior(df, n_sims = 10)), "prior_mix_w")
 })
+
+# ---- Row-index split (2026-10-07): identical output, fewer full-width copies ----
+.cp_fx <- function() data.frame(observation_id = c("b", "a", "b", "a", "c"), taxon_name = c("x", "y", "z", "w", "v"),
+  score_likelihood = c(.5, .2, .3, .9, 1), score_likelihood_mean = c(.5, .2, .3, .9, 1),
+  score_likelihood_sd = c(.1, .05, .2, .1, 0), prior_mean = c(.3, .3, .2, .1, .5),
+  prior_alpha = c(3, 3, 2, 1, 5), prior_beta = c(7, 7, 8, 9, 5))
+
+test_that("compute_posterior: simulated values are pinned to the pre-rewrite draw order", {
+  # Golden values recorded from the group_split() implementation (main f570466)
+  # with set.seed(7): any change to the order of the random draws fails here.
+  set.seed(7)
+  o <- suppressMessages(compute_posterior(.cp_fx(), n_sims = 20))
+  expect_identical(o$observation_id, c("a", "a", "b", "b", "c"))
+  expect_identical(o$taxon_name, c("w", "y", "x", "z", "v"))
+  expect_equal(o$posterior_mean, c(0.53770411210128133, 0.46229588789871856, 0.68798446201435992,
+    0.31201553798564008, 1), tolerance = 1e-15)
+  expect_equal(o$posterior_sd, c(0.13535929081345602, 0.13535929081345599, 0.18087950765732824,
+    0.18087950765732824, 0), tolerance = 1e-15)
+  expect_equal(o$confidence_score, c(0.55, 0.45, 0.85, 0.15, 1), tolerance = 1e-15)
+})
+
+test_that("compute_posterior: returns a plain tibble without the input's custom attributes", {
+  d <- .cp_fx(); attr(d, "foo") <- 1; rownames(d) <- paste0("r", 1:5)
+  o <- suppressMessages(compute_posterior(d, n_sims = 0))
+  expect_s3_class(o, "tbl_df")
+  expect_null(attr(o, "foo"))
+  expect_identical(attr(o, "report_params"), list(n_sims = 0))
+})
+
+test_that("compute_posterior: a grouped input keeps its existing groups (pre-rewrite behaviour, with dplyr's warning)", {
+  # group_split(.data$observation_id) on a grouped_df ignored observation_id;
+  # the rewrite keeps that (it changes no output). Each taxon is its own
+  # group here, so every row normalises to 1.
+  g <- dplyr::group_by(dplyr::as_tibble(.cp_fx()), taxon_name)
+  expect_warning(o <- suppressMessages(compute_posterior(g, n_sims = 0)), "ignores")
+  expect_true(all(o$posterior_point_est == 1))
+})
