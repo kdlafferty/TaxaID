@@ -88,12 +88,21 @@ create_taxon_names <- function(input_df, rank_system = NULL) {
   # Map lowercase rank requests back to the actual (possibly mixed-case) column names
   actual_cols <- names(input_df)[match(rank_cols_lower, input_df_names_lower)]
 
-  # --- Coerce rank columns to character, treating "" as NA ---
+  # --- Coerce rank columns to character, treating a BLANK value as absent ---
+  # Blank means empty after trimming, not just "": a cell holding a single
+  # space is not a taxon name, but `na_if(x, "")` keeps it, and the walk below
+  # then reports it as the finest present rank -- so a whitespace-only genus
+  # became `taxon_name = " "` at `taxon_name_rank = "genus"`. Whitespace in a
+  # spreadsheet cell is invisible, and this project has already lost real rows
+  # to a trailing space in a join key once.
+  # Only blank values are rewritten; a non-blank value is left EXACTLY as
+  # supplied, so no real taxon name is trimmed or otherwise altered here.
+  .blank_to_na <- function(x) {
+    v <- as.character(x)
+    replace(v, !is.na(v) & !nzchar(trimws(v)), NA_character_)
+  }
   input_df_clean <- input_df |>
-    dplyr::mutate(dplyr::across(
-      dplyr::all_of(actual_cols),
-      ~ dplyr::na_if(as.character(.), "")
-    ))
+    dplyr::mutate(dplyr::across(dplyr::all_of(actual_cols), .blank_to_na))
 
   # --- Walk from most specific (right) to broadest (left) ---
   # coalesce() returns the first non-NA value across a list of vectors,
