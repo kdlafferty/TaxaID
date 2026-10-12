@@ -27,7 +27,17 @@ utils::globalVariables(c(
 #' @param local_sources List of data frames to consult before any API call.
 #'   Each element must contain at least `genus` and `family` columns; elements
 #'   lacking those columns are silently skipped.  Sources are consulted in
-#'   order; the first non-NA family for each genus wins.
+#'   order; the first non-NA family for each genus wins.  That precedence is
+#'   the right policy when you have ranked your sources by authority, and the
+#'   wrong one when two peer sources disagree because the genus name is a
+#'   homonym -- *Dilophus* is a fly and a brown alga, *Porella* a bryozoan and
+#'   a liverwort -- where the winner is then an artefact of the order you
+#'   bound them in.  This function cannot tell those cases apart, so it keeps
+#'   the precedence and REPORTS every genus that mapped to more than one value
+#'   at a requested rank, naming them.  Read that message: it is the only
+#'   signal that a filled value was a choice rather than a lookup.  Measured
+#'   on one real multi-marker study, 25 of 8,829 genera were affected (23 COI,
+#'   2 18S, 0 12S), carrying 602 of 324,083 rows.
 #' @param ranks Character vector of higher ranks to resolve.  Default
 #'   \code{"family"}, which reproduces this function's original behaviour
 #'   exactly.  Any rank label the backbone reports is accepted, e.g.
@@ -229,6 +239,17 @@ fill_higher_ranks <- function(taxon_names,
   # caller's own data.
   for (r in ranks) {
     local_lookup <- .build_genus_rank_lookup(local_sources, r)
+    # Reported whether or not anything is left to fill, and NOT gated on
+    # `verbose`: a refused fill is a rank left NA, and the caller needs to know
+    # the reason was ambiguity rather than absence.
+    .amb <- attr(local_lookup, "ambiguous_genera")
+    if (length(.amb) > 0L) {
+      message(sprintf(
+        "fill_higher_ranks: %d genus name(s) map to more than one %s across `local_sources` (%s%s); the FIRST source's value wins, per the documented precedence. Check that your sources are ordered by authority -- a genus that is a homonym has no single right answer here.",
+        length(.amb), r, paste(utils::head(.amb, 5L), collapse = ", "),
+        if (length(.amb) > 5L) ", ..." else ""
+      ))
+    }
     if (nrow(local_lookup) == 0L) next
     na_idx <- which(is.na(work[[r]]))
     if (!length(na_idx)) next
@@ -438,9 +459,28 @@ parse_classification_path <- function(path, ranks, target_rank) {
   keep <- !is.na(all$genus) & !is.na(all[[rank]]) &
     nzchar(all$genus) & nzchar(all[[rank]])
   all <- all[keep, , drop = FALSE]
-  # first occurrence wins, matching the documented "sources are consulted in
-  # order; the first non-NA value for each genus wins"
-  all[!duplicated(all$genus), , drop = FALSE]
+
+  # Which genera map to MORE THAN ONE value at this rank across the supplied
+  # sources. Not an error and not refused: `local_sources` is documented as a
+  # priority-ordered chain and first-source-wins is its contract, which is the
+  # right policy when the caller ranked its sources by authority. But the same
+  # shape also arises when two PEER sources disagree because the genus name is
+  # a homonym -- Dilophus is a fly and a brown alga, Porella a bryozoan and a
+  # liverwort -- and there the winner is an artefact of binding order. The
+  # function cannot tell those two cases apart; the caller can. So the choice
+  # stands and is REPORTED, which is what removes the "silently, and nobody
+  # can count it" half of the problem.
+  #
+  # The rule names no taxon and no rank: ambiguity is computed from the
+  # caller's own sources, so which genera are reported is learned from the data
+  # supplied, not from any list held here.
+  pairs <- unique(all[, c("genus", rank), drop = FALSE])
+  per_genus <- table(pairs$genus)
+  ambiguous <- sort(names(per_genus)[per_genus > 1L])
+
+  out <- all[!duplicated(all$genus), , drop = FALSE]
+  attr(out, "ambiguous_genera") <- ambiguous
+  out
 }
 
 

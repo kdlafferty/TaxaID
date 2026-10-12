@@ -626,3 +626,61 @@ test_that(".lineages_agree rejects a phylum contradiction and tolerates the rest
   expect_setequal(TaxaTools:::.lineages_agree(NULL, fb), fb$genus)
   expect_identical(TaxaTools:::.lineages_agree(prim, NULL), character(0))
 })
+
+# ---- a genus that maps to two values is REPORTED, not silently chosen ------
+# `local_sources` is a priority-ordered chain and first-source-wins is its
+# documented contract -- the right policy when the caller ranked its sources by
+# authority. The same shape also arises when two PEER sources disagree because
+# the genus is a homonym (Dilophus is a fly and a brown alga; Porella a
+# bryozoan and a liverwort), and there the winner is an artefact of binding
+# order. The function cannot tell those apart, so the choice stands and is
+# reported. Both backbones are NULL here so nothing reaches a network.
+
+.amb_src_a <- data.frame(
+  genus = c("Gobius", "Dilophus"), family = c("Gobiidae", "Bibionidae"),
+  class = c("Actinopteri", "Insecta"), stringsAsFactors = FALSE
+)
+.amb_src_b <- data.frame(
+  genus = c("Dilophus", "Porella"), family = c("Dictyotaceae", "Porellaceae"),
+  class = c("Phaeophyceae", "Jungermanniopsida"), stringsAsFactors = FALSE
+)
+
+test_that("a genus mapping to two families is named in a message", {
+  expect_message(
+    out <- fill_higher_ranks(
+      c("Gobius niger", "Dilophus sp", "Porella sp"),
+      ranks = "family", local_sources = list(.amb_src_a, .amb_src_b),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    ),
+    "Dilophus"
+  )
+  # Behaviour is UNCHANGED: first source still wins, and the unambiguous
+  # genera are unaffected.
+  expect_equal(out$family[out$genus == "Gobius"], "Gobiidae")
+  expect_equal(out$family[out$genus == "Dilophus"], "Bibionidae")
+  expect_equal(out$family[out$genus == "Porella"], "Porellaceae")
+})
+
+test_that("the report is rank-general, not a family rule", {
+  # The same two sources also disagree about Dilophus's CLASS. Nothing in the
+  # rule names a rank or a taxon.
+  expect_message(
+    fill_higher_ranks(
+      c("Gobius niger", "Dilophus sp"),
+      ranks = "class", local_sources = list(.amb_src_a, .amb_src_b),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    ),
+    "more than one class"
+  )
+})
+
+test_that("sources that AGREE about a genus are not reported", {
+  # Ambiguity means conflicting values, not merely appearing twice.
+  a <- data.frame(genus = "Gobius", family = "Gobiidae", stringsAsFactors = FALSE)
+  b <- data.frame(genus = "Gobius", family = "Gobiidae", stringsAsFactors = FALSE)
+  out <- expect_silent(fill_higher_ranks(
+    "Gobius niger", ranks = "family", local_sources = list(a, b),
+    backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+  ))
+  expect_equal(out$family, "Gobiidae")
+})

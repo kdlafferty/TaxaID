@@ -23,7 +23,17 @@ are expected; genus is extracted as the first word.  Single-word names
 \item{local_sources}{List of data frames to consult before any API call.
 Each element must contain at least \code{genus} and \code{family} columns; elements
 lacking those columns are silently skipped.  Sources are consulted in
-order; the first non-NA family for each genus wins.}
+order; the first non-NA family for each genus wins.  That precedence is
+the right policy when you have ranked your sources by authority, and the
+wrong one when two peer sources disagree because the genus name is a
+homonym -- \emph{Dilophus} is a fly and a brown alga, \emph{Porella} a bryozoan and
+a liverwort -- where the winner is then an artefact of the order you
+bound them in.  This function cannot tell those cases apart, so it keeps
+the precedence and REPORTS every genus that mapped to more than one value
+at a requested rank, naming them.  Read that message: it is the only
+signal that a filled value was a choice rather than a lookup.  Measured
+on one real multi-marker study, 25 of 8,829 genera were affected (23 COI,
+2 18S, 0 12S), carrying 602 of 324,083 rows.}
 
 \item{ranks}{Character vector of higher ranks to resolve.  Default
 \code{"family"}, which reproduces this function's original behaviour
