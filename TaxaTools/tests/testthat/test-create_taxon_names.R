@@ -167,3 +167,43 @@ test_that("works with a full seven-rank vector", {
   expect_equal(out$taxon_name, "Homo sapiens")
   expect_equal(out$taxon_name_rank, "species")
 })
+
+# ---- a blank rank value is absent, not a name -------------------------------
+# `na_if(x, "")` matched "" exactly, so a whitespace-only cell survived as a
+# value and the most-specific-wins walk reported it as the finest present rank.
+# Whitespace in a spreadsheet cell is invisible; this project has already lost
+# real rows to a trailing space in a join key.
+
+test_that("a whitespace-only rank value is treated as absent", {
+  d <- data.frame(
+    family = rep("Gobiidae", 3L),
+    genus = c("Gobius", "", "   "),
+    species = c("Gobius niger", "", ""),
+    stringsAsFactors = FALSE
+  )
+  out <- create_taxon_names(d, c("family", "genus", "species"))
+  expect_equal(out$taxon_name, c("Gobius niger", "Gobiidae", "Gobiidae"))
+  expect_equal(out$taxon_name_rank, c("species", "family", "family"))
+})
+
+test_that("a tab- or newline-only rank value is also absent", {
+  d <- data.frame(
+    family = rep("Gobiidae", 2L), genus = c("\t", "\n"),
+    species = c(NA_character_, NA_character_), stringsAsFactors = FALSE
+  )
+  out <- create_taxon_names(d, c("family", "genus", "species"))
+  expect_equal(out$taxon_name_rank, c("family", "family"))
+})
+
+test_that("a non-blank rank value is left exactly as supplied, padding included", {
+  # Deliberately NOT trimmed: trimming a real value would change taxon_name
+  # and every join keyed on it. Only BLANK values are rewritten.
+  d <- data.frame(
+    family = "Gobiidae", genus = " Gobius ", species = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  out <- create_taxon_names(d, c("family", "genus", "species"))
+  expect_equal(out$taxon_name, " Gobius ")
+  expect_equal(out$taxon_name_rank, "genus")
+  expect_equal(out$genus, " Gobius ") # the input column is untouched
+})

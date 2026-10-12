@@ -224,6 +224,35 @@ standardize_match_data <- function(data = NULL,
     .validate_rank_system(rank_system)
   }
 
+  # --- 6b. A match object must not carry a BLANK rank value -------------------
+  # An absent rank is NA, never "" or "   ". Source tables routinely supply a
+  # blank cell for a rank a match could not resolve -- read.csv() turns an
+  # empty cell into "" -- and a blank is not a taxon name. Left in place it
+  # reaches every downstream reader as if it were one, so each reader has to
+  # remember the convention: TaxaAssign already normalises defensively in six
+  # places (join_priors(), group_priors(), combine_multisite_priors(),
+  # unreferenced_prior_mass(), posterior_consensus()). Normalising HERE, in
+  # the function whose contract is standardisation, is what makes those six
+  # defences redundant rather than load-bearing.
+  # Only blank values change; a non-blank value is left exactly as supplied.
+  for (.rc in intersect(rank_system, names(data))) {
+    .v <- data[[.rc]]
+    if (is.character(.v) || is.factor(.v)) {
+      .v <- as.character(.v)
+      .blank <- !is.na(.v) & !nzchar(trimws(.v))
+      if (any(.blank)) {
+        .v[.blank] <- NA_character_
+        data[[.rc]] <- .v
+        message(sprintf(
+          "standardize_match_data: %d blank value(s) in '%s' read as absent (NA).",
+          sum(.blank), .rc
+        ))
+      } else {
+        data[[.rc]] <- .v
+      }
+    }
+  }
+
   # --- 7. Derive taxon_name + taxon_name_rank ---------------------------------
   data <- TaxaTools::create_taxon_names(data, rank_system)
 

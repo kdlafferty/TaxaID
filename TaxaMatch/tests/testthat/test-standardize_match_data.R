@@ -320,3 +320,41 @@ test_that("non-existent file path raises an error", {
     regexp = "File not found"
   )
 })
+
+# ---- a match object must not carry a blank rank value -----------------------
+# read.csv() turns an empty cell into "", and a source table routinely leaves a
+# rank blank when a match could not resolve it. A blank is not a taxon name;
+# left in place it reaches every downstream reader as if it were one.
+
+test_that("standardize_match_data() reads a blank rank value as absent", {
+  d <- data.frame(
+    ESVId = c("E1", "E2", "E3"),
+    PercMatch = c(99, 95, 90),
+    Family = c("Gobiidae", "Gobiidae", "Gobiidae"),
+    Genus = c("Gobius", "", "   "),
+    Species = c("Gobius niger", "", ""),
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(standardize_match_data(
+    d, observation_id_col = "ESVId", score_col = "PercMatch",
+    rank_system = c("Family", "Genus", "Species")
+  ))
+  # The rank columns themselves carry NA, not a blank string.
+  expect_true(all(is.na(out$genus[2:3])))
+  expect_true(all(is.na(out$species[2:3])))
+  # And the derived name falls back to the finest rank that is really present.
+  expect_equal(out$taxon_name, c("Gobius niger", "Gobiidae", "Gobiidae"))
+  expect_equal(out$taxon_name_rank, c("species", "family", "family"))
+})
+
+test_that("standardize_match_data() leaves a non-blank rank value untouched", {
+  d <- data.frame(
+    ESVId = "E1", PercMatch = 99, Family = "Gobiidae",
+    Genus = " Gobius ", Species = NA_character_, stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(standardize_match_data(
+    d, observation_id_col = "ESVId", score_col = "PercMatch",
+    rank_system = c("Family", "Genus", "Species")
+  ))
+  expect_equal(out$genus, " Gobius ")
+})
