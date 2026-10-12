@@ -25,19 +25,29 @@ utils::globalVariables(c(
 #'   are expected; genus is extracted as the first word.  Single-word names
 #'   (genus only) are accepted and returned as-is in the `genus` column.
 #' @param local_sources List of data frames to consult before any API call.
-#'   Each element must contain at least `genus` and `family` columns; elements
+#'   Each element must contain at least `genus` and the requested rank; elements
 #'   lacking those columns are silently skipped.  Sources are consulted in
-#'   order; the first non-NA family for each genus wins.  That precedence is
-#'   the right policy when you have ranked your sources by authority, and the
-#'   wrong one when two peer sources disagree because the genus name is a
-#'   homonym -- *Dilophus* is a fly and a brown alga, *Porella* a bryozoan and
-#'   a liverwort -- where the winner is then an artefact of the order you
-#'   bound them in.  This function cannot tell those cases apart, so it keeps
-#'   the precedence and REPORTS every genus that mapped to more than one value
-#'   at a requested rank, naming them.  Read that message: it is the only
-#'   signal that a filled value was a choice rather than a lookup.  Measured
-#'   on one real multi-marker study, 25 of 8,829 genera were affected (23 COI,
-#'   2 18S, 0 12S), carrying 602 of 324,083 rows.
+#'   order and the first non-NA value for each genus wins.  That precedence is
+#'   the right policy when you have ranked your sources by authority, and it
+#'   decides nothing useful when the genus name is a homonym -- *Dilophus* is a
+#'   fly and a brown alga, *Porella* a bryozoan and a liverwort -- because the
+#'   value it picks may then describe a different organism.  So for a genus
+#'   that maps to more than one value, the lookup is keyed on the taxon's OWN
+#'   row in your sources instead: a value standing beside this exact name is a
+#'   statement about this taxon, where a genus-keyed one is a statement about
+#'   whatever else shares the name.  Only those genera are treated this way --
+#'   where the genus is unanimous the two agree anyway, and preferring one row
+#'   there would import that row's own errors.  A genus with no row of its own
+#'   to read keeps the precedence, and every genus that mapped to several
+#'   values is REPORTED by name along with how it was settled.  Read that
+#'   message: it is the only signal that a filled value was a choice rather
+#'   than a lookup.  Measured on one real multi-marker study, 202 of 15,160
+#'   genus names in the sources mapped to more than one family; 74 of those
+#'   genera reached the 3,489 taxa being filled, affecting 137 of them.  Every
+#'   one was resolved from its own row, changing 49 fills, and 63 of the 137
+#'   carried competing family circumscriptions for the same organism -- two
+#'   backbones disagreeing about one fish, not a homonym -- which no lineage
+#'   can arbitrate and which the precedence therefore still settles.
 #' @param ranks Character vector of higher ranks to resolve.  Default
 #'   \code{"family"}, which reproduces this function's original behaviour
 #'   exactly.  Any rank label the backbone reports is accepted, e.g.
@@ -239,26 +249,59 @@ fill_higher_ranks <- function(taxon_names,
   # caller's own data.
   for (r in ranks) {
     local_lookup <- .build_genus_rank_lookup(local_sources, r)
-    # Reported whether or not anything is left to fill, and NOT gated on
-    # `verbose`: a refused fill is a rank left NA, and the caller needs to know
-    # the reason was ambiguity rather than absence.
     .amb <- attr(local_lookup, "ambiguous_genera")
-    if (length(.amb) > 0L) {
-      message(sprintf(
-        "fill_higher_ranks: %d genus name(s) map to more than one %s across `local_sources` (%s%s); the FIRST source's value wins, per the documented precedence. Check that your sources are ordered by authority -- a genus that is a homonym has no single right answer here.",
-        length(.amb), r, paste(utils::head(.amb, 5L), collapse = ", "),
-        if (length(.amb) > 5L) ", ..." else ""
-      ))
-    }
-    if (nrow(local_lookup) == 0L) next
     na_idx <- which(is.na(work[[r]]))
-    if (!length(na_idx)) next
+    if (nrow(local_lookup) == 0L || !length(na_idx)) {
+      .report_ambiguous_genera(.amb, r, 0L, .amb, character(0))
+      next
+    }
     filled <- dplyr::left_join(
       work[na_idx, c("taxon_name", "genus"), drop = FALSE],
       local_lookup, by = "genus"
     )
-    work[[r]][na_idx] <- filled[[r]]
-    work[[paste0(r, "_source")]][na_idx[!is.na(filled[[r]])]] <- "local"
+    val <- filled[[r]]
+
+    # A genus-keyed value is only an inference ABOUT THE SAME TAXON while the
+    # genus name maps to one value. Where it maps to several, the name is doing
+    # no identifying work -- Dilophus is a fly and a brown alga -- and the value
+    # the precedence picks may describe a different organism entirely. So for
+    # those genera only, the taxon's OWN row in the sources is preferred: a
+    # value standing beside this exact name is a statement about this taxon,
+    # where a genus-keyed one is a statement about whatever else shares the
+    # name. Measured on one real multi-marker study, that resolved 74 of the
+    # 137 affected names.
+    #
+    # Deliberately NOT applied where the genus is unanimous. There the two
+    # agree by construction except when a source row carries the rank without
+    # the genus, and on that study both such changes were WRONG (a mislabelled
+    # source row placing Grateloupia in Callithamniaceae). Replacing a guess
+    # with evidence is the point; replacing agreement with one row's noise is
+    # not.
+    n_own <- 0L
+    unresolved <- .amb
+    own_conflicting <- character(0)
+    if (length(.amb) > 0L) {
+      amb_rows <- which(filled$genus %in% .amb)
+      own_lookup <- .build_name_rank_lookup(local_sources, r)
+      if (length(amb_rows) > 0L && nrow(own_lookup) > 0L) {
+        own_val <- own_lookup[[r]][match(filled$taxon_name[amb_rows],
+                                         own_lookup$taxon_name)]
+        take <- !is.na(own_val)
+        val[amb_rows[take]] <- own_val[take]
+        n_own <- sum(take)
+        unresolved <- sort(unique(filled$genus[amb_rows[!take]]))
+        # Its own name mapping to several values is a DIFFERENT disagreement:
+        # two sources describing the same organism under competing family
+        # circumscriptions (Cyclopsettidae against Paralichthyidae for
+        # Citharichthys). No lineage can arbitrate that, so the precedence
+        # still decides -- but among candidates that all describe this taxon.
+        own_conflicting <- sort(intersect(filled$taxon_name[amb_rows[take]],
+                                          attr(own_lookup, "ambiguous_names")))
+      }
+    }
+    work[[r]][na_idx] <- val
+    work[[paste0(r, "_source")]][na_idx[!is.na(val)]] <- "local"
+    .report_ambiguous_genera(.amb, r, n_own, unresolved, own_conflicting)
   }
 
   # One lineage query per BACKBONE, not per rank: a single classification path
@@ -461,15 +504,15 @@ parse_classification_path <- function(path, ranks, target_rank) {
   all <- all[keep, , drop = FALSE]
 
   # Which genera map to MORE THAN ONE value at this rank across the supplied
-  # sources. Not an error and not refused: `local_sources` is documented as a
+  # sources. Not an error and not refused: `local_sources` is a
   # priority-ordered chain and first-source-wins is its contract, which is the
   # right policy when the caller ranked its sources by authority. But the same
   # shape also arises when two PEER sources disagree because the genus name is
   # a homonym -- Dilophus is a fly and a brown alga, Porella a bryozoan and a
-  # liverwort -- and there the winner is an artefact of binding order. The
-  # function cannot tell those two cases apart; the caller can. So the choice
-  # stands and is REPORTED, which is what removes the "silently, and nobody
-  # can count it" half of the problem.
+  # liverwort -- and there the winner is an artefact of binding order. This
+  # list is what tells the caller apart from the first case: for the genera on
+  # it the fill prefers the taxon's own row (see `.build_name_rank_lookup()`),
+  # and whatever is still settled by precedence is reported by name.
   #
   # The rule names no taxon and no rank: ambiguity is computed from the
   # caller's own sources, so which genera are reported is learned from the data
@@ -481,6 +524,100 @@ parse_classification_path <- function(path, ranks, target_rank) {
   out <- all[!duplicated(all$genus), , drop = FALSE]
   attr(out, "ambiguous_genera") <- ambiguous
   out
+}
+
+
+# Build a NAME->rank lookup from the same list of data frames, keyed on each
+# source's own taxon name rather than on the genus. This is what lets an
+# ambiguous genus be resolved from the row's own lineage: the value standing
+# beside this exact name describes this taxon, where a genus-keyed value
+# describes whatever else shares the genus name. Same precedence as the genus
+# lookup (sources in order, first non-NA wins) and the same silence about
+# missing columns, so a source lacking either column is skipped rather than
+# erroring. `ambiguous_names` records the names that mapped to more than one
+# value, which is NOT the homonym case -- it is two sources describing one
+# organism under competing circumscriptions.
+#' @noRd
+.build_name_rank_lookup <- function(sources, rank) {
+  parts <- lapply(sources, function(df) {
+    if (!is.data.frame(df)) {
+      return(NULL)
+    }
+    names(df) <- tolower(names(df))
+    nm_col <- if ("taxon_name" %in% names(df)) {
+      "taxon_name"
+    } else if ("species" %in% names(df)) {
+      "species"
+    } else {
+      return(NULL)
+    }
+    if (!rank %in% names(df)) {
+      return(NULL)
+    }
+    out <- df[, c(nm_col, rank), drop = FALSE]
+    names(out)[1L] <- "taxon_name"
+    out
+  })
+  parts <- Filter(Negate(is.null), parts)
+  if (length(parts) == 0L) {
+    out <- tibble::tibble(taxon_name = character(), x = character())
+    names(out)[2L] <- rank
+    attr(out, "ambiguous_names") <- character(0)
+    return(out)
+  }
+
+  all <- dplyr::bind_rows(lapply(parts, function(d) {
+    d$taxon_name <- as.character(d$taxon_name)
+    d[[rank]] <- as.character(d[[rank]])
+    d
+  }))
+  keep <- !is.na(all$taxon_name) & !is.na(all[[rank]]) &
+    nzchar(trimws(all$taxon_name)) & nzchar(trimws(all[[rank]]))
+  all <- all[keep, , drop = FALSE]
+  if (nrow(all) == 0L) {
+    attr(all, "ambiguous_names") <- character(0)
+    return(all)
+  }
+
+  pairs <- unique(all[, c("taxon_name", rank), drop = FALSE])
+  per_name <- table(pairs$taxon_name)
+  out <- all[!duplicated(all$taxon_name), , drop = FALSE]
+  attr(out, "ambiguous_names") <- sort(names(per_name)[per_name > 1L])
+  out
+}
+
+
+# Say what the ambiguity was and what was done about it. NOT gated on
+# `verbose`: a value chosen rather than looked up is the one thing a reader
+# cannot recover from the returned table, and silence here is the half of this
+# defect that made it uncountable.
+#' @noRd
+.report_ambiguous_genera <- function(ambiguous, rank, n_own,
+                                     unresolved, own_conflicting) {
+  if (length(ambiguous) == 0L) {
+    return(invisible(NULL))
+  }
+  .name_some <- function(x, n = 5L) {
+    paste0(paste(utils::head(x, n), collapse = ", "),
+           if (length(x) > n) ", ..." else "")
+  }
+  message(sprintf(
+    "fill_higher_ranks: %d genus name(s) map to more than one %s across `local_sources` (%s). A genus name that maps to several values identifies nothing, so where the taxon has its own row in your sources that row's %s is used instead: %d name(s) resolved that way.",
+    length(ambiguous), rank, .name_some(ambiguous), rank, n_own
+  ))
+  if (length(unresolved) > 0L) {
+    message(sprintf(
+      "fill_higher_ranks: %d of those genera had no row of their own to read, so the FIRST source's %s stands, per the documented precedence (%s). Check that your sources are ordered by authority -- for a genus that is a homonym there is no single right answer here.",
+      length(unresolved), rank, .name_some(unresolved)
+    ))
+  }
+  if (length(own_conflicting) > 0L) {
+    message(sprintf(
+      "fill_higher_ranks: %d resolved name(s) carry more than one %s across sources themselves, so the first source won there too -- this is competing circumscription of one organism rather than a homonym, and no lineage decides it (%s).",
+      length(own_conflicting), rank, .name_some(own_conflicting)
+    ))
+  }
+  invisible(NULL)
 }
 
 

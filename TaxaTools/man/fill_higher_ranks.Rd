@@ -21,19 +21,29 @@ are expected; genus is extracted as the first word.  Single-word names
 (genus only) are accepted and returned as-is in the \code{genus} column.}
 
 \item{local_sources}{List of data frames to consult before any API call.
-Each element must contain at least \code{genus} and \code{family} columns; elements
+Each element must contain at least \code{genus} and the requested rank; elements
 lacking those columns are silently skipped.  Sources are consulted in
-order; the first non-NA family for each genus wins.  That precedence is
-the right policy when you have ranked your sources by authority, and the
-wrong one when two peer sources disagree because the genus name is a
-homonym -- \emph{Dilophus} is a fly and a brown alga, \emph{Porella} a bryozoan and
-a liverwort -- where the winner is then an artefact of the order you
-bound them in.  This function cannot tell those cases apart, so it keeps
-the precedence and REPORTS every genus that mapped to more than one value
-at a requested rank, naming them.  Read that message: it is the only
-signal that a filled value was a choice rather than a lookup.  Measured
-on one real multi-marker study, 25 of 8,829 genera were affected (23 COI,
-2 18S, 0 12S), carrying 602 of 324,083 rows.}
+order and the first non-NA value for each genus wins.  That precedence is
+the right policy when you have ranked your sources by authority, and it
+decides nothing useful when the genus name is a homonym -- \emph{Dilophus} is a
+fly and a brown alga, \emph{Porella} a bryozoan and a liverwort -- because the
+value it picks may then describe a different organism.  So for a genus
+that maps to more than one value, the lookup is keyed on the taxon's OWN
+row in your sources instead: a value standing beside this exact name is a
+statement about this taxon, where a genus-keyed one is a statement about
+whatever else shares the name.  Only those genera are treated this way --
+where the genus is unanimous the two agree anyway, and preferring one row
+there would import that row's own errors.  A genus with no row of its own
+to read keeps the precedence, and every genus that mapped to several
+values is REPORTED by name along with how it was settled.  Read that
+message: it is the only signal that a filled value was a choice rather
+than a lookup.  Measured on one real multi-marker study, 202 of 15,160
+genus names in the sources mapped to more than one family; 74 of those
+genera reached the 3,489 taxa being filled, affecting 137 of them.  Every
+one was resolved from its own row, changing 49 fills, and 63 of the 137
+carried competing family circumscriptions for the same organism -- two
+backbones disagreeing about one fish, not a homonym -- which no lineage
+can arbitrate and which the precedence therefore still settles.}
 
 \item{ranks}{Character vector of higher ranks to resolve.  Default
 \code{"family"}, which reproduces this function's original behaviour
