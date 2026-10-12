@@ -684,3 +684,156 @@ test_that("sources that AGREE about a genus are not reported", {
   ))
   expect_equal(out$family, "Gobiidae")
 })
+
+# ---- an ambiguous genus is resolved from the taxon's own row ---------------
+# The shape that matters: the FIRST source answers at genus level with a
+# homonym's family, and the taxon's own row sits in a LATER source. Precedence
+# alone returns the fly's family for an alga.
+
+test_that("an ambiguous genus is filled from the taxon's own row, not precedence", {
+  fly <- data.frame(
+    genus = "Dilophus", family = "Bibionidae",
+    stringsAsFactors = FALSE
+  )
+  alga <- data.frame(
+    taxon_name = "Dilophus okamurae", genus = "Dilophus",
+    family = "Dictyotaceae", stringsAsFactors = FALSE
+  )
+  out <- suppressWarnings(suppressMessages(
+    fill_higher_ranks("Dilophus okamurae",
+      local_sources = list(fly, alga),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
+  ))
+  expect_equal(out$family, "Dictyotaceae")
+})
+
+test_that("own-row preference is rank-general, not family-specific", {
+  fly <- data.frame(
+    genus = "Dilophus", class = "Insecta",
+    stringsAsFactors = FALSE
+  )
+  alga <- data.frame(
+    taxon_name = "Dilophus okamurae", genus = "Dilophus",
+    class = "Phaeophyceae", stringsAsFactors = FALSE
+  )
+  out <- suppressWarnings(suppressMessages(
+    fill_higher_ranks("Dilophus okamurae",
+      ranks = "class", local_sources = list(fly, alga),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
+  ))
+  expect_equal(out$class, "Phaeophyceae")
+})
+
+test_that("a `species` column serves as the taxon's own name when taxon_name is absent", {
+  fly <- data.frame(
+    genus = "Dilophus", family = "Bibionidae",
+    stringsAsFactors = FALSE
+  )
+  alga <- data.frame(
+    species = "Dilophus okamurae", genus = "Dilophus",
+    family = "Dictyotaceae", stringsAsFactors = FALSE
+  )
+  out <- suppressWarnings(suppressMessages(
+    fill_higher_ranks("Dilophus okamurae",
+      local_sources = list(fly, alga),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
+  ))
+  expect_equal(out$family, "Dictyotaceae")
+})
+
+test_that("an UNambiguous genus keeps the precedence even when a row disagrees", {
+  # Measured guard: where the genus is unanimous, preferring one row's value
+  # only imports that row's errors. `Grateloupia` is unanimous at genus here,
+  # so the stray own-row value must NOT win.
+  authority <- data.frame(
+    genus = "Grateloupia", family = "Halymeniaceae",
+    stringsAsFactors = FALSE
+  )
+  stray <- data.frame(
+    taxon_name = "Grateloupia prolongata", genus = NA_character_,
+    family = "Callithamniaceae", stringsAsFactors = FALSE
+  )
+  out <- suppressWarnings(suppressMessages(
+    fill_higher_ranks("Grateloupia prolongata",
+      local_sources = list(authority, stray),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
+  ))
+  expect_equal(out$family, "Halymeniaceae")
+})
+
+test_that("an ambiguous genus with no row of its own keeps the precedence", {
+  src1 <- data.frame(genus = "Dilophus", family = "Bibionidae",
+                     stringsAsFactors = FALSE)
+  src2 <- data.frame(genus = "Dilophus", family = "Dictyotaceae",
+                     stringsAsFactors = FALSE)
+  out <- suppressWarnings(suppressMessages(
+    fill_higher_ranks("Dilophus sp1",
+      local_sources = list(src1, src2),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
+  ))
+  expect_equal(out$family, "Bibionidae")
+})
+
+test_that("the ambiguity report says how many names the own row resolved", {
+  fly <- data.frame(genus = "Dilophus", family = "Bibionidae",
+                    stringsAsFactors = FALSE)
+  alga <- data.frame(taxon_name = "Dilophus okamurae", genus = "Dilophus",
+                     family = "Dictyotaceae", stringsAsFactors = FALSE)
+  expect_message(
+    suppressWarnings(fill_higher_ranks("Dilophus okamurae",
+      local_sources = list(fly, alga),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )),
+    "1 name\\(s\\) resolved that way"
+  )
+})
+
+test_that("a name carrying two values itself is settled by precedence and named", {
+  # Competing circumscription of ONE organism, not a homonym: both candidates
+  # describe this taxon, so the precedence still decides -- but it must say so.
+  a <- data.frame(
+    taxon_name = "Citharichthys stigmaeus", genus = "Citharichthys",
+    family = "Cyclopsettidae", stringsAsFactors = FALSE
+  )
+  b <- data.frame(
+    taxon_name = "Citharichthys stigmaeus", genus = "Citharichthys",
+    family = "Paralichthyidae", stringsAsFactors = FALSE
+  )
+  expect_message(
+    suppressWarnings(fill_higher_ranks("Citharichthys stigmaeus",
+      local_sources = list(a, b),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )),
+    "competing circumscription"
+  )
+  out <- suppressWarnings(suppressMessages(
+    fill_higher_ranks("Citharichthys stigmaeus",
+      local_sources = list(a, b),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
+  ))
+  expect_equal(out$family, "Cyclopsettidae")
+})
+
+test_that(".build_name_rank_lookup dedups first-source-wins and flags conflicts", {
+  a <- data.frame(taxon_name = "Aa bb", family = "F1", stringsAsFactors = FALSE)
+  b <- data.frame(taxon_name = "Aa bb", family = "F2", stringsAsFactors = FALSE)
+  no_rank <- data.frame(taxon_name = "Aa bb", stringsAsFactors = FALSE)
+  no_name <- data.frame(genus = "Aa", family = "F3", stringsAsFactors = FALSE)
+  lu <- .build_name_rank_lookup(list(no_rank, no_name, a, b), "family")
+  expect_equal(nrow(lu), 1L)
+  expect_equal(lu$family, "F1")
+  expect_equal(attr(lu, "ambiguous_names"), "Aa bb")
+})
+
+test_that(".build_name_rank_lookup returns a shaped empty table with no usable source", {
+  lu <- .build_name_rank_lookup(list(data.frame(x = 1), "not a df"), "family")
+  expect_equal(nrow(lu), 0L)
+  expect_true(all(c("taxon_name", "family") %in% names(lu)))
+  expect_equal(attr(lu, "ambiguous_names"), character(0))
+})
