@@ -2857,3 +2857,47 @@ quotable at the published unit with no caveat.** The
 elimination-from-the-record argument can be written on 295. Finding A's
 withdrawn refinements are therefore entirely at non-species ranks, as its
 heading says -- nothing in it reaches a named species call.
+
+### `5df0b6e` verified against the install for the R1013 deposit (2026-10-13)
+
+Asked by the reports session, because the R1009f README's sentence ("commit
+`068d6ff` reproduces all nine installed packages exactly, checked function by
+function") rested on a check that had NOT been repeated for `5df0b6e`. My
+earlier "installed == main == 5df0b6e" rested only on TaxaLikely's `fetch_code`
+digest matching and the reverted message being gone from the installed
+namespace -- one package, one function. **Now measured properly**, R 4.5.2,
+library `~/Library/R/4.0/library`, method per
+`reference_installed_package_to_commit_without_remotesha`:
+
+1. **Code.** 1,068 functions across the nine, `deparse(removeSource())` of the
+   installed object against `deparse()` of the parsed source at the commit:
+   **0 body or signature differences, 0 functions in source but not installed.**
+2. **Verbatim files.** 174 `inst/*`, `NAMESPACE` and `NEWS.md` files
+   md5-identical. **DESCRIPTION identical FIELD BY FIELD in all nine, all at
+   0.1.0** -- a line-wise diff falsely flags all nine, because install rewraps
+   `Imports:`/`Suggests:` onto continuation lines and synthesises `Author:` and
+   `Maintainer:` from `Authors@R`.
+3. **Documentation.** Rd alias sets identical in all nine. TaxaTools 63/63; its
+   apparent single mismatch was Rd escaping, `\%||\%` in the source against
+   `%||%` in `help/AnIndex`, not a missing alias.
+4. **Reverse direction.** **0 installed files in any package come from outside
+   the commit.**
+
+**VERDICT: EXACT on all four.** The sentence is true of `5df0b6e` as written.
+
+Caveats the deposit should carry, none of them a difference:
+- **`tests/` is NOT installed in any of the nine** (`--install-tests` not
+  used), so the 208 test files in the commit were not compared against the
+  library. That is absence, not disagreement. It also differs from the
+  2026-10-10 check, where four of nine had tests installed -- the install
+  method changed, so do not reuse that detail.
+- Package subtrees are **identical** between `5df0b6e` and current main
+  `cd9a1ef`; the five commits since are docs-only
+  (`ecosystem_docs/REENTRY_PROMPT_prepublication_screen.md`). Both SHAs cite
+  the code identically, and **`5df0b6e` is the one to name**, being HEAD when
+  the run ran.
+- `5df0b6e` is reachable on `origin/main`, so it is citable.
+- **Artefact provenance:** references were FROZEN and reused under a matching
+  `fetch_code` digest, and the sequence matrix was reused; Step 7 likelihoods
+  and everything downstream were rebuilt. A deposit that cites one commit for
+  the code should say which artefacts predate the run.
