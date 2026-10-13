@@ -100,12 +100,25 @@ unreferenced local species downstream, and
 \code{TaxaAssign::add_unreferenced_prior_mass(named_rows = TRUE)} can then
 name it in a call -- so a synonym of a referenced taxon could be reported as
 having no reference sequence. The designed defence is the NCBI-to-GBIF
-crosswalk, not this function. Measured on one real multi-marker study, the
-35 record-named taxa behind its 410 such calls produced 97 shared-epithet
-pairs against the reference sets and EVERY one was in a different family --
-homonymous epithets across unrelated groups rather than synonyms -- so that
-study showed no instance of the failure. The limitation stands regardless of
-that result.
+crosswalk, not this function.
+
+Measured on one real multi-marker study, in two independent ways, and it
+found no instance of that failure. First, the 35 record-named taxa behind
+its 410 such calls produced 97 shared-epithet pairs against the reference
+sets and EVERY one was in a different family -- homonymous epithets across
+unrelated groups (\emph{Fucus} / \emph{Pleurophycus} / \emph{Pyropia
+gardneri}) rather than synonyms. Second, all 34 distinct names among them
+resolve at species rank to THEMSELVES on the backbone the priors use, none
+flagged as a synonym, and none of their accepted names appears in the same
+marker's reference set; the reverse direction, resolving all 318 reference
+species sharing a family with any of the 35, likewise returned nothing. So
+the limitation is a measured absence there rather than an untested
+assumption -- but it IS only that backbone's taxonomic opinion. A pair that
+another authority treats as synonymous while this backbone keeps it separate
+would not show, and a synonym the backbone places in a DIFFERENT family
+would escape the reverse check (though that would itself be a conflict of
+the kind this function does detect). The limitation stands regardless of the
+result.
 }
 
 \section{Why this is not a data-cleaning nicety}{
