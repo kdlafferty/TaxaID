@@ -622,8 +622,8 @@
 #'       `posterior_df` carries no `prior_branch` column at all -- i.e. no
 #'       prior table was ever joined. A `model_tier` column with no
 #'       `prior_branch` column is an error: it identifies a prior table
-#'       predating the kernel-priors schema, which this function no longer
-#'       reads.}
+#'       predating the kernel-priors schema, which this function does not
+#'       read.}
 #'     \item{`winner_has_occurrence_record`, `consensus_prior`,
 #'       `consensus_has_occurrence_record`}{Support for the
 #'       prior/occurrence-plausibility axis, answering what `winner_prior`'s

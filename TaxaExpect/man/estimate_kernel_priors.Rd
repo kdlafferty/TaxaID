@@ -107,7 +107,7 @@ barely-sampled groups contribute singletons that inflate \code{f1} -- and so
 \code{chao_missing}, quadratically -- while adding almost nothing to
 \code{missing_mass}, deflating \code{theta_present} (\code{theta_present} is priced from
 \code{missing_mass / f1}, so a diluted \code{missing_mass} still deflates it even
-though \code{chao_missing} no longer sits in that formula). Note this is a
+though \code{chao_missing} does not itself appear in it). Note this is a
 no-op for a taxonomically homogeneous pool (a fish assay whose
 occurrence pool is all fish), which is why it changes nothing at sites
 like GreatLakes; it matters for broad markers (18S) spanning groups with

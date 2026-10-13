@@ -108,10 +108,10 @@ by the row's own \code{prior_mix_theta_present} and \code{prior_mix_veto_bound}.
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},
-plus one new column, \code{confirmed_without_occurrence_record} (logical; kept
-for compatibility and \code{FALSE} whenever \code{theta_mean} is present, since such
-rows are no longer raised -- see \emph{Confirmed without an occurrence
-record}). Resolved observations are returned unchanged.
+plus one new column, \code{confirmed_without_occurrence_record} (logical;
+\code{FALSE} whenever \code{theta_mean} is present, because a row carrying no
+occurrence record is never raised -- see \emph{Confirmed without an
+occurrence record}). Resolved observations are returned unchanged.
 Unresolved observations that share at least one group with another
 observation have updated \code{prior_mean} and freshly computed posterior
 columns (\code{posterior_point_est}, \code{posterior_mean}, \code{posterior_sd},

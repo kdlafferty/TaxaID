@@ -36,8 +36,8 @@
 #'   \code{\link{build_habitat_prompt}}. \strong{Always supply this} --
 #'   its \code{$habitat_cols} element is used to identify and validate
 #'   the weight columns, and its \code{$scheme} drives IUCN vs. custom
-#'   mode. \code{NULL} triggers a deprecated IUCN-only mode; passing a
-#'   \code{habitat_prompt} object uses the current wide-weighted format
+#'   mode. \code{NULL} triggers a reduced IUCN-only mode; passing a
+#'   \code{habitat_prompt} object uses the full wide-weighted format
 #'   instead.
 #' @param extra_covariates Character vector. Names of any additional binary
 #'   covariate columns to retain from the parsed output. Default \code{NULL}

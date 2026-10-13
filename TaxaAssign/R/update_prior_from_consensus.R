@@ -345,10 +345,10 @@
 #'   this or `detections`, not both.
 #'
 #' @return The full posterior dataframe with the same structure as `result`,
-#'   plus one new column, `confirmed_without_occurrence_record` (logical; kept
-#'   for compatibility and `FALSE` whenever `theta_mean` is present, since such
-#'   rows are no longer raised -- see \emph{Confirmed without an occurrence
-#'   record}). Resolved observations are returned unchanged.
+#'   plus one new column, `confirmed_without_occurrence_record` (logical;
+#'   `FALSE` whenever `theta_mean` is present, because a row carrying no
+#'   occurrence record is never raised -- see \emph{Confirmed without an
+#'   occurrence record}). Resolved observations are returned unchanged.
 #'   Unresolved observations that share at least one group with another
 #'   observation have updated `prior_mean` and freshly computed posterior
 #'   columns (`posterior_point_est`, `posterior_mean`, `posterior_sd`,
