@@ -421,6 +421,45 @@ the winning (highest-posterior) hypothesis row, e.g.
 \code{"rank_expanded"} (see \code{winner_rank_expanded} below). \code{NA} when the
 winning row's \code{hypothesis_type} value is itself \code{NA}, or when
 \code{consensus_taxon} is \code{NA}.}
+\item{\code{consensus_hypothesis_type}}{Character. The \code{hypothesis_type}
+of the row the CALL landed on -- the candidate whose \code{taxon_name}
+equals \code{consensus_taxon}, highest posterior first if several share
+that name. This is NOT \code{winner_hypothesis_type}, which describes the
+highest-posterior HYPOTHESIS: the call is the credible node after
+downranking, and the two disagree often enough to invalidate an
+analysis. Measured on one multi-marker study, the winner column
+reported \code{unreferenced_species} for 48 observations while 23 of those
+had a \code{consensus_taxon} matching a referenced \code{specific_candidate}
+row, so the call-keyed count was 63 rather than 48. Use this column
+for any question of the form "what kind of row did this call land
+on?". Present when \code{posterior_df} carries \code{hypothesis_type}.}
+\item{\code{consensus_unreferenced_scope},
+\code{consensus_unreferenced_scope_rank}}{The scope of that row, and the
+rank of the scope, when the call landed on an unreferenced
+hypothesis. \strong{This is where the name came from.} \code{named_rows} in
+\code{\link[=add_unreferenced_prior_mass]{add_unreferenced_prior_mass()}} copies a ring row's likelihood onto
+every member of its scope, so sibling named rows carry IDENTICAL
+likelihoods and the sequence cannot discriminate between them: what
+the sequence settles is whether an unreferenced relative beats every
+referenced candidate, and which scope level it sits at. The species
+NAME is supplied by the occurrence records in that scope, and its
+reliability is the completeness of those records -- which the SCOPE
+RANK governs, since a scope at order or class rank is an elimination
+over a very wide clade. \code{likelihood_support} cannot express any of
+this and reads near 1 on such calls, truthfully about the hypothesis
+and silently about the name. A GENERIC ring row carries its own name
+as its scope (\code{consensus_unreferenced_scope == consensus_taxon}),
+because the ring is the scope; a NAMED row's scope is the parent
+clade. Both are typed \code{unreferenced_species}, so \code{hypothesis_type}
+alone cannot separate them. Present when \code{posterior_df} carries the
+scope columns.}
+\item{\code{consensus_scope_n_named}}{Integer. How many NAMED rows share
+that scope in the same observation. \code{1} means the records offered one
+candidate, so the call is an elimination from the record and can only
+be wrong about the record's completeness. Greater than \code{1} means the
+occurrence prior broke a tie among candidates the sequence scores
+identically, which is WEAKER, not stronger. \code{NA} when the call did
+not land on a named unreferenced row.}
 \item{\code{winner_rank_expanded}}{Logical. \code{TRUE} when the winning
 hypothesis was manufactured by \code{join_priors()}'s coarse-rank
 expansion (\code{.expand_coarse_rank_rows()}) rather than resolved from a
