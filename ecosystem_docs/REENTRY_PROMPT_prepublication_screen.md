@@ -2675,3 +2675,53 @@ outstanding branch.
 
     rm -rf ~/taxaid-worktrees/{amb,blank,coi} && git worktree prune
     git branch -d ambiguous-genus blank-ranks coi-amplicon-gate
+
+### The option-B run: stopped once by my own commit, then launched (2026-10-13)
+
+**First attempt stopped itself at preflight with VERDICT 20 and nothing ran** --
+no archive, no R stage, no network. Cause: `597d40f`, my own commit, which
+added a read-only stale-cache `message()` to
+`fetch_ncbi_reference_sequences()`. The CalIntertidal refs-freeze key includes
+`fetch_code = .code_digest("fetch_ncbi_reference_sequences")`, so any change to
+that function's code reads as "the reference set may differ", and there is no
+override for that part. `ALLOW_LIVE_PREP = 0`, so the driver refused, exactly
+as designed.
+
+**THE ERROR, which is the transferable part.** Before giving the run its GO I
+audited all five files whose code had changed and concluded none could reach
+the run. That was CORRECT about behaviour -- the message lists files and
+matches a regex, and cannot alter a reference set. But **I asked "can this
+change results?" where the gate asks "did this code change?"** This is the
+fourth proxy-versus-rule failure this screen has recorded (after the exports
+diff that cannot see a new argument, board rows reading pending while merged,
+A1's three-string pattern list, and `R CMD check` not comparing NEWS to
+DESCRIPTION) and the first committed by the reviewing session rather than found
+in someone else's work.
+
+**For anyone giving a run its GO: when a key digests CODE, diff the FUNCTIONS
+the key names, not the files you judge relevant.**
+
+**Resolved by reverting on main** (`5df0b6e`), not by installing around the
+commit, so the installed tree and main stay identical and the run manifest
+needs no footnote. TaxaLikely reinstalled from that tree at 08:23:44 UTC;
+verified on the INSTALLED namespace that the message is gone. The two
+alternatives were both refused, and the reasons matter: **live prep** re-fetches
+from NCBI and could admit new unscreened accessions into a set that was
+deliberately screened and drop-listed, cascading into the region and matrix
+keys and making the result incomparable with R1009f -- which is the point of
+the run; a **workflow override switch** would be a permanent knob for a one-off
+and a workflow edit needs the maintainer's own word.
+
+**TO RE-LAND `597d40f` after the run: revert `5df0b6e`.** The change and its
+four tests are good; they simply cannot be inside this particular run.
+
+**LAUNCHED** `run_next_2026-10-12_2224`, VERDICT 10, start Mon Oct 12 22:24:16
+HST 2026 (Tue Oct 13 08:24:16 UTC), ETA report tables ~03:10 HST and complete
+~03:25 HST, expected peak 15-17.5 GB in COI training. refs FROZEN for all three
+markers with `fetch_code` matching again, matrix reusable, the 10-10 outputs
+archived to `archive_2026-10-10_1251_PROVISIONAL/`. Carries four behaviour
+changes: `712ed59` (49 of 3,489 family assignments), `abaa60f` (0 call
+changes), `b921c00` (37 of 414 species calls coarser) and `08beaca` (provenance
+columns, 0 changes). It is also the FIRST end-to-end observation of
+`named_rows` interacting with Round 2, so anything outside those four is that
+interaction appearing rather than necessarily a fault.
