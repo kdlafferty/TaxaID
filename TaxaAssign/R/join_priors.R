@@ -77,8 +77,7 @@ utils::globalVariables(c(
     result$taxon_name_rank %in% coarser_ranks &
     !is.na(result$taxon_name) &
     (!("hypothesis_type" %in% names(result)) |
-      !(.is_unreferenced_type(result$hypothesis_type) |
-        result$hypothesis_type %in% "unresolved_species"))
+      !.is_complement_type(result$hypothesis_type))
 
   if (!any(is_coarse)) {
     return(result)
@@ -1607,7 +1606,7 @@ join_priors <- function(likelihoods,
       rank_system = rank_system
     )
     if ("hypothesis_type" %in% names(result)) {
-      lost <- result[(.is_unreferenced_type(result$hypothesis_type) | result$hypothesis_type %in% "unresolved_species") &
+      lost <- result[.is_complement_type(result$hypothesis_type) &
         !result$.jp_row %in% kept$.jp_row, , drop = FALSE]
       if (nrow(lost) > 0L) {
         kept <- dplyr::bind_rows(kept, lost)

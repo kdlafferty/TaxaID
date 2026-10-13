@@ -150,3 +150,19 @@ test_that(".resolve_llm_fn: NULL resolves to TaxaTools provider when available",
   result <- TaxaAssign:::.resolve_llm_fn(NULL, "test")
   expect_true(is.function(result))
 })
+
+test_that(".is_complement_type covers the rings and unresolved_species, and nothing else", {
+  # One predicate instead of an exemption list restated at each filter: the
+  # generic complement was lost at three separate places because the list was
+  # rewritten by hand every time it was needed.
+  rings <- paste0("unreferenced_", c("phylum", "class", "order", "family", "genus", "species"))
+  expect_true(all(.is_complement_type(rings)))
+  expect_true(.is_complement_type("unresolved_species"))
+  expect_false(.is_complement_type("specific_candidate"))
+  expect_false(.is_complement_type("unreferenced_kingdom")) # not a ring rank
+  expect_false(.is_complement_type(NA_character_))
+  expect_equal(.is_complement_type(character(0)), logical(0))
+  # vectorised, element-wise, and never NA
+  mixed <- c("specific_candidate", "unreferenced_genus", NA, "unresolved_species")
+  expect_identical(.is_complement_type(mixed), c(FALSE, TRUE, FALSE, TRUE))
+})
