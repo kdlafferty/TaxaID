@@ -2332,3 +2332,67 @@ recorded species' mass to the ring row, which can only pull a call COARSER.
 The CalIntertidal workflow opts IN (`:3935-3940`, `named_rows = TRUE`, decision
 2026-10-01). So this is not a package defect; it is an unvalidated workflow
 configuration plus a visibility gap. No arm ever tested `named_rows`.
+
+### Arm (c) VALIDATED at Round-1 level 2026-10-12; the gate can close
+
+Read-only counterfactual on R1009f, both halves scored separately, 49,463
+units (12S 17,844 / 18S 13,086 / COI 18,533). **Baseline exact: the recompute
+reproduced the stored Round-1 consensus 2,000/2,000 per marker**, 0 named
+groups failed to find their ring row, 0 network calls, peak 2.65 GB, ~8 min.
+Round 1 ONLY -- Round 2 is not replayed.
+
+(Method note worth keeping: a named row is identified by
+`unreferenced_species` + species rank + `prior_mean_floor` NA + non-NA scope.
+The generic GENUS ring row is ALSO typed `unreferenced_species`, so
+`hypothesis_type` alone would have been wrong here too.)
+
+**THE TESTED HALF -- the mass -- IS CONSERVATIVE. It only ever WITHHOLDS.**
+Turning it off (= arm b) RAISES species calls: 12S 10,080 -> 10,950, 18S 188
+-> 606, COI 3,124 -> 3,555. So the live mass withholds **2,079** species calls,
+and **0 referenced species calls change** either way. The withheld set is
+mostly well-known local taxa -- `Oligocottus snyderi` 526, `Apodichthys
+flavidus` 128, `Alaria marginata` 113, `Mytilus californianus` 72 -- and 797 of
+them sit at the genus OF THE SAME GENUS in live. The mass is doing exactly what
+the complement was built for: refusing a species call when unreferenced local
+congeners could explain the sequence.
+
+**THIS IDENTIFIES THE CAUSE OF THE OPEN `O. snyderi` ITEM.** Its lost species
+calls are the unreferenced mass withholding them, 526 of them. Whether that is
+right is a biological question for the maintainer, not a defect.
+
+**THE UNTESTED HALF -- `named_rows` -- IS THE ONE THAT ADDS RESOLUTION**, and
+it adds far more than the 410. Turning it off moves 12S 224 units, 18S 1,317
+and COI 3,643. Besides the 410 species names going coarser to their ring scope
+(18S: 167 to ORDER, i.e. `Smithora` -> Erythropeltidales), about **4,700
+NON-species calls also lose one rank** -- COI Malacostraca -> Arthropoda
+1,497, Anthozoa -> Cnidaria 1,230, Florideophyceae -> Rhodophyta 269; 18S
+Laminariales -> Phaeophyceae 436 -- and **349 calls become NO CALL**. It also
+coarsens in the other direction for 92 12S units (Chordata -> Actinopteri),
+so it is not purely a refinement.
+
+Mechanism: splitting mass onto named members makes a class/order node credible
+where a lumped ring at the parent would win. **So roughly 5,100 calls, about
+10% of units, take resolution from the occurrence records in scope rather than
+from the sequence** -- the same caveat as the 410, applied to 4,700 more calls.
+
+**WHAT IT NEVER DOES:** it never changes a referenced species call (0 in both
+halves), never creates a call for the out-of-range controls (`L. littorea` and
+`C. harengus` are never called at species in live, (i) or (ii)), and leaves
+every one of the maintainer's adjudicated taxa untouched -- Girella 317,
+Scomber 156, Gobiesox 42, Sarda 10, M. aurora 9, F. parvipinnis 5, Protohyale
+4. Neither half gains an adjudicated taxon either.
+
+**SO THE RISK IS NOT WRONG-PHYLUM FAILURE; IT IS THAT RECORD-DERIVED
+RESOLUTION IS PRESENTED AS SEQUENCE-DERIVED.** No call was found right in live
+and wrong in a counterfactual, or the reverse, where ground truth exists -- but
+the adjudication set is too small and too fish-heavy to score the 2,079 or the
+4,700, so that is an absence of evidence, not evidence of absence.
+
+**GATE: closeable.** The validation gap that held the re-run is filled at
+Round-1 level, and the three structural properties above (mass only withholds;
+`named_rows` never touches a referenced call; no control is ever called) are
+unlikely to invert at Round 2. The Round-2 interaction is UNMEASURED and needs
+the per-Site update rerun (14 GB peak) to measure, which is the re-run itself.
+
+**CONSEQUENCE FOR THE PROVENANCE COLUMN: it must cover the ~4,700 refined
+coarse calls, not only the 410 species calls.**
