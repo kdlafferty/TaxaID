@@ -1,6 +1,6 @@
 # TaxaLikely: Statistical Background
 
-## From Match Scores to Likelihoods — A Generative Bayesian Framework for Open-Set Taxonomic Recognition
+## From Match Scores to Likelihoods -- A Generative Bayesian Framework for Open-Set Taxonomic Recognition
 
 *This document provides the statistical rationale behind TaxaLikely. It is
 intended as a manuscript-ready methods reference for the TaxaID ecosystem.*
@@ -12,7 +12,7 @@ intended as a manuscript-ready methods reference for the TaxaID ecosystem.*
 Traditional DNA barcoding (Hebert et al. 2003) is in practice most often applied
 through "top hit" approaches such as BLAST (Altschul et al. 1990), which assign
 taxonomy based strictly on the highest percentage match. This approach fails in the context of **open-set recognition** (Scheirer
-et al. 2013) — the scenario where the true species or genus of the query
+et al. 2013) -- the scenario where the true species or genus of the query
 sequence is absent from the reference database.
 
 For example, a 91% match to *Luciogobius* could imply a poor-quality sequence of
@@ -45,8 +45,8 @@ class imbalance of the training data as an implicit prior. This biases assignmen
 that are commonly represented in the reference library, rather than species that
 are ecologically plausible at the sample location.
 
-To separate the likelihood from the prior — allowing flexible, user-defined priors
-based on geographic or ecological knowledge — the TaxaID ecosystem employs a
+To separate the likelihood from the prior -- allowing flexible, user-defined priors
+based on geographic or ecological knowledge -- the TaxaID ecosystem employs a
 **generative Bayesian framework**.
 
 The posterior probability that hypothesis *H_i* is correct given data *D* is:
@@ -93,12 +93,12 @@ This remains the package default (`score_transform = "logit"`).
 ### 3A-i. Transform choice and the genus-tightness problem
 
 The logit transform is not the only defensible choice, and for one specific
-purpose — comparing how *variable* different genera's congeneric matches are —
+purpose -- comparing how *variable* different genera's congeneric matches are -- 
 it is demonstrably the wrong one. This subsection derives why, and documents
 the alternative (`score_transform = "sqrt_mismatch"`) that corrects it.
 
 **The intuition being tested.** A genus whose species are hard to distinguish
-morphologically or genetically (a "tight" genus — congeners routinely match a
+morphologically or genetically (a "tight" genus -- congeners routinely match a
 query almost as well as the true species does) should show *low, consistent*
 divergence among its unreferenced relatives' scores: most congener comparisons
 land close to one typical value. A genus whose species are easy to
@@ -107,7 +107,7 @@ scatter more widely around whatever their typical value is, because being
 "easy to tell apart" means individual congener pairs differ substantially in
 how much they resemble one another. On the raw match-proportion scale, this
 predicts a **negative correlation between mean congeneric similarity and its
-variance** — tight genera cluster at high, low-variance similarity; loose
+variance** -- tight genera cluster at high, low-variance similarity; loose
 genera sit lower, with more scatter.
 
 **Confirming the raw-scale prediction.** Across 87 real congener genus-pairs
@@ -120,15 +120,15 @@ variance" as the sole explanation).
 
 **The reversal under logit.** The identical genus-pairs, transformed to the
 logit scale before computing mean and variance, show the OPPOSITE sign
-(Pearson r = +0.465, Spearman r = +0.577) — the model's own working scale
+(Pearson r = +0.465, Spearman r = +0.577) -- the model's own working scale
 gets the qualitative direction backwards. Confirmed directly at the
 observation level: two real
 congener genera matched at the same real 99.4% identity, one genuinely tight
 (*Sardinops*, 5 known congener pairs, mean raw similarity 99.9%, raw variance
 ~1.3e-6) and one genuinely loose (*Symphurus*, mean raw similarity 90.5%,
-meaningfully larger raw variance) — under logit, the loose genus (*Symphurus*)
+meaningfully larger raw variance) -- under logit, the loose genus (*Symphurus*)
 received a HIGHER H2/H1 likelihood ratio (2.79) than the tight genus
-(*Sardinops*, 2.80, statistically indistinguishable from the loose case) —
+(*Sardinops*, 2.80, statistically indistinguishable from the loose case) -- 
 exactly backwards from both the stated intuition and the raw-scale evidence.
 
 **Why: a derivative argument.** A transform `f` stretches a small raw
@@ -138,7 +138,7 @@ logit's derivative
 
     f'(p) = 1 / (p (1-p))
 
-diverges as `(1-p)^-1` — a genuinely tiny, tight-genus-scale raw imprecision
+diverges as `(1-p)^-1` -- a genuinely tiny, tight-genus-scale raw imprecision
 near the ceiling gets mechanically stretched into a large logit-scale number,
 inflating apparent variance exactly where the raw data is most tightly
 clustered. This is a property of the transform, not of the data: any transform
@@ -158,7 +158,7 @@ replacement):
 | `sqrt_mismatch` (Anscombe) | `-sqrt(1-p)` | `~ epsilon^-1/2` | -0.235 (correct sign, essentially identical to arcsine) |
 
 Only the two transforms whose derivative diverges at the slower `epsilon^-1/2`
-rate — arcsine and `sqrt_mismatch` — recover the correct sign. This is not a
+rate -- arcsine and `sqrt_mismatch` -- recover the correct sign. This is not a
 coincidence of curve-fitting: both transforms are classical variance
 stabilizers derived from *different* starting assumptions about the data
 (arcsine for a binomial proportion directly; `sqrt_mismatch` from treating the
@@ -169,17 +169,17 @@ where it matters. Two independent derivations converging on the same
 empirical correction is stronger evidence this is a real effect than either
 transform's performance alone would be.
 
-`sqrt_mismatch` was chosen over arcsine for implementation simplicity — no
+`sqrt_mismatch` was chosen over arcsine for implementation simplicity -- no
 trigonometric function, and a simpler statement of the mechanism ("the
 divergence is a rare-event count, so use the standard count-based
-stabilizer") — given the two are empirically equivalent on this data.
+stabilizer") -- given the two are empirically equivalent on this data.
 
 **Implementation.** `train_likelihood_model(score_transform = "sqrt_mismatch")`
 moves H1's own fitting onto this scale as well as H2/H3's, not just the
 generic unreferenced-relative hypotheses. This is necessary, not a
 convenience: H1 and H2/H3 are compared via density *ratios* evaluated at one
 shared observed point, and mixing transforms across hypotheses would require
-an explicit change-of-variables (Jacobian) correction that is not built —
+an explicit change-of-variables (Jacobian) correction that is not built -- 
 comparing a `sqrt_mismatch`-scale H2/H3 density against a logit-scale H1
 density at "the same" point is not a valid likelihood ratio without one.
 `model_params$Score_Transform` records which scale a given trained model uses;
@@ -192,10 +192,10 @@ genus, competitive as expected; 0.65 for the loose genus, H1 clearly winning
 as expected) where logit could not distinguish the two cases at all.
 
 **Scope of this finding.** It concerns only the *shape* of the score axis, not
-the surrounding machinery — Empirical Bayes shrinkage (Section 5), the gap
+the surrounding machinery -- Empirical Bayes shrinkage (Section 5), the gap
 feature (Section 3B), and the bivariate-normal likelihood (Section 6) are all
 unchanged in form, just evaluated on a different scale. `H3`'s own sigma
-remains pooled rather than genus-specific either way (see Section 4) — that
+remains pooled rather than genus-specific either way (see Section 4) -- that
 limitation is independent of transform choice. Whether `sqrt_mismatch`'s
 correction generalizes beyond DNA barcode congener data (e.g. to image or
 acoustic similarity scores, which are not literally "percent aligned bases")
@@ -218,7 +218,7 @@ Interpretation:
   territory).
 - **Negative gap:** The candidate is ranked below another taxon. The magnitude
   measures how inferior this candidate is compared to the leader.
-- **Gap near zero:** Multiple candidates are nearly tied — characteristic of
+- **Gap near zero:** Multiple candidates are nearly tied -- characteristic of
   unreferenced species whose true identity is absent from the reference.
 
 The gap is capped at `max_gap_ceiling` (default 5.0 logit units) to prevent
@@ -270,7 +270,7 @@ The sequence belongs to a species present in the reference database.
 ### H2: Unreferenced Species (`unreferenced_species`)
 
 The sequence belongs to a species absent from the reference database, within a
-genus that *is* represented. This is the "sister species" scenario — the query
+genus that *is* represented. This is the "sister species" scenario -- the query
 matches its closest relative but not itself.
 
 - **Training profile:** Derived from the best cross-species match within the same
@@ -287,7 +287,7 @@ family that *is* represented. The query's best match is to a different genus
 entirely.
 
 - **Training profile:** H1 mean shifted further left by `H3$delta` (= `H2$delta`
-  + 2.0 logit units — one additional taxonomic rank step).
+  + 2.0 logit units -- one additional taxonomic rank step).
 - **Expected fingerprint:** Lower match score (typically <90%), small gap.
 
 Both H2 and H3 are evaluated at the best-scoring candidate's position in the
@@ -299,19 +299,19 @@ information.
 
 ### A load-bearing assumption, and where it breaks down
 
-The entire H2/H3 construction — using a referenced congener's match profile to
-stand in for an unreferenced relative's — rests on one assumption:
+The entire H2/H3 construction -- using a referenced congener's match profile to
+stand in for an unreferenced relative's -- rests on one assumption:
 **related taxa are more similar in the evidence trait used for matching than
 unrelated taxa are.** For DNA sequence identity this is close to true by
 construction, since sequence divergence *is* the recorded output of the
 evolutionary process being modelled (marker-specific homoplasy aside). For
 image and acoustic evidence the assumption is considerably weaker: visual and
-acoustic phenotypes are shaped by ecological pressures — predator-avoidance
-mimicry, environmental convergence in call structure — that can run
+acoustic phenotypes are shaped by ecological pressures -- predator-avoidance
+mimicry, environmental convergence in call structure -- that can run
 orthogonal to phylogeny. A Batesian mimic or an acoustically convergent
 species produces evidence indistinguishable, to the classifier, from a
 genuine confusable congener, yet H2/H3 have no way to represent "resembles
-candidate X, but is not related to X" — they only ever anchor on the
+candidate X, but is not related to X" -- they only ever anchor on the
 best-scoring candidate's own genus. This is not a parameter that can be
 tuned away: it is a structural limitation of borrowing evidence across a
 taxonomic relationship that the evidence itself may not track. Species with
@@ -325,7 +325,7 @@ assumption largely does hold: `H2$delta` (the logit-scale shift applied to
 every genus) is a single value pooled across every genus in the training set,
 so a genus with unusually tight congeneric divergence (a cryptic species
 complex, where the real divergence is much smaller than the pooled average)
-gets the same shift as a genus with unusually loose divergence — and the
+gets the same shift as a genus with unusually loose divergence -- and the
 pooled constant will *overstate* confidence in the known-species hypothesis
 exactly where a taxonomist most needs the model to hedge. Where the reference
 database has at least one true congener pair for a genus, `H2_Lookup`
@@ -334,9 +334,9 @@ pair and shrinks it toward the pooled value by the same Empirical Bayes form
 used for per-species means (Section 5), rather than always falling back to
 the pooled constant; `evaluate_likelihoods()` marks which delta a given H2/H3
 row actually used (`h2_delta_source`: `"genus_specific"` or
-`"global_fallback"`) so a `"global_fallback"` row — including every genus
+`"global_fallback"`) so a `"global_fallback"` row -- including every genus
 with only one referenced species, where no local divergence estimate is
-possible at all — can be treated with appropriate caution. This addresses
+possible at all -- can be treated with appropriate caution. This addresses
 only the *magnitude* of the shift for the correct genus; it does nothing for
 the mimicry/convergence case above, where the true relative may not even be
 the best-scoring candidate's genus.
@@ -345,8 +345,8 @@ Two further corrections to the H2/H3 construction, motivated by the same
 "tight vs. loose genus" intuition and validated together with the transform
 choice in Section 3A-i:
 
-- **Mean anchor.** H2/H3's mean was originally `H1_Global_Mu - delta` — the
-  *population-wide* H1 mean, shifted — discarding any information about
+- **Mean anchor.** H2/H3's mean was originally `H1_Global_Mu - delta` -- the
+  *population-wide* H1 mean, shifted -- discarding any information about
   whether the specific best-matching referenced species itself sits above or
   below that population average. It is now `used_mu1 - delta`, the anchor
   candidate's own resolved species mean (falling back to the global mean only
@@ -366,7 +366,7 @@ choice in Section 3A-i:
   gets a wide one, rather than both sharing one population-average width.
 
 Both corrections require the transform choice from Section 3A-i to be
-meaningful — variance estimated on a scale that gets the sign of
+meaningful -- variance estimated on a scale that gets the sign of
 genus-tightness backwards cannot be trusted regardless of how well it is
 subsequently shrunk.
 
@@ -380,7 +380,7 @@ strategies:
 
 ### 5A. Empirical Bayes Shrinkage
 
-Per-species parameters are shrunk toward the global mean using a James–Stein /
+Per-species parameters are shrunk toward the global mean using a James-Stein /
 Empirical Bayes estimator (Efron & Morris 1973):
 
     mu_species = w * mu_observed + (1 - w) * mu_global
@@ -419,11 +419,11 @@ further transformation of `w`):
 
 `H1_Lookup$sigma_score` stores this quantity as a variance throughout the
 package (used directly as a `dnorm(sd = sqrt(sigma_score))`/
-`dmvnorm(sigma = ...)` covariance-diagonal entry downstream) — it is not
+`dmvnorm(sigma = ...)` covariance-diagonal entry downstream) -- it is not
 itself a standard deviation. The same `w = n/(n+prior_weight)` form is reused
 for `H2_Lookup`'s genus-specific delta and variance (Section 4) and, at
 inference time, for the Monte Carlo uncertainty on the trained mean itself
-(Section 8): `Var(mu_species) ~= w^2 * sigma^2/N_obs` — the squared shrinkage
+(Section 8): `Var(mu_species) ~= w^2 * sigma^2/N_obs` -- the squared shrinkage
 weight discounts the naive `sigma^2/N_obs` uncertainty-in-a-mean formula by
 however much the estimate was already pulled toward the (better-known) global
 mean, so a species with `N_obs = 2` does not appear falsely more uncertain
@@ -443,7 +443,7 @@ gracefully to the simple global mean.
 
 When `anchor_perfect = TRUE` (the default), synthetic "perfect match"
 observations are injected into the H1 training data before fitting the global
-mean. This prevents the **perfection penalty** — a pathology where a 100% match
+mean. This prevents the **perfection penalty** -- a pathology where a 100% match
 receives a lower likelihood than the training mean (e.g., 98.5%) because the
 Gaussian density peaks at the estimated mean.
 
@@ -479,7 +479,7 @@ Raw density values are normalized to likelihood ratios: each hypothesis's
 density is divided by the maximum density across all hypotheses for that query.
 The best hypothesis always has a likelihood ratio of 1.0; weaker hypotheses have
 ratios less than 1.0. Candidates below `ratio_threshold` (default 0.01) are
-dropped — TaxaAssign treats absent rows as likelihood = 0.
+dropped -- TaxaAssign treats absent rows as likelihood = 0.
 
 ### Closed-World Assumption and Posterior Inflation
 
@@ -491,7 +491,7 @@ low-scoring candidates from the denominator inflates the posteriors of all
 remaining hypotheses relative to what a full-denominator calculation would yield.
 The normalized posteriors still sum to 1.0, but that 1.0 now means "probability
 of being correct, *given that the true taxon is among the retained candidates*"
-— not "unconditional probability of being correct."
+ -- not "unconditional probability of being correct."
 
 This is a general property of truncated hypothesis-space classifiers and is not
 unique to TaxaLikely. The same inflation arises in BLAST top-hit approaches, RDP
@@ -505,7 +505,7 @@ Two structural features of TaxaID partially mitigate this inflation:
 
 1. **H2 and H3 catch-all hypotheses.** `evaluate_likelihoods()` always generates
    an unreferenced-species (H2) and unreferenced-genus (H3) row for each query.
-   These act as a continuous "none of the above" probability sink — when the
+   These act as a continuous "none of the above" probability sink -- when the
    observed (score, gap) pattern is more consistent with an absent taxon than with
    any referenced species, H2/H3 absorbs probability mass and suppresses the H1
    posteriors accordingly.
@@ -542,8 +542,8 @@ probabilities across the entire candidate set.
 ## 8. Monte Carlo Uncertainty
 
 When `n_sims > 0`, `evaluate_likelihoods()` propagates uncertainty in the
-**trained candidate mean itself** — not the query's own observed score, which
-is a fixed, already-known quantity for a given observation — through the
+**trained candidate mean itself** -- not the query's own observed score, which
+is a fixed, already-known quantity for a given observation -- through the
 model via Monte Carlo simulation. In each iteration:
 
 1. Each candidate's trained mean is perturbed by drawing from a normal
@@ -551,7 +551,7 @@ model via Monte Carlo simulation. In each iteration:
    `sqrt(Var(mu))` from Section 5A's shrinkage-consistent formula
    (`Var(mu) ~= w^2 * sigma^2/N_obs` for H1; the analogous form using
    `n_pairs`, or `prior_weight` as a conservative stand-in for genera/species
-   with no local congener data at all, for H2/H3 — see below).
+   with no local congener data at all, for H2/H3 -- see below).
 2. The query's real, fixed observed `(score, gap)` point is evaluated against
    each perturbed mean.
 3. Likelihoods are recalculated and normalized.
@@ -560,12 +560,12 @@ The result, `score_likelihood_mean` and `score_likelihood_sd` across
 simulations, measures **how confidently the candidate's own trained
 parameters are known**, not how sensitive the result is to re-drawing the
 query's score from the population's overall spread (an earlier version of
-this mechanism did the latter — a sensitivity-to-population-dispersion
+this mechanism did the latter -- a sensitivity-to-population-dispersion
 question, not a confidence-in-the-estimate question, and one that never
 touched per-candidate reference sample size at all). Because H2/H3 borrow a
 shifted mean from a referenced relative rather than observing their own
 species directly, they systematically receive a wider `score_likelihood_sd`
-than a well-referenced H1 candidate, all else equal — the intended behavior
+than a well-referenced H1 candidate, all else equal -- the intended behavior
 this redesign was built to produce, since a borrowed estimate is genuinely
 less certain than a directly observed one.
 
@@ -573,15 +573,15 @@ less certain than a directly observed one.
 local reference/congener data at all (falling back entirely to the pooled
 global mean or delta), the correct "N" for the `Var(mu) ~= w^2*sigma^2/N`
 formula is `prior_weight` (this package's own "equivalent sample size of the
-prior," already used identically for the shrinkage weight `w` itself) — not
+prior," already used identically for the shrinkage weight `w` itself) -- not
 the true pooled training count, which can be in the thousands. Using the true
 pooled count there would make a fallback candidate with *no* local evidence
 look *more* confidently known than one with some, but imperfect, local
-evidence — exactly backwards. Confirmed on real 12S training data: a genus
+evidence -- exactly backwards. Confirmed on real 12S training data: a genus
 with a single observed congener pair had an implied delta-SD of 3.09 logit
 units, while naively using the true pooled foreign-match count (`n = 2294`)
 for a fully-unreferenced genus's fallback delta gave an implied SD of only
-0.065 — roughly 47x too confident for a case with strictly less information.
+0.065 -- roughly 47x too confident for a case with strictly less information.
 
 ---
 
@@ -604,10 +604,10 @@ input.
 Two functions assess whether the reference database is complete enough for
 reliable inference:
 
-- **`audit_barcode_coverage()`** — For DNA barcoding: queries NCBI to identify
+- **`audit_barcode_coverage()`** -- For DNA barcoding: queries NCBI to identify
   described species within each genus that have no barcode sequence at all
   (unreferenced species that can never appear as a match candidate).
-- **`audit_reference_coverage()`** — For non-barcode applications: queries NCBI
+- **`audit_reference_coverage()`** -- For non-barcode applications: queries NCBI
   taxonomy to identify all described species and compares against the reference.
 
 Coverage audit results feed into `apply_coverage_constraints()`, which suppresses
@@ -624,11 +624,11 @@ with labeled example points illustrating how different match outcomes map onto
 the landscape.
 
 This visualization shows that taxonomy assignment is not a simple threshold on
-match percentage — it is a joint evaluation of how well the score matches the
+match percentage -- it is a joint evaluation of how well the score matches the
 expected distribution *and* how distinct the match is from competing
 alternatives. A 95% match with a large gap (clear winner) is a more confident
 H1 identification than a 98% match with a tiny gap (several species nearly
-tied). Conversely, a moderate score with no gap is consistent with H2 — the true
+tied). Conversely, a moderate score with no gap is consistent with H2 -- the true
 species is absent and the query is matching its closest relative in the
 reference.
 
@@ -636,7 +636,7 @@ reference.
 
 ## 11. From match scores to likelihoods: the calibration problem
 
-Automated identification tools return a *match score* — BLAST percent identity for
+Automated identification tools return a *match score* -- BLAST percent identity for
 sequence data, cosine or embedding similarity for images, or classifier confidence
 for acoustic recordings. These scores are bounded, monotonically related to match
 quality, and superficially probability-like, which invites the temptation to read
@@ -649,8 +649,8 @@ of 98% is not a 98% probability that the query and reference are conspecific, an
 score of 100% is not certainty. A match score is an *unitless* quantity whose
 relationship to identification accuracy must be learned, not assumed.
 
-In a multi-hypothesis discrimination setting — *which taxon produced this
-observation?* — the quantity we need is not a calibrated success probability but a
+In a multi-hypothesis discrimination setting -- *which taxon produced this
+observation?* -- the quantity we need is not a calibrated success probability but a
 *likelihood*: the probability of observing the score we observed, given each
 candidate taxon hypothesis $H$. Writing $s$ for the (transformed) score, the
 likelihood is $L(H \mid s) = f_H(s)$, the value of the score density under $H$, and
@@ -666,7 +666,7 @@ Our approach can be read as a generalization of the logistic-regression calibrat
 recommended by Wood & Kahl (2024). Their procedure regresses a binary
 correct/incorrect outcome on the score to recover $P(\text{correct} \mid s)$; this is
 a two-hypothesis, univariate calibration. TaxaLikely instead models the full bivariate
-feature $(s, g)$ — score together with the *gap* to the next-best competing match —
+feature $(s, g)$ -- score together with the *gap* to the next-best competing match -- 
 under multiple competing hypotheses, yielding per-hypothesis likelihoods rather than a
 single success probability. The bivariate generative model and the logistic
 calibration agree in the two-class, gap-free limit, but the generative form extends
@@ -679,19 +679,19 @@ The generative model of Section 4 is estimated entirely from *reference-vs-refer
 comparisons: within- and between-species pairwise scores among curated database
 sequences, produced here by a multiple-sequence alignment and a pairwise
 distance (`build_sequence_matrix()`, DECIPHER). At inference, however, the query's
-score is produced by a *different* process — a pairwise BLAST search, or, for
+score is produced by a *different* process -- a pairwise BLAST search, or, for
 externally supplied match tables, an undocumented laboratory bioinformatics pipeline.
 The model's H1 location parameters are therefore learned on one score scale and
 applied on another.
 
 This matters because "percent identity" is not a single, well-defined quantity. It is
 *operationally* defined: its value for a fixed pair of sequences depends on the
-alignment method, the gap-handling convention, and — critically — the choice of
+alignment method, the gap-handling convention, and -- critically -- the choice of
 denominator, and these choices are usually left implicit (May 2004). Raghava & Barton
 (2006) quantify the resulting spread directly, showing that the same sequences can
 differ by several percentage points in reported identity across alignment approaches.
-(Both studies concern protein alignments; the mechanism — how gaps, terminal regions,
-and the denominator enter the metric — is general, and we observe the same phenomenon
+(Both studies concern protein alignments; the mechanism -- how gaps, terminal regions,
+and the denominator enter the metric -- is general, and we observe the same phenomenon
 between MSA-derived and pairwise-search-derived identity on DNA barcode markers.) A
 model whose species-level means are anchored on one scoring process should therefore
 not be assumed to be correctly located on another. In the language of Quiñonero-Candela
@@ -717,8 +717,8 @@ additive correction ("constant" form) assumes the scale shift is a location shif
 common to all species,
 $$\mu_k \;\mapsto\; \mu_k + \hat\delta, \qquad
   \hat\delta = \operatorname{median}_k(\bar s_k - \mu_k),$$
-and leaves the *relative* structure — the gap feature and the H2/H3 divergence
-offsets, which are defined relative to $\mu_k$ (Section 4) — unchanged. This is the
+and leaves the *relative* structure -- the gap feature and the H2/H3 divergence
+offsets, which are defined relative to $\mu_k$ (Section 4) -- unchanged. This is the
 simplest correction, but it *assumes* rather than tests that the discrepancy is
 location-only. The more general "linear" (affine) form estimates
 $$\mu_k \;\mapsto\; \hat\alpha + \hat\beta\,\mu_k,$$
@@ -733,9 +733,9 @@ near 0 indicates that the reference-derived per-species means carry no inference
 location information beyond their common average, and the map collapses every species
 to a single calibrated location $\hat\alpha$.
 
-Empirically, the second case is what we observe. Across five real datasets — a 12S
+Empirically, the second case is what we observe. Across five real datasets -- a 12S
 metabarcoding run scored by an external pipeline, and 12S, 16S, and COI datasets scored
-by BLAST — the fitted slope collapsed toward 0 ($\hat\beta \in [-0.28, 0.02]$), and in
+by BLAST -- the fitted slope collapsed toward 0 ($\hat\beta \in [-0.28, 0.02]$), and in
 five-fold cross-validation on the anchor set a single pooled location predicted real
 correct-species scores as well as, or slightly better than, the per-species-mean-plus-
 offset model (e.g. root-mean-square error 0.028 vs. 0.030 for the external-pipeline
@@ -743,25 +743,25 @@ offset model (e.g. root-mean-square error 0.028 vs. 0.030 for the external-pipel
 per-species means, in other words, do not survive the change of scoring instrument.
 The practical consequence for assignment is real but modest and directional: correcting
 the location recovers correctly-referenced species that would otherwise lose to the
-open-set (unreferenced) hypotheses — H1 recovery improved by roughly one to two
-percentage points on the datasets tested — while the affine form additionally declines
+open-set (unreferenced) hypotheses -- H1 recovery improved by roughly one to two
+percentage points on the datasets tested -- while the affine form additionally declines
 to manufacture discrimination between congeners whose scores are genuinely tied, a
 case in which a correctly-calibrated likelihood *should* report equal support and defer
 to the prior. We found no case in which either correction was net-negative for
 assignment on real data.
 
 Two boundaries are worth stating plainly. The correction acts only on the H1 *location*;
-the gap and the H2/H3 offsets — the features that discriminate a referenced species
-from its unsampled relatives — are untouched, so collapsing the per-species locations
+the gap and the H2/H3 offsets -- the features that discriminate a referenced species
+from its unsampled relatives -- are untouched, so collapsing the per-species locations
 removes only structure shown not to transfer, not the model's discriminating signal.
 And because the anchor set contains, by construction, exactly one plausible species per
 genus, it validates the H1 *location* but cannot directly test congener *discrimination*;
 for that reason the affine form is retained as an opt-in generalization with a graceful
 fallback to the constant offset whenever too few anchor species span a range of trained
 means (as for a marker with only a handful of referenced species), rather than being
-imposed unconditionally. The individual ingredients here — affine recalibration of
+imposed unconditionally. The individual ingredients here -- affine recalibration of
 model outputs, calibration against an independent validation set, and a dataset-shift
-framing of a train/inference mismatch — are standard; their composition for open-set,
+framing of a train/inference mismatch -- are standard; their composition for open-set,
 reference-based taxonomic assignment, anchored on independent occurrence data, is to our
 knowledge new.
 
@@ -774,14 +774,14 @@ generated an observation. Many species in a study region have no reference seque
 and a species with no reference simply *cannot* produce a high-scoring match to itself.
 We quantify this incompleteness with a closure parameter
 $\varphi = N_{\text{referenced}} / N_{\text{related}}$, where $N_{\text{related}}$
-counts only the species in the genus (or family) from which the match was drawn —
-the set of taxa that could plausibly have generated the observed score — not all
+counts only the species in the genus (or family) from which the match was drawn -- 
+the set of taxa that could plausibly have generated the observed score -- not all
 species in the study region. The central modelling decision is where $\varphi$ enters
 the inference.
 
 **Closure belongs in the prior, not the likelihood.** The likelihood
 $f_H(s, g)$ is conditioned on the score actually observed; it answers "how probable is
-this score under hypothesis $H$?" The existence — or non-existence — of an unreferenced
+this score under hypothesis $H$?" The existence -- or non-existence -- of an unreferenced
 alternative taxon does not change the probability of observing a given score under any
 of the *stated* hypotheses, so it cannot belong in $f_H$. Instead, $\varphi$ shapes the
 prior probability that an unreferenced taxon is present at all. Because an unreferenced
@@ -796,11 +796,11 @@ conflate "the score is low" with "the true taxon may be unreferenced."
 
 TaxaLikely therefore frames three hypothesis types for any observation:
 
-- $H_1$ — the match is to the *correct referenced species* (a conspecific reference
+- $H_1$ -- the match is to the *correct referenced species* (a conspecific reference
   exists and was matched);
-- $H_2$ — the true species is *unreferenced but congeneric* with a referenced taxon
+- $H_2$ -- the true species is *unreferenced but congeneric* with a referenced taxon
   (the best attainable match is to a congener, at genus level);
-- $H_3$ — the true species is *unreferenced and only family-level* reference exists.
+- $H_3$ -- the true species is *unreferenced and only family-level* reference exists.
 
 Under $H_2$ and $H_3$ no conspecific match is possible, so the observed score is
 generated by a *cross-taxon* process. Their likelihoods are evaluated from the
@@ -834,7 +834,7 @@ such matches would pass the pipeline's retention rule? Crucially, $P(\text{retai
 does **not** cancel between $H_1$ and $H_2/H_3$, because the within-species density
 $f_{H_1}$ and the cross-species densities $f_{H_2}, f_{H_3}$ have different means and
 shapes. Ignoring the correction when a floor $T$ is applied gives biased likelihoods
-whenever $F_{H_1}(T) \ne F_{\text{cross}}(T)$ — that is, whenever some genuine
+whenever $F_{H_1}(T) \ne F_{\text{cross}}(T)$ -- that is, whenever some genuine
 within-species matches fall below the floor. The bias is in the direction of
 over-favouring whichever hypothesis loses *less* probability mass to truncation.
 
@@ -851,7 +851,7 @@ are decisive on this last case: for 12S MiFish, $p_{\text{self}} = 0.048$ versus
 $p_{\text{cross\,congeneric}} = 0.078$ (LR $= 0.61$); for 18S,
 $p_{\text{self}} = 0.080$ versus $p_{\text{cross\,congeneric}} = 0.291$ (LR $= 0.27$).
 For both markers the likelihood ratio of $H_1$ to congeneric $H_2$ under the 100% rule is
-*below one* — a 100% BLAST hit is more consistent with a congeneric than with a conspecific
+*below one* -- a 100% BLAST hit is more consistent with a congeneric than with a conspecific
 hypothesis. The familiar "100% identity = species match" heuristic is therefore not merely
 imprecise but, at these markers, *anti-informative*. All reliable species-level signal lives
 in the continuous score distribution, not in a binary threshold.
@@ -873,22 +873,22 @@ The transform itself is configurable (`score_transform`, Section 3A-i):
 exactly where real barcode data concentrates (near $p = 1$), which was found to distort
 genus-level variance comparisons for the H2/H3 unreferenced-relative hypotheses (Section
 4). `"sqrt_mismatch"` corrects this but is bounded to $[-1, 0]$ rather than the whole real
-line — a Gaussian fit to it is technically an approximation for that reason, though a mild
+line -- a Gaussian fit to it is technically an approximation for that reason, though a mild
 one in practice: real observations concentrate near $0$ (good matches), far from the $-1$
 boundary the transform cannot avoid. Whichever transform a given model uses, H1/H2/H3 are
-always fit and compared on that one shared scale (never mixed) — the bivariate-normal
+always fit and compared on that one shared scale (never mixed) -- the bivariate-normal
 framework, the shrinkage machinery, and the truncation correction below apply identically
 either way.
 
 An alternative formulation is a discrete-continuous hybrid model: a point mass at
 $(s, g) = (1.0, 0.0)$ combined with a continuous density for $s < 1.0$. This is
 appropriate when exact matches occur far more often than the continuous distribution
-predicts — signalled by a *spike ratio* (count of exact matches divided by count in the
+predicts -- signalled by a *spike ratio* (count of exact matches divided by count in the
 immediately sub-perfect bin $[0.995, 1.0)$) substantially greater than one, roughly $\geq 5$.
 However, the empirical evidence from real reference databases supports the unified continuous
-representation over the hybrid: the spike ratio was 0.30–0.40 for both 12S MiFish and 18S
+representation over the hybrid: the spike ratio was 0.30-0.40 for both 12S MiFish and 18S
 rDNA (temperate marine taxa, California). Values below 1 indicate that exact matches are
-*less* common than sub-perfect matches — the opposite of what would justify a discrete atom.
+*less* common than sub-perfect matches -- the opposite of what would justify a discrete atom.
 There is no point mass at 1.0; the continuous bivariate-normal model is the correct
 representation for these markers, and no special-case discrete rules are needed. A
 discrete-continuous hybrid model is not currently implemented; it is noted as a potential
@@ -897,8 +897,8 @@ diagnostic script `diagnostics/seq_matrix_score_distribution.R` before model fit
 Among continuous parameterizations, model choice can be guided by AIC in the standard
 multimodel framework (Burnham & Anderson 2002).
 
-Under $H_1$ the distribution is *species-specific* — each taxon has its own mean and
-covariance — but estimated with Empirical Bayes shrinkage toward the global (pooled) mean.
+Under $H_1$ the distribution is *species-specific* -- each taxon has its own mean and
+covariance -- but estimated with Empirical Bayes shrinkage toward the global (pooled) mean.
 Species with few reference sequences shrink strongly toward the pool; well-sequenced species
 retain their own parameters. This delivers, hierarchically and automatically, the
 species-specific performance evaluation that Wood & Kahl (2024) and Knight et al. (2017)
@@ -908,10 +908,10 @@ cross-species matches have systematically lower scores and larger gaps, and the 
 this.
 
 A subtlety at the boundary requires explicit regularization. Because $p_{\text{self}}$ is
-*low but non-zero* (4–8% for the 12S and 18S markers examined in temperate-marine fish and
+*low but non-zero* (4-8% for the 12S and 18S markers examined in temperate-marine fish and
 eukaryote communities), a continuous bivariate normal fit to the observed within-species cloud
 assigns near-zero density at the corner $(s, g) = (1.0, 0.0)$, which would wrongly penalize the
-genuine — if rare — exact self-match. `train_likelihood_model()` corrects this by injecting
+genuine -- if rare -- exact self-match. `train_likelihood_model()` corrects this by injecting
 synthetic `anchor_perfect` pseudo-observations at $(1.0, 0.0)$ before fitting, regularizing the
 density at the boundary so that real exact matches are scored as plausible rather than anomalous.
 The anchor is not an arbitrary fudge: it encodes the established fact that conspecific exact
@@ -940,9 +940,9 @@ parameters they inform:
 | seq_matrix quantity | Model parameter | How used |
 |---|---|---|
 | Within-species `p_match` values (`score_transform`-scale) | `H1_Global_Mu[score_logit]`, `H1_Sigma[1,1]` | Pooled H1 score mean and variance; per-species means shrunk toward this |
-| Within-species `gap` values (`score_transform`-scale) | `H1_Global_Mu[gap_logit]`, `H1_Sigma[2,2]`, `H1_Sigma[1,2]` | H1 gap mean, gap variance, and score–gap covariance |
+| Within-species `gap` values (`score_transform`-scale) | `H1_Global_Mu[gap_logit]`, `H1_Sigma[2,2]`, `H1_Sigma[1,2]` | H1 gap mean, gap variance, and score-gap covariance |
 | Within-species pair count per species ($N$) | Empirical Bayes weight $w = N / (N + \text{prior\_weight})$ | Controls per-species shrinkage strength; low-$N$ species pulled toward pooled H1 |
-| Congeneric cross-species `p_match` mean − within-species mean | `H2$delta` (pooled) or `H2_Lookup$delta_shrunk` (genus-specific) | Score-axis shift from H1 to H2 distribution |
+| Congeneric cross-species `p_match` mean - within-species mean | `H2$delta` (pooled) or `H2_Lookup$delta_shrunk` (genus-specific) | Score-axis shift from H1 to H2 distribution |
 | Congeneric cross-species score and gap variances | `H2$sigma` (2×2 matrix, pooled) or `H2_Lookup$var_shrunk` (genus-specific score variance) | H2 distribution width and shape |
 | Family-level cross-species score mean | `H3$delta` (= `H2$delta` + 2.0 `score_transform`-scale units by default, rescaled per-transform via `.transform_unit_ratio()`) | Additional rank-step offset from H2 to H3 |
 
@@ -965,8 +965,8 @@ preventing this class of spurious cross-species pairing.
 
 Second, **error correction**, the caller's own responsibility rather than a
 built-in step (see Section 9A). Mislabelled reference sequences
-create false within-species pairs — cross-species comparisons masquerading as
-conspecific — which simultaneously inflate $p_{\text{cross}}$ and deflate
+create false within-species pairs -- cross-species comparisons masquerading as
+conspecific -- which simultaneously inflate $p_{\text{cross}}$ and deflate
 $p_{\text{self}}$ and so bias the likelihood ratio toward the unreferenced
 hypotheses $H_2/H_3$. Screening `reference_df` via
 `TaxaMatch::corroborate_references_locally()`/`evaluate_reference_accessions()`
@@ -981,10 +981,10 @@ filtering, badly distorting the estimated $f_{H_1}$. Excluding unnamed sequences
 within-species count is therefore not optional housekeeping but a prerequisite for an unbiased fit.
 
 Fourth, **thinning** (`max_seqs_per_taxon` in `build_sequence_matrix()`). Heavily sequenced model
-organisms — domestic livestock, common laboratory species — contribute combinatorially many
+organisms -- domestic livestock, common laboratory species -- contribute combinatorially many
 within-species pairs and can dominate the pooled within-species distribution. In a 12S MiFish
 database, *Ovis aries* (domestic sheep) accounted for 89% of within-species pairs before thinning.
-Capping each taxon at roughly 10–20 sequences balances contributions across species so that the
+Capping each taxon at roughly 10-20 sequences balances contributions across species so that the
 fitted $f_{H_1}$ reflects the community rather than a handful of over-represented taxa. These four
 steps together implement, at the level of the reference matrix, the balanced and species-specific
 validation design that Wood & Kahl (2024) recommend for score-performance assessment.
@@ -998,11 +998,11 @@ The theoretical pieces above correspond directly to stages of the TaxaLikely wor
 blank-name filtering (Section 15, step 3) and thinning (step 4) needed for an unbiased fit;
 mislabel error correction (step 2) is now the caller's own upstream step
 (`TaxaMatch::corroborate_references_locally()`/`evaluate_reference_accessions()` on
-`reference_df`, before it ever reaches this function — see Section 9A); binomial name
+`reference_df`, before it ever reaches this function -- see Section 9A); binomial name
 cleaning (step 1) is applied upstream via `TaxaTools::clean_taxon_names()` before building
 the matrix. The diagnostic script `diagnostics/seq_matrix_score_distribution.R` then verifies
-the modelling assumptions of Section 14 — continuity (spike ratio), $p_{\text{self}}$,
-$p_{\text{cross\,congeneric}}$, and the LR at the 100% rule — confirming that the continuous
+the modelling assumptions of Section 14 -- continuity (spike ratio), $p_{\text{self}}$,
+$p_{\text{cross\,congeneric}}$, and the LR at the 100% rule -- confirming that the continuous
 bivariate-normal model is appropriate for the marker at hand. `train_likelihood_model()`
 estimates the species-specific $H_1$ distribution with Empirical Bayes shrinkage and the shifted
 $H_2/H_3$ distributions, and injects the `anchor_perfect` pseudo-observations that regularize
@@ -1010,7 +1010,7 @@ the boundary (Section 14). When the query scores originate from a different scor
 than the reference matrix (BLAST, or an externally supplied match table, rather than the
 training MSA), `calibrate_query_noise()` performs the post-hoc calibration of Section 11A,
 recalibrating the $H_1$ locations to the inference-time score scale against the non-circular
-anchor set its internal `identify_confident_observations()` step returns — a constant additive offset by
+anchor set its internal `identify_confident_observations()` step returns -- a constant additive offset by
 default, or the nested affine map (`offset_form = "linear"`) that estimates, rather than
 assumes, how much per-species location structure transfers. Finally, `evaluate_likelihoods()`
 applies the calibrated generative model (Section 11) together with the truncation correction
@@ -1024,9 +1024,9 @@ reference incompleteness firmly in the prior where it belongs.
 
 ## 17. Model-form decisions and the benchmarks behind them
 
-The structural choices in this model — a bivariate normal on (score, gap) rather than a
+The structural choices in this model -- a bivariate normal on (score, gap) rather than a
 simpler monotone kernel, per-species parameters rather than pooled ones, alignment-derived
-training pairs rather than BLAST-derived ones, a constant calibration offset — were each
+training pairs rather than BLAST-derived ones, a constant calibration offset -- were each
 tested against a held-out benchmark rather than adopted by argument. This section records
 the comparisons so that a reader can weigh the decisions, and so that a rejected
 alternative is not re-proposed without new evidence.
@@ -1034,7 +1034,7 @@ alternative is not re-proposed without new evidence.
 **The benchmark.** The GreatLakes 2023 12S pipeline scored against the Lamar survey species
 list for the same samples: species-level precision (Lamar-confirmed species calls divided
 by all species calls) and the number of the 61 Lamar species recovered. Every comparison
-below reproduced the production result — precision 0.872, 42 of 61 species — bit for bit
+below reproduced the production result -- precision 0.872, 42 of 61 species -- bit for bit
 from cached objects before anything was changed, then changed only the likelihood model,
 leaving priors, Monte Carlo seeds, consensus rules and review verdicts identical. The
 benchmark is one dataset and one marker; decisions resting on it should be re-checked when
@@ -1067,9 +1067,9 @@ score (Section 6), and that is what the benchmark rewards.
 
 Training on distances from a multiple alignment while predicting on BLAST identities is an
 instrument mismatch, and a model trained on the references BLASTed against themselves
-removes it. The two training tables give the same pooled parameters — global H1 mean
+removes it. The two training tables give the same pooled parameters -- global H1 mean
 within 0.01, H2 delta 0.092 against 0.089, per-genus deltas with a rank correlation of
-0.92 to 0.94 across genera — yet the BLAST-trained model scores 0.836 calibrated and
+0.92 to 0.94 across genera -- yet the BLAST-trained model scores 0.836 calibrated and
 0.844 uncalibrated on the benchmark, with the training population held identical. The
 per-row likelihoods differ by a median of 0.02 to 0.04. The cause is in the gap dimension:
 BLAST's local-alignment coverage, at the same 0.8 floor, disqualifies more conspecific
@@ -1090,7 +1090,7 @@ different. Per-species gap means differ from the global by a median of 0.03 and 
 five precision points (0.824, with 46 species recovered and false species calls rising
 from 123 to 185), and the model's own no-lookup fallback path gives exactly the same
 result as an explicitly pooled entry. So the species-specific information in this model
-lives in the gap — how close each species' nearest referenced relative sits — not in the
+lives in the gap -- how close each species' nearest referenced relative sits -- not in the
 score. That is also why 17A and 17B lose: both flatten the gap structure. The model is
 best described as score pooled across species, gap species-specific, one shift per genus,
 one calibration constant.
@@ -1198,14 +1198,14 @@ TaxaAssign
 
 Abdo, Z., and G. B. Golding. 2007. A step toward barcoding life: a model-based,
 decision-theoretic method to assign genes to preexisting species groups.
-*Systematic Biology* 56(1):44–56. doi:10.1080/10635150601167005
+*Systematic Biology* 56(1):44-56. doi:10.1080/10635150601167005
 
 Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J. (1990).
 Basic local alignment search tool. *Journal of Molecular Biology*, 215(3),
-403–410. doi:10.1016/S0022-2836(05)80360-2
+403-410. doi:10.1016/S0022-2836(05)80360-2
 
 Anscombe, F. J. (1948). The transformation of Poisson, binomial and
-negative-binomial data. *Biometrika*, 35(3/4), 246–254.
+negative-binomial data. *Biometrika*, 35(3/4), 246-254.
 doi:10.1093/biomet/35.3-4.246
 
 Axtner, J., Crampton-Platt, A., Hörig, L.A., Mohamed, A., Xu, C.C.Y.,
@@ -1218,8 +1218,8 @@ Burnham, K. P., and D. R. Anderson. 2002. *Model selection and multimodel infere
 practical information-theoretic approach.* 2nd ed. Springer, New York.
 
 Efron, B. and Morris, C. (1973). Stein's estimation rule and its
-competitors — an empirical Bayes approach. *Journal of the American
-Statistical Association*, 68(341), 117–130.
+competitors -- an empirical Bayes approach. *Journal of the American
+Statistical Association*, 68(341), 117-130.
 doi:10.1080/01621459.1973.10481350
 
 Genz, A. and Bretz, F. (2009). *Computation of Multivariate Normal and t
@@ -1228,7 +1228,7 @@ ISBN 978-3-642-01688-2. (Citation designated by the mvtnorm package.)
 
 Hebert, P.D.N., Cywinska, A., Ball, S.L. and deWaard, J.R. (2003).
 Biological identifications through DNA barcodes. *Proceedings of the
-Royal Society of London B*, 270(1512), 313–321.
+Royal Society of London B*, 270(1512), 313-321.
 doi:10.1098/rspb.2002.2218
 
 Knight, E. C., K. C. Hannah, G. J. Foley, C. D. Scott, R. M. Brigham, and E. Bayne. 2017.
@@ -1238,19 +1238,19 @@ doi:10.5751/ACE-01114-120214
 
 MacKenzie, D. I., J. D. Nichols, G. B. Lachman, S. Droege, J. A. Royle, and C. A. Langtimm.
 2002. Estimating site occupancy rates when detection probabilities are less than one.
-*Ecology* 83(8):2248–2255. doi:10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2
+*Ecology* 83(8):2248-2255. doi:10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2
 
 May, A. C. W. (2004). Percent sequence identity: the need to be explicit.
-*Structure*, 12(5), 737–738. doi:10.1016/j.str.2004.04.001
+*Structure*, 12(5), 737-738. doi:10.1016/j.str.2004.04.001
 
 Ng, A.Y. and Jordan, M.I. (2001). On discriminative vs. generative
 classifiers: a comparison of logistic regression and naive Bayes.
-*Advances in Neural Information Processing Systems*, 14, 841–848.
+*Advances in Neural Information Processing Systems*, 14, 841-848.
 
 Platt, J. C. (1999). Probabilistic outputs for support vector machines and
 comparisons to regularized likelihood methods. In A. J. Smola, P. L. Bartlett,
 B. Schölkopf, & D. Schuurmans (eds.), *Advances in Large Margin Classifiers*,
-pp. 61–74. MIT Press, Cambridge, MA.
+pp. 61-74. MIT Press, Cambridge, MA.
 
 Quiñonero-Candela, J., Sugiyama, M., Schwaighofer, A., and Lawrence, N. D.
 (eds.) (2009). *Dataset Shift in Machine Learning*. MIT Press, Cambridge, MA.
@@ -1261,23 +1261,23 @@ percentage identity for protein sequence alignments. *BMC Bioinformatics*,
 
 Scheirer, W.J., de Rezende Rocha, A., Sapkota, A. and Boult, T.E. (2013).
 Toward open set recognition. *IEEE Transactions on Pattern Analysis and
-Machine Intelligence*, 35(7), 1757–1772.
+Machine Intelligence*, 35(7), 1757-1772.
 doi:10.1109/TPAMI.2012.256
 
 Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
 (2016). Unbiased probabilistic taxonomic classification for DNA barcoding.
-*Bioinformatics*, 32(19), 2920–2927.
+*Bioinformatics*, 32(19), 2920-2927.
 doi:10.1093/bioinformatics/btw346
 
 Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naïve Bayesian
 classifier for rapid assignment of rRNA sequences into the new bacterial
-taxonomy. *Applied and Environmental Microbiology*, 73(16), 5261–5267.
+taxonomy. *Applied and Environmental Microbiology*, 73(16), 5261-5267.
 doi:10.1128/AEM.00062-07
 
 Wood, C. M., and S. Kahl. 2024. Guidelines for appropriate use of BirdNET scores and other
-detector outputs. *Journal of Ornithology* 165:777–782. doi:10.1007/s10336-024-02144-5
+detector outputs. *Journal of Ornithology* 165:777-782. doi:10.1007/s10336-024-02144-5
 
 Zito, A., Rigon, T. and Dunson, D.B. (2023). Inferring taxonomic placement
 from DNA barcoding aiding in discovery of new taxa. *Methods in Ecology
-and Evolution*, 14(2), 529–542.
+and Evolution*, 14(2), 529-542.
 doi:10.1111/2041-210X.14009
