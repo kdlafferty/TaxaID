@@ -2138,3 +2138,58 @@ third being the strongest:
 So pass A1 is closed in full: eight roxygen fixes merged at `70ebbad`,
 nineteen roxygen matches kept as legitimate, three README/vignette/NEWS hits
 kept as legitimate, and code comments out of scope by decision.
+
+### Re-run gate 2026-10-12: the ledger is THREE items, and row 162 is resolved
+
+**Row 198's complement fixes are ALREADY in R1009f, so they are not pending.**
+I had listed them as a fourth ledger item; the dates say otherwise and the
+workflow session confirmed it from the run logs. R1009f's preflight records
+`installed TaxaAssign 0.1.0 built 2026-10-09 04:35:50 UTC`; main's first-parent
+tip one minute earlier was `8111dc7`, and `f14795b`, `22655fc` and `f30c68a`
+are all ancestors of it -- they first reached main's first parent at `252488f`
+(2026-09-29). Any branch cut after that date also contains `252488f`, so the
+conclusion holds whether the build came from main or a branch.
+
+**THE LEDGER, pending the batched re-run, is three behaviour changes:**
+`712ed59` (49 of 3,489 family assignments), `abaa60f` (zero call changes) and
+`b921c00` (37 of 414 species calls go coarser). Everything else merged since
+the checkpoints is documentation.
+
+**Row 162 -- RESOLVED, and it needs no code change.** Both `likelihood_support`
+figures are correct; they describe different runs, and the board conflated
+them.
+
+- `0.56 / 0.18 / 0.77` is the species-call median from the 2026-10-01
+  rank-accuracy run, which predates C1, the G1-G6 guards, the k rule and the
+  class fill. Stale.
+- `0.999 / 0.992 / 0.999` is the species-call median on the live R1009f
+  `consensus_final` (n = 10,382 / 188 / 3,238).
+
+**The low medians did not vanish by a change of computation.** Most of the
+prior-chosen species calls behind them were REMOVED by the guards, G6 above
+all. What remains is a ~2,060-call `"narrowed"` minority that still sits low:
+
+| Subset (12S / 18S / COI) | 12S | 18S | COI |
+|---|---|---|---|
+| Species calls, `prior_role = "agrees"` | 0.999 (8,945) | 0.992 (179) | 1.000 (2,614) |
+| Species calls, `prior_role = "narrowed"` | 0.597 (1,435) | 0.275 (9) | 0.679 (619) |
+| All species calls, MEAN | 0.936 | 0.960 | 0.915 |
+| Species calls with support >= 0.95 | 83% | 88% | 74% |
+
+**FOR THE MANUSCRIPT: report the overall median WITH the narrowed-subset median
+beside it.** Quoting 0.999 alone hides the prior-decided tail, which is the
+very thing `likelihood_support` exists to expose.
+
+**THE GATE NOW NEEDS ONE THING: arm (c)'s re-measurement**, owed by the chat
+whose coarse-rank grain error voided its aggregates. No local session owns it
+-- the workflow session and sampling optimization both disclaim it, and the
+row's own `Waiting on` cell says "that chat", meaning a claude.ai
+conversation that cannot be messaged from here. Routing it is the
+maintainer's.
+
+**A FRAGILITY in how this board is referenced, found when a peer could not
+locate "row 194".** The row numbers in this document are LINE NUMBERS in this
+file (`awk 'NR==194'`), not stable identifiers. Appending at the end is safe,
+but inserting anything above section 0 (line 154) silently renumbers every
+row, and any message or note citing a row number becomes wrong. Cite the
+row's `Item` text alongside the number.
