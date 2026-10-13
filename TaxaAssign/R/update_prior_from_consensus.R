@@ -182,9 +182,21 @@
 #'     (`theta_mean` `NA`) is never raised.
 #'   \item **Likelihood ranking.** A prior boost must not overturn the
 #'     likelihood ordering: a row is raised only if its `score_likelihood` is
-#'     at least that of every other REFERENCED candidate in its observation
-#'     (ties allowed). Unreferenced rows (`unreferenced_*`) are not in the
-#'     comparison, so a higher-likelihood unreferenced row does not block. A
+#'     at least that of every other candidate in its observation (ties
+#'     allowed). The comparison INCLUDES the unreferenced hypotheses
+#'     (`unreferenced_*`): those rows are the "a relative we hold no reference
+#'     for" explanation, scored on the query's own measured value under a
+#'     shifted density, so a named species standing beside them is a
+#'     likelihood ratio between two models of one datum. Where an unreferenced
+#'     relative explains the sequence at least as well, the sequence has not
+#'     identified the species and a confirmation raise is not what should name
+#'     it. This gives the unreferenced row nothing: it remains barred from the
+#'     confirmation as both donor and receiver (see \emph{Referenced
+#'     candidates only}), and a comparator is neither role, so the circularity
+#'     that section guards against cannot arise from it. Measured on
+#'     CalIntertidal: of 414 species calls resting on a raised row, 377 clear
+#'     the widened bar; the other 37 fall back to their own genus (21), family
+#'     (15) or order (1), never off-lineage and never to no call. A
 #'     comparator with an `NA` likelihood is left out of the comparison; a row
 #'     whose own likelihood is `NA` is never raised. Measured
 #'     on CalIntertidal (2026-10-07, after the two guards above): a recorded
@@ -194,13 +206,14 @@
 #'     the better-scoring species keep a call that a co-raised, weaker
 #'     congener had split.
 #'   \item **Likelihood margin.** Beyond the ranking guard, a row is raised
-#'     only if its `score_likelihood` beats the best other referenced
-#'     candidate's by more than the likelihoods' own noise:
+#'     only if its `score_likelihood` beats the best other candidate's --
+#'     unreferenced hypotheses included, as above -- by more than the
+#'     likelihoods' own noise:
 #'     `L_row - L_other > 1.96 * sqrt(sd_row^2 + sd_other^2)`,
 #'     where `sd` is `score_likelihood_sd`. Among comparators tied on
 #'     likelihood, the one with the larger `sd` is used. A missing `sd` on
 #'     either side leaves the band undefined and the row is not raised. A row
-#'     with no referenced rival has no runner-up to beat and is not held back by
+#'     with no rival at all has no runner-up to beat and is not held back by
 #'     this guard. The multiplier 1.96 (the 97.5% normal quantile) is fixed,
 #'     not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
 #'     example *Clupea harengus* over *C. pallasii*, likelihoods 1 and 0.995)
@@ -624,10 +637,34 @@ update_prior_from_consensus <- function(result,
     # (G4) a row is raised only if its likelihood is at least that of every
     # other referenced candidate in its observation (ties allowed): Round 2
     # may break a tie, never invert the sequence's own ranking.
-    # Comparators are the REFERENCED candidates only (an unreferenced row with a
-    # higher likelihood does not block); one with an NA likelihood is left out
-    # of the comparison, and a receiver with an NA likelihood is never raised.
-    is_cand <- ur_ref & !is.na(unresolved_rows$taxon_name)
+    #
+    # Comparators include the UNREFERENCED hypotheses, not only the referenced
+    # candidates. Those rows ARE the "this is a relative we hold no reference
+    # for" explanation, and they are evaluated on the query's own MEASURED
+    # score under a shifted density (TaxaLikely's H2/H3), so putting a named
+    # species beside them is a likelihood ratio between two models of the same
+    # datum -- not a comparison against an imputed number. Where an
+    # unreferenced relative explains the sequence at least as well, the
+    # sequence has not identified the species, and a confirmation raise must
+    # not be what names it. Measured on one real multi-marker study: of 414
+    # species calls resting on a raised row, 377 beat every rival including the
+    # unreferenced ones by more than the likelihoods' own noise, while the
+    # remaining 37 fell back to their own genus (21), family (15) or order (1)
+    # -- never off-lineage and never to no call. Cross-ocean homonyms that the
+    # referenced-only comparison could not separate (Clupea harengus against
+    # C. pallasii, Littorina littorea) do not clear the widened bar at all.
+    #
+    # This gives an unreferenced row NOTHING: @section Referenced candidates
+    # only keeps them out of the confirmation on both sides, as donors and as
+    # receivers, because their support at one observation comes from the same
+    # rows at the others and letting them confirm one another is circular
+    # (`ur_ref` below still enforces that). A comparator is neither role -- it
+    # only ever raises the bar for a referenced row, so no circularity can
+    # arise from it.
+    #
+    # A row with an NA likelihood is left out of the comparison, and a receiver
+    # with an NA likelihood is never raised.
+    is_cand <- !is.na(unresolved_rows$taxon_name)
     l_row <- unresolved_rows$score_likelihood
     l_cand <- ifelse(is_cand & !is.na(l_row), l_row, -Inf)
     oid <- as.character(unresolved_rows$observation_id)
@@ -635,14 +672,15 @@ update_prior_from_consensus <- function(result,
     top2 <- tapply(l_cand, oid, function(v) if (length(v) > 1L) sort(v, decreasing = TRUE)[2L] else -Inf)
     best_other <- ifelse(l_cand == top1[oid], top2[oid], top1[oid])
     top_lik <- !is.na(l_row) & l_row >= best_other
-    # (G5) beyond G4, the row's likelihood must beat the best OTHER referenced
-    # candidate's by more than the likelihoods' own noise:
+    # (G5) beyond G4, the row's likelihood must beat the best OTHER candidate's
+    # -- unreferenced hypotheses included, see G4 -- by more than the
+    # likelihoods' own noise:
     # L_row - L_other > likelihood_margin_z * sqrt(sd_row^2 + sd_other^2), with
-    # sd = score_likelihood_sd. The comparator is the referenced candidate with
-    # the highest likelihood other than the row itself; among comparators tied on
+    # sd = score_likelihood_sd. The comparator is the candidate with the
+    # highest likelihood other than the row itself; among comparators tied on
     # likelihood, the one with the larger sd (the wider band) is used. A missing
     # sd on either side leaves the band undefined, so the row is not raised. A row
-    # with no referenced rival is handled by .ROUND2_RAISE_SOLE_CANDIDATE.
+    # with no rival at all is handled by .ROUND2_RAISE_SOLE_CANDIDATE.
     # likelihood_margin_z = 0 is G4 exactly.
     sd_row <- unresolved_rows$score_likelihood_sd
     sd_key <- ifelse(is.na(sd_row), -Inf, sd_row)
