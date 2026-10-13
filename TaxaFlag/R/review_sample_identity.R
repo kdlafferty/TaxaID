@@ -328,7 +328,11 @@ review_sample_identity <- function(identity,
         "(none)"
       },
       ifelse(is.na(r$top_taxa), "(none)", r$top_taxa),
-      ifelse(length(fr) && !is.na(fr[1]), fr[1], "(none)"),
+      # `if`, not `ifelse()`: the test is scalar by construction (`&&`), so
+      # `ifelse()` here only looks like the length trap without being it --
+      # and a shape that looks like the trap costs a future sweep a false
+      # positive.
+      if (length(fr) && !is.na(fr[1])) fr[1] else "(none)",
       ub
       )
     }, character(1))
