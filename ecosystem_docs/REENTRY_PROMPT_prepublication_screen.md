@@ -2575,3 +2575,43 @@ would escape it, though that would itself be a conflict of the kind
 
 So the limitation recorded on that function is a MEASURED ABSENCE on R1009f's
 410 rather than an untested assumption. Row 166 is closed in all four findings.
+
+### Cross-dataset check on Mugu, 2026-10-12: both changes travel
+
+The two merged behaviour changes had only CalIntertidal evidence, which is not
+a safe basis for a released package. Checked read-only against Sepulveda/Mugu
+(`MuguWilderFish_blast_all_posteriors_r2.rds`, 0.2 MB, 3,087 rows). That
+workflow exercises `update_prior_from_consensus()` and `posterior_consensus()`
+but does NOT set `ADD_UNREFERENCED_MASS` or `named_rows`, so its unreferenced
+rows are generic rings only (560 genus, 146 species) -- which makes it an
+independent test of the comparator, and also establishes that **the 410
+record-named species calls are a CalIntertidal OPT-IN, not a general property
+of the package.**
+
+**A CONFOUND I NEARLY REPORTED AS A RESULT.** The Mugu artefact is from
+**Sep 11**; the Round-2 guards landed **Oct 7-8** (`049b0ac`, `436bd42`,
+`58d9944`). So that run predates every guard, and a first pass suggested the
+widened comparator would block 329 of its 390 raised rows -- which measures
+guards-versus-no-guards, a question already settled, not the widening.
+Of those 390, only **74 survive the EXISTING referenced-only G4/G5** at all;
+the other 316 were raised because nothing was then stopping them.
+
+**The INCREMENTAL effects, which is what was wanted:**
+
+| change | on CalIntertidal | on Mugu |
+|---|---|---|
+| widened comparator | 37 of 414 calls coarser (9%) | **13 of 74 raised rows** newly blocked (18%) |
+| `max_raise_factor = 2000` | 0 of 414 bound | **0 of 74 bound** (47 are above 50x, none above 2000x) |
+
+**So both travel.** The bound is inactive on a second, independent dataset, so
+`2000` is behaving as a loose safety rail rather than a tuned constant -- which
+is what the maintainer's rule requires and what the CalIntertidal measurement
+alone could not establish. The widening's effect is of the same order on both
+(9% against 18% of a much smaller raised set), and in the same direction:
+withholding a species call where an unreferenced relative explains the sequence
+at least as well. Mugu having only GENERIC rings and still showing that effect
+is the stronger evidence, since no named-row machinery is involved.
+
+Caveat kept: Mugu's artefact predates the guards, so these are counterfactual
+figures on its saved Round-1-equivalent state rather than from a re-run of it.
+A Mugu re-run is not proposed; nothing here suggests one is needed.
