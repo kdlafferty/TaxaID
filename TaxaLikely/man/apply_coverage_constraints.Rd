@@ -99,9 +99,7 @@ misassigned, with no way for downstream evidence to recover it. \code{"relabel"}
 (the default) is deliberately conservative instead: it never destroys
 likelihood mass, only changes how the hypothesis is labeled, so a
 mistaken census can, at worst, cost genus-level resolution rather than
-create a wrong answer with no exit. \code{run_bayesian_pipeline()} (TaxaAssign)
-also defaults to \code{"relabel"}; this function's own
-default matches it.
+create a wrong answer with no exit.
 }
 
 \examples{

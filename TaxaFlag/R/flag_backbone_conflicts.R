@@ -7,6 +7,29 @@
 #' another phylum on others, or a true homonym such as a phylum name reused as
 #' a genus), and a name carried under MORE THAN ONE PARENT at the same rank.
 #'
+#' @section What this CANNOT see:
+#' Both detected failures are ONE NAME in more than one place. The inverse --
+#' MANY NAMES for one organism, i.e. synonymy -- is invisible here, and not as
+#' an implementation gap: a synonym pair sits consistently at one rank under
+#' one parent on each of its two names, so there is no conflict to find. Where
+#' a reference database holds \emph{Eisenia arborea} and an occurrence pool
+#' lists \emph{Ecklonia arborea}, this function reports nothing, by
+#' construction. It therefore cannot be used as evidence that a name set is
+#' free of duplicate organisms, and a report of zero conflicts says nothing
+#' about synonymy.
+#'
+#' That matters because a name absent from a reference set becomes an
+#' unreferenced local species downstream, and
+#' \code{TaxaAssign::add_unreferenced_prior_mass(named_rows = TRUE)} can then
+#' name it in a call -- so a synonym of a referenced taxon could be reported as
+#' having no reference sequence. The designed defence is the NCBI-to-GBIF
+#' crosswalk, not this function. Measured on one real multi-marker study, the
+#' 35 record-named taxa behind its 410 such calls produced 97 shared-epithet
+#' pairs against the reference sets and EVERY one was in a different family --
+#' homonymous epithets across unrelated groups rather than synonyms -- so that
+#' study showed no instance of the failure. The limitation stands regardless of
+#' that result.
+#'
 #' @section Why this is not a data-cleaning nicety:
 #' Any rule that compares taxonomy by NAME is wrong wherever a name is not a
 #' key. \code{TaxaAssign::posterior_consensus()}'s \code{cross_phylum_eps}
