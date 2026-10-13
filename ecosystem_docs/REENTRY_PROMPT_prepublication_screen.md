@@ -2547,3 +2547,31 @@ the same commit, and `document()` was then run across all nine packages to
 check for others -- there are none, so the Rd files are now consistent with
 source everywhere. Worth adding to the release checklist: regenerating docs is
 a VERIFICATION step, not only a build step.
+
+### B3 closed by measurement, both directions (2026-10-12)
+
+The synonym question is settled on the backbone the priors use, with ~412
+lookups. **0 hits in either direction across all 35 record-named taxon x
+marker pairs.**
+
+- All 34 distinct names resolve at species rank to THEMSELVES, `is_synonym`
+  FALSE. **`Smithora naiadum` -- which carries 167 of the 410 calls alone, at
+  ORDER scope -- is ACCEPTED.**
+- None of their accepted names appears in the same marker's post-drop
+  reference set: 0 of 15 (12S), 0 of 6 (18S), 0 of 14 (COI).
+- Reverse direction: all 318 reference species sharing a family with any of the
+  35 were resolved (57 / 53 / 208, 3 COI names unmatched); none resolves to one
+  of the 35 or its accepted name. So no sequenced organism hides behind another
+  name in those families.
+
+**What it does NOT establish**, and the docs now say so: it is that backbone's
+taxonomic opinion, obtained through the Global Names Verifier. A pair another
+authority treats as synonymous while this backbone keeps it separate would not
+show -- consistent with a workflow that harmonises everything to one backbone,
+but an opinion rather than ground truth. And the reverse check is bounded to
+SAME-FAMILY references, so a synonym the backbone places in a different family
+would escape it, though that would itself be a conflict of the kind
+`flag_backbone_conflicts()` does detect.
+
+So the limitation recorded on that function is a MEASURED ABSENCE on R1009f's
+410 rather than an untested assumption. Row 166 is closed in all four findings.
