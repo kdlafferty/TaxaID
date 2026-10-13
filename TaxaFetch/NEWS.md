@@ -1,3 +1,3 @@
-# TaxaFetch 1.0.0
+# TaxaFetch 0.1.0
 
 * Initial release.
