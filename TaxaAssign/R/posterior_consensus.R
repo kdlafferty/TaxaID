@@ -351,6 +351,35 @@
 #' says. `pool_tail` and `consensus_method = "credible_node"` are choices of
 #' rule, so they default off (`FALSE`, `"lca"`).
 #'
+#' @section What a call is a call ABOUT:
+#' A call is made for one `observation_id`, so when observations are formed
+#' per sequence AND per site -- the grain at which an occurrence prior is
+#' sharpest -- the same sequence can be called at species at one site and at
+#' genus at another. That is not a defect: a per-site prior carries
+#' information a pooled one does not, and the rank it supports legitimately
+#' differs between sites. It is the common case, not an edge one. Measured on
+#' one multi-marker study, of 233 sequences with any species-level site only
+#' 18 were species at ALL of their sites; 215 were species at some and coarser
+#' at the rest, at a median of half.
+#'
+#' So a per-site call must not be read as a statement about the sequence.
+#' Three different questions have three different answers, and a species list
+#' should say which one it reports:
+#' \itemize{
+#'   \item what the SEQUENCE alone resolves -- `likelihood_consensus_taxon`
+#'     at `likelihood_consensus_rank`, the prior-independent call;
+#'   \item what a SITE resolves -- `consensus_taxon` at `consensus_rank` on
+#'     that site's row, which is what this function returns;
+#'   \item what holds across a sequence's sites -- the coarsest label
+#'     consistent with every site's call. This is not computed here, because
+#'     it depends on which sites a reader is pooling; it is the coarsest rank
+#'     at which every one of a sequence's per-site calls agrees.
+#' }
+#' Quoting a per-site species call as the sequence's identification counts the
+#' site's prior as if it were sequence evidence, and summing species across
+#' sites without the third product double-counts a sequence that resolved
+#' differently in different places.
+#'
 #' @section Sequence support:
 #' The posterior multiplies the likelihood by an occurrence prior, so a
 #' reported taxon can be one the sequence evidence alone does not single
