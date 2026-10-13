@@ -2236,3 +2236,48 @@ missing from `referenced_names` -- a consistency check whose healthy value is
 so 24 screen-dropped species counted as "referenced". The current function
 filters matches by the final drop list and looks fixed; the crosswalk half has
 not been re-verified.
+
+### Arm (c) validation AUTHORISED read-only 2026-10-12; crosswalk CLOSED
+
+**The `.referenced_names()` crosswalk item is CLOSED and clean**, and the
+re-examination is the useful part. 43 match-object species have EVERY match row
+on the final drop list (12S 19, 18S 2, COI 22); 37 of them still count as
+referenced, and each one because it has OTHER, undropped reference sequences in
+the post-drop `reference_df`. `Semicossyphus pulcher` is the worked case: its
+dropped hit is AY279644, but it carries 2 post-drop references and 39
+`specific_candidate` rows -- the dropped-hit replacement recovering sheephead,
+not a leak. The crosswalk's stored digest equals `digest(post-drop reference
+species)` for all three markers and Section 8 refuses a mismatch, and the
+`refs_<MK>.rds` sets carry 0 rows on the drop list. Step 7 names that never
+appear as a `specific_candidate` number 427 (12S) and 1,754 (18S) and **zero
+are binomials**, so nothing reaches `add_unreferenced_prior_mass()`'s
+species-rank mass by that route. So the old "24 leaked species" is retired.
+
+**ARM (c) VALIDATION: authorised read-only at Round-1 level** (~1-1.5 h, peak
+4-5 GB, inside the budget the coordinator role may set; above 6 GB needs the
+maintainer). No package change, no re-run, and installs are held for the
+window. The 1.0 question is the LIVE configuration, not the three-arm
+comparison, which needs the worktree harness and belongs after the re-run.
+
+**WHY `named_rows` IS THE SERIOUS HALF, stated precisely:** the tested arm (c)
+put mass on GENERIC rows, which can only pull a call COARSER. `named_rows`
+creates NAMED COMPETITORS THAT CAN WIN -- that is, it can produce a species
+call for a taxon with no reference sequence. No arm measured that behaviour,
+and it carries most of the candidate space.
+
+**A CHEAP DECISIVE COUNT WAS ASKED FOR FIRST**, before the counterfactual:
+how many species calls resolve to an `unreferenced_species` row. And it must
+NOT be read off `winner_hypothesis_type` -- the recorded 2026-10-08 finding is
+that the `winner_*` columns describe the top-posterior HYPOTHESIS while the
+call is `consensus_taxon` after downranking, and they disagreed on 23 of 48
+cases: 48 by `winner_hypothesis_type` against **63** when classified on the
+candidate row whose `taxon_name` equals `consensus_taxon`. The join must be on
+`consensus_taxon`. G5G6k's 63 within its 2,070 prior-driven calls is the
+anchor.
+
+Two scoring requirements were added: report `named_rows` OFF and mass OFF
+**separately**, since the first is the untested behaviour and the second the
+tested one; and for every call that changes, say whether the pre-change call
+was CORRECT where the maintainer has adjudicated the taxon -- "37 calls
+change" and "37 right calls become wrong" are different findings and only the
+second is a defect.
