@@ -2050,3 +2050,47 @@ sweep: some are genuine version metadiscourse ("a schema this function no
 longer reads"), others compare two SETTINGS rather than two versions ("with
 the floor on, a call at 0.6 no longer resolves") and are legitimate. Code
 comments are out of scope; the rule names roxygen, README, vignettes and NEWS.
+
+### Pass A1 closed 2026-10-12 (merged `70ebbad`)
+
+The metadiscourse purge had left 27 instances in roxygen across eight of the
+nine packages. TRIAGED, not swept, because only eight were real:
+
+**Fixed** -- genuine references to a former state of this code:
+`posterior_consensus()` (a prior schema it "no longer reads"),
+`assign_taxa_llm()` (a paragraph of history: "that ceiling is now 16000", "no
+longer has to", "safer than it was", "the new ceiling"), TaxaWizard
+`registry.R` ("schema (5): \value is no longer truncated"),
+`estimate_kernel_priors()` ("chao_missing no longer sits in that formula"),
+`update_prior_from_consensus()` (a column "kept for compatibility" because
+"such rows are no longer raised"), `flag_contaminant()` ("no longer gets an
+overconfident 0 or 1"), `literature_search()` ("this used to be a hand-rolled
+character-sum fingerprint" plus "every previously-written" cache orphaned),
+and `parse_habitat_response()` (a "deprecated" mode against the "current"
+format).
+
+**Kept deliberately** -- the other nineteen are not metadiscourse: "reopen a
+previously drawn polygon" and "any row previously cached as" are the USER's
+earlier actions; "the v3/v4 API no longer works", BirdNET's "equivalent legacy
+default" and a `404 deprecated` error are EXTERNAL facts; "a call at 0.6 no
+longer resolves" and "the row no longer corresponds to a single site" are
+consequences of a SETTING. A `sed` sweep would have mangled all nineteen,
+which is why this needed triage.
+
+**THE REAL LESSON, and it should go into whatever script enforces the freeze:
+the pattern list was the weak point, not the pass.** A1 was run against three
+strings, and `literature_search()` leaked because it said "used to be".
+Widening the census to used-to-be / formerly / deprecated / renamed-from /
+replaced-by / earlier-version / historically / old-default found one further
+real case and confirmed the rest are data operations ("weight replaced by the
+conditioned value"). Any future check should use the widened list.
+
+**NOT covered, and still open.** Code comments are out of scope by the rule's
+own wording (it names roxygen, README, vignettes and NEWS) -- but dated
+comments do exist in `posterior_consensus.R` and elsewhere if the maintainer
+wants that scope widened. README, vignettes and NEWS have NOT been censused
+for this at all.
+
+Documentation only: no code, no exports, no number moves. Rd regenerated for
+the six touched packages; TaxaAssign and TaxaFetch check 0 errors / 0
+warnings.
