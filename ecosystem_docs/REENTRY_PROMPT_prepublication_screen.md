@@ -2094,3 +2094,47 @@ for this at all.
 Documentation only: no code, no exports, no number moves. Rd regenerated for
 the six touched packages; TaxaAssign and TaxaFetch check 0 errors / 0
 warnings.
+
+### Pass A1: the remaining scope settled 2026-10-12, with no work needed
+
+**README, vignettes and NEWS: censused, already clean.** The widened pattern
+list over 9 package READMEs, 10 vignettes and 9 `NEWS.md` found THREE hits in
+total, and none needs changing:
+
+- `TaxaLikely/README.md` -- "trims the reference database so that it no longer
+  resembles real observations": the effect of an operation, not this code's
+  history. Keep.
+- `TaxaExpect/vignettes/building-priors.Rmd` -- "can then no longer dilute a
+  well-sampled group's estimates": likewise the effect of a method. Keep.
+- `usgs_release_review/README.md` -- "Previously called `misc review docs/`" is
+  genuine metadiscourse, but that directory is internal review documentation,
+  not shipped with any package, and it sits with `ecosystem_docs/` on the
+  history-may-be-kept side of the freeze. Keep.
+
+**All nine `NEWS.md` read exactly as a first release should**: "# <pkg> 1.0.0 /
+* Initial release." Nothing to purge, and nothing missing. Worth stating
+plainly because the freeze rule naming NEWS is easy to misread: NEWS is
+conventionally WHERE version history belongs. The rule makes sense for a FIRST
+release, which has no public predecessor to report changes against; after 1.0,
+`NEWS.md` is the right home for exactly the text the rule currently excludes.
+
+**Code comments: deliberately OUT of scope, on the maintainer's instruction
+that metadiscourse be limited to what is conventional.** Three reasons, the
+third being the strongest:
+1. Convention. User-facing documentation (Rd, README, vignettes) describes
+   current behaviour; a released package's internal comments are not expected
+   to be history-free.
+2. Audience. Comments are read by maintainers, who are the people the history
+   helps.
+3. This session is the evidence. Row 194 closed WITHOUT a measurement only
+   because a code comment preserved the reasoning ("One site counts once.
+   Identical repeats ... are the same site's prior, not independent sites"),
+   and the G4 comparator question was answerable only because the
+   `@section Referenced candidates only` recorded WHY the restriction existed
+   -- which is what showed a comparator is neither donor nor receiver.
+   Purging that reasoning would have cost two measurements and invited the
+   change to be undone by the next reader.
+
+So pass A1 is closed in full: eight roxygen fixes merged at `70ebbad`,
+nineteen roxygen matches kept as legitimate, three README/vignette/NEWS hits
+kept as legitimate, and code comments out of scope by decision.
