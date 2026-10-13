@@ -1960,3 +1960,93 @@ does not ratify arm (c): that remains held pending its re-measurement.
 **The two surface numbers on this board reconcile.** 228 at `pre-1.0-freeze`,
 plus these four, is the 232 that section 12's prune starts from; 232 minus the
 nine removed is the 223 on `main` now. Neither figure was wrong.
+
+### Decisions taken 2026-10-12: the Round-2 raise, and rows 194 / 198 / 201
+
+**The Round-2 confirmation raise: scale bounded, comparators widened.** Both
+merged on the maintainer's approval. The raise rescaled its target onto the
+GROUP'S MAX `theta_mean` -- whatever taxon happens to be best recorded at the
+site, unrelated to the row being raised. Measured read-only on R1009f: 414 of
+13,808 species calls rest on a raised row and Round 2 CREATED every one of
+them; the ceiling sat 487x-13,760x above a typical recorded taxon and produced
+raises to 64,442x, median 1,535x -- while the raise those calls NEEDED was a
+median 5x, and only 7 of 414 needed more. So:
+
+- `max_raise_factor = 2000` (`abaa60f`) bounds a non-mixture raise at that
+  multiple of the row's own prior. A measured bound, not a tuned constant: all
+  414 calls survive it. Zero call changes.
+- G4/G5's comparator set now includes the unreferenced hypotheses (`b921c00`).
+  Cost: 37 of 414 calls fall to their own genus (21), family (15) or order (1)
+  -- never off-lineage, never to no call. `Holothuria lubrica` is the only
+  taxon that stops being named; four others lose one marginal call but keep
+  their species x site. `Clupea harengus` and `Littorina littorea` fail the
+  widened bar outright, which no scale bound could achieve: they overtake at
+  2.3x and 3.5x, BELOW the 414's median need of 5x.
+
+Two mechanisms were killed by measurement before any code: scaling to the
+row's own theta (a TaxaExpect `prior_mean` IS `theta_mean`, verified at ratio
+1.000 for every raised row, so the target collapses below the existing prior
+and Round 2 switches off), and scaling to the taxon's regional theta
+(Spearman(needed, cross-site ratio) is 0.23, and the per-site theta is already
+the kernel-weighted regional estimate, so borrowing a far site's value undoes
+the kernel). **What keeps cross-ocean homonyms out is the eligibility guards,
+not the scale.**
+
+**Row 194 -- CLOSED, from the code, no measurement needed.** The feared
+mechanism was `combine_multisite_priors()` treating k duplicate copies of one
+site as k independent sites. It is guarded at the source: the function
+de-duplicates on the full (observation, candidate, site) key, aborts if
+repeats disagree, and reports how many it dropped, with the rationale stated
+("One site counts once"). That guard is `1441ba8`, which predates the R1009f
+checkpoints; and at per-site grain the function is not called at all. The
+row's "cheap decisive test" would return clean by construction. What survives
+is the structural point -- match objects should not write `""` for an absent
+rank -- which is tracked separately and is the maintainer's call.
+
+**Row 198 -- CLOSED.** All three causes were already fixed: the
+post-simulation ratio filter (`22655fc`), the redundancy-filter call
+(`f14795b`) and `expand_unreferenced_hypotheses()`'s named-row rule
+(`f30c68a`). The row's own "durable fix" is now merged too (`63a45fb`):
+`.is_complement_type()` asks once what three filters each restated by hand,
+which is what let the complement be lost three times. Behaviour-identical,
+internal, NAMESPACE unchanged. The combined numbers change lands at the
+batched re-run.
+
+**Row 201 -- the convention taken, the instrument deferred, and the reason is
+structural.** The proposed instrument is the posterior mass on the
+unreferenced hypotheses, which is EXACTLY the quantity row 198's three fixes
+change, so it cannot be validated against any artefact built before them. Its
+stated validation target (86 clean against 291 prior-decided) also comes from
+the superseded grain test; the live split is `prior_role` agrees 11,738,
+narrowed 2,063, changed 7. It therefore waits for the batched re-run.
+
+The row's reporting half IS taken (`ceb641c`): a new `@section` on
+`posterior_consensus()` states what a per-site call is a call about. Of 233
+sequences with any species-level site, only 18 are species at ALL of them --
+215 are species at some and coarser at the rest, so this is the common case.
+Three questions, three answers: what the SEQUENCE resolves
+(`likelihood_consensus_taxon`, prior-independent), what a SITE resolves
+(`consensus_taxon`, what the function returns), and the coarsest label
+consistent across a sequence's sites, deliberately not computed because it
+depends on which sites a reader pools. Documentation only; no export.
+
+**PENDING RE-RUN LEDGER.** Merged and not yet re-run: the `fill_higher_ranks`
+lineage keying (49 of 3,489 family assignments), `max_raise_factor` (0
+changes), the comparator widening (37 of 414 calls), and row 198's three
+complement fixes (every observation now carries its complement, so every
+posterior moves). **Decision: the re-run is BATCHED** behind the remaining
+numbers-changing rows, because these deltas do NOT compose -- family fills
+feed the coarse-rank expansion and the unreferenced-mass scopes, the widening
+changes which rows are raised, and the complement fixes change the candidate
+sets themselves. One re-run, then ONE combined measurement at the published
+unit. Code keeps merging as it validates; only the re-run waits.
+
+**NEW, found while doing the above: pass A1 is incomplete.** The metadiscourse
+purge left 27 instances of "previously", "no longer" or "legacy" in ROXYGEN
+across eight of the nine packages (TaxaAssign 7, TaxaMatch 5, TaxaExpect 3,
+TaxaFetch 3, TaxaLikely 3, TaxaFlag 2, TaxaTools 2, TaxaWizard 2). This is a
+release gate by the freeze protocol's own terms. It needs TRIAGE rather than a
+sweep: some are genuine version metadiscourse ("a schema this function no
+longer reads"), others compare two SETTINGS rather than two versions ("with
+the floor on, a call at 0.6 no longer resolves") and are legitimate. Code
+comments are out of scope; the rule names roxygen, README, vignettes and NEWS.
