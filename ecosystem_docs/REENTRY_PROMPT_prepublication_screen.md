@@ -1925,3 +1925,38 @@ amplicon range, keep the reverse-complement search, extend
 `query_trim_path` -- lands after 1.0 with the re-screen it needs, and 7.6%
 of COI deposits (5,022 of 65,898) cannot be anchored under any fix, so even
 then the screen will not be uniform.
+
+### Decisions taken 2026-10-12: the four exports added under the freeze
+
+**Ratified, all four.** Freeze rule 1 says a new export cannot land on `main`
+without the maintainer's explicit yes. Four had landed since the tag; asked as
+one question, answered yes to all four. The gate is now clear and the rule
+holds going forward.
+
+| Export | Package | Entered | Callers |
+|---|---|---|---|
+| `match_reference_region()` | TaxaLikely | `629b40e` | `stageA_region_lean.R`, the CalIntertidal multi-marker workflow (x4), `wf_section8_validation.R` |
+| `annotate_reference_support()` | TaxaLikely | `068d6ff` | `extract_round2_priors.R`, `reference_support.R`, `archive_csv.R` |
+| `add_unreferenced_prior_mass()` | TaxaAssign | `0ab8729`, via `complement` | the CalIntertidal multi-marker workflow (x4), `build_referenced_names_crosswalk.R`, `wf_section8_validation.R`, `three_arm_unreferenced_test*.R` |
+| `flag_backbone_conflicts()` | TaxaFlag | board row 168/171 thread | `backbone_conflict_flags.R`, `regenerate_report_tables.R`, `archive_csv.R` |
+
+Each meets the maintainer's own standard from section 12 -- a function earns its
+place if a workflow uses it -- and each carries one or two test files. None has
+an in-repo non-test caller, which is expected: all four are front-door functions
+called from workflow scripts, not from inside the packages.
+
+**Two of the four had no approval on record**, and that is why the question was
+asked rather than assumed: `add_unreferenced_prior_mass()` entered through the
+`complement` integration branch while arm (c), its machinery, was still HELD,
+and `flag_backbone_conflicts()` had no yes that could be evidenced. The other
+two were substantively approved when their threads closed. Ratifying all four
+does not ratify arm (c): that remains held pending its re-measurement.
+
+**This closes the export gate for 1.0, with one exception.** The export on
+`clade-resolvable-rank` @ `6af4073` is NOT in this set -- it was deferred past
+1.0 in the 2026-10-11 decisions and preserved on tag
+`archive/clade-resolvable-rank`.
+
+**The two surface numbers on this board reconcile.** 228 at `pre-1.0-freeze`,
+plus these four, is the 232 that section 12's prune starts from; 232 minus the
+nine removed is the 223 on `main` now. Neither figure was wrong.
