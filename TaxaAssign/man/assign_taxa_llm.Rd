@@ -125,11 +125,11 @@ joining to observations. Default 15, which was measured against a
 3000-token response ceiling: a real batch of 30 taxa truncated 4 times
 out of 5 there, a 23-taxon batch succeeded, and
 \code{TaxaFlag::review_assignments()} reached the same number independently.
-That ceiling is now 16000 by default, so the batch size no longer has to
-carry the whole burden of avoiding truncation, and a larger value is
-safer than it was; it is left at 15 because no sweep has been run at the
-new ceiling, and because a smaller batch also keeps each taxon's share of
-the model's attention high. If you raise it, watch for
+The response ceiling is 16000 by default, so the batch size does not have
+to carry the whole burden of avoiding truncation on its own and a larger
+value would be safe there; it is left at 15 because no sweep has been run
+at that ceiling, and because a smaller batch also keeps each taxon's share
+of the model's attention high. If you raise it, watch for
 \code{.parse_taxa_response()}'s truncation warning. Increase if taxa are few
 and you prefer fewer API calls.}
 

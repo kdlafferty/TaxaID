@@ -31,7 +31,7 @@ TAXAID_PACKAGES <- c(
 #' file serving stale text indefinitely (and a user who never clears
 #' the cache would never see the fix). Part of the cache file name.
 #'
-#' Current schema (5): \value is no longer truncated. \arguments are parsed
+#' Current schema (5): \value is rendered in full. \arguments are parsed
 #' structurally (walking the parsed Rd tree rather than re-parsing rendered
 #' \code{Rd2txt()} output), and Rd text is rendered with useFancyQuotes
 #' pinned off so it does not vary with a global option.

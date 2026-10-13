@@ -601,7 +601,7 @@ flag_contaminant <- function(input_df,
 #'     ecosystem (e.g. `TaxaLikely::train_likelihood_model()`'s per-species
 #'     shrinkage), but measured in reads, not samples (see below). A taxon
 #'     with little total read support, however lopsided its
-#'     raw ratio, no longer gets an overconfident 0 or 1; a taxon with
+#'     raw ratio, does not get an overconfident 0 or 1; a taxon with
 #'     substantial read support keeps close to its raw ratio regardless of
 #'     how few samples it came from.
 #' }

@@ -134,7 +134,7 @@
 #'   `chao_missing`, quadratically -- while adding almost nothing to
 #'   `missing_mass`, deflating `theta_present` (`theta_present` is priced from
 #'   `missing_mass / f1`, so a diluted `missing_mass` still deflates it even
-#'   though `chao_missing` no longer sits in that formula). Note this is a
+#'   though `chao_missing` does not itself appear in it). Note this is a
 #'   no-op for a taxonomically homogeneous pool (a fish assay whose
 #'   occurrence pool is all fish), which is why it changes nothing at sites
 #'   like GreatLakes; it matters for broad markers (18S) spanning groups with
