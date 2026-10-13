@@ -406,3 +406,53 @@ test_that("a freshly written cache file records its selection settings", {
     "mismatch"
   )
 })
+
+test_that("a stale-format cache is reported ONCE up front, not per taxon", {
+  skip_if_not_installed("rentrez")
+  # The write path speaks only when it rewrites a taxon, so files written under
+  # an older NAME GRAMMAR would otherwise be reported piecemeal, after a long
+  # refetch had already begun -- too late for the caller to decide anything.
+  cache_dir <- tempfile("tl_stale_")
+  write_cached_taxon(cache_dir, "Sebastes", c("AB000001.1"))
+  file.create(file.path(cache_dir, c(
+    "Abudefduf_oldformat_meta.rds", "Girella_ancient_shape_meta.rds"
+  )))
+  expect_length(TaxaLikely:::.ref_cache_unreachable(cache_dir), 2L)
+
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, retmax, ...) list(count = "5"),
+    entrez_fetch = function(db, id, rettype, retmode, ...) fake_fasta(id),
+    .package = "rentrez"
+  )
+  expect_message(
+    fetch_ncbi_reference_sequences(
+      taxa = "Sebastes", barcode_term = "12S",
+      min_len = 100L, max_len = 5000L, cache_dir = cache_dir
+    ),
+    "older name grammar"
+  )
+})
+
+test_that("a cache entirely in the current grammar says nothing about staleness", {
+  skip_if_not_installed("rentrez")
+  cache_dir <- tempfile("tl_fresh_")
+  write_cached_taxon(cache_dir, "Sebastes", c("AB000001.1"))
+  expect_identical(TaxaLikely:::.ref_cache_unreachable(cache_dir), character(0L))
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, retmax, ...) list(count = "5"),
+    entrez_fetch = function(db, id, rettype, retmode, ...) fake_fasta(id),
+    .package = "rentrez"
+  )
+  msgs <- character(0)
+  withCallingHandlers(
+    fetch_ncbi_reference_sequences(
+      taxa = "Sebastes", barcode_term = "12S",
+      min_len = 100L, max_len = 5000L, cache_dir = cache_dir
+    ),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_false(any(grepl("older name grammar", msgs)))
+})
