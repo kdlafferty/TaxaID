@@ -345,6 +345,24 @@
   !is.na(x) & grepl("^unreferenced_(phylum|class|order|family|genus|species)$", x)
 }
 
+# The COMPLEMENT rows: the hypotheses that stand for something the reference
+# set does not contain -- the generic unreferenced rings and `unresolved_species`.
+# They sit at a coarser rank than the candidates in their own lineage but they
+# are NOT coarser labels for them, they are their competitors, so every filter
+# that removes a superseded coarse row must leave these alone.
+#
+# One predicate rather than a list repeated at each filter. The generic
+# complement was lost at three separate places (TaxaLikely's post-simulation
+# ratio filter, this package's redundancy-filter call, and
+# expand_unreferenced_hypotheses()'s named-row rule); each was fixed, and what
+# made three fixes necessary was that the exemption was restated by hand every
+# time it was needed. A filter in another package still cannot see
+# `hypothesis_type` at all -- that one is handled by restoring afterwards,
+# at the call site -- but within this package the question is asked once here.
+.is_complement_type <- function(x) {
+  .is_unreferenced_type(x) | (!is.na(x) & x == "unresolved_species")
+}
+
 # The rank a ring row is named at: one coarser than the rank in its type.
 .unreferenced_ring_rank <- function(type) {
   i <- match(sub("^unreferenced_", "", type), .RANK_LADDER)
