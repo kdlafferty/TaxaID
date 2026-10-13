@@ -2281,3 +2281,54 @@ tested one; and for every call that changes, say whether the pre-change call
 was CORRECT where the maintainer has adjudicated the taxon -- "37 calls
 change" and "37 right calls become wrong" are different findings and only the
 second is a defect.
+
+### named_rows measured 2026-10-12: 410 species calls are named by the RECORDS
+
+Step 0 and its follow-up, read-only on R1009f. **R1009f makes 410 species
+calls on taxa with NO reference sequence**: 12S 125/10,382 (1.2%), 18S
+**176/188 (93.6%)**, COI 109/3,238 (3.4%). 35 taxa; `Smithora naiadum` alone
+is 167 calls at 18 sites.
+
+Classified by joining each species-rank call to the candidate row whose
+`taxon_name` equals `consensus_taxon`, NOT by `winner_hypothesis_type`, which
+would have said 142/176/84 -- wrong in both directions for 12S and COI, as the
+recorded 48-vs-63 finding predicted.
+
+**THE SEQUENCE NEVER CHOOSES THE SPECIES NAME.** `named_rows` copies the ring
+row's likelihood onto every member of its scope, so the likelihood spread among
+named siblings is EXACTLY 0 across all 410. What the sequence discriminates is
+(1) named-unreferenced against every referenced candidate, and (2) which SCOPE
+LEVEL (genus, family or order ring). The species name comes from the occurrence
+records alone.
+
+- **Sole candidate in scope: 299 of 410** (12S 91, 18S 169, COI 39). These are
+  elimination from the record. `Smithora` is 167 of 167 sole, and its scope is
+  **Erythropeltidales at ORDER rank** -- the inference reads "an unreferenced
+  member of this order; S. naiadum is the only one recorded here; therefore
+  S. naiadum".
+- **Multi-candidate: 111**, and these are WEAKER, not stronger -- a prior-only
+  tie-break among equal-likelihood candidates, the winner holding
+  `prior_share_top` 0.93-1.00. `Postelsia palmiformis`: 18 calls, 25 named
+  siblings in scope (Phaeophyceae / Laminariales), prior share 0.93.
+- `likelihood_consensus_taxon == consensus_taxon` for 356 of 410, confirming
+  the likelihood-only pass lands on the same NAME because it reads the same
+  records-built candidate set. (Not yet traced: how a likelihood-only pass
+  names one of several equal-L siblings, so that 356 wants checking.)
+
+**NOTHING CURRENTLY FLAGS THESE.** `likelihood_support` is ~0.99 (it reports
+"an unreferenced relative in scope S beats every referenced candidate", which
+is true and says nothing about the name); `prior_role` is `"agrees"` (both
+passes read the same candidate set); and `winner_rank_expanded` is a different
+mechanism. So a reader AND `review_assignments()`'s LLM reviewer both see these
+as well-supported species identifications.
+
+**THIS CORRECTS THE ROW-162 RESOLUTION GIVEN EARLIER THE SAME DAY.** 18S's
+median `likelihood_support` of 0.992 IS these calls, and the
+"median-plus-narrowed-subset" caveat misses them entirely because they are
+`"agrees"`, not `"narrowed"`.
+
+**THE PACKAGE DEFAULT IS SAFE: `named_rows = FALSE`.** The package adds the
+recorded species' mass to the ring row, which can only pull a call COARSER.
+The CalIntertidal workflow opts IN (`:3935-3940`, `named_rows = TRUE`, decision
+2026-10-01). So this is not a package defect; it is an unvalidated workflow
+configuration plus a visibility gap. No arm ever tested `named_rows`.
