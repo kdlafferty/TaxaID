@@ -2901,3 +2901,19 @@ Caveats the deposit should carry, none of them a difference:
   `fetch_code` digest, and the sequence matrix was reused; Step 7 likelihoods
   and everything downstream were rebuilt. A deposit that cites one commit for
   the code should say which artefacts predate the run.
+
+**`calintertidal-R1013` CREATED AND PUSHED** on Kevin's direct approval
+(2026-10-13): annotated tag object `3a2a4de8409134a739b44b8826bf087ec84040d1`
+on commit `5df0b6e`. Only the tag was pushed.
+
+**Model provenance is BETTER than R1009f's, and was measured not assumed.** Each
+`cache_lik/lik_<marker>.dep` records a namespace code digest, and all three
+match the installed namespaces exactly, identically across all three markers:
+TaxaLikely `f454a32185cdd13072be52ec8092cee1`, TaxaMatch
+`a18606a7d9084e8230fc94b16f0dfa00`, TaxaTools
+`22234a73a5eaead07b2dbf4d7b619ae4`. The Step 7 checkpoints were rebuilt in the
+run by the cited commit, so **R1013 does not carry R1009f's "models predate the
+cited commit" caveat.** Frozen references and reused sequence matrices are the
+only artefacts predating the run, and the tag message names them. To recompute:
+`.ns_code_digest()` at workflow:3528 -- note `Rscript --vanilla` drops
+`R_LIBS_USER`, so pass `.libPaths()` explicitly or the packages will not load.
