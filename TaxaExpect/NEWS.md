@@ -1,3 +1,3 @@
-# TaxaExpect 1.0.0
+# TaxaExpect 0.1.0
 
 * Initial release.

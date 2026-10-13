@@ -1,3 +1,3 @@
-# TaxaAssign 1.0.0
+# TaxaAssign 0.1.0
 
 * Initial release.

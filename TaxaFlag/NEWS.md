@@ -1,4 +1,4 @@
-# TaxaFlag 1.0.0
+# TaxaFlag 0.1.0
 
 * Initial release.
 * `report_flags()` detects reference-support columns from
