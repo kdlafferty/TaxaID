@@ -272,10 +272,21 @@ identify_confident_observations <- function(match_df,
 #' congener *discrimination*. A `"linear"` fit whose slope collapses to 0 removes
 #' per-species location structure that is demonstrably not real on the inference
 #' scale, but that this validation set cannot independently confirm is safe to
-#' remove in hard congener-vs-congener cases. For that reason, and on the
-#' evidence, `"constant"` is the default: on held-out confident species from real 12S, 18S and COI data
-#' it matched or beat `"linear"` everywhere except COI, and it is the simplest
-#' correction to state. `"linear"` is available when a marker's own evidence
+#' remove in hard congener-vs-congener cases.
+#'
+#' A SECOND caveat is sharper, and it governs how the default should be read.
+#' The confident set is built by thresholding `theta_mean`, and `theta_mean` is
+#' a SHARE of a pool denominator that includes coarse-rank records -- rows that
+#' name no species at all -- so every species' value is diluted by them. An
+#' independent review measured 72 percent of 18S rows and 60 percent of COI
+#' rows in that set as not confident, which moves the fitted COI constant
+#' offset from -0.069 to -0.221. So the set cannot adjudicate between the two
+#' forms, and the held-out ratios quoted in this section inherit the same
+#' problem. `"constant"` is therefore the default because it is the SIMPLEST
+#' correction to state and applies one method to every marker -- a stated
+#' default, not a measured winner. Choosing between the forms on evidence has
+#' to wait for a confident set built on an undiluted denominator.
+#' `"linear"` is available when a marker's own evidence
 #' supports a slope; it reduces to `"constant"` automatically wherever the
 #' per-species means transfer exactly (slope 1). `"linear"` requires at least
 #' `min_calib_species` confident species spanning a range of trained means; it
@@ -416,12 +427,13 @@ identify_confident_observations <- function(match_df,
 #'   remaps each H1 mean through `intercept + slope * trained_mean`, fit on
 #'   per-species medians of the confident observations, so how much per-species
 #'   structure transfers is estimated rather than assumed. The default is
-#'   `"constant"` because, measured on held-out confident species from real
-#'   12S, 18S and COI data, the constant offset recovered most of the
-#'   improvement over no correction (held-out error falling by a factor of 2 to
-#'   5), matched or beat the linear form for 12S and 18S, and is the simplest
-#'   correction to state; the linear form helped only COI, through a negative
-#'   slope whose cause is not established (see "Level-aware recalibration").
+#'   `"constant"` because it is the simplest correction to state and applies
+#'   one method to every marker -- NOT because a held-out comparison selected
+#'   it. The confident set such comparisons rest on is built by thresholding
+#'   `theta_mean`, which is a SHARE of a pool denominator containing
+#'   coarse-rank records, so it cannot adjudicate between the two forms; see
+#'   \emph{Level-aware recalibration}. The linear form's negative COI slope
+#'   remains unexplained.
 #'   `"linear"` falls back to `"constant"` (with a warning) when fewer than
 #'   `min_calib_species` confident species, or no spread of trained means, are
 #'   available.
