@@ -1211,13 +1211,24 @@ test_that("G4: of two supported congeners, only the better-likelihood one is rai
   expect_gt(.prior_of(off, "S2", "Acrochaetium humile"), 1e-3)
 })
 
-test_that("G4: an UNREFERENCED row with a higher likelihood does not block a referenced one", {
+test_that("G4: an UNREFERENCED row with a higher likelihood DOES block a referenced one", {
+  # The unreferenced row is the "a relative we hold no reference for"
+  # explanation, scored on the query's own measured value under a shifted
+  # density. Where it fits better, the sequence has not identified the species,
+  # so a confirmation raise must not be what names it.
   fx <- .acro_fixture(L_cat = 0.5, L_hum = 0.2)
   ring <- .g_rows("S2", "Acrochaetium", "Rhodophyta", 1, theta = NA)
   ring$class <- "Florideophyceae"; ring$hypothesis_type <- "unreferenced_species"; ring$taxon_name_rank <- "genus"
   fx$result <- bind_rows(fx$result, ring)
   out <- suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0))
-  expect_gt(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+  expect_equal(.prior_of(out, "S2", "Acrochaetium catenulatum"), 1e-3)
+  # and with the unreferenced row fitting WORSE, the raise still happens
+  fx2 <- .acro_fixture(L_cat = 0.5, L_hum = 0.2)
+  ring2 <- .g_rows("S2", "Acrochaetium", "Rhodophyta", 0.1, theta = NA)
+  ring2$class <- "Florideophyceae"; ring2$hypothesis_type <- "unreferenced_species"; ring2$taxon_name_rank <- "genus"
+  fx2$result <- bind_rows(fx2$result, ring2)
+  expect_gt(.prior_of(suppressMessages(.upg0(fx2$result, fx2$consensus, n_sims = 0)),
+    "S2", "Acrochaetium catenulatum"), 1e-3)
 })
 
 test_that("G4: an NA-likelihood comparator is left out; an NA-likelihood receiver is never raised", {
@@ -1281,12 +1292,33 @@ test_that("G5: among comparators tied on likelihood, the larger sd sets the band
     "S2", "Clupea harengus"), 1e-3)
 })
 
-test_that("G5: a sole referenced candidate (only an unreferenced rival) is raised", {
+test_that("G5: an unreferenced rival IS a rival, so a tie with one holds the row back", {
+  # Previously such a row counted as a sole candidate and was raised. An
+  # unreferenced relative matching the sequence equally well means the sequence
+  # cannot separate the named species from an unnamed one, so it is held.
   fx <- .clupea_fixture(L = 1, sd = 0.05, taxa = "Clupea harengus")
   ring <- .g_rows("S2", "Clupea", "Chordata", 1, theta = NA)
   ring$hypothesis_type <- "unreferenced_species"; ring$taxon_name_rank <- "genus"
   fx$result <- bind_rows(fx$result, ring)
-  expect_gt(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+  expect_equal(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+  # A row with NO rival of any kind is still raised (.ROUND2_RAISE_SOLE_CANDIDATE)
+  bare <- .clupea_fixture(L = 1, sd = 0.05, taxa = "Clupea harengus")
+  expect_gt(.prior_of(suppressMessages(.upg0(bare$result, bare$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
+    "S2", "Clupea harengus"), 1e-3)
+})
+
+test_that("G5: an unreferenced rival inside the noise band blocks the raise", {
+  # The measured motivation: a margin that is nothing in noise units. G4 alone
+  # passes it (the row is nominally top); the margin guard is what holds it.
+  fx <- .clupea_fixture(L = 1, sd = 0.05, taxa = "Clupea harengus")
+  ring <- .g_rows("S2", "Clupea", "Chordata", 0.995, theta = NA)
+  ring$hypothesis_type <- "unreferenced_species"; ring$taxon_name_rank <- "genus"
+  ring$score_likelihood_sd <- 0.05
+  fx$result <- bind_rows(fx$result, ring)
+  expect_gt(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 0)),
+    "S2", "Clupea harengus"), 1e-3)
+  expect_equal(.prior_of(suppressMessages(.upg0(fx$result, fx$consensus, n_sims = 0, likelihood_margin_z = 1.96)),
     "S2", "Clupea harengus"), 1e-3)
 })
 
@@ -1491,3 +1523,4 @@ test_that("max_raise_factor is validated and recorded in report_params", {
   ))
   expect_equal(attr(out, "report_params")$max_raise_factor, 7)
 })
+

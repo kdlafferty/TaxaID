@@ -308,9 +308,21 @@ about 300-fold.
 (\code{theta_mean} \code{NA}) is never raised.
 \item \strong{Likelihood ranking.} A prior boost must not overturn the
 likelihood ordering: a row is raised only if its \code{score_likelihood} is
-at least that of every other REFERENCED candidate in its observation
-(ties allowed). Unreferenced rows (\verb{unreferenced_*}) are not in the
-comparison, so a higher-likelihood unreferenced row does not block. A
+at least that of every other candidate in its observation (ties
+allowed). The comparison INCLUDES the unreferenced hypotheses
+(\verb{unreferenced_*}): those rows are the "a relative we hold no reference
+for" explanation, scored on the query's own measured value under a
+shifted density, so a named species standing beside them is a
+likelihood ratio between two models of one datum. Where an unreferenced
+relative explains the sequence at least as well, the sequence has not
+identified the species and a confirmation raise is not what should name
+it. This gives the unreferenced row nothing: it remains barred from the
+confirmation as both donor and receiver (see \emph{Referenced
+candidates only}), and a comparator is neither role, so the circularity
+that section guards against cannot arise from it. Measured on
+CalIntertidal: of 414 species calls resting on a raised row, 377 clear
+the widened bar; the other 37 fall back to their own genus (21), family
+(15) or order (1), never off-lineage and never to no call. A
 comparator with an \code{NA} likelihood is left out of the comparison; a row
 whose own likelihood is \code{NA} is never raised. Measured
 on CalIntertidal (2026-10-07, after the two guards above): a recorded
@@ -320,13 +332,14 @@ called at posterior 0.98; this guard blocks such raises, and also lets
 the better-scoring species keep a call that a co-raised, weaker
 congener had split.
 \item \strong{Likelihood margin.} Beyond the ranking guard, a row is raised
-only if its \code{score_likelihood} beats the best other referenced
-candidate's by more than the likelihoods' own noise:
+only if its \code{score_likelihood} beats the best other candidate's --
+unreferenced hypotheses included, as above -- by more than the
+likelihoods' own noise:
 \code{L_row - L_other > 1.96 * sqrt(sd_row^2 + sd_other^2)},
 where \code{sd} is \code{score_likelihood_sd}. Among comparators tied on
 likelihood, the one with the larger \code{sd} is used. A missing \code{sd} on
 either side leaves the band undefined and the row is not raised. A row
-with no referenced rival has no runner-up to beat and is not held back by
+with no rival at all has no runner-up to beat and is not held back by
 this guard. The multiplier 1.96 (the 97.5\% normal quantile) is fixed,
 not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
 example \emph{Clupea harengus} over \emph{C. pallasii}, likelihoods 1 and 0.995)
