@@ -2845,3 +2845,15 @@ figure was measured at R1-equivalent units only** -- confirm it travels to the
 final unit before the elimination-from-the-record argument is written, since
 that is the half the argument rests on. Option (a) withdrawn by its author;
 `prep_code` closes it.
+
+**Closed.** `295` sole-in-scope also holds at the final consensus, matched UNIT
+BY UNIT rather than by count (m7.R, read-only): 401 named / 295 sole / 0 NA, by
+marker 12S 125/91, 18S 175/168, COI 101/36 -- identical to the R1-equivalent
+split. Against this run's own Round 1: R1-only 0, final-only 0, same taxon
+401/401, same scope 401/401, same `n_named` 401/401, and non-NA `n_named` on
+exactly those 401 rows and no others. **So within this run Round 2 neither
+removes nor alters any named-unreferenced species call, and both 401 and 295 are
+quotable at the published unit with no caveat.** The
+elimination-from-the-record argument can be written on 295. Finding A's
+withdrawn refinements are therefore entirely at non-species ranks, as its
+heading says -- nothing in it reaches a named species call.
