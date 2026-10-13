@@ -547,6 +547,45 @@
 #'       `"rank_expanded"` (see `winner_rank_expanded` below). `NA` when the
 #'       winning row's `hypothesis_type` value is itself `NA`, or when
 #'       `consensus_taxon` is `NA`.}
+#'     \item{`consensus_hypothesis_type`}{Character. The `hypothesis_type`
+#'       of the row the CALL landed on -- the candidate whose `taxon_name`
+#'       equals `consensus_taxon`, highest posterior first if several share
+#'       that name. This is NOT `winner_hypothesis_type`, which describes the
+#'       highest-posterior HYPOTHESIS: the call is the credible node after
+#'       downranking, and the two disagree often enough to invalidate an
+#'       analysis. Measured on one multi-marker study, the winner column
+#'       reported `unreferenced_species` for 48 observations while 23 of those
+#'       had a `consensus_taxon` matching a referenced `specific_candidate`
+#'       row, so the call-keyed count was 63 rather than 48. Use this column
+#'       for any question of the form "what kind of row did this call land
+#'       on?". Present when `posterior_df` carries `hypothesis_type`.}
+#'     \item{`consensus_unreferenced_scope`,
+#'       `consensus_unreferenced_scope_rank`}{The scope of that row, and the
+#'       rank of the scope, when the call landed on an unreferenced
+#'       hypothesis. **This is where the name came from.** `named_rows` in
+#'       [add_unreferenced_prior_mass()] copies a ring row's likelihood onto
+#'       every member of its scope, so sibling named rows carry IDENTICAL
+#'       likelihoods and the sequence cannot discriminate between them: what
+#'       the sequence settles is whether an unreferenced relative beats every
+#'       referenced candidate, and which scope level it sits at. The species
+#'       NAME is supplied by the occurrence records in that scope, and its
+#'       reliability is the completeness of those records -- which the SCOPE
+#'       RANK governs, since a scope at order or class rank is an elimination
+#'       over a very wide clade. `likelihood_support` cannot express any of
+#'       this and reads near 1 on such calls, truthfully about the hypothesis
+#'       and silently about the name. A GENERIC ring row carries its own name
+#'       as its scope (`consensus_unreferenced_scope == consensus_taxon`),
+#'       because the ring is the scope; a NAMED row's scope is the parent
+#'       clade. Both are typed `unreferenced_species`, so `hypothesis_type`
+#'       alone cannot separate them. Present when `posterior_df` carries the
+#'       scope columns.}
+#'     \item{`consensus_scope_n_named`}{Integer. How many NAMED rows share
+#'       that scope in the same observation. `1` means the records offered one
+#'       candidate, so the call is an elimination from the record and can only
+#'       be wrong about the record's completeness. Greater than `1` means the
+#'       occurrence prior broke a tie among candidates the sequence scores
+#'       identically, which is WEAKER, not stronger. `NA` when the call did
+#'       not land on a named unreferenced row.}
 #'     \item{`winner_rank_expanded`}{Logical. `TRUE` when the winning
 #'       hypothesis was manufactured by `join_priors()`'s coarse-rank
 #'       expansion (`.expand_coarse_rank_rows()`) rather than resolved from a
@@ -1077,6 +1116,10 @@ posterior_consensus <- function(posterior_df,
     lineage_map = lineage_map
   )
 
+  # Keyed on the FINAL consensus_taxon, so it must run after downranking, the
+  # cross-phylum amendment and anything else that can move the call.
+  result <- .add_consensus_row_provenance(result, posterior_df)
+
   attr(result, "report_params") <- list(
     cumulative_threshold = cumulative_threshold,
     min_posterior        = min_posterior,
@@ -1294,6 +1337,89 @@ posterior_consensus <- function(posterior_df,
     "threshold"
   }
   out
+}
+
+# Provenance of the row the CALL landed on, as opposed to the winning row.
+#
+# `winner_hypothesis_type` and the other `winner_*` columns describe the
+# highest-posterior HYPOTHESIS. The call is `consensus_taxon`, the credible node
+# after downranking, and the two disagree often enough to invalidate an
+# analysis: measured on one real multi-marker study, `winner_hypothesis_type`
+# said `unreferenced_species` for 48 observations while 23 of those had a
+# `consensus_taxon` matching a referenced `specific_candidate` row -- so
+# classifying on the winner gave 48 where the call gave 63. Every analysis
+# asking "what kind of row did this call land on?" had to re-derive it, and at
+# least one got it wrong. Asked once here instead.
+#
+# Why it matters beyond bookkeeping: where the call lands on a NAMED
+# unreferenced row, the species name came from the occurrence records in that
+# row's scope, not from the sequence. `named_rows` copies the ring row's
+# likelihood onto every member of a scope, so sibling named rows carry
+# IDENTICAL likelihoods and the sequence cannot discriminate between them at
+# all. What the sequence settles is whether an unreferenced relative beats
+# every referenced candidate, and which scope level that relative sits at.
+# `likelihood_support` cannot express this: it reads ~0.99 on such calls, which
+# is true of the hypothesis and says nothing about the name.
+#
+# Distinguishing a NAMED row from a GENERIC ring row: a generic row carries its
+# own name as its scope (`unreferenced_scope == taxon_name`), because the ring
+# IS the scope; a named row's scope is the parent clade. Both are typed
+# `unreferenced_species`, so `hypothesis_type` alone cannot separate them.
+.add_consensus_row_provenance <- function(result, posterior_df) {
+  n <- nrow(result)
+  has_type <- "hypothesis_type" %in% names(posterior_df)
+  has_scope <- all(c("unreferenced_scope", "unreferenced_scope_rank") %in%
+    names(posterior_df))
+  if (!has_type || n == 0L) {
+    return(result)
+  }
+
+  oid_r <- as.character(result$observation_id)
+  tax_r <- as.character(result$consensus_taxon)
+  oid_p <- as.character(posterior_df$observation_id)
+  tax_p <- as.character(posterior_df$taxon_name)
+
+  # Among rows sharing the call's (observation, taxon_name) the highest
+  # posterior wins, so a tie between a referenced and an unreferenced row of
+  # the same name resolves the way the consensus itself would see it.
+  post <- if ("posterior_point_est" %in% names(posterior_df)) {
+    posterior_df$posterior_point_est
+  } else if ("posterior_mean" %in% names(posterior_df)) {
+    posterior_df$posterior_mean
+  } else {
+    rep(0, nrow(posterior_df))
+  }
+  ord <- order(!is.na(tax_p), post, decreasing = TRUE, na.last = TRUE)
+  key_p <- paste(oid_p[ord], tax_p[ord], sep = "\r")
+  first <- !duplicated(key_p)
+  idx <- ord[first][match(paste(oid_r, tax_r, sep = "\r"), key_p[first])]
+
+  result$consensus_hypothesis_type <- ifelse(
+    is.na(tax_r), NA_character_,
+    as.character(posterior_df$hypothesis_type)[idx]
+  )
+
+  if (has_scope) {
+    sc <- as.character(posterior_df$unreferenced_scope)
+    scr <- as.character(posterior_df$unreferenced_scope_rank)
+    result$consensus_unreferenced_scope <- ifelse(is.na(tax_r), NA_character_, sc[idx])
+    result$consensus_unreferenced_scope_rank <- ifelse(is.na(tax_r), NA_character_, scr[idx])
+
+    # How many NAMED rows share that scope in the same observation: 1 means the
+    # name was the only candidate the records offered, so the call is an
+    # elimination from the record; more than 1 means the occurrence prior broke
+    # a tie between candidates the sequence scores identically.
+    named <- !is.na(sc) & !is.na(tax_p) & sc != tax_p
+    nk <- paste(oid_p, sc, sep = "\r")
+    tab <- table(nk[named])
+    own <- result$consensus_unreferenced_scope
+    cnt <- as.integer(tab[paste(oid_r, own, sep = "\r")])
+    cnt[is.na(cnt)] <- 0L
+    result$consensus_scope_n_named <- ifelse(
+      is.na(own) | is.na(tax_r) | own == tax_r, NA_integer_, cnt
+    )
+  }
+  result
 }
 
 # Likelihood-only consensus and the prior's role in the reported call.

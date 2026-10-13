@@ -2079,3 +2079,145 @@ test_that(".phylum_lineage_map degrades to an empty map instead of failing", {
   expect_identical(TaxaAssign:::.phylum_lineage_map(character(0), backbone_id = 11L), list())
   expect_identical(TaxaAssign:::.phylum_lineage_map(c(NA_character_, ""), backbone_id = 11L), list())
 })
+
+# ==============================================================================
+# consensus_* row provenance: what kind of row the CALL landed on
+# ==============================================================================
+# winner_* columns describe the highest-posterior HYPOTHESIS; the call is the
+# credible node after downranking. These pin the difference, because conflating
+# them has already produced a wrong count (48 against 63) in this project.
+
+.prov_df <- function(post = c(0.95, 0.05), scope = TRUE,
+                     taxa = c("Smithora naiadum", "Porphyra umbilicalis"),
+                     types = c("unreferenced_species", "specific_candidate"),
+                     ranks = c("species", "species"),
+                     gen = c("Smithora", "Porphyra"),
+                     scopes = c("Erythropeltidales", NA),
+                     scope_ranks = c("order", NA),
+                     fam = NULL, ord = NULL) {
+  # Lineage is derived from the genus so it is correct for any number of taxa:
+  # Smithora and Erythrotrichia share a family, Porphyra does not.
+  fam_of <- c(Smithora = "Erythrotrichiaceae", Erythrotrichia = "Erythrotrichiaceae",
+    Porphyra = "Bangiaceae")
+  ord_of <- c(Smithora = "Erythropeltidales", Erythrotrichia = "Erythropeltidales",
+    Porphyra = "Bangiales")
+  df <- data.frame(
+    observation_id = rep("S1", length(taxa)),
+    taxon_name = taxa, taxon_name_rank = ranks, hypothesis_type = types,
+    posterior_mean = post, posterior_point_est = post,
+    genus = gen,
+    family = if (is.null(fam)) unname(fam_of[gen]) else fam,
+    order = if (is.null(ord)) unname(ord_of[gen]) else ord,
+    class = rep("Compsopogonophyceae", length(taxa)),
+    phylum = rep("Rhodophyta", length(taxa)),
+    stringsAsFactors = FALSE
+  )
+  if (scope) {
+    df$unreferenced_scope <- scopes
+    df$unreferenced_scope_rank <- scope_ranks
+  }
+  df
+}
+.prov <- function(df, ...) {
+  suppressWarnings(suppressMessages(posterior_consensus(df, ...)))
+}
+
+test_that("consensus_hypothesis_type reports the row the CALL landed on", {
+  out <- .prov(.prov_df())
+  expect_equal(out$consensus_taxon, "Smithora naiadum")
+  expect_equal(out$consensus_hypothesis_type, "unreferenced_species")
+  # and a referenced call is labelled as such
+  ref <- .prov(.prov_df(post = c(0.05, 0.95)))
+  expect_equal(ref$consensus_taxon, "Porphyra umbilicalis")
+  expect_equal(ref$consensus_hypothesis_type, "specific_candidate")
+})
+
+test_that("the scope columns record where an unreferenced name came from", {
+  out <- .prov(.prov_df())
+  expect_equal(out$consensus_unreferenced_scope, "Erythropeltidales")
+  expect_equal(out$consensus_unreferenced_scope_rank, "order")
+  # one named row in that scope: an elimination from the record
+  expect_equal(out$consensus_scope_n_named, 1L)
+})
+
+test_that("a referenced call carries no scope and no named count", {
+  out <- .prov(.prov_df(post = c(0.05, 0.95)))
+  expect_true(is.na(out$consensus_unreferenced_scope))
+  expect_true(is.na(out$consensus_scope_n_named))
+})
+
+test_that("consensus_scope_n_named counts a prior-only tie-break", {
+  # Two named siblings in one scope. named_rows gives them identical
+  # likelihoods, so the prior alone chooses: weaker than a sole candidate.
+  out <- .prov(.prov_df(
+    post = c(0.95, 0.03, 0.02),
+    taxa = c("Smithora naiadum", "Erythrotrichia carnea", "Porphyra umbilicalis"),
+    types = c("unreferenced_species", "unreferenced_species", "specific_candidate"),
+    ranks = rep("species", 3),
+    gen = c("Smithora", "Erythrotrichia", "Porphyra"),
+    scopes = c("Erythropeltidales", "Erythropeltidales", NA),
+    scope_ranks = c("order", "order", NA)
+  ))
+  expect_equal(out$consensus_taxon, "Smithora naiadum")
+  expect_equal(out$consensus_scope_n_named, 2L)
+})
+
+test_that("a GENERIC ring row carries its own name as its scope", {
+  # Its scope equals the call, so n_named is NA: it is the ring, not a member.
+  out <- .prov(.prov_df(
+    post = c(0.95, 0.05),
+    taxa = c("Erythropeltidales", "Porphyra umbilicalis"),
+    types = c("unreferenced_species", "specific_candidate"),
+    ranks = c("order", "species"),
+    gen = c(NA, "Porphyra"),
+    scopes = c("Erythropeltidales", NA),
+    scope_ranks = c("order", NA),
+    fam = c(NA, "Bangiaceae"), ord = c("Erythropeltidales", "Bangiales")
+  ))
+  expect_equal(out$consensus_taxon, "Erythropeltidales")
+  expect_equal(out$consensus_unreferenced_scope, "Erythropeltidales")
+  expect_true(is.na(out$consensus_scope_n_named))
+})
+
+test_that("provenance is NA when the call is an LCA above every candidate row", {
+  # Two siblings sharing a family, neither clearing the threshold alone: the
+  # call lands on the family node, which is no candidate's taxon_name. There is
+  # no row the call "landed on", so NA is the right answer rather than a gap.
+  out <- .prov(.prov_df(
+    post = c(0.5, 0.45, 0.05),
+    taxa = c("Smithora naiadum", "Erythrotrichia carnea", "Porphyra umbilicalis"),
+    types = c("unreferenced_species", "unreferenced_species", "specific_candidate"),
+    ranks = rep("species", 3),
+    gen = c("Smithora", "Erythrotrichia", "Porphyra"),
+    scopes = c("Erythropeltidales", "Erythropeltidales", NA),
+    scope_ranks = c("order", "order", NA)
+  ))
+  expect_equal(out$consensus_rank, "family")
+  expect_true(is.na(out$consensus_hypothesis_type))
+  expect_true(is.na(out$consensus_scope_n_named))
+})
+
+test_that("the scope columns are absent when the input has none", {
+  out <- .prov(.prov_df(scope = FALSE))
+  expect_true("consensus_hypothesis_type" %in% names(out))
+  expect_false("consensus_unreferenced_scope" %in% names(out))
+  expect_false("consensus_scope_n_named" %in% names(out))
+})
+
+test_that("provenance is NA when there is no call", {
+  df <- .prov_df(post = c(0.01, 0.01))
+  out <- .prov(df, min_posterior = 0.5)
+  expect_true(is.na(out$consensus_taxon))
+  expect_true(is.na(out$consensus_hypothesis_type))
+})
+
+test_that("provenance is per observation, not recycled across them", {
+  a <- .prov_df()
+  b <- .prov_df(post = c(0.05, 0.95))
+  b$observation_id <- rep("S2", 2)
+  out <- .prov(rbind(a, b))
+  out <- out[order(out$observation_id), , drop = FALSE]
+  expect_equal(out$consensus_hypothesis_type,
+    c("unreferenced_species", "specific_candidate"))
+  expect_equal(out$consensus_scope_n_named, c(1L, NA_integer_))
+})
