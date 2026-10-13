@@ -2833,3 +2833,15 @@ Routes, cheapest first:
   into `prep_code`, so the check cannot go there either.
 - A `TAXAID_LIK_KEY_IGNORE_CODE`-style override remains refused: a permanent
   knob for a one-off, and a workflow change needs Kevin's own word.
+
+**Addendum.** The workflow session confirms the final consensus also carries all
+**401** named-unreferenced species calls, so the record-named split holds at the
+PUBLISHED unit and not only at R1-equivalent units -- 18S 187 = 12
+sequence-identified + 175 record-identified is quotable without a unit caveat.
+Within the new run, then, Round 2 coarsens away no named-unreferenced species
+call; the 37 coarsenings of `b921c00` are relative to R1009f, not to this run's
+own Round 1, so there is no tension with finding A. **The 295 sole-in-scope
+figure was measured at R1-equivalent units only** -- confirm it travels to the
+final unit before the elimination-from-the-record argument is written, since
+that is the half the argument rests on. Option (a) withdrawn by its author;
+`prep_code` closes it.
