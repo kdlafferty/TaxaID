@@ -209,7 +209,7 @@ still waiting on someone, named in its own last column.
 | README rounds | all carried to main, latest `fdb9de1` (the error-categories prose: scores mistaken for probabilities, blank-based removal contrasted with conventional practice, a continuous spatial prior contrasted with filtering on a regional list, the mislabel rate attributed to NCBI). The shared checkout's working copy still holds that round uncommitted and its branch is behind main, so it will conflict on its next pull; discard the working copy there, main has it | maintainer's next round (tell the screen first) |
 | Adaptive genus cap | tracked proposal, not accepted; grid owns the fit; workflow deletes its constants when the package function lands | the memory branch |
 | Unidentified | "expanded path length 1024" file.exists warning in long CalIntertidal runs; not from TaxaLikely | a caught call site |
-| Pre-security-review submission | no tag, no bump; WERC official path later needs a `1.0.0` branch | maintainer |
+| Pre-security-review submission | no tag, no bump; WERC official path later needs a `1.0.0` branch | VERSION MISMATCH FIXED 2026-10-12: all nine NEWS said 1.0.0 against DESCRIPTION 0.1.0; aligned DOWN to 0.1.0, consistent with the recorded 'no tag, no bump'. maintainer: when to bump and the 1.0.0 branch |
 | Production workflows edited for pair retention | eDNA `e621fd6` (PtCon 12S, 18S, Mugu, retired template) and GreatLakes `0c6309b` pass `pair_retention = "best_per_partner"` + `min_pair_coverage`; NOT runnable until the reinstall; then run `TaxaID_dev/diagnostics/workflow_checks/check_stale_arguments.R` on the five files and one cheap real re-run (PtCon 12S) | the reinstall |
 | TaxaWizard snippet `refs_to_matrix.R` | calls `build_sequence_matrix()` with defaults only (whole-set alignment, full table); should it carry the production choices (`by_genus = TRUE`, `max_foreign_reps_per_genus = 20L`, `pair_retention = "best_per_partner"`, `min_pair_coverage` matching the training floor)? | maintainer |
 | Supplemental methods style | TaxaLikely's carries 96 em dashes (TaxaAssign's and TaxaExpect's carry 0); the README rules were never applied to these files | maintainer: sweep or leave |
@@ -2643,3 +2643,35 @@ with scalar branches is an `if`/`else`, and leaving it as `ifelse()` costs
 every future sweep a false positive. `dplyr::if_else()` remains the house rule
 for NEW code, where its strictness is a feature; retrofitting it across 289
 existing call sites is not warranted and is not proposed.
+
+### Row 212, 2026-10-12: a version mismatch across all nine packages
+
+**Every `NEWS.md` announced a 1.0.0 initial release while every `DESCRIPTION`
+read 0.1.0.** The repository contradicted itself about its own version, and a
+security reviewer opening any package would have seen a 1.0.0 release note on a
+0.1.0 package.
+
+**`R CMD check --as-cran` does not compare the two.** It returned 0 errors, 0
+warnings and 0 notes on exactly this state -- the fourth time in this screen a
+gate turned out to be checked by a proxy narrower than the rule it stands for
+(after the exports diff that cannot see a new argument, the board rows that
+read as pending while merged, and pass A1's three-string pattern list).
+
+**Aligned DOWN to 0.1.0**, not bumped up, because this row's own recorded
+decision is "no tag, no bump" and a 1.0.0 declaration belongs with the release
+and its tag rather than preceding the security review. NEWS bodies untouched;
+only the headings moved. Bumping all nine is one command when that release is
+made, and the WERC official path's `1.0.0` branch remains a separate step and
+the maintainer's call on timing.
+
+**HOUSEKEEPING, verified and the maintainer's to run** (git 2.15 has no
+`git worktree remove`, and a safety check blocks it from this session): three
+local branches are fully merged into `main` with worktrees still attached --
+`ambiguous-genus` (`~/taxaid-worktrees/amb`), `blank-ranks`
+(`~/taxaid-worktrees/blank`) and `coi-amplicon-gate`
+(`~/taxaid-worktrees/coi`). `workflow-ptcon-multisite`, in
+`~/My Drive/Rscripts/projects/TaxaID`, is NOT merged and is the one real
+outstanding branch.
+
+    rm -rf ~/taxaid-worktrees/{amb,blank,coi} && git worktree prune
+    git branch -d ambiguous-genus blank-ranks coi-amplicon-gate
