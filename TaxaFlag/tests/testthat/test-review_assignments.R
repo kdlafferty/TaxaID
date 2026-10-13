@@ -1028,3 +1028,96 @@ test_that("the review cache key records which model answered", {
   expect_false(grepl("sk-not-a-real-key", id, fixed = TRUE))
   expect_true(grepl("Sys.getenv", id, fixed = TRUE))
 })
+
+# ==============================================================================
+# consensus provenance in the reviewer's context
+# ==============================================================================
+# A call that landed on an unreferenced row has NO reference sequence for the
+# named taxon: the sequence settled only that an unreferenced relative beats
+# every referenced candidate, and the NAME came from the occurrence records in
+# that row's scope. Nothing else in the context reveals it -- posterior and
+# prior are both high, likelihood_support reads near 1, and
+# winner_rank_expanded is a different mechanism.
+
+.prov_input <- function(type = "unreferenced_species",
+                        scope = "Erythropeltidales", scope_rank = "order",
+                        n_named = 1L, with_scope = TRUE) {
+  df <- data.frame(
+    taxon_name = "Smithora naiadum",
+    consensus_posterior = 0.98,
+    winner_prior = 0.01,
+    winner_rank_expanded = FALSE,
+    consensus_hypothesis_type = type,
+    stringsAsFactors = FALSE
+  )
+  if (with_scope) {
+    df$consensus_unreferenced_scope <- scope
+    df$consensus_unreferenced_scope_rank <- scope_rank
+    df$consensus_scope_n_named <- n_named
+  }
+  df
+}
+.prov_note <- function(df, ...) {
+  ctx <- .summarise_pipeline_context(
+    df$taxon_name, df, "consensus_posterior", "winner_prior",
+    "winner_rank_expanded", NULL, NULL, ...
+  )
+  if (is.null(ctx)) NA_character_ else ctx$pipeline_note[[1L]]
+}
+
+test_that("a call on an unreferenced row is reported as having no reference sequence", {
+  note <- .prov_note(.prov_input())
+  expect_match(note, "NO reference sequence")
+  expect_match(note, "Erythropeltidales")
+  expect_match(note, "order", fixed = TRUE)
+  # one candidate in scope: an elimination from the record
+  expect_match(note, "the only such species recorded")
+})
+
+test_that("several candidates in scope are reported as a prior tie-break", {
+  note <- .prov_note(.prov_input(n_named = 25L))
+  expect_match(note, "chosen by occurrence records among 25")
+  expect_false(grepl("the only such species", note))
+})
+
+test_that("a referenced call gets no provenance note", {
+  note <- .prov_note(.prov_input(type = "specific_candidate"))
+  expect_false(grepl("reference sequence", note))
+})
+
+test_that("consensus_provenance = FALSE suppresses the note", {
+  note <- .prov_note(.prov_input(), consensus_provenance = FALSE)
+  expect_false(grepl("reference sequence", note))
+  # the rest of the context survives
+  expect_match(note, "pipeline posterior")
+})
+
+test_that("the note degrades without the scope columns rather than failing", {
+  note <- .prov_note(.prov_input(with_scope = FALSE))
+  expect_match(note, "NO reference sequence")
+  expect_false(grepl("occurrence records for", note))
+})
+
+test_that("the unreferenced test over-includes, as a caution signal should", {
+  # Any unreferenced_* type flags, not only the species ring: a caution signal
+  # must not miss a rank added to the ladder later.
+  for (ty in paste0("unreferenced_", c("genus", "family", "order", "class"))) {
+    expect_match(.prov_note(.prov_input(type = ty)), "NO reference sequence")
+  }
+})
+
+test_that("provenance alone is enough context to annotate", {
+  # No posterior, prior or rank-expanded columns: the note must still appear
+  # rather than the summariser returning NULL.
+  df <- data.frame(
+    taxon_name = "Smithora naiadum",
+    consensus_hypothesis_type = "unreferenced_species",
+    consensus_unreferenced_scope = "Erythropeltidales",
+    consensus_unreferenced_scope_rank = "order",
+    consensus_scope_n_named = 1L,
+    stringsAsFactors = FALSE
+  )
+  ctx <- .summarise_pipeline_context(df$taxon_name, df, NULL, NULL, NULL)
+  expect_false(is.null(ctx))
+  expect_match(ctx$pipeline_note[[1L]], "NO reference sequence")
+})

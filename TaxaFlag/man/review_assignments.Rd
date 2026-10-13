@@ -13,6 +13,7 @@ review_assignments(
   consensus_posterior_col = "consensus_posterior",
   winner_prior_col = "winner_prior",
   winner_rank_expanded_col = "winner_rank_expanded",
+  consensus_provenance = TRUE,
   plausible_posteriors_col = "plausible_posteriors",
   consensus_plausibility_col = "consensus_plausibility",
   consensus_discrimination_col = "consensus_discrimination",
@@ -94,6 +95,24 @@ to that effect is added to the LLM's context, since this changes how
 much weight the identification itself deserves. Silently skipped when
 absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
 disable.}
+
+\item{consensus_provenance}{Logical (default \code{TRUE}). When
+\code{TRUE} and \code{input_df} carries
+\code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
+that landed on an UNREFERENCED row adds a note saying so, with the scope
+the name came from, that scope's RANK, and whether the records offered one
+candidate or several. This matters because no reference sequence exists
+for such a taxon: the sequence settled only that an unreferenced relative
+beats every referenced candidate, and the NAME was supplied by the
+occurrence records in that scope -- sibling named rows carry identical
+likelihoods, so the sequence cannot choose between them. Nothing else in
+the context reveals this: \code{consensus_posterior} and
+\code{winner_prior} are both high on these calls,
+\code{likelihood_support} reads near 1 (truthfully about the hypothesis,
+silently about the name), and \code{winner_rank_expanded} is a different
+mechanism. The scope RANK is the load-bearing part: a scope at order or
+class rank is an elimination over a very wide clade. Silently skipped when
+the column is absent.}
 
 \item{plausible_posteriors_col}{Character or \code{NULL}. Column name for
 \code{posterior_consensus()}'s \code{plausible_posteriors} list column

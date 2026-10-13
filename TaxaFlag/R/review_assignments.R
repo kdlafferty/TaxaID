@@ -91,6 +91,23 @@
 #'   much weight the identification itself deserves. Silently skipped when
 #'   absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
 #'   disable.
+#' @param consensus_provenance Logical (default \code{TRUE}). When
+#'   \code{TRUE} and \code{input_df} carries
+#'   \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
+#'   that landed on an UNREFERENCED row adds a note saying so, with the scope
+#'   the name came from, that scope's RANK, and whether the records offered one
+#'   candidate or several. This matters because no reference sequence exists
+#'   for such a taxon: the sequence settled only that an unreferenced relative
+#'   beats every referenced candidate, and the NAME was supplied by the
+#'   occurrence records in that scope -- sibling named rows carry identical
+#'   likelihoods, so the sequence cannot choose between them. Nothing else in
+#'   the context reveals this: \code{consensus_posterior} and
+#'   \code{winner_prior} are both high on these calls,
+#'   \code{likelihood_support} reads near 1 (truthfully about the hypothesis,
+#'   silently about the name), and \code{winner_rank_expanded} is a different
+#'   mechanism. The scope RANK is the load-bearing part: a scope at order or
+#'   class rank is an elimination over a very wide clade. Silently skipped when
+#'   the column is absent.
 #' @param plausible_posteriors_col Character or \code{NULL}. Column name for
 #'   \code{posterior_consensus()}'s \code{plausible_posteriors} list column
 #'   (per-candidate posterior weights, positionally aligned with
@@ -440,6 +457,7 @@ review_assignments <- function(input_df,
                                consensus_posterior_col = "consensus_posterior",
                                winner_prior_col = "winner_prior",
                                winner_rank_expanded_col = "winner_rank_expanded",
+                               consensus_provenance = TRUE,
                                plausible_posteriors_col = "plausible_posteriors",
                                consensus_plausibility_col = "consensus_plausibility",
                                consensus_discrimination_col = "consensus_discrimination",
@@ -485,6 +503,10 @@ review_assignments <- function(input_df,
   # whose input_df doesn't carry these columns (e.g. not built from
   # posterior_consensus() at all). Silently skipped instead (see
   # .summarise_pipeline_context()); only the parameter TYPE is checked here.
+  if (!is.logical(consensus_provenance) || length(consensus_provenance) != 1L ||
+    is.na(consensus_provenance)) {
+    cli::cli_abort("{.arg consensus_provenance} must be TRUE or FALSE.")
+  }
   for (col_param in list(
     consensus_posterior_col, winner_prior_col,
     winner_rank_expanded_col, plausible_posteriors_col,
@@ -670,7 +692,8 @@ review_assignments <- function(input_df,
 
   pipeline_ctx <- .summarise_pipeline_context(
     label_vec_full, input_df, consensus_posterior_col, winner_prior_col,
-    winner_rank_expanded_col, consensus_plausibility_col, consensus_discrimination_col
+    winner_rank_expanded_col, consensus_plausibility_col, consensus_discrimination_col,
+    consensus_provenance = consensus_provenance
   )
   weight_ctx <- if (use_candidates && !is.null(plausible_posteriors_col) &&
     plausible_posteriors_col %in% names(input_df)) {
@@ -1183,13 +1206,22 @@ review_assignments <- function(input_df,
 .summarise_pipeline_context <- function(label_vec, input_df, consensus_posterior_col,
                                         winner_prior_col, winner_rank_expanded_col,
                                         consensus_plausibility_col = NULL,
-                                        consensus_discrimination_col = NULL) {
+                                        consensus_discrimination_col = NULL,
+                                        consensus_provenance = TRUE) {
   has_post <- !is.null(consensus_posterior_col) && consensus_posterior_col %in% names(input_df)
   has_prior <- !is.null(winner_prior_col) && winner_prior_col %in% names(input_df)
   has_rexp <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
   has_plaus <- !is.null(consensus_plausibility_col) && consensus_plausibility_col %in% names(input_df)
   has_disc <- !is.null(consensus_discrimination_col) && consensus_discrimination_col %in% names(input_df)
-  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc) {
+  # The four provenance columns are emitted together by
+  # posterior_consensus(), so they are read by their canonical names rather
+  # than through four separate `_col` arguments.
+  has_prov <- isTRUE(consensus_provenance) &&
+    "consensus_hypothesis_type" %in% names(input_df)
+  has_scope <- has_prov &&
+    all(c("consensus_unreferenced_scope", "consensus_unreferenced_scope_rank") %in%
+      names(input_df))
+  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc && !has_prov) {
     return(NULL)
   }
 
@@ -1217,6 +1249,52 @@ review_assignments <- function(input_df,
         "species-level ID from occurrence-prior tie-break, ",
         "no direct sequence discrimination"
       ))
+    }
+    # Where the CALL landed on an unreferenced row, no reference sequence
+    # exists for the named taxon: the sequence settled that an unreferenced
+    # relative beats every referenced candidate, and the NAME came from the
+    # occurrence records in that row's scope. Sibling named rows carry
+    # identical likelihoods, so the sequence cannot choose between them at
+    # all. The reviewer is told the scope and its RANK, because an
+    # order-rank scope is an elimination over a very wide clade, and whether
+    # the records offered one candidate or several, because several means the
+    # prior broke a tie rather than the sequence resolving one.
+    if (has_prov) {
+      ht <- input_df[["consensus_hypothesis_type"]][rows]
+      # `startsWith` rather than the exact ring-type ladder, which lives in
+      # TaxaAssign and is not reachable from here. Over-inclusion is the right
+      # direction for a caution signal (see the note above), and it cannot
+      # silently miss a rank added to that ladder later.
+      unref <- !is.na(ht) & startsWith(ht, "unreferenced_")
+      if (any(unref)) {
+        msg <- "named taxon has NO reference sequence"
+        if (has_scope) {
+          sc <- input_df[["consensus_unreferenced_scope"]][rows][unref]
+          scr <- input_df[["consensus_unreferenced_scope_rank"]][rows][unref]
+          k <- which(!is.na(sc))[1L]
+          if (!is.na(k)) {
+            nn <- if ("consensus_scope_n_named" %in% names(input_df)) {
+              suppressWarnings(max(
+                input_df[["consensus_scope_n_named"]][rows][unref], na.rm = TRUE
+              ))
+            } else {
+              NA_real_
+            }
+            how <- if (!is.finite(nn) || is.na(nn)) {
+              ""
+            } else if (nn <= 1) {
+              "; the only such species recorded in that scope"
+            } else {
+              sprintf("; chosen by occurrence records among %d recorded there", as.integer(nn))
+            }
+            msg <- sprintf(
+              "%s -- name supplied by the occurrence records for %s (%s)%s",
+              msg, sc[k], scr[k], how
+            )
+          }
+        }
+        parts <- c(parts, msg)
+      }
     }
     is_unprec <- has_plaus && isTRUE(any(input_df[[consensus_plausibility_col]][rows] == "unprecedented", na.rm = TRUE))
     is_indist <- has_disc && isTRUE(any(input_df[[consensus_discrimination_col]][rows] == "indistinguishable", na.rm = TRUE))
