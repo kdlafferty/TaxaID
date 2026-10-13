@@ -2449,3 +2449,60 @@ pass A1 needed, not a `sed`.
 from the claim>"` plus `git merge-base --is-ancestor <fix> HEAD` settles a row
 in one command. The row numbers are LINE numbers and shift, so cite the row's
 `Item` text alongside the number.
+
+### The four remaining items, worked 2026-10-12: none gates the re-run
+
+**NONE OF THE FOUR NEEDS TO PRECEDE THE RE-RUN.** The hold is purely on the
+maintainer's Drive window. Two of them interact with it and are recorded below.
+
+**B3 (row 166) -- CONFIRMED, as a limitation rather than a bug.** Its author
+flagged the claim as unverified; it is right. `flag_backbone_conflicts()`
+detects a name carried at MORE THAN ONE RANK, or under more than one PARENT at
+the same rank -- that is ONE NAME in many places. A synonym is the exact
+inverse, MANY NAMES for one organism, each sitting consistently at one rank
+under one parent, so there is no conflict to find. The check cannot see this
+class at all, which is a documentation matter, not an implementation gap.
+
+But it has a possible CONSEQUENCE FOR THE 410. `referenced_names` is a plain
+character vector of species "on the prior backbone". If harmonisation does not
+collapse a synonym pair, then where the reference set holds *Eisenia arborea*
+while the records list *Ecklonia arborea*, the latter is absent from
+`referenced_names`, becomes a recorded unreferenced local species, gains a
+named row under `named_rows = TRUE`, and can WIN -- a record-named species call
+for a taxon that IS referenced under its other name. A cheap high-precision
+test has been asked for: among the 410, how many have a reference species with
+the SAME specific epithet but a different genus in the same family or order
+(arborea/arborea)? Zero closes B3 outright; non-zero is a defect in the 410
+class and is needed before the manuscript.
+
+**186 AND THE CALIBRATION CLUSTER (165, 182, F1) ARE ONE PROBLEM, NOT FOUR
+ROWS.** Verified: `identify_confident_observations()` lives in
+`calibrate_query_noise.R` and IS the function that builds the confident set for
+calibration. Row 186's finding is that `estimate_kernel_priors()` computes
+theta as a SHARE of one denominator, so 84,000 coarse records in the pool
+dilute every species' theta. That consumer then reads theta VALUES
+(`theta_mean > plausibility_threshold`, keeping genera with exactly one
+plausible species). **So the dilution decides which observations are
+"confident" -- and the confident set is precisely the object F1 reports as
+contaminated** (72% of 18S and 60% of COI rows not confident, moving the COI
+constant offset from -0.069 to -0.221). One causal chain:
+
+    coarse records dilute theta  ->  the confident set is wrong
+      ->  the calibration offset is wrong  ->  the constant-vs-linear
+          evidence is wrong  ->  rows 165, 182 and F1
+
+**THE COST OF FIXING IT, and why it is a 1.0 decision.** A refit on
+`pool_at_rank(species)` changes EVERY species' theta because the denominator
+changes. That invalidates the TaxaExpect priors table, hence Step 7's
+likelihoods, hence everything -- a re-run strictly larger than option (B), and
+the priors rebuild is the expensive one. Narrowing the digest to avoid the
+invalidation is already CLOSED as wrong: the consumer reads values, not names,
+so the checkpoints would be stale rather than valid.
+
+**Recommended:** defer 186 past 1.0 and decline the claim rather than the
+method. Keep `offset_form = "constant"` -- a defensible simple default -- but
+the Methods must NOT say constant was chosen over linear on held-out RMSE,
+because every such figure, including the 9% and 20% COI costs, was computed on
+the contaminated set. Deferring introduces no error; it declines to assert
+something the numbers cannot support, and it keeps 1.0 shippable. This closes
+four rows with one decision and one sentence of honesty in the write-up.
