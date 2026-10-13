@@ -2740,3 +2740,96 @@ re-break the refs key for a future run. **Installs and R stay held in the
 coordinator session until that measurement reports.** The `597d40f` re-land
 (revert `5df0b6e`) happens after the measurement, not before -- main is not
 touched while scripts read the installed tree.
+
+### What the option-B rebuild measured (2026-10-13)
+
+Unit: final consensus, **49,466 observation_ids** (ESV@Site), the same set in both
+runs. Measurement scripts peaked at 3.7 GB or less.
+
+**203 units change** -- 159 coarser, 44 finer, **0** to or from no call and **0**
+changing taxon at the same rank. Species calls 12S 10,382 -> 10,356, 18S
+188 -> 187, COI 3,238 -> 3,222 (net -43). Species LISTS barely move: 12S (168)
+and 18S (9) unchanged; COI 239 -> 237, losing *Holothuria lubrica*, *Eucheilota
+bakeri* and *Coilodesme rigida*, gaining *Spheciospongia confoederata*.
+
+**The delta decomposes exactly, with no residual: 37 + 67 + 99 = 203.**
+- `b921c00` matches its prediction exactly on its 414: 377 unchanged, **37
+  coarser** (21 genus, 15 family, 1 order), all with unchanged Round-1 calls.
+- `712ed59` accounts for all **67** units whose ROUND-1 call changed (31
+  coarser, 36 finer). The lineage tables differ in FAMILY only -- 99
+  (marker, taxon) rows across 31 genera, 0 order or class changes. Every
+  changed Round-1 taxon pair sits on one of those lineages.
+- **99** units are the interaction (finding A below).
+
+`abaa60f` -- **no change is attributable to it, and for the 99 it cannot be
+separated from `b921c00` at all.** My "0 call changes" prediction for it was
+true of SPECIES calls only; I stated it without that qualifier. A per-commit
+recompute would separate the two if the separation is ever wanted.
+
+`08beaca` adds columns only, 0 call changes, present and populated.
+
+**Finding A -- Round 2 at NON-species ranks.** 99 units with unchanged Round-1
+calls, outside the 414. 91 lose an old Round-2 refinement (12S
+Embiotoca->Embiotocidae 12, Actinopteri->Chordata 10, Rimicola->Gobiesocidae 7;
+18S Cheilostomatida->Gymnolaemata 8; COI Bossiella 8, Mazzaella 7) and 8 go
+FINER, the old Round 2 having coarsened Perciformes calls to
+Chordata/Actinopteri where the new run keeps Perciformes. In **75 of the 99** a
+named unreferenced row lies inside the withdrawn taxon, which fits named rows
+now acting as G4/G5 comparators -- containment, not proof.
+
+**Finding B -- `712ed59` x `named_rows`.** A family fix moves unreferenced SCOPE
+membership, so the record-named species move with it: *Eucheilota bakeri* 13
+named Round-1 calls -> 1, *Coilodesme rigida* 1 -> 0, *Spheciospongia
+confoederata* 0 -> 4 (scope Clionaidae, 2-3 siblings, so prior-only tie-break
+and never sole-in-scope).
+
+**Provenance columns VALIDATED.** New run: 401 named-unreferenced species calls,
+295 with `consensus_scope_n_named == 1` (COI 101/36, 12S 125/91, 18S 175/168).
+An independent classifier agrees unit by unit, 401/401, `n_sib == n_named` on
+all 401; every non-NA `consensus_scope_n_named` sits on a species call of type
+`unreferenced_species`. The archive reproduces 410/299 under the same
+classifier, so **the 410 -> 401 and 299 -> 295 gap is real and is entirely
+finding B** (-13 *Eucheilota*, -1 *Coilodesme*, +4 *Spheciospongia*; all 4 lost
+sole-in-scope are *Eucheilota*).
+
+**FOR THE MANUSCRIPT the named-unreferenced figures are now 401 and 295, not 410
+and 299.** 18S reports 187 species calls, 175 of them record-named (93.5%, was
+176/188 = 93.6%).
+
+**OPEN, small:** the `712ed59` family-change count has two units -- my 49 of
+3,489 family assignments and the workflow session's 99 (marker, taxon) rows
+across 31 genera. Neither was recomputed against the other. Reconcile before
+either number is published.
+
+### `597d40f` should NOT re-land as written (2026-10-13)
+
+`fetch_code = .code_digest("fetch_ncbi_reference_sequences")` hashes the
+function's deparsed body AND every package-internal function it reaches.
+`597d40f` adds a body block and a newly reachable helper
+(`.ref_cache_unreachable`); either alone changes the digest, so the next
+frozen-refs run misses the refs key and falls to VERDICT 20 (live prep) -- which
+re-fetches from NCBI and admits accessions outside the screened, drop-listed
+set, making the result incomparable with R1009f. That is the cost I refused on
+the night of the launch, and re-landing the commit pays it later instead.
+
+**The structural consequence, independent of this commit:
+`fetch_ncbi_reference_sequences()` and everything it reaches are effectively
+FROZEN for as long as runs must stay comparable.** `deparse()` drops comments,
+so comment-only and roxygen-only edits are free; any body change at all is not.
+Mugu and GreatLakes are inside the gate, so "no further comparable run" is not
+true.
+
+Routes, cheapest first:
+- **Keep it reverted for 1.0** (coordinator's recommendation). The commit is a
+  usability message with zero effect on any result; `5df0b6e` stays and
+  `597d40f` remains reachable in main's history.
+- **Move the report into `taxalikely_clear_cache(dry_run = TRUE)`**, which
+  already exists, already reports cache contents, and is not reached by fetch.
+  Zero digest impact, zero new exports, zero workflow edit. Weaker: the caller
+  has to ask rather than being told mid-fetch.
+- A new export called from a non-digested workflow site also works, but costs a
+  new export under freeze AND a workflow edit for a cosmetic gain -- dominated
+  by the line above. Note the workflow's own `.prepare_references` is digested
+  into `prep_code`, so the check cannot go there either.
+- A `TAXAID_LIK_KEY_IGNORE_CODE`-style override remains refused: a permanent
+  knob for a one-off, and a workflow change needs Kevin's own word.
