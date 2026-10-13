@@ -1510,26 +1510,6 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # Set up cache directory
   if (!is.null(cache_dir)) {
     if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
-    # Report a stale-format cache ONCE, up front, before any fetching begins.
-    # The write path evicts superseded files per taxon and says so, but it only
-    # speaks when it rewrites that taxon -- so a directory of files written
-    # under an older NAME GRAMMAR is reported one taxon at a time, after a long
-    # refetch is already under way. That is too late to decide anything: a
-    # caller with a large stale cache would watch it refetch from scratch
-    # without ever being told the cache was the reason.
-    #
-    # Deliberately NOT about key VALUES. A name-scoped and a taxid-scoped entry
-    # for one taxon are both reachable and neither orphans the other -- that is
-    # the homonym fix working, since the two queries can return genuinely
-    # different sequences. Only a file whose name does not parse under the
-    # current grammar is unreachable.
-    .orph <- .ref_cache_unreachable(cache_dir)
-    if (length(.orph) > 0L) {
-      message(sprintf(
-        "  Cache: %d file(s) in %s were written under an older name grammar, so they cannot be read and those taxa will be refetched.",
-        length(.orph), cache_dir
-      ))
-    }
   }
 
   # --- Step 0: Serve from cache BEFORE issuing any count query ---------------

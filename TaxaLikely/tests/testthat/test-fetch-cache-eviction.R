@@ -213,11 +213,3 @@ test_that("taxalikely_clear_cache() now reaches the fasta/ store", {
   expect_true("AB000667_seq.rds" %in% basename(out$path))
   expect_identical(nrow(out), 2L)
 })
-
-test_that("a current-grammar cache triggers no stale-format message", {
-  d <- .cache_tmpdir()
-  file.create(file.path(
-    d, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds"
-  ))
-  expect_identical(TaxaLikely:::.ref_cache_unreachable(d), character(0L))
-})
