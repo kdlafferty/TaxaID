@@ -1383,3 +1383,111 @@ test_that("posterior_consensus() attaches its own settings, and the species guar
   suppressMessages(update_prior_from_consensus(fx$result, x, n_sims = 0))
   expect_identical(seen, list(cumulative_threshold = 0.8, consensus_method = "lca"))
 })
+
+# --- max_raise_factor: bounding the substitution ------------------------------
+# The substitution target is rescaled onto the group's occurrence ceiling, which
+# belongs to whatever taxon is best recorded at the group rather than to the row
+# being raised, and is unbounded above. These pin the bound on that multiple.
+
+.raise_fixture <- function(prior = 1e-4) {
+  list(
+    result = bind_rows(
+      .obs_rows("S1", c("Sp_X", "Sp_Y"), c(0.9, 0.1)),
+      .obs_rows("S2", c("Sp_X", "Sp_W"), c(0.5, 0.5), prior = prior),
+      .obs_rows("S3", c("Sp_Z", "Sp_Y"), c(0.9, 0.1))
+    ),
+    consensus = .cons(c("S1", "S2", "S3"), c(TRUE, FALSE, TRUE))
+  )
+}
+.raised_prior <- function(bound, prior = 1e-4) {
+  f <- .raise_fixture(prior)
+  out <- suppressMessages(suppressWarnings(
+    .upf(f$result, f$consensus, max_raise_factor = bound)
+  ))
+  .prior_of(out, "S2", "Sp_X")
+}
+
+test_that("max_raise_factor bounds the raise at a multiple of the row's own prior", {
+  unbounded <- .raised_prior(Inf)
+  expect_gt(unbounded, 1e-4 * 100) # the defect: a tiny prior raised enormously
+  expect_equal(.raised_prior(10), 1e-4 * 10, tolerance = 1e-9)
+  expect_equal(.raised_prior(2), 1e-4 * 2, tolerance = 1e-9)
+})
+
+test_that("a bound looser than the raise is inactive (identical to Inf)", {
+  expect_equal(.raised_prior(1e9), .raised_prior(Inf), tolerance = 1e-12)
+})
+
+test_that("max_raise_factor is monotone and never demotes", {
+  priors <- vapply(c(1, 1.5, 2, 10, 100, Inf), .raised_prior, numeric(1))
+  expect_false(is.unsorted(priors))
+  # factor 1 permits no raise at all, and still never reduces the prior
+  expect_equal(priors[1], 1e-4, tolerance = 1e-12)
+  expect_true(all(priors >= 1e-4))
+})
+
+test_that("the bound reports how many raises it caught", {
+  f <- .raise_fixture()
+  expect_message(
+    suppressWarnings(.upf(f$result, f$consensus, max_raise_factor = 10)),
+    "bounded at 10x the row's own prior"
+  )
+})
+
+test_that("a zero prior is left unbounded rather than silently zeroed", {
+  # A multiple of 0 is 0, so capping would withdraw the whole raise -- a change
+  # the measured bound was never shown to make. The row is reported instead.
+  f <- .raise_fixture()
+  z <- f$result$observation_id == "S2" & f$result$taxon_name == "Sp_X"
+  # prior_mean 0 with alpha/beta clamped positive: compute_posterior() requires
+  # both > 0, so this is the only shape a zero mean can actually take.
+  f$result$prior_mean[z] <- 0
+  f$result$prior_alpha[z] <- 1e-9
+  f$result$prior_beta[z] <- 10
+  out <- suppressMessages(suppressWarnings(
+    .upf(f$result, f$consensus, max_raise_factor = 2)
+  ))
+  expect_gt(.prior_of(out, "S2", "Sp_X"), 0)
+  expect_message(
+    suppressWarnings(.upf(f$result, f$consensus, max_raise_factor = 2)),
+    "prior_mean is 0"
+  )
+})
+
+test_that("max_raise_factor leaves mixture rows alone", {
+  # A mixture raise moves prior_mix_w and is already bounded by the row's own
+  # prior_mix_theta_present, so the multiple must not touch it.
+  res <- .make_result()
+  mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
+  res$prior_mean[mixify] <- 1e-4 + (0.02 - 1e-4) * 0.5
+  res$prior_alpha[mixify] <- 0.02
+  res$prior_beta[mixify] <- 1.98
+  res$prior_mix_w <- ifelse(mixify, 0.5, NA_real_)
+  res$prior_mix_theta_present <- ifelse(mixify, 0.02, NA_real_)
+  res$prior_mix_theta_absent <- ifelse(mixify, 1e-4, NA_real_)
+  res$prior_mix_p_conc <- ifelse(mixify, 1, NA_real_)
+  w1 <- (1 * 0.5 + 0.2) / 1.2
+  th1 <- 1e-4 + (0.02 - 1e-4) * w1
+  for (b in c(1, 2, Inf)) {
+    out <- suppressMessages(suppressWarnings(
+      .upf(res, .make_consensus(), n_sims = 0, max_raise_factor = b)
+    ))
+    row <- out[out$observation_id == "S2" & out$taxon_name == "Sp_A", ]
+    expect_equal(row$prior_mix_w, w1, tolerance = 1e-8)
+    expect_equal(row$prior_mean, th1, tolerance = 1e-8)
+  }
+})
+
+test_that("max_raise_factor is validated and recorded in report_params", {
+  f <- .raise_fixture()
+  for (bad in list(0, -1, NA_real_, c(2, 3), "2")) {
+    expect_error(
+      suppressMessages(.upf(f$result, f$consensus, max_raise_factor = bad)),
+      "max_raise_factor"
+    )
+  }
+  out <- suppressMessages(suppressWarnings(
+    .upf(f$result, f$consensus, max_raise_factor = 7)
+  ))
+  expect_equal(attr(out, "report_params")$max_raise_factor, 7)
+})

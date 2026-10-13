@@ -14,7 +14,8 @@ update_prior_from_consensus(
   group_cols = "sample_id",
   marker_col = "marker",
   spatial_group_map = NULL,
-  require_support_columns = TRUE
+  require_support_columns = TRUE,
+  max_raise_factor = 2000
 )
 }
 \arguments{
@@ -87,6 +88,23 @@ supported mode: it skips every guard (including the species guard) and raises wi
 likelihood-consensus support (a message says so), so its results are not
 comparable to a guarded run. Within this package it is used only for the
 LLM pathway, whose priors are not occurrence-based.}
+
+\item{max_raise_factor}{Numeric (default \code{2000}). Upper bound on a
+non-mixture raise, as a MULTIPLE of the row's existing \code{prior_mean}:
+a row's prior can rise at most \code{max_raise_factor} times. \code{Inf} does not
+bound. The substitution target is rescaled onto the group's occurrence
+ceiling (see \emph{Rescaling onto the occurrence scale}), which is the
+largest \code{theta_mean} at the group and so belongs to whatever taxon
+happens to be best recorded there -- a scale unrelated to the row being
+raised, and unbounded above. This bounds that tail. The default is
+deliberately loose rather than tuned: measured on one real multi-marker
+study, the ceiling sat 487x to 13,760x above a typical recorded taxon at
+the same site and produced raises up to 64,442x, while the raise the
+resulting species calls actually needed was a median 5x and every one of
+them survived at \code{2000}. A multiple is undefined where \code{prior_mean} is 0,
+so such a row is left unbounded and counted in the message. Mixture rows
+are unaffected: their update moves \code{prior_mix_w} and is already bounded
+by the row's own \code{prior_mix_theta_present} and \code{prior_mix_veto_bound}.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},

@@ -289,6 +289,22 @@
 #'   likelihood-consensus support (a message says so), so its results are not
 #'   comparable to a guarded run. Within this package it is used only for the
 #'   LLM pathway, whose priors are not occurrence-based.
+#' @param max_raise_factor Numeric (default `2000`). Upper bound on a
+#'   non-mixture raise, as a MULTIPLE of the row's existing `prior_mean`:
+#'   a row's prior can rise at most `max_raise_factor` times. `Inf` does not
+#'   bound. The substitution target is rescaled onto the group's occurrence
+#'   ceiling (see \emph{Rescaling onto the occurrence scale}), which is the
+#'   largest `theta_mean` at the group and so belongs to whatever taxon
+#'   happens to be best recorded there -- a scale unrelated to the row being
+#'   raised, and unbounded above. This bounds that tail. The default is
+#'   deliberately loose rather than tuned: measured on one real multi-marker
+#'   study, the ceiling sat 487x to 13,760x above a typical recorded taxon at
+#'   the same site and produced raises up to 64,442x, while the raise the
+#'   resulting species calls actually needed was a median 5x and every one of
+#'   them survived at `2000`. A multiple is undefined where `prior_mean` is 0,
+#'   so such a row is left unbounded and counted in the message. Mixture rows
+#'   are unaffected: their update moves `prior_mix_w` and is already bounded
+#'   by the row's own `prior_mix_theta_present` and `prior_mix_veto_bound`.
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty -- match the value used in the original run.
@@ -361,10 +377,15 @@ update_prior_from_consensus <- function(result,
                                         group_cols = "sample_id",
                                         marker_col = "marker",
                                         spatial_group_map = NULL,
-                                        require_support_columns = TRUE) {
+                                        require_support_columns = TRUE,
+                                        max_raise_factor = 2000) {
   # --- Input validation -------------------------------------------------------
   if (!is.logical(require_support_columns) || length(require_support_columns) != 1L || is.na(require_support_columns)) {
     cli::cli_abort("{.arg require_support_columns} must be TRUE or FALSE.")
+  }
+  if (!is.numeric(max_raise_factor) || length(max_raise_factor) != 1L ||
+    is.na(max_raise_factor) || max_raise_factor < 1) {
+    cli::cli_abort("{.arg max_raise_factor} must be a single number >= 1 ({.code Inf} to not bound).")
   }
   required_result <- c(
     "observation_id", "taxon_name", "score_likelihood",
@@ -721,6 +742,34 @@ update_prior_from_consensus <- function(result,
   gain_rg <- pmax(cand_rg - old_prior[rg$row], 0) * s_rg
   gain_rg[is.na(gain_rg) | is_mix_row[rg$row] | is.na(rg_taxon) | !ur_ok[rg$row]] <- 0
   soft_gain <- .row_mean(gain_rg)
+  # Bound the substitution as a MULTIPLE of the row's existing prior. The
+  # target it moves toward is rescaled onto the group's occurrence ceiling --
+  # the largest theta_mean at the group, which belongs to whatever taxon
+  # happens to be best recorded there and bears no relation to the row being
+  # raised. That ceiling is exogenous by necessity (a raise scaled to the
+  # row's own theta cannot exceed its own prior, so it would never raise), but
+  # it is unbounded above: measured on one real multi-marker study, the
+  # ceiling sat 487x to 13,760x above a typical recorded taxon at the same
+  # site, and the raises it produced reached 64,442x. This bounds that tail
+  # without touching the scale, and the bound is deliberately loose: on that
+  # study every one of the 414 species calls resting on a raised row survived
+  # at 2000x, because the raise those calls actually NEEDED was a median 5x.
+  # So it removes unjustified inflation, not resolution.
+  #
+  # A multiple is undefined where the prior is 0, so those rows are left to
+  # the unbounded substitution and counted in the message rather than silently
+  # zeroed -- capping them at 0 x anything would withdraw a raise the measured
+  # bound was never shown to withdraw.
+  n_bounded <- 0L
+  n_unboundable <- 0L
+  if (is.finite(max_raise_factor)) {
+    boundable <- !is.na(old_prior) & old_prior > 0
+    cap <- (max_raise_factor - 1) * old_prior
+    hit <- boundable & !is.na(soft_gain) & soft_gain > cap
+    n_bounded <- sum(hit)
+    n_unboundable <- sum(!is.na(soft_gain) & soft_gain > 0 & !boundable)
+    soft_gain[hit] <- cap[hit]
+  }
   raise_mask <- soft_gain > 0
   new_prior <- old_prior + soft_gain
 
@@ -729,6 +778,12 @@ update_prior_from_consensus <- function(result,
     their own group(s); {sum(raise_mask)} raised above their existing prior \\
     (smoothly, by the saturating discounted mass, averaged over each row's groups \\
     -- others already met their support-weighted target).",
+    if (n_bounded > 0L) {
+      "{n_bounded} raise(s) bounded at {format(max_raise_factor)}x the row's own prior."
+    },
+    if (n_unboundable > 0L) {
+      "{n_unboundable} raise(s) left unbounded: prior_mean is 0, so a multiple of it is undefined."
+    },
     if (has_theta) {
       "Substitution rescaled onto each group's occurrence ceiling (study-wide \\
       fallback used for {n_ceiling_fallback} multi-member group(s) with no theta_mean)."
@@ -936,7 +991,8 @@ update_prior_from_consensus <- function(result,
       confirmation_discount       = confirmation_discount,
       n_sims                      = n_sims,
       group_cols                  = attr(membership, "group_cols"),
-      likelihood_margin_z         = likelihood_margin_z
+      likelihood_margin_z         = likelihood_margin_z,
+      max_raise_factor            = max_raise_factor
     )
   )
   attr(out, "prior_update_groups") <- group_report
