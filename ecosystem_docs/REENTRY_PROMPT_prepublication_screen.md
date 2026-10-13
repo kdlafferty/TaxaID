@@ -2917,3 +2917,85 @@ cited commit" caveat.** Frozen references and reused sequence matrices are the
 only artefacts predating the run, and the tag message names them. To recompute:
 `.ns_code_digest()` at workflow:3528 -- note `Rscript --vanilla` drops
 `R_LIBS_USER`, so pass `.libPaths()` explicitly or the packages will not load.
+
+### Microgadus / Catostomus traced: one real defect, and the guards mostly held (2026-10-13)
+
+Read-only trace of the two R1013 calls Kevin flagged as geography/habitat
+errors. Peak 3.3 GB. **They have DIFFERENT causes and only one is a package
+defect.**
+
+**Shared evidence.** All five ESVs are **single-replicate, single-extraction,
+one batch (JVB3735)**, 22-183 reads, zero reads in any blank or lab blank,
+`validity = valid`, no hop flag (`p_spill = 0`), no contaminant or
+failed-library flag.
+
+**`Catostomus occidentalis` @ Punta Banda -- A REAL DEFECT.**
+The input BLAST row has **no genus and no species name**, 99.4% identity and
+`# species = 7`: the upstream consensus declined to name even a genus. The
+pipeline output a species at `consensus_posterior = 1.00`. Of the unit's 20
+hypotheses, *C. occidentalis* ranks **19th by posterior** (2.17e-05 against
+*C. macrocheilus* 0.139) and **last by prior** -- it is the one Catostomus with
+a modelled kernel prior, and that model says 8.885e-09, **398x BELOW the
+3.535e-06 floor its unmodelled congeners receive.** So the prior argued against
+it too. `likelihood_support = 0.0084`.
+
+The chain:
+1. `estimate_kernel_priors_from_counts(habitat_filter = "none")` -- **the
+   package default** -- admits a freshwater sucker into a Marine site's prior
+   pool. (`main_habitat` is the SITE's habitat, not the taxon's, so it is not a
+   mislabel and TaxaHabitat never asserted "Marine" for this fish. The
+   capability exists -- `habitat_filter = "taxon_threshold"` with a
+   `build_habitat_lookup()` -- and **was simply not switched on.**)
+2. `.credible_node()` CORRECTLY declines a species call: no Catostomus species
+   holds the threshold, so it calls **genus Catostomus**.
+3. `.downrank_consensus()` finds `species_ref` holds **exactly one** Catostomus
+   at that site and relabels the genus call to it.
+4. Its `require_candidate` gate passes because *C. occidentalis* **is among the
+   scored candidates** -- `is_restored = TRUE`, restored with an imputed score.
+   **The gate tests MEMBERSHIP, not SUPPORT.**
+5. `.downrank_consensus()` rewrites `consensus_taxon`, `consensus_rank`,
+   `is_resolved` and `downranked` -- **and nothing else.** So
+   `consensus_posterior` still describes the GENUS node. The reported 1.00 is
+   arithmetically right about a proposition nobody asked.
+
+**The defect is narrow.** 724 of 49,466 units are downranked (1.5%), 451 to
+species, and their median `likelihood_support` is **0.910** -- downranking is
+usually well earned. Only **6** downranked species calls sit below 10% support
+(12S 4, COI 2), only **4** of those also report posterior >= 0.99, and only
+**one** is below 1%: this call. It is the worst in the dataset.
+
+**`Microgadus proximus` @ Punta Rompiente -- NOT a defect.** BLAST gives
+99.4-100% identity with **`# species = 1`**: one species in the hit set, named.
+The identification is clean; the biology is wrong, out of range by ~1,500 km.
+`likelihood_support` 0.49-0.56, the competitor being the unreferenced
+"some other *Microgadus*" ring, and the genus holds two species. The prior was
+correctly tiny (1.47e-06) and a saturated likelihood swamped it. That is the
+Bayes arithmetic behaving as specified, not a bug. **Worth noting:
+`ESV_065368` appears at BOTH Duxbury Reef (in range, 71 reads) and Punta
+Rompiente (out of range, 112 reads) in the same batch -- the shape of a
+cross-contamination or hop, which the hop filter cleared at `p_spill = 0`.
+Unconfirmed; worth a look.**
+
+**The guards mostly HELD, which is the context both errors need.** 12S carries
+substantial non-marine fish: *Salmo salar* at 100% with 5,581 reads,
+*Platygobio gracilis* (Great Plains) 6,521 reads, *Rhinichthys atratulus*
+(eastern US), *Oncorhynchus*, *Prosopium*. Of 62 such consensus units, the
+pipeline held **almost all at genus or coarser**: *Platygobio* 12 of 12 genus
+despite 100% identity and one species in the hit set; *Catostomus* 12 of 13
+genus; *Rhinichthys*, *Cyprinus*, *Cyprinidae* likewise. ***Salmo salar* never
+becomes a call at all.** The species-level escapes are *C. occidentalis*,
+*Gambusia affinis* (already on the exclusions list), and two defensible ones
+(*O. tshawytscha* at Duxbury, *F. parvipinnis*).
+
+**The general vulnerability, in one line:** `.downrank_consensus()` consults
+neither the likelihood nor the prior -- it is a reference-set lookup gated on
+candidate membership, and it carries the coarse node's posterior onto the finer
+label. It will fire wherever a genus has one locally-recorded species and
+better-matching non-local congeners, which is common. **`X..species` (the
+number of species in the BLAST hit set) is present in the input, is exactly the
+discriminating field -- 7 for Catostomus against 1 for Microgadus -- and
+nothing gates on it.**
+
+Not fixed; diagnosis only. Also logged, not fixed: `build_context()` returns a
+single-ecoregion context and `review_assignments()` uses it as GEOGRAPHY
+(TaxaFlag review_assignments.R:1390), a footgun for multi-ecoregion studies.
