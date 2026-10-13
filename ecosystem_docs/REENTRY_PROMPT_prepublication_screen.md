@@ -2725,3 +2725,18 @@ changes), `b921c00` (37 of 414 species calls coarser) and `08beaca` (provenance
 columns, 0 changes). It is also the FIRST end-to-end observation of
 `named_rows` interacting with Round 2, so anything outside those four is that
 interaction appearing rather than necessarily a fault.
+
+**FINISHED** Tue Oct 13 04:19:35 HST 2026, rc=0 at every stage, run max
+**12.8 GB** in W1 -- under the 15-17.5 GB expected, so the COI-training peak
+estimate was conservative rather than wrong. Wall clock 5 h 55 min against an
+ETA of ~5 h 01 min. Driver exited; no R live at 04:20 HST, installed tip still
+`5df0b6e` == main, so the measurement reads exactly the tree the run used.
+
+Measurement runs next in the workflow session (read-only Rscripts): the four
+deltas plus any `named_rows` x Round-2 interaction, the provenance columns
+against 410 named-unreferenced and 299 sole-in-scope at R1-equivalent units,
+and the `fetch_code` check that decides whether re-landing `597d40f` would
+re-break the refs key for a future run. **Installs and R stay held in the
+coordinator session until that measurement reports.** The `597d40f` re-land
+(revert `5df0b6e`) happens after the measurement, not before -- main is not
+touched while scripts read the installed tree.
