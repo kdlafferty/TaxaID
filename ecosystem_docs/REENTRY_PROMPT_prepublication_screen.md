@@ -3810,3 +3810,61 @@ reaches no deposited file); flipping `habitat_filter`'s default (still
 **Housekeeping:** branch `1.0.0` (`44e8a6e`) now sits BEHIND main and predates
 the CI enforcement -- re-cut it from main at the real USGS release rather than
 reuse it. Four untracked files in the shared checkout belong to another session.
+
+## CORRECTION: the restore imputation is FIXED, and the tie scale is 200 not 4
+
+Both numbers I gave in the sweep above were wrong. Measured 2026-10-14 on r2,
+read-only, no re-run.
+
+### The restore imputation was already fixed at `b56a85a`
+
+I wrote "verified still unfixed" after grepping `restore_hierarchy.R` alone.
+The fix lives in `TaxaLikely/R/restore_measure.R`, which I never opened.
+**Strike that row.**
+
+`b56a85a` measures the query against the candidate and imputes only as a
+fallback. `.impute_restored_score()` is `min(ref_ref, anchor_score)` --
+anchor_score being the observation's best observed score -- guarded by
+`.assert_imputed_ceiling()`, which `stop()`s if an imputed score ever exceeds
+it. Measured on `CalIntertidal_lik.rds` (`match_obj_restored`):
+
+    marker  restored  measured  imputed   imputed ABOVE best measured hit
+    12S       12,708    12,240      468   0
+    18S        1,751     1,454      297   0
+    COI        9,595     8,602      993   0
+
+22,296 restorations are now MEASURED by live query alignment against 1,758
+imputed, and `max(imputed - best_measured)` is exactly 0.00 in every marker --
+the ceiling binding, visible in the data. Non-vacuous: the baseline existed
+for 100% of imputed rows in all three markers.
+
+The old figure (370 species-rank calls) was measured on the 10-06 tree and does
+not apply to r2. **No re-run and no deposit refresh is justified by this item.**
+
+Also: `anchor - (100 - ref_ref)`, which I recommended and which an earlier
+memory recorded as the accepted framing, was **measured and rejected** -- worse
+than the defect on the defect's own rows (COI MAE 7.02 vs 5.08). `ref_ref`
+alone tracked measured identity at MAE 0.94-1.27 below the anchor, so the
+ceiling was the whole fix. Do not propose the subtraction form again.
+
+### Tie ordering: 200 units, not 4, and no call is affected
+
+Measured on `CalIntertidal_consensus_final_esv_site.rds` (49,466 units) with
+the deposited window's own constants (`PL_MIN = 0.01`, `PL_MAX = 10`, 3 dp):
+
+    units with a shown plausible set      49,463
+    some tie among shown taxa              7,619  (15.40%)
+    TOP slot itself tied                     200  ( 0.40%)   <- arbitrary leader
+
+So `plausible_top` leads with an arbitrary pick among exact equals on 200
+units. The CALL is not affected, and the examples show why: where two species
+tie, the consensus already backs off to their LCA
+(`12S_ESV_024367`: *Catostomus snyderi* 0.288 / *Catostomus rimiculus* 0.288
+-> genus). That is the system working as designed; what is arbitrary is only
+the presentation order inside one deposited string.
+
+Mechanism, for whoever fixes it: `reporting/R/archive_csv.R:79` does
+`order(-p)` with no tiebreaker, and R's `order()` is stable, so the deposited
+order inherits the element order of the package's `plausible_taxa`, set at
+`TaxaAssign/R/posterior_consensus.R:1716`. A fix wants an explicit secondary
+key in BOTH places, or it only half-determines the output.
