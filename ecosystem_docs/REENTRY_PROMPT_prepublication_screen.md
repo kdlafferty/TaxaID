@@ -3165,3 +3165,60 @@ check follow the re-run. Noted for them that *Catostomus occidentalis* becomes
 redundant on the R1013x exclusions list -- the pipeline now declines that
 species call itself -- while *Gambusia affinis* and *Microgadus proximus* still
 need it, *Microgadus* being a clean identification merely out of range.
+
+### Kevin: re-run and REPLACE the deposit; 13 GB authorised (2026-10-13)
+
+The R1013 deposit had **already shipped** -- the Zegar_Dryad swap finished
+13:44 HST, an hour BEFORE the merge (`dafe7a2`, 14:45), and Kevin emailed Alexa
+the same day. My "hold the deposit" reached the reports session too late and was
+withdrawn as an instruction; moving a public deposit is Kevin's call.
+
+Put to him as two questions. His answers, verbatim: **"Re-run and replace the
+deposit"** and **"Authorised, up to 13 GB"**.
+
+**He chose this AGAINST my recommendation.** I argued for leaving the deposit
+and documenting the one artefact: the products are unaffected (the genus call
+enters no species product and the taxon was already on the reviewed-exclusions
+list), the deposit is reproducible from its tag, and the archive keeps
+*Microgadus proximus* and *Gambusia affinis* either way -- so a re-run makes it
+marginally less wrong rather than safe to use naively. He is error-first and
+wants the archive itself correct. Recorded because the reasoning stays useful
+even though the decision went the other way.
+
+**The complete set of units that CAN change is the 724 downranked in R1013.**
+The fix only ever BLOCKS a downranking step, so it cannot make a row become
+downranked; any row not downranked before is untouched by construction. So the
+pre-merge validation already covered every changeable unit, and **a changed
+unit outside those 724 would mean the mechanism is misunderstood**, not merely
+that something unexpected happened. The workflow session was told to call that
+out loudly rather than fold it into a count.
+
+**Cost, corrected by the workflow session's dry run (NEXTRUN_DRYRUN=1,
+`run_next_2026-10-13_1448.stages`):** ~2.7 h, peak 12.3-12.8 GB, VERDICT 0 full
+restore -- refs FROZEN with `fetch_code` and `prep_code` matching, lik RESTORE,
+matrix REUSABLE, and `TAXAID_REQUIRE_RESTORE=1` so W1 would STOP rather than
+silently retrain. **My "only the consensus stage onward" was wrong:** Round 1's
+own consensus calls `posterior_consensus()` and the Round-2 update reads it, so
+the boundary is Section 8 Round 1 onward -- Round 1 -> U -> B -> W2 -> P -> D ->
+R -> X. "Nothing retrains" held and was confirmed against the real keys.
+
+**On the audit: the INSTALL was my inference, not Kevin's word.** He approved
+build ("approved"), merge and re-run ("ok. Note that merge and re-run"); he
+never said "install". Left on the record as an inference -- the later re-run
+approval does not retroactively authorise it. The offered install rollback to
+`5df0b6e` is now moot, since `dafe7a2` is the code that will produce the new
+results.
+
+**AFTER THE RUN, do not reuse R1013's paperwork:**
+- a FRESH function-by-function check against **`dafe7a2`** -- the commit
+  actually installed for the run, not main's tip `868511e`, which is docs-only
+  on top (package subtrees identical, so `dafe7a2` is the honest citation);
+- the Step 7 provenance check REDONE from the new `lik_*.dep` digests. The run
+  is a RESTORE, so **the likelihood models will predate the cited commit and
+  R1013's "trained in this run by the cited commit" wording will be FALSE for
+  the new deposit** -- it must be rewritten, closer to R1009f's form;
+- a new tag. **`calintertidal-R1013` is taken and the run is on the same date,
+  so the label collides** (`R1013x` is the report-products label). Waiting on
+  Kevin's convention before tagging anything.
+- **The correction email to Alexa about which version is current is Kevin's to
+  send.** Nobody drafts or sends it on his behalf.
