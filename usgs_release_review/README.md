@@ -52,6 +52,22 @@ caught during September 2026 alone, and a standard R package ships its
 scripts rather than the test suite, and that reading should be confirmed with
 the reviewer before anything is deleted.
 
+## `WERC_README_template.md`
+
+The WERC-supplied README template, moved here from the repository root's
+`inst/` on the maintainer's instruction. It is a **blank template**, not a
+description of this software: its title line reads `ADD SOFTWARE TITLE
+(TEMPLATE)`, it carries a placeholder DOI twice, and its two image paths
+(`media/usgs_green.png`, `media/orcid.gif`) resolve to nothing in this
+repository and did so before the move.
+
+It was shipping inside the `TaxaID` meta-package, so a reviewer opening the
+package's own `inst/README.md` was told the software had no title. Moved
+rather than deleted because it is the template the release is written
+against, and left byte-for-byte unedited because it is a supplied artifact --
+the same treatment as `reviewer_supplied_README.md`. The repository's real
+front page is the root `README.md`, which is unaffected.
+
 ## Related, deliberately NOT moved here
 
 - `inst/Code and Domain Review 2.Rmd` -- a *different* review (the per-package
