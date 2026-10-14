@@ -36,7 +36,6 @@
 #' @param outputs Character vector. Output types: \code{"script"},
 #'   \code{"methods"}, \code{"app"}.
 #' @param output_dir Character. Directory to write files.
-#' @param trial Logical. Include trial-mode subsetting.
 #' @param known_script_path Character or NULL. Path to a script this SAME
 #'   \code{workflow_create()} session already generated (i.e. what
 #'   \code{attr(result, "script_path")} returned from an earlier call in
@@ -56,7 +55,7 @@
 #'   the appended-to file was discovered by same-day filename match rather
 #'   than known to belong to this session).
 #' @noRd
-.generate_outputs <- function(dag, outputs, output_dir, trial = FALSE,
+.generate_outputs <- function(dag, outputs, output_dir,
                               known_script_path = NULL) {
   generated <- character()
   appended <- FALSE
@@ -68,7 +67,7 @@
     existing <- if (known_valid) known_script_path else .find_existing_script(output_dir)
     appended <- !is.null(existing)
     cross_session_append <- appended && !known_valid
-    script_path <- .generate_script(dag, output_dir, trial,
+    script_path <- .generate_script(dag, output_dir,
       known_script_path = known_script_path
     )
     generated <- c(generated, script_path)
@@ -105,7 +104,6 @@
 #'
 #' @param dag List. Workflow DAG.
 #' @param output_dir Character. Output directory.
-#' @param trial Logical. Include trial-mode subsetting.
 #' @param known_script_path Character or NULL. A script this same session
 #'   already generated (see \code{\link{.generate_outputs}}). Preferred
 #'   over \code{.find_existing_script()}'s same-day filename scan when
@@ -113,7 +111,7 @@
 #'
 #' @return Character: path to generated file.
 #' @noRd
-.generate_script <- function(dag, output_dir, trial = FALSE,
+.generate_script <- function(dag, output_dir,
                              known_script_path = NULL) {
   n_steps <- length(dag$steps)
 

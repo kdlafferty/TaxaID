@@ -43,33 +43,6 @@ test_that(".parse_engine_response: wraps plain text as incomplete response", {
   expect_equal(result$message, "not json at all")
 })
 
-test_that(".estimate_scaling: linear scaling", {
-  est <- TaxaWizard:::.estimate_scaling(10, 20, 2000, "linear")
-  expect_equal(est$estimated_seconds, 1000)
-})
-
-test_that(".estimate_scaling: quadratic scaling", {
-  est <- TaxaWizard:::.estimate_scaling(10, 20, 200, "quadratic")
-  expect_equal(est$estimated_seconds, 1000)
-})
-
-test_that(".subset_for_trial: subsets by observation_id", {
-  df <- data.frame(
-    observation_id = rep(paste0("s", 1:50), each = 3),
-    score = runif(150)
-  )
-  sub <- TaxaWizard:::.subset_for_trial(df, n = 5)
-  expect_equal(length(unique(sub$observation_id)), 5)
-  expect_true(nrow(sub) <= 15)
-})
-
-test_that(".subset_for_trial: falls back to head when column missing", {
-  df <- data.frame(x = 1:100)
-  sub <- TaxaWizard:::.subset_for_trial(df, n = 10, by = "observation_id")
-  expect_equal(nrow(sub), 10)
-})
-
-
 # --- Phase Detection Tests ---
 
 test_that(".detect_phase: empty history -> classify", {

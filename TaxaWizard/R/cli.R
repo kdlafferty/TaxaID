@@ -150,8 +150,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
       generated <- .generate_outputs(
         dag        = result$dag,
         outputs    = result$outputs %||% "script",
-        output_dir = session$output_dir,
-        trial      = session$trial
+        output_dir = session$output_dir
       )
 
       # Find the .R script in generated files
@@ -177,7 +176,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
   # Save updated state
   .save_session(
     history, session$registry, session$model,
-    session$api_key, session$llm_fn, session$output_dir, session$trial
+    session$api_key, session$llm_fn, session$output_dir
   )
 
   # Return script path in auto mode for re-sourcing
@@ -249,7 +248,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 #' file is written with owner-only permissions immediately after creation.
 #' @noRd
 .save_session <- function(history, registry, model, api_key, llm_fn,
-                          output_dir, trial) {
+                          output_dir) {
   session <- list(
     history    = history,
     registry   = registry,
@@ -257,7 +256,6 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
     api_key    = api_key,
     llm_fn     = llm_fn,
     output_dir = output_dir,
-    trial      = trial,
     timestamp  = Sys.time()
   )
   session_path <- file.path(tempdir(), "taxawizard_session.rds")

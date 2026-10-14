@@ -46,8 +46,6 @@
 #'   The return value should be the raw LLM response text (plain or JSON).
 #'   For Azure OpenAI the caller must assemble the chat-completion request
 #'   using \code{messages} + \code{system_prompt} -- see the example below.
-#' @param trial Logical. When \code{TRUE}, generated scripts include
-#'   trial-mode subsetting for performance estimation. Default \code{FALSE}.
 #'
 #' @return Invisibly returns the final engine response (console mode) or
 #'   \code{NULL} (viewer mode). Generated files are written to
@@ -73,8 +71,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
                             output_dir = ".",
                             model = "claude-sonnet-4-6",
                             api_key = NULL,
-                            llm_fn = NULL,
-                            trial = FALSE) {
+                            llm_fn = NULL) {
   mode <- match.arg(mode)
 
   if (!interactive()) {
@@ -122,16 +119,17 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
     message("Then source the generated script to run your workflow.")
     .create_viewer(
       model = model, api_key = api_key, llm_fn = llm_fn,
-      output_dir = output_dir, trial = trial,
+      output_dir = output_dir,
       use_browser = identical(mode, "browser")
     )
   } else {
     .create_console(
       model = model, api_key = api_key, llm_fn = llm_fn,
-      output_dir = output_dir, trial = trial
+      output_dir = output_dir
     )
   }
 }
+
 
 
 #' Check if Running Inside RStudio
@@ -150,7 +148,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
 # =========================================================================
 
 #' @noRd
-.create_console <- function(model, api_key, llm_fn, output_dir, trial) {
+.create_console <- function(model, api_key, llm_fn, output_dir) {
   registry <- workflow_registry()
   history <- list()
 
@@ -314,7 +312,6 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
           dag               = dag,
           outputs           = result$outputs %||% "script",
           output_dir        = output_dir,
-          trial             = trial,
           known_script_path = session_script_path
         )
         session_script_path <- attr(generated, "script_path") %||% session_script_path
@@ -323,7 +320,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
         for (f in generated) cat(sprintf("  %s\n", f))
 
         # Save conversation state for workflow_fix()
-        .save_session(history, registry, model, api_key, llm_fn, output_dir, trial)
+        .save_session(history, registry, model, api_key, llm_fn, output_dir)
         if (is_extension) {
           cat("\nNew steps appended to the existing script.\n")
           cat("Re-source it to run the full pipeline (earlier steps load from cache).\n")
@@ -350,7 +347,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
 # =========================================================================
 
 #' @noRd
-.create_viewer <- function(model, api_key, llm_fn, output_dir, trial,
+.create_viewer <- function(model, api_key, llm_fn, output_dir,
                            use_browser = FALSE) {
   registry <- workflow_registry()
 
@@ -584,13 +581,12 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
           dag               = result$dag,
           outputs           = result$outputs %||% "script",
           output_dir        = output_dir,
-          trial             = trial,
           known_script_path = session_script_path
         )
         session_script_path <<- attr(generated, "script_path") %||% session_script_path
 
         # Save session for workflow_fix()
-        .save_session(hist, registry, model, api_key, llm_fn, output_dir, trial)
+        .save_session(hist, registry, model, api_key, llm_fn, output_dir)
 
         file_list <- paste(generated, collapse = "\n  ")
         is_extension <- isTRUE(attr(generated, "appended"))

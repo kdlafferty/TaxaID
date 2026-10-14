@@ -9,8 +9,7 @@ workflow_create(
   output_dir = ".",
   model = "claude-sonnet-4-6",
   api_key = NULL,
-  llm_fn = NULL,
-  trial = FALSE
+  llm_fn = NULL
 )
 }
 \arguments{
@@ -50,9 +49,6 @@ argument; ignore if your provider uses a fixed model).
 The return value should be the raw LLM response text (plain or JSON).
 For Azure OpenAI the caller must assemble the chat-completion request
 using \code{messages} + \code{system_prompt} -- see the example below.}
-
-\item{trial}{Logical. When \code{TRUE}, generated scripts include
-trial-mode subsetting for performance estimation. Default \code{FALSE}.}
 }
 \value{
 Invisibly returns the final engine response (console mode) or
