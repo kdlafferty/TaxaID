@@ -3868,3 +3868,104 @@ Mechanism, for whoever fixes it: `reporting/R/archive_csv.R:79` does
 order inherits the element order of the package's `plausible_taxa`, set at
 `TaxaAssign/R/posterior_consensus.R:1716`. A fix wants an explicit secondary
 key in BOTH places, or it only half-determines the output.
+
+## Fable final pass, 2026-10-14: re-measured, not read
+
+Brief: `HANDOFF_fable_final_pass.md`. Every figure below was re-measured on
+`main` (9b18d1b at the start, 54df41f by the end), not quoted from the
+handoff, per its own section 3. Fixes are on branch `fable-final-cleanup`
+(worktree `~/taxaid-worktrees/fable`), NOT merged and NOT pushed.
+
+**Handoff claims that HELD:** installed library at 1.0.0 (built 00:40 HST);
+223 exports = 218 functions + 5 data objects, every one with an Rd; no
+package-root debris (the REENTRY files at TaxaFlag/TaxaWizard roots are
+tracked and `.Rbuildignore`d); zero non-ASCII bytes in any `R/`; NEWS and
+READMEs carry no dated or historical prose; placeholder DOI and
+`claude.ai/code` links gone from every README and from `shiny.R`; CI green on
+`main` at 9b18d1b (9/9); `test-pack.R` 16/16 from source. Board row 19
+re-confirmed: `test-pack.R` fails 2 when a sibling package is `load_all`'d
+first in the same process and passes alone.
+
+**Handoff claims that did NOT hold:**
+- `DEPOSIT_DRIFT_LEDGER.md` said the tie fix `e3b03e3` was "in main"; it was
+  on PR #4, unmerged. Put to the `package review` session, which merged PR #4
+  as `ae351ea` and corrected the ledger at `54df41f`. (Its first merge
+  attempt hit a GitHub 502 reading "Merge already in progress" and left the
+  PR open -- not the same as landed.)
+- "Installed at 1.0.0" is true but the install is now BEHIND `main` by three
+  R-file changes: `TaxaFlag/R/review_assignments.R` (983324c, the geography
+  fix), `TaxaTools/R/call_api.R` (658a267, URL string) and the TaxaWizard
+  snippet (88f9fc9). Confirmed by the peer from the installed namespaces,
+  not from dates. Exposure: PtConception, Mugu, GreatLakes and the template
+  (CalIntertidal never calls `review_assignments()`). A reinstall needs the
+  maintainer's word and a window with no R-family process alive.
+
+**New findings:**
+1. **A method adopted 2026-10-01 was built and never wired.** TaxaMatch ships
+   `R/reference_mislabel_test.R`, `R/reference_mislabel_blast.R` and
+   `R/reference_label_profile.R` (1,206 lines, 21 dot-functions, added
+   3a79d5f): the two-hypothesis LR mislabel test the maintainer adopted as
+   the accession-screen removal rule. Every one of the 21 names has ZERO
+   callers outside those three files (grepped against all of `TaxaMatch/R/`);
+   nothing exported reaches it. The export prune (section 12) counted exports,
+   so unexported code was outside what it measured. Shell sites, verified by
+   both sessions: `reference_mislabel_blast.R:19` (`system()`; `db_dir`,
+   `blast_bin`, `out` shQuoted, `db` and the collapsed `args` NOT);
+   `reference_mislabel_blast.R:121-127` (`system2()`, paths quoted, the rest
+   literals or `as.integer`-coerced); `reference_label_profile.R:55`
+   (`system2()`, nothing quoted) and `:66` (`system()`, nothing quoted, the
+   caller's `blast_bin` raw, string carries `&` and `wait`). `shQuote` count
+   per file: 10 / 0 / 0. The whitespace check on `tmp` at
+   `reference_label_profile.R:51` is a breakage guard, not sanitisation, and
+   says nothing about `blast_bin`. Latent, not live: zero callers means no
+   export can put a value into `blast_bin` today. DECISION: wire it or remove
+   it; if wired, the quoting is fixed first.
+2. **Audit item 3 (dated roxygen) was still open four days on.** Four lines in
+   `TaxaAssign/R/update_prior_from_consensus.R` `@section` blocks carried
+   dates; one narrated "Until 2026-10-07 X was Y". FIXED on the branch; the
+   pack omits `@section`, so `llm_prompts/` is unchanged.
+3. **One export had no examples**: `flag_backbone_conflicts()` (added
+   c292c1d, after pass 4 ran). FIXED on the branch with a runnable example.
+4. **lintr, each package's own `.lintr`, all nine `R/`: 176 lints.** 87
+   line-length, 11 trailing whitespace, 8 object-name, 2 object-length
+   (report-only by B4's convention); 24 compound semicolons (13 in
+   `join_priors.R`, 9 inside the dead mislabel chain, 2 in
+   `flag_backbone_conflicts.R`); 15 brace lints; 6 `<<-` (5 are a closure
+   accumulator in `reference_support.R:455-462`, 1 in `pack.R`; not globals);
+   1 `seq_len(length(x))`; 20 `object_usage`. Of the 20, **17 are false
+   positives** (the name is read inside a cli glue string -- checked by
+   script, not by eye) and **3 are dead locals**: `budget` and `parent_of` in
+   `join_priors.R:305-307` and `lik_cols` in `update_prior_from_consensus.R:619`.
+   The three are REMOVED on the branch; tests 31/0, 74/0, 18/0.
+5. **Still shipping, still waiting on a decision** (audit item 2, 2026-10-10):
+   `extra_functions_review_inputs.R` in seven `inst/`, `test_api_keys.R`,
+   `draft_text_workflow.R`, `test_overwrite_cache_manual.R`, and the
+   misspelled `TaxaLikely/inst/TaxaLIkely_workflow.R`. Also the root
+   `inst/README.md`, which is the unfilled WERC TEMPLATE ("ADD SOFTWARE TITLE
+   (TEMPLATE)", placeholder DOI twice) and ships in the meta-package.
+6. **Stray libraries still exist**: `~/.R_libs_blast_session` (TaxaMatch
+   0.1.0, built 2026-09-27) and `~/.R_libs_counts_branch` (TaxaExpect and
+   TaxaFetch 0.1.0, 2026-09-28). No live script prepends them any more
+   (`run_accession_screen.R` only mentions one in a comment). Deletion is
+   the maintainer's word.
+7. **The definition of done (section 11) cannot be met as written.** It is
+   anchored on `pre-1.0-freeze` = bd84325 (2026-09-28), now 399 commits
+   behind `main`, and the release candidate will be re-cut from `main`. The
+   Stage B statement should name THAT tag. B1 clean-checkout reproducibility
+   is now effectively covered by CI (fresh Ubuntu, dependencies installed,
+   tests run, 9/9 green) but on Linux only. Mugu and Great Lakes validation
+   runs are inside the gate and have not been run.
+
+**Security surface, all nine `R/`:** four `eval(parse())` sites, all in
+`TaxaWizard/R/shiny.R` and all evaluating text from the user's own workflow
+script; three `system()` shell strings (`plan_gbif_fetch.R:180` is a fixed
+literal; the other two are finding 1). No committed secrets (the `sk-ant-`
+hits are documentation placeholders and a test marker), no `.Renviron`, no
+tracked file over 5 MB. CI pins `actions/checkout@v4` and
+`r-lib/actions/setup-r@v2` and uses only `GITHUB_TOKEN`.
+
+**Branch `fable-final-cleanup` @ 839824e** (rebased onto 54df41f): 5 files,
+TaxaAssign + TaxaFlag only. CI-style `rcmdcheck` (`--as-cran`,
+`_R_CHECK_CRAN_INCOMING_=false`) on both at that tip: **0 errors / 0
+warnings / 0 notes** each. Ready to merge on the maintainer's word; the
+reinstall that follows is the `package review` session's to run.
