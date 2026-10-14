@@ -3435,3 +3435,27 @@ The measuring session's guess that Round-1 values carry into the 618
 
 The tag `calintertidal-r2-2026-10-13` on `dafe7a2` is NOT created -- it waits on
 Kevin. Replacing the Dryad deposit is Kevin's; no session has touched Dryad.
+
+### Tag created 2026-10-13 20:02 HST
+
+Kevin answered "yes" to the coordinator's question, which covered the label and
+the push together.
+
+```
+calintertidal-r2-2026-10-13
+  tag object  b53789aafe53d2a0c9ee5d48b8a91c2ed4fe6005
+  commit      dafe7a2d39e2e0592554ef2be2826852375c2d6b
+```
+
+Verified against the remote, not only locally. Cite **dafe7a2** in anything that
+must resolve to a tree; a tag can be moved, a commit cannot.
+
+The annotated message is self-contained: the r1/r2 mapping with both r1 deposits,
+the code change, the one changed call, `downranked` staying 724 and why, the
+report-table deltas, the Step 7 paragraph (models trained 01:32-02:06 HST under
+5df0b6e, restored unchanged, with an explicit "do not describe these models as
+trained by this commit"), the 1068/1068 install check, the 13.71 GB peak, and the
+two known-not-fixed reproducibility items.
+
+Remaining and NOT a session's to do: replacing the Dryad deposit, and the
+correction email to Alexa about which deposit version is current. Both Kevin's.
