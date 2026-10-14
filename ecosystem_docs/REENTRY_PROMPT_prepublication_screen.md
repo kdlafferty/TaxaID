@@ -3847,17 +3847,37 @@ than the defect on the defect's own rows (COI MAE 7.02 vs 5.08). `ref_ref`
 alone tracked measured identity at MAE 0.94-1.27 below the anchor, so the
 ceiling was the whole fix. Do not propose the subtraction form again.
 
-### Tie ordering: 200 units, not 4, and no call is affected
+### Tie ordering: 6 units at the top slot, and no call is affected
 
-Measured on `CalIntertidal_consensus_final_esv_site.rds` (49,466 units) with
-the deposited window's own constants (`PL_MIN = 0.01`, `PL_MAX = 10`, 3 dp):
+**CORRECTED 2026-10-14.** This section first reported 7,619 "some tie" and 200
+"top slot tied". Those were ties **as printed at 3 dp** -- a different and
+~33x larger quantity than the one the change acts on, because `order()` with a
+secondary key reorders nothing unless the primary keys are **exactly** equal.
+Caught by the Intertidal Reports session reviewing the comment I wrote in
+`archive_csv.R`. The corrected figures, measured on
+`CalIntertidal_consensus_final_esv_site.rds`:
 
+    rows in cf (total units)              49,466
     units with a shown plausible set      49,463
-    some tie among shown taxa              7,619  (15.40%)
-    TOP slot itself tied                     200  ( 0.40%)   <- arbitrary leader
+      any EXACTLY tied pair among shown      508
+      top slot EXACTLY tied                    6   <- what can reorder
+      top slot tied only at 3 dp             200   <- the superseded figure
 
-So `plausible_top` leads with an arbitrary pick among exact equals on 200
-units. The CALL is not affected, and the examples show why: where two species
+So `plausible_top` led with an arbitrary pick among exact equals on **6**
+units, not 200. The change is still right -- an arbitrary leader among exact
+equals is arbitrary, and the old sort was locale-dependent besides -- but its
+scale was overstated, and the overstatement was the justification given for
+making it.
+
+The **437 / 5** drift figures were always correct and now reconcile: of 508
+exact ties 437 reorder (71 were already in byte order), and of 6 exact
+top-slot ties 5 change the leader. Those were measured by running the
+reporting helper both ways rather than by counting ties, which is why they
+held while the counted figures did not. **PR #4's body and the `ae351ea`
+merge message carry the superseded 7,619/200 figures and cannot be edited;
+this section and `DEPOSIT_DRIFT_LEDGER.md` supersede them.**
+
+The CALL is not affected, and the examples show why: where two species
 tie, the consensus already backs off to their LCA
 (`12S_ESV_024367`: *Catostomus snyderi* 0.288 / *Catostomus rimiculus* 0.288
 -> genus). That is the system working as designed; what is arbitrary is only
