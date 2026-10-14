@@ -72,3 +72,18 @@ r2 cites `dafe7a2`, never `main` and never `1.0.0`.
 3. Move every row landed in that refresh into a "Shipped in <tag>" section with
    its final measured numbers. Do not delete rows; the history is the point.
 4. The correction email is the maintainer's to send, as it was for r2.
+
+### Not drift, added 2026-10-14 (second batch)
+
+- **The unwired mislabel test, removed (`72fd6a2`).** 1,206 lines with zero
+  callers; nothing reachable from any export touched it, so no deposited number
+  can move. Removal, not behaviour.
+- **The WERC template moved out of `inst/` (`72fd6a2`).** Documentation only.
+- **The library reinstall, 2026-10-14 20:33 UTC.** Brings the installed
+  packages level with `main` @ `72fd6a2`. Verified in the namespaces, not from
+  the install's exit code: `TaxaFlag` combines `geographic_hint`; `TaxaAssign`
+  breaks both tie classes with `method = "radix"`; `TaxaTools` no longer names
+  the old console URL; no `.mislabel_*` internals remain; 223 exports.
+  **The deposit is unaffected** -- `r2` was produced by the tree at `dafe7a2`
+  and stays as published. An install changes what a FUTURE run would use, which
+  is why row 1 above is the only open drift.
