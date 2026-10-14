@@ -23,8 +23,16 @@ jobs:
           - TaxaAssign
           - TaxaFlag
           - TaxaWizard
+          # The repository root is also an R package: the TaxaID meta-package,
+          # whose only job is to install the nine. Nothing checked it until
+          # now, which is how an inst/README.md reading "ADD SOFTWARE TITLE
+          # (TEMPLATE)" shipped inside it unnoticed. Its own .Rbuildignore
+          # scopes the build to the package, so the monorepo around it is not
+          # tarballed. This job is also the ONLY one with all nine installed,
+          # which is what lets the prompt-pack check below run at all.
+          - "."
 
-    name: Check ${{ matrix.package }}
+    name: Check ${{ matrix.package == '.' && 'TaxaID (meta-package)' || matrix.package }}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -169,6 +177,42 @@ jobs:
             build_args = "--no-manual",
             error_on = "warning"
           )
+
+      # The prompt pack guard, and the reason it needs its own step.
+      # TaxaWizard/tests/testthat/test-pack.R asserts that the committed
+      # llm_prompts/ copy equals a freshly generated one and that the root
+      # README's Software Inventory matches the tree. Both need a real
+      # repository checkout with all nine packages installed. Under R CMD
+      # check the package is copied out of the repository, so
+      # .pack_find_repo_root() finds no checkout and BOTH ASSERTIONS SKIP --
+      # CI was green 9/9 on a tree where both were failing. Run here, in the
+      # meta-package job, because it is the only job that installs all nine.
+      # A SKIP is treated as a failure: a silent skip is the exact failure
+      # this step exists to close.
+      - name: Check the prompt pack and the README inventory (cannot skip)
+        if: matrix.package == '.'
+        shell: Rscript {0}
+        run: |
+          install.packages("testthat")
+          library(TaxaWizard)
+          Sys.setenv(TAXAID_ROOT = getwd())
+          res <- as.data.frame(testthat::test_file(
+            "TaxaWizard/tests/testthat/test-pack.R", reporter = "silent"))
+          n_pass <- sum(res$passed); n_fail <- sum(res$failed)
+          n_err <- sum(res$error);  n_skip <- sum(res$skipped)
+          message(sprintf("test-pack.R: %d passed, %d failed, %d errors, %d skipped",
+                          n_pass, n_fail, n_err, n_skip))
+          if (n_fail > 0L || n_err > 0L) {
+            stop(sprintf("test-pack.R: %d failure(s), %d error(s).", n_fail, n_err))
+          }
+          if (n_skip > 0L) {
+            stop(sprintf(paste0("test-pack.R skipped %d test(s). A skip here means the ",
+                                "guard did not run -- all nine packages must be installed ",
+                                "and the repository checkout reachable."), n_skip))
+          }
+          if (n_pass == 0L) {
+            stop("test-pack.R reported no passing assertions; the file did not run.")
+          }
 
       # Non-blocking. URL validation is worth keeping -- it is what found the
       # stale console.anthropic.com links -- but it depends on remote servers
