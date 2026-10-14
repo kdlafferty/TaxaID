@@ -3278,3 +3278,42 @@ the command, archive-first and the 16 GB hard ceiling. Last pre-launch check
 15:02:08 HST, driver start 15:02:12 HST. **It did not launch on my relay of
 Kevin's ceiling alone**, which is what I asked it to confirm and the answer I
 wanted. Open question closed.
+
+### Archive label convention CHANGED by Kevin (2026-10-13)
+
+`R1013b` is dropped. Kevin chose **release number plus ISO date**, with the
+content deliberately OUT of the identifier:
+
+    tag        calintertidal-r<N>-2026-10-13
+    zip        code_2026-10-13_r<N>.zip
+    run        run_next_2026-10-13_1502
+    products   r<N>x
+
+**Digit pending his one-line confirmation; expect `r3`.** His selected preview
+mapped `r1` to "R1009f / R1013" jointly, which points one release number at two
+different public deposits and two code states -- the very ambiguity a release
+number exists to remove. Counting DEPOSITS instead makes each number 1:1 with a
+code state: **r1 = R1009f (`068d6ff`), r2 = R1013 (`5df0b6e`), r3 = this one
+(`dafe7a2`)**. Put back to him; `r2` is the fallback if he prefers the collapse.
+Not treating my own correction as decided.
+
+**Two alternatives rejected, with the reasons, because they will come round
+again:**
+- **A content slug** (`...-downrank-gate`) asserts what a run is about, and an
+  assertion can become WRONG and then cannot be corrected once cited. R1013 is
+  the proof: four behaviour changes plus an unmeasured `named_rows` x Round-2
+  interaction, so any slug would have misdescribed it. A date or an ordinal can
+  never become wrong.
+- **Tying the archive label to the package version.** The nine packages are
+  0.1.0 heading to 1.0.0; conflating a dataset release with a package release
+  confuses both.
+
+**THE CONSEQUENCE THAT MATTERS: with content out of the identifier, the
+annotated tag message and `code_notes_*.md` are now the ONLY place the content
+lives.** Both must state, explicitly: the commit; that the models were RESTORED
+and predate it; the single changed call; and which Dryad state it supersedes.
+Told to Intertidal Reports for the notes, and it goes in the tag message too.
+
+**Old tags are NOT renamed.** `calintertidal-R1009f` and `calintertidal-R1013`
+correctly identify what they identify; only the r-number mapping is recorded, so
+nothing looks retroactively renamed.
