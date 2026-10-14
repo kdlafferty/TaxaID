@@ -3558,3 +3558,65 @@ the install is done.
    **no `CONTEXT_TaxaWizard.md` at all**, against a ratified surface of 223. They
    predate the export prune (232 -> 223) and the four later ratifications, so
    the count delta measures how long they had drifted.
+
+## 1.0.0 installed and context files regenerated (2026-10-14, 00:40-01:05 HST)
+
+The `sampling optimization` session reported its frame-2 r2 batch finished at
+00:39:44 HST with no R processes left. I confirmed zero R-family processes
+myself before touching the library, installed, and messaged it when done; it
+held all R for the duration.
+
+**Installed:** all nine at **1.0.0** from this tree, CI's topological order
+(TaxaTools, TaxaFetch, TaxaHabitat, TaxaMatch, TaxaLikely, TaxaExpect,
+TaxaAssign, TaxaFlag, TaxaWizard), exit 0, every `packageVersion()` 1.0.0.
+
+**Step 7 code key UNCHANGED.** Checked by extracting `.ns_code_digest()` from
+the archived r2 workflow and running it verbatim, not by re-implementing it:
+
+    TaxaLikely=f454a32185cdd13072be52ec8092cee1
+    TaxaMatch =a18606a7d9084e8230fc94b16f0dfa00
+    TaxaTools =22234a73a5eaead07b2dbf4d7b619ae4
+
+identical to the r2 preflight. The next run RESTORES its trained models; it
+does not retrain. This is the expected result and the reason is worth keeping:
+the digest hashes namespace object names, deparsed function bodies and
+`extdata` md5sums -- **the version string is not an input**, so a pure version
+bump cannot move the key. Version only reaches the key through the
+`stamps:` fallback, which fires when the digest fails or is unstable across
+two processes, and which over-rebuilds by design.
+
+**Context files regenerated** (`f644f61`), by
+`workflow_export_prompts("llm_prompts", overwrite = TRUE,
+placeholder_setup_report = TRUE)` -- never by hand. All nine version strings
+now read 1.0.0; `SETUP_REPORT.md` is the placeholder (date only, no key
+values).
+
+Export-surface reconciliation against the ratified **223**:
+
+    223 installed exports = 218 functions + 5 data objects
+      TaxaTools    57 = 53 fn + 4 (barcode_length_defaults,
+                        barcode_primer_defaults, extended_ranks, standard_ranks)
+      TaxaHabitat  15 = 14 fn + 1 (example_habitat_scheme)
+      TaxaFetch 32, TaxaMatch 30, TaxaLikely 33, TaxaExpect 17,
+      TaxaFlag 16, TaxaAssign 14, TaxaWizard 9 -- all functions
+
+The per-file headers count exported FUNCTIONS, and there is no
+`CONTEXT_TaxaWizard.md`, so the eight files sum to **209 = 218 - 9**. The
+223/209 gap is entirely the five data objects plus TaxaWizard, **not** missing
+documentation -- 222 of the 223 are named somewhere in the generated prose.
+The single exception is `TaxaTools::extended_ranks`, which no generated file
+names; minor, logged, not fixed.
+
+The other non-version diffs are roxygen drift the files had not picked up since
+2026-10-10/11, including two newly documented arguments:
+`update_prior_from_consensus(max_raise_factor=)` (the Round-2 bound, abaa60f)
+and `review_assignments(consensus_provenance=)` (the argument whose
+`cli::cli_abort()` exposed the undeclared import).
+
+**Tips now:** `main` at `f644f61`, branch `1.0.0` at `44e8a6e`. The r2 tree
+remains `dafe7a2`; anything citing a tree for r2 work cites `dafe7a2`, never
+`1.0.0`.
+
+All three items Kevin asked for are closed. Still awaiting his decision:
+seeding `workflow:3960`; deterministic tie order (freeze-gated); tightening CI
+to `error_on = "warning"` (safe today -- all nine at zero warnings).
