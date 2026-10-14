@@ -3123,3 +3123,45 @@ the three doc changes I proposed turned out to be **already written** --
 hop function already carries the `bound_only` caveat and the
 `flag_contaminant()` cross-reference -- so only the genuinely missing parts
 were added.
+
+### MERGED and INSTALLED, re-run handed off (2026-10-13)
+
+**`dafe7a2`** on main, a `--no-ff` merge of `downrank-own-plausibility`
+(`e8a952e`, `523acaa`), pushed. Branch kept for provenance; its worktree
+removed with `rm -rf` + `git worktree prune` (git 2.15 has no
+`worktree remove`).
+
+**Tests on the MERGED tip:** TaxaAssign 1,395 assertions / 0 failures / 57
+warnings, TaxaExpect 811 / 0 / 60, TaxaFlag 1,016 / 0 / 18 -- warning counts
+identical to pre-merge main in all three.
+
+**Installed** at 14:46 HST after confirming **no R-family process was alive**:
+TaxaAssign, TaxaExpect, TaxaFlag into `~/Library/R/4.0/library`. Verified
+function by function against `dafe7a2`: **1,068 functions, 0 body or signature
+differences**, 174 verbatim files md5-identical, the only flags being the two
+known comparison artefacts (DESCRIPTION line-wrapping, `%||%` Rd escaping).
+Exports unchanged 14/17/16; no public signature changed.
+*(`devtools::install()` takes neither `lib` nor `upgrade = "never"` -- set
+`.libPaths()` so the user library is first, and pass `upgrade = FALSE`.)*
+
+**Re-run handed to the workflow session**, with three things asked of it:
+1. **Confirm against the real keys that nothing retrains.** `.LIK_CODE_PKGS` is
+   TaxaLikely/TaxaMatch/TaxaTools and `fetch_code` digests
+   `fetch_ncbi_reference_sequences`, so TaxaAssign is in neither key and only
+   the consensus stage onward should rerun. If a preflight disagrees, stop --
+   that would mean the key coverage is wrong.
+2. **The expected delta is exactly ONE call**, already validated over all 724
+   downranked observations: `12S_ESV_145566@Punta Banda`,
+   *Catostomus occidentalis* species -> *Catostomus* genus, 0 to or from no
+   call. Anything beyond it is a finding to be named, not reconciled.
+3. **Compare at EVERY rank, not just species.** A species-call count alone
+   would have read 451 -> 450 and looked perfect while my first version
+   silently coarsened 26 genus calls to class.
+
+**Reports session told to HOLD the deposit.** The `calintertidal-R1013` tag and
+code zip remain correct *for the R1013 results*, but those results are now to
+be superseded, so nothing ships; a new tag and a fresh function-by-function
+check follow the re-run. Noted for them that *Catostomus occidentalis* becomes
+redundant on the R1013x exclusions list -- the pipeline now declines that
+species call itself -- while *Gambusia affinis* and *Microgadus proximus* still
+need it, *Microgadus* being a clean identification merely out of range.
