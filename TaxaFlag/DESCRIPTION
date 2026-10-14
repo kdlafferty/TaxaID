@@ -29,6 +29,7 @@ Suggests:
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 Imports:
+    cli,
     dplyr,
     jsonlite,
     rlang,
