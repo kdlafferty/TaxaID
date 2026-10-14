@@ -19,8 +19,7 @@ You MUST respond with a single JSON object. No text outside the JSON. The schema
         "description": "What this step does",
         "code": "result <- PackageName::function_name(arg1, arg2)",
         "inputs": ["variable_name_or_file_path"],
-        "output_var": "result_variable_name",
-        "scaling": "linear | quadratic | api_limited"
+        "output_var": "result_variable_name"
       }
     ],
     "parameters": [
@@ -88,7 +87,6 @@ Assemble the pipeline from the individual functions; the graph's snippets give t
 - Include `message()` calls for progress updates, but never as the last line of a step.
 - File paths must be parameterized at the top of the script, never hardcoded inline.
 - For simple column renaming, use base R: `names(df)[names(df) == "old"] <- "new"`. Only use `TaxaTools::rename_cols()` for DarwinCore standardization of occurrence data from TaxaFetch.
-- For trial mode: wrap the main input in a conditional subset at the top.
 
 ## CRITICAL: Parameter and Package Validation
 

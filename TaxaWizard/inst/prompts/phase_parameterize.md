@@ -58,7 +58,6 @@ Respond with a single JSON object. No text outside the JSON.
         "code": "result <- PackageName::function_name(arg1 = val1, arg2 = val2)",
         "inputs": ["variable_name_or_file_path"],
         "output_var": "result_variable_name",
-        "scaling": "linear | quadratic | api_limited",
         "validated": true
       }
     ],

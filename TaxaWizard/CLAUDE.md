@@ -1082,12 +1082,14 @@ A single interview produces one or more outputs:
 - `~/.taxawizard/corrections.json` accumulates error/fix pairs (max 50); injected into
   system prompt as "KNOWN ISSUES" to prevent repeat mistakes
 
-### Trial Mode
-Generated scripts can include a trial-mode subset for performance estimation.
-The LLM sets a `scaling` value (`linear | quadratic | api_limited`) per step
-in the generated DAG JSON itself (see `phase_parameterize.md`'s response
-schema); this is not sourced from the function registry, which does not
-carry a scaling field.
+### Trial Mode (removed 2026-10-14)
+`workflow_create(trial=)` was a documented argument that nothing read: it was
+threaded through five functions into `.generate_script()`, whose body never used
+it, and the two `R/trial.R` helpers had no caller while both prompt schemas
+still asked the LLM for a `scaling` field nobody consumed. Removed on the
+maintainer's decision rather than wired: the argument, `R/trial.R`, the two
+schema lines and the two tests. If trial mode is ever wanted, the wiring point is
+`.generate_script()` emitting the subsetting.
 
 ---
 
@@ -1160,8 +1162,6 @@ carry a scaling field.
 | `.corrections_path()` | `~/.taxawizard/corrections.json` path | R/context.R |
 | `.load_corrections()` / `.save_correction()` | Per-user error/fix accumulation | R/context.R |
 | `.format_corrections_for_prompt()` | Inject known issues into system prompt | R/context.R |
-| `.subset_for_trial()` | Subset input data for trial mode | R/trial.R |
-| `.estimate_scaling()` | Predict full-run time from trial timing | R/trial.R |
 
 ---
 

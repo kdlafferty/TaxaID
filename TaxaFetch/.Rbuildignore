@@ -14,3 +14,5 @@
 ^taxaid_methods_.*\.md$
 ^taxaid_workflow_.*\.R$
 ^.*\.bak_.*$
+^inst/extra_functions_review_inputs\.R$
+^inst/test_overwrite_cache_manual\.R$

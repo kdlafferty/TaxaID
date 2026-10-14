@@ -14,3 +14,4 @@
 ^DISCLAIMER\.md$
 ^\.lintr$
 ^.*\.bak_.*$
+^inst/extra_functions_review_inputs\.R$

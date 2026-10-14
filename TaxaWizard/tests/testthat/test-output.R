@@ -35,7 +35,7 @@ test_that(".generate_script writes a fresh script with header, params, and steps
   dir <- .tw_test_dir()
   dag <- .make_dag(2)
 
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
   expect_true(file.exists(path))
 
   lines <- readLines(path)
@@ -51,7 +51,7 @@ test_that(".generate_script's debug-mode subsetting only follows the first step"
   dir <- .tw_test_dir()
   dag <- .make_dag(2)
 
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
   lines <- readLines(path)
 
   debug_hits <- grep("Apply debug subsetting after initial data load", lines)
@@ -63,7 +63,7 @@ test_that(".find_existing_script finds a script generated today and none otherwi
   expect_null(TaxaWizard:::.find_existing_script(dir))
 
   dag <- .make_dag(1)
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
 
   found <- TaxaWizard:::.find_existing_script(dir)
   expect_equal(found, path)
@@ -72,13 +72,13 @@ test_that(".find_existing_script finds a script generated today and none otherwi
 test_that(".generate_script appends to an existing same-day script instead of overwriting", {
   dir <- .tw_test_dir()
   dag1 <- .make_dag(2)
-  path1 <- TaxaWizard:::.generate_script(dag1, dir, trial = FALSE)
+  path1 <- TaxaWizard:::.generate_script(dag1, dir)
 
   dag2 <- .make_dag(1)
   dag2$steps[[1]]$description <- "Extension step"
   dag2$steps[[1]]$output_var <- "ext_out"
 
-  path2 <- TaxaWizard:::.generate_script(dag2, dir, trial = FALSE)
+  path2 <- TaxaWizard:::.generate_script(dag2, dir)
   expect_equal(path1, path2)
 
   lines <- readLines(path2)
@@ -145,7 +145,7 @@ test_that(".generate_script emits a Step 0 setup check with the dag's edge ids",
   dag$steps[[1]]$edge_id <- "seq_to_match"
   dag$steps[[2]]$edge_id <- "match_to_consensus_score"
 
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
   lines <- readLines(path)
 
   step0_idx <- grep("^# --- Step 0: setup check", lines)
@@ -167,7 +167,7 @@ test_that(".generate_script falls back to edges = NULL when steps carry no edge_
   dag <- .make_dag(1)
   dag$steps[[1]]$edge_id <- NULL # legacy free-form dag shape
 
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
   lines <- readLines(path)
 
   setup_call_idx <- grep("^\\.setup <- TaxaWizard::workflow_check\\(edges = NULL", lines)
@@ -186,7 +186,7 @@ test_that(".generate_script prints a WARNING banner above an unvalidated step, a
   dag <- .make_dag(2)
   dag$steps[[2]]$validated <- FALSE
 
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
   lines <- readLines(path)
 
   warn_idx <- grep("^# WARNING: this step was generated without a validated snippet", lines)
@@ -207,7 +207,7 @@ test_that(".generate_script omits the WARNING banner when validated is TRUE or a
   dag <- .make_dag(1)
   dag$steps[[1]]$validated <- TRUE
 
-  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  path <- TaxaWizard:::.generate_script(dag, dir)
   lines <- readLines(path)
   expect_length(grep("WARNING: this step was generated", lines), 0L)
 })
@@ -215,14 +215,14 @@ test_that(".generate_script omits the WARNING banner when validated is TRUE or a
 test_that(".append_to_script prints a WARNING banner above an unvalidated extension step", {
   dir <- .tw_test_dir()
   dag1 <- .make_dag(1)
-  path1 <- TaxaWizard:::.generate_script(dag1, dir, trial = FALSE)
+  path1 <- TaxaWizard:::.generate_script(dag1, dir)
 
   dag2 <- .make_dag(1)
   dag2$steps[[1]]$description <- "Extension step"
   dag2$steps[[1]]$output_var <- "ext_out"
   dag2$steps[[1]]$validated <- FALSE
 
-  path2 <- TaxaWizard:::.generate_script(dag2, dir, trial = FALSE)
+  path2 <- TaxaWizard:::.generate_script(dag2, dir)
   expect_equal(path1, path2) # appended, not a new file
 
   lines <- readLines(path2)
@@ -331,7 +331,7 @@ test_that("a dag whose edge ids are ALL invented falls back to edges = NULL", {
   out_dir <- tempfile("p7a_fallback_"); dir.create(out_dir)
   on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
 
-  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = out_dir, trial = FALSE))
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = out_dir))
   script <- list.files(out_dir, pattern = "\\.R$", full.names = TRUE)[1]
   line <- grep("^\\.setup <- TaxaWizard::workflow_check\\(", readLines(script, warn = FALSE), value = TRUE)
 
@@ -400,7 +400,7 @@ test_that(".widen_step0_edges() does not append an invented edge id", {
 .ck_generate <- function() {
   d <- tempfile("ck_"); dir.create(d)
   suppressWarnings(.generate_outputs(dag = .ck_dag(), outputs = "script",
-                                     output_dir = d, trial = FALSE))
+                                     output_dir = d))
   list(dir = d, script = list.files(d, pattern = "\\.R$", full.names = TRUE)[1])
 }
 
@@ -417,7 +417,7 @@ test_that("a DAG with no parameters still defines .workflow_params", {
   # Otherwise the first .run_step() call errors on an undefined object.
   d <- tempfile("ck0_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
   dag <- .ck_dag(); dag$parameters <- list()
-  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d, trial = FALSE))
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d))
   script <- list.files(d, pattern = "\\.R$", full.names = TRUE)[1]
 
   expect_match(
