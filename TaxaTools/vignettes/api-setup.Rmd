@@ -36,7 +36,7 @@ packages and workflows they use.
 | Key | Required by | Free? | Where to get it |
 |---|---|---|---|
 | `ENTREZ_KEY` | TaxaTools, TaxaLikely, TaxaMatch | Yes | <https://www.ncbi.nlm.nih.gov/account/settings/> |
-| `ANTHROPIC_API_KEY` | TaxaTools (LLM functions) | Paid | <https://console.anthropic.com/settings/keys> |
+| `ANTHROPIC_API_KEY` | TaxaTools (LLM functions) | Paid | <https://platform.claude.com/settings/keys> |
 | `GBIF_USER` / `GBIF_PWD` / `GBIF_EMAIL` | TaxaFetch | Yes | <https://www.gbif.org/user/profile> |
 | `OPENALEX_API_KEY` | TaxaFetch (literature search) | Yes | <https://openalex.org/settings/api> |
 | `GEMINI_API_KEY` | TaxaTools (optional LLM) | Free tier | <https://aistudio.google.com/apikey> |
@@ -134,8 +134,8 @@ review (TaxaFlag), and text generation (TaxaTools).
 
 **Get it:**
 
-1. Create an account at <https://console.anthropic.com/>
-2. Go to API Keys (<https://console.anthropic.com/settings/keys>)
+1. Create an account at <https://platform.claude.com/>
+2. Go to API Keys (<https://platform.claude.com/settings/keys>)
 3. Create a new key and copy it into `~/.Renviron` as `ANTHROPIC_API_KEY=...`
 
 **Cost:** Pay-per-use. Typical TaxaID workflows (habitat assignment for ~100

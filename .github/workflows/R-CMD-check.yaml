@@ -28,11 +28,29 @@ jobs:
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      R_KEEP_PKG_SOURCE: yes
+      R_KEEP_PKG_SOURCE: "yes"   # quoted: R tests for the literal string "yes", and bare yes is a YAML 1.1 boolean
       RENV_CONFIG_AUTOLOADER_ENABLED: "false"
       NOT_CRAN: "true"
       _R_CHECK_FORCE_SUGGESTS_: "false"
       TAXAID_SKIP_LIVE: "1"
+      # The blocking check below fails on any WARNING, so it must only see
+      # checks whose result depends on this code. These two do not:
+      #
+      # _R_CHECK_CRAN_INCOMING_  "checking CRAN incoming feasibility" reports
+      #   "Strong dependencies not in mainstream repositories: TaxaTools" as a
+      #   WARNING for all eight packages that depend on TaxaTools. That is
+      #   permanent and correct -- TaxaID releases through USGS GitLab, not
+      #   CRAN -- so it can never be fixed and must not gate the build. The
+      #   undeclared-import check that caught TaxaFlag's missing cli is
+      #   "checking dependencies in R code", a standard check, and is NOT
+      #   disabled by this. URL checking IS part of CRAN incoming, so it moves
+      #   to its own non-blocking step below.
+      # _R_CHECK_SYSTEM_CLOCK_   "checking for future file timestamps" calls
+      #   worldclockapi.com and reports "unable to verify current time" when it
+      #   cannot. A NOTE either way, so it would not fail the build, but it is
+      #   an outbound call on every job and its result is not about this code.
+      _R_CHECK_CRAN_INCOMING_: "false"
+      _R_CHECK_SYSTEM_CLOCK_: "0"
 
     steps:
       - uses: actions/checkout@v4
@@ -119,9 +137,29 @@ jobs:
       - name: Check package
         shell: Rscript {0}
         run: |
+          # error_on = "warning", not "error". An undeclared cli:: import sat on
+          # main for a day because R CMD check reported it as a WARNING and a
+          # warning did not fail the build. Every package is at zero warnings
+          # under the pinned env above, so this is enforceable today; it gets
+          # more expensive to adopt the longer it waits.
           rcmdcheck::rcmdcheck(
             path = "${{ matrix.package }}",
             args = c("--no-manual", "--as-cran"),
             build_args = "--no-manual",
-            error_on = "error"
+            error_on = "warning"
           )
+
+      # Non-blocking. URL validation is worth keeping -- it is what found the
+      # stale console.anthropic.com links -- but it depends on remote servers
+      # being reachable and on redirects nobody here controls, so it reports
+      # instead of gating. Check the log when it is red.
+      - name: Check URLs (advisory)
+        if: always()
+        continue-on-error: true
+        shell: Rscript {0}
+        run: |
+          if (!requireNamespace("urlchecker", quietly = TRUE))
+            install.packages("urlchecker")
+          res <- urlchecker::url_check("${{ matrix.package }}")
+          print(res)
+          if (NROW(res) > 0) message("NOTE: ", NROW(res), " URL(s) need attention.")
