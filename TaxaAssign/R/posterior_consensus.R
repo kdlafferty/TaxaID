@@ -1298,7 +1298,8 @@ posterior_consensus <- function(posterior_df,
 
 .credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
                            unsupplied = character(0), cross_phylum_eps = 0,
-                           lineage_map = NULL) {
+                           lineage_map = NULL,
+                           robust_variant = "current", s_records = 1, alpha = NULL, local = NULL) {
   out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_,
     cross_phylum_pending = FALSE)
   w[is.na(w) | w < 0] <- 0
@@ -1307,9 +1308,28 @@ posterior_consensus <- function(posterior_df,
   if (eps > 0) L[is.na(L) | L < 0] <- 0
   named <- !is.na(chunk$taxon_name)
   row_depth <- if ("taxon_name_rank" %in% names(chunk)) match(chunk$taxon_name_rank, rank_system) else rep(NA_integer_, nrow(chunk))
+  # MEASUREMENT CANDIDATES (branch robust-one-member, 2026-10-14; internal
+  # switch only, nothing user-facing): how the robust bound perturbs the
+  # hypotheses OUTSIDE a node.
+  #   "current":  one record's share of the site's prior mass (e) is moved onto
+  #               the best-fitting outside hypothesis, whatever its own prior.
+  #   "relative": each outside hypothesis gains one record relative to its own
+  #               evidence: its mass grows by min(1, s / alpha), so a floor row
+  #               (alpha ~ 1) can at most double a tiny mass and a 40-record
+  #               competitor gains 2.5%. The largest such gain is the term.
+  #   "exempt":   as "current", but hypotheses with no local record (undetected
+  #               rows, unreferenced placeholders) cannot receive the record.
   share <- function(inn, e) {
     if (e <= 0) return(sum(w[inn]) / tot)
-    Ls <- if (any(!inn)) max(L[!inn]) else 0
+    if (identical(robust_variant, "relative") && !is.null(alpha)) {
+      gain <- w * pmin(1, s_records / pmax(alpha, 1e-12))
+      gain[is.na(gain)] <- 0
+      term <- if (any(!inn)) max(gain[!inn]) else 0
+      return(sum(w[inn]) / (tot + term))
+    }
+    out_ok <- !inn
+    if (identical(robust_variant, "exempt") && !is.null(local)) out_ok <- out_ok & local
+    Ls <- if (any(out_ok)) max(L[out_ok]) else 0
     (1 - e) * sum(w[inn]) / ((1 - e) * tot + e * Ls)
   }
   vals <- lapply(rank_system, function(r) {
@@ -1666,9 +1686,14 @@ posterior_consensus <- function(posterior_df,
   if (!is.finite(N) || N <= 0) {
     return(NULL)
   }
+  robust_variant <- getOption("TaxaAssign.robust_variant", "current")
+  alpha <- if ("prior_alpha" %in% names(chunk)) chunk$prior_alpha else NULL
+  local <- if ("prior_branch" %in% names(chunk)) .is_kernel_branch(chunk$prior_branch) else NULL
+  if (!is.null(local)) local[is.na(local)] <- FALSE
   .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied,
     lineage_map = lineage_map,
-    cross_phylum_eps = cross_phylum_eps)
+    cross_phylum_eps = cross_phylum_eps,
+    robust_variant = robust_variant, s_records = s, alpha = alpha, local = local)
 }
 
 .row_col_or <- function(row, col, default = NA_real_) {
