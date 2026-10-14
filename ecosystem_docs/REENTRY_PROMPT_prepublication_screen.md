@@ -3060,3 +3060,66 @@ which is what makes it robust rather than tuned.
 has **3,489 rows**, so my "49 of 3,489 family assignments" counted changes in
 that table and the workflow session's 99 counted (marker, taxon) rows. Both
 right, different denominators, now reconciled.
+
+### The fix BUILT on branch `downrank-own-plausibility` (2026-10-13)
+
+Two commits, `e8a952e` then `523acaa`, on a worktree at
+`~/taxaid-worktrees/downrank`. **Not merged.**
+
+`.downrank_consensus()`'s `require_candidate` gate now also requires the
+plausible set to place at least `min_posterior` on the proposed taxon, **for a
+step to the finest rank only**. No new parameter: the floor is `min_posterior`,
+already an argument of `posterior_consensus()`. `min_posterior = 0`, a missing
+`plausible_posteriors` column, or `require_candidate = FALSE` each leave the
+old behaviour byte for byte.
+
+**END-TO-END VALIDATED, not just predicted.** Re-ran the real consensus over
+all **724** downranked R1013 observations under main's TaxaAssign and under the
+branch's, same settings read off `attr(cf, "consensus_settings")`, offline.
+Baseline reproduced the archive exactly (724 rows, 451 species calls).
+Branch: **exactly ONE call changes** -- `12S_ESV_145566@Punta Banda`,
+*Catostomus occidentalis* (species) -> *Catostomus* (genus). **0 units to or
+from no call**, `downranked` count unchanged at 712.
+
+**That end-to-end run EARNED ITS KEEP: it caught a regression the unit tests
+and the per-call measurement both missed.** My first version gated every rank
+and changed **27** calls -- 26 of them genus falling back to class. Cause: a
+coarse node's mass can only be assembled from plausible rows that map into
+`species_reference`, while `min_posterior` is read against the WHOLE plausible
+set, and the unmappable rows (ring and unreferenced hypotheses, names coarser
+than species) are usually most of the mass. **I compared a node's MAPPABLE mass
+against a floor derived from TOTAL mass.** The species-only measurement could
+not see it because every one of the 26 sits at genus rank.
+
+Two alternatives measured and rejected, both recorded in the roxygen: argmax
+(blocks 28, 27 of them the reference-bias correction) and all-rank gating
+(blocks 26 more).
+
+**Tests/checks:** TaxaAssign 1371 -> 1395 assertions, 0 failures, warnings
+unchanged 57 -> 57. TaxaExpect 811 and TaxaFlag 1016 unchanged, 0 failures,
+warnings 60 and 18 unchanged. All three regenerated Rd files validate clean.
+**Exports unchanged: 14/17/16.** No public signature changed -- `min_posterior`
+already existed on `posterior_consensus()`; `.cand_rank_mass()` is a local
+closure inside an `@noRd` internal.
+
+**No NEWS entry, deliberately.** All nine NEWS files say "Initial release" for
+0.1.0 and nothing has shipped, so there is no released behaviour to describe a
+change against; adding one would be exactly the history-in-NEWS the freeze
+forbids.
+
+**RE-RUN COST IS MUCH LOWER THAN I FIRST TOLD KEVIN.** `.LIK_CODE_PKGS` is
+`TaxaLikely`, `TaxaMatch`, `TaxaTools` -- **TaxaAssign is in neither the Step 7
+code key nor the refs key.** So the reference freeze and the Step 7 likelihood
+checkpoints both stay valid and nothing retrains; only the consensus stage
+onward needs rerunning. The workflow session should confirm the exact stage
+boundary and quote the real cost.
+
+**Doc-only, same branch:** `estimate_kernel_priors_from_counts()` now states
+that `habitat_filter = "none"` (the default) admits a taxon of ANY habitat to a
+site's composition and that `main_habitat` is the SITE's habitat;
+`flag_hopped_detections()` gains "What 'not spillover' does not mean". Two of
+the three doc changes I proposed turned out to be **already written** --
+`consensus_posterior` already says it reports the pre-downranking node, and the
+hop function already carries the `bound_only` caveat and the
+`flag_contaminant()` cross-reference -- so only the genuinely missing parts
+were added.
