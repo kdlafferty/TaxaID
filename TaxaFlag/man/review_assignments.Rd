@@ -194,9 +194,11 @@ works directly: with no explicit \code{geography}, its
 \code{"hint (ecoregion)"}, so the wording you supplied is not replaced
 by the single ecoregion synthesised for the whole taxon list. Supply
 \code{geography} yourself to control the line exactly -- most useful
-when a study spans more than one ecoregion, since the context describes
-one study and is shared by every taxon in the call. At minimum, supply
-\code{geography} and \code{habitat}.}
+when a study spans more than one ecoregion: the synthesised
+\code{ecoregion} is a single string for the whole taxon list, so on a
+multi-ecoregion study the parenthetical names only one of them and is
+narrower than the study. At minimum, supply \code{geography} and
+\code{habitat}.}
 
 \item{target_group}{Character or \code{NULL}. Taxonomic target group
 (e.g., \code{"fish"}, \code{"birds"}). When supplied, the LLM
