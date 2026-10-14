@@ -148,8 +148,17 @@
 #'   taxon outside it. A call the sequence decides by a wide margin is
 #'   unaffected; a marginal call whose candidates carry priors worth only a
 #'   few records is coarsened even when the outside taxon fits somewhat
-#'   worse, because one record then moves the prior noticeably. The bound is
-#'   reported as `robust_lower_posterior`. Skipped (plain credible node) when
+#'   worse, because one record then moves the prior noticeably. The outside
+#'   taxon receives that record in proportion to its own evidence (its prior
+#'   mass grows by at most `s / alpha`, so a placeholder with no local record
+#'   cannot absorb a whole record), and only at a node the sequence alone
+#'   reaches -- at or above the likelihood-only call and containing it --
+#'   that holds a locally recorded member; at every other node the full
+#'   record moves onto the best-fitting outside taxon. So a sequence good to
+#'   genus in a genus with one locally recorded species keeps the genus, and
+#'   the species reference may then name that species, while a species
+#'   outside the local list is never eliminated into its local congener. The
+#'   bound is reported as `robust_lower_posterior`. Skipped (plain credible node) when
 #'   `score_likelihood`, `prior_mean`, `prior_alpha` or `prior_beta` is
 #'   missing, or when no record count is available; a skip is announced by
 #'   one warning per call naming how many observations it affected and why,
@@ -1299,8 +1308,8 @@ posterior_consensus <- function(posterior_df,
 .credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
                            unsupplied = character(0), cross_phylum_eps = 0,
                            lineage_map = NULL,
-                           robust_variant = "current", s_records = 1, alpha = NULL, local = NULL,
-                           gate = NULL) {
+                           robust_variant = "relative_gated", s_records = 1, alpha = NULL, local = NULL,
+                           gate = NULL, member_records = 0) {
   out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_,
     cross_phylum_pending = FALSE)
   w[is.na(w) | w < 0] <- 0
@@ -1309,26 +1318,25 @@ posterior_consensus <- function(posterior_df,
   if (eps > 0) L[is.na(L) | L < 0] <- 0
   named <- !is.na(chunk$taxon_name)
   row_depth <- if ("taxon_name_rank" %in% names(chunk)) match(chunk$taxon_name_rank, rank_system) else rep(NA_integer_, nrow(chunk))
-  # MEASUREMENT CANDIDATES (branch robust-one-member, 2026-10-14; internal
-  # switch only, nothing user-facing): how the robust bound perturbs the
-  # hypotheses OUTSIDE a node.
-  #   "current":  one record's share of the site's prior mass (e) is moved onto
-  #               the best-fitting outside hypothesis, whatever its own prior.
-  #   "relative": each outside hypothesis gains one record relative to its own
-  #               evidence: its mass grows by min(1, s / alpha), so a floor row
-  #               (alpha ~ 1) can at most double a tiny mass and a 40-record
-  #               competitor gains 2.5%. The largest such gain is the term.
-  #   "exempt":   as "current", but hypotheses with no local record (undetected
-  #               rows, unreferenced placeholders) cannot receive the record.
-  #   "*_gated":  the relaxation applies only at a node the SEQUENCE ALONE
-  #               reaches: the node is at or above the likelihood-only call
-  #               and contains it (`gate` = list(i = rank index, taxon)).
-  #               Elsewhere the current bound applies unchanged.
+  # How the robust bound perturbs the hypotheses OUTSIDE a node. The strict
+  # form ("strict") moves one record's share of the site's prior mass (e) onto
+  # the best-fitting outside hypothesis whatever that hypothesis's own prior,
+  # so a family whose only locally recorded member is the winner is penalised
+  # exactly like a family with three. The default ("relative_gated") lets each
+  # outside hypothesis gain one record RELATIVE to its own evidence (its mass
+  # grows by min(1, s / alpha): a floor row can at most double a tiny mass, a
+  # 40-record competitor gains 2.5%), and only at a node the sequence alone
+  # reaches -- at or above the likelihood-only call and containing it -- that
+  # holds a locally recorded member. Everywhere else the strict bound applies.
+  # Measured on the CalIntertidal deposit and the Mugu run, this form adds no
+  # leave-species-out false positive over the strict bound. The two other
+  # forms ("relative", "exempt" and their gated pairs) are kept for testing
+  # under the internal option "TaxaAssign.robust_variant".
   base_variant <- sub("_gated$", "", robust_variant)
   gated <- grepl("_gated$", robust_variant)
   share <- function(inn, e, relax = TRUE) {
     if (e <= 0) return(sum(w[inn]) / tot)
-    variant <- if (relax) base_variant else "current"
+    variant <- if (relax) base_variant else "strict"
     if (identical(variant, "relative") && !is.null(alpha)) {
       gain <- w * pmin(1, s_records / pmax(alpha, 1e-12))
       gain[is.na(gain)] <- 0
@@ -1356,10 +1364,10 @@ posterior_consensus <- function(posterior_df,
       g <- vals[[gate$i]]; unique(v[!is.na(g) & g == gate$taxon & !is.na(v)])
     }
     # The elimination argument needs a locally recorded member inside the node:
-    # a node made only of floor / undetected / placeholder rows keeps the
-    # current bound under every variant.
+    # a kernel-branch row carrying more than `member_records` records. A node
+    # made only of floor / undetected / placeholder rows keeps the strict bound.
     p <- vapply(nodes, function(nd) { inn <- !is.na(v) & v == nd
-      share(inn, e, relax = nd %in% open_nodes && (is.null(local) || any(local[inn]))) }, numeric(1))
+      share(inn, e, relax = nd %in% open_nodes && (is.null(local) || any(local[inn] & (is.null(alpha) | alpha[inn] > member_records)))) }, numeric(1))
     b <- which.max(p)
     list(node = nodes[b], p = unname(p[b]))
   }
@@ -1703,7 +1711,14 @@ posterior_consensus <- function(posterior_df,
   if (!is.finite(N) || N <= 0) {
     return(NULL)
   }
-  robust_variant <- getOption("TaxaAssign.robust_variant", "current")
+  # Internal settings (testing / the maintainer's one remaining constant), not
+  # a user surface: "TaxaAssign.robust_variant" selects the perturbation form
+  # ("relative_gated" default; "strict" is the one-record move onto the best
+  # outside hypothesis); "TaxaAssign.robust_member_records" is the records
+  # floor a locally recorded row must exceed to count as a member (default 0).
+  robust_variant <- getOption("TaxaAssign.robust_variant", "relative_gated")
+  if (identical(robust_variant, "current")) robust_variant <- "strict"
+  member_records <- getOption("TaxaAssign.robust_member_records", 0)
   gate <- NULL
   if (grepl("_gated$", robust_variant)) {
     # The sequence's own call: the same credible node on likelihood times a
@@ -1722,7 +1737,8 @@ posterior_consensus <- function(posterior_df,
   .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied,
     lineage_map = lineage_map,
     cross_phylum_eps = cross_phylum_eps,
-    robust_variant = robust_variant, s_records = s, alpha = alpha, local = local, gate = gate)
+    robust_variant = robust_variant, s_records = s, alpha = alpha, local = local, gate = gate,
+    member_records = member_records)
 }
 
 .row_col_or <- function(row, col, default = NA_real_) {
