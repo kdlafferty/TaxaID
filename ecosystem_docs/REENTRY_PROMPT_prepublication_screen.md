@@ -3342,3 +3342,96 @@ the annotated tag message, since the number alone no longer disambiguates --
 Without that block anyone reconciling r1 to a commit gets two answers and no way
 to choose. It goes in `code_notes_2026-10-13_r2_taxaid.md` AND in the tag
 message, so it is recoverable from the tag alone.
+
+## r2 post-run verification (coordinator, 2026-10-13 17:2x HST)
+
+Run `run_next_2026-10-13_1502` finished **17:14:29 HST**, rc=0 at every stage.
+Peaks: W1 13.71 GB, U 11.50, B 3.10, W2 7.68, P 5.68, D 1.52, R 5.35, X 5.96.
+The 16 GB sidecar never fired; 13.71 GB sits inside the earlier 12.8-15.7 GB range.
+
+### The call change: one unit, as designed
+
+`12S_ESV_145566@Punta Banda`: `Catostomus occidentalis` (species) ->
+`Catostomus` (genus). `likelihood_support` 0.008 -> 0.967. Identical at Round 1
+and at the final consensus. `consensus_posterior` unchanged at 0.99999999865 --
+which is the point: that number was always the genus node's mass, printed
+beside a species whose own posterior was 2.1e-5.
+
+Verified independently at the report-table level by the coordinator, not taken
+from the measuring session's report:
+
+- `consensus_rank_summary`: species 13,765/384 -> 13,764/383; genus 5,520 -> 5,521
+  (distinct genera stay 263 -- `Catostomus` was already a genus-level call elsewhere).
+- `scope_audit`: Chordata 178 -> 177. `site_marker_long`: 12S Punta Banda 46 -> 45.
+- `backbone_conflicts_by_observation`: 92 of 49,466 rows differ. Exactly **one**
+  differs in a call column (that unit); the other 91 differ only in
+  `backbone_conflict_mass`, at a maximum relative difference of **8.37e-15**.
+
+### Two predictions, one of them wrong
+
+- **Structural test PASSES.** 0 changed units fall outside R1013's 724 downranked
+  units, at Round 1 and final. The mechanism account holds.
+- **`downranked` 724 -> 724, NOT 723. The coordinator's predicted 723 was wrong.**
+  The gate `break`s out of the rank walk, so a coarser step already taken in the
+  same walk survives: blocking the species step leaves the row downranked **to
+  genus** instead of making it not-downranked. The code did what was written; the
+  arithmetic prediction misread its own control flow. Any future count of this
+  kind must be derived from the loop's exit behaviour, not from "one fewer".
+
+### Install provenance vs dafe7a2 -- fresh, nothing reused from R1013
+
+`1068` source functions across the nine packages; `1068` identical in the
+install; 0 missing, 0 differing, 0 namespace-only. `dafe7a2..HEAD` touches only
+`ecosystem_docs/`, so the checked tree is dafe7a2's package tree.
+
+### Step 7 provenance: the models PREDATE the cited commit
+
+`lik_{COI,12S,18S}.dep` mtimes are **2026-10-13 01:32:23 / 01:50:21 / 02:06:08
+HST** -- the R1013 run. The r2 run did not rewrite them; preflight said
+`VERDICT 0: full restore`. The code part of all three keys is
+`TaxaLikely=f454a321;TaxaMatch=a18606a7;TaxaTools=22234a73`, and
+`git diff 5df0b6e dafe7a2 -- TaxaLikely TaxaMatch TaxaTools` is **empty**, so the
+restore is legitimate. But the models were *trained* under 5df0b6e, hours before
+dafe7a2 existed.
+
+**R1013's wording "trained in this run by the cited commit" is FALSE for r2 and
+must not be carried over.** Correct form: trained 2026-10-13 01:32-02:06 HST
+under 5df0b6e; restored unchanged in r2; the three packages in the Step 7 code
+key are byte-identical between 5df0b6e and dafe7a2.
+
+`TaxaExpect` and `TaxaFlag` changed in dafe7a2 only in roxygen -- verified: every
+changed line in their `R/` sources begins with `#'`. No executable change, so no
+prior or theta digest moves.
+
+### Two reproducibility findings, neither changing a call
+
+Both are "same code, same inputs, different numbers". Severity differs by
+whether the column is deposited -- checked, not assumed:
+
+1. **`consensus_confidence_score` varies run to run.** 876 final units (881 at
+   Round 1), all 24 sites, every rank; median 0.002, p99 0.048, max 0.068.
+   Cause: `compute_posterior(likelihoods_ready, n_sims = 1000L)` at
+   `workflow:3960` has no `set.seed` before it, so its stream depends on
+   everything W1 consumed first, and a restore consumes differently from a
+   rebuild. **Does NOT reach the deposit**: the column is in neither
+   `ESV_site_calls.csv` (40 columns, checked) nor any report table. The only
+   `confidence` column deposited is `habitat_confidence`, unrelated.
+   Seeding is a one-line workflow change and would itself move every score, so
+   it should ride along with the next run rather than trigger one.
+2. **Exactly tied candidates come out in a different order** -- plausible lists
+   reordered on 12,816 units, always within equal posteriors. On 4 units the
+   order decides which tied candidate makes the cut, so the plausible SET
+   differs: `12S_ESV_027411@Landing Cove` (*Gnathophis ginanago* /
+   *nystromi*), `12S_ESV_091843@Punta Abreojos` (*Cottus specus* /
+   *Cottocomephorus grewingki*), and two 18S no-call units. Calls unchanged.
+   **This one DOES reach the deposit**, via `plausible_top` and `n_plausible`.
+   A deterministic tie order would be a TaxaAssign change, so it is not a 1.0
+   candidate under freeze without the maintainer's word.
+
+The measuring session's guess that Round-1 values carry into the 618
+`prior_updated` units of finding 1 is **unverified** and recorded as a guess.
+
+### Still open
+
+The tag `calintertidal-r2-2026-10-13` on `dafe7a2` is NOT created -- it waits on
+Kevin. Replacing the Dryad deposit is Kevin's; no session has touched Dryad.
