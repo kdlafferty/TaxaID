@@ -732,6 +732,7 @@ test_that("evaluate_reference_accessions() run_summary reports 100% complete and
 # this file's own documented earlier precedent (see the top-of-file note).
 
 test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession via its maternal parent species", {
+  skip_if_not_installed("Biostrings")  # barcode_term trimming needs it (Bioconductor; Suggests)
   hybrid_records <- data.frame(
     accession = c("ACC_HYBRID", "HIT_H1", "HIT_H2", "HIT_H3"),
     sequence = rep("ACGTACGTACGTACGT", 4L),
@@ -818,6 +819,7 @@ test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession v
 })
 
 test_that("evaluate_reference_accessions() resolves a real breeding/ploidy-modifier-prefixed hybrid label (2026-08-11)", {
+  skip_if_not_installed("Biostrings")  # barcode_term trimming needs it (Bioconductor; Suggests)
   # Regression test: found live against the real GreatLakes population --
   # "androgenetic"/"autodiploid"/"autotetraploid" all precede the maternal
   # parent's real name with a lowercase modifier word, which the ORIGINAL
@@ -886,6 +888,7 @@ test_that("evaluate_reference_accessions() resolves a real breeding/ploidy-modif
 })
 
 test_that("evaluate_reference_accessions() falls back to 'hybrid_unresolved' when no parent name can be extracted even after stripping one modifier word", {
+  skip_if_not_installed("Biostrings")  # barcode_term trimming needs it (Bioconductor; Suggests)
   hybrid_records <- data.frame(
     accession = "ACC_HYBRID_UNPARSEABLE",
     sequence = "ACGTACGTACGTACGT",
@@ -2270,6 +2273,7 @@ test_that("evaluate_reference_accessions() records the submitted length and whic
 # every cached identity.
 
 test_that("a Folmer-length COI query is marked over the Leray amplicon, and warns once", {
+  skip_if_not_installed("Biostrings")  # barcode_term trimming needs it (Bioconductor; Suggests)
   SEQ <- strrep("ACGT", 165L) # 660 bp: under COI max_bp (900), far over Leray's amplicon
   local_mocked_bindings(
     .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,
@@ -2311,6 +2315,7 @@ test_that("a Folmer-length COI query is marked over the Leray amplicon, and warn
 })
 
 test_that("a correctly-sized Leray query is not marked and does not warn", {
+  skip_if_not_installed("Biostrings")  # barcode_term trimming needs it (Bioconductor; Suggests)
   SEQ <- strrep("ACGT", 83L) # 332 bp: inside the Leray amplicon span
   local_mocked_bindings(
     .fetch_reference_accession_records = function(accessions, want_sequence = TRUE,

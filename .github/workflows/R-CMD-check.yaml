@@ -134,6 +134,27 @@ jobs:
           message("rnaturalearthhires available: ",
                   requireNamespace("rnaturalearthhires", quietly = TRUE))
 
+          # Biostrings (and rBLAST, which needs it) are Suggests of TaxaMatch
+          # but live on BIOCONDUCTOR, not CRAN, so remotes::install_deps()
+          # above cannot get them. Until this step existed, CI installed
+          # nothing from Bioconductor at all: trim_query_to_amplicon.R
+          # stop()s without Biostrings, and TaxaMatch's check went to
+          # 1 ERROR for 52 consecutive runs on main. The five tests that hit
+          # that path now carry skip_if_not_installed("Biostrings") too, so
+          # this step restores COVERAGE rather than being load-bearing.
+          # Non-fatal, same reasoning as rnaturalearthhires above: if
+          # Bioconductor is unreachable the tests skip rather than the build
+          # failing on someone else's infrastructure.
+          if (!requireNamespace("Biostrings", quietly = TRUE)) {
+            try({
+              if (!requireNamespace("BiocManager", quietly = TRUE))
+                install.packages("BiocManager")
+              BiocManager::install("Biostrings", ask = FALSE, update = FALSE)
+            })
+          }
+          message("Biostrings available: ",
+                  requireNamespace("Biostrings", quietly = TRUE))
+
       - name: Check package
         shell: Rscript {0}
         run: |
