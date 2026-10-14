@@ -3737,3 +3737,76 @@ Still open, each needing Kevin's word:
   fix's CI enforcement, the URL corrections and the Biostrings fix, so it no
   longer marks a tree whose CI passes. At the real USGS release it should be
   re-cut from main rather than reused. Keeping it for now.
+
+## Verified open-items sweep (2026-10-14)
+
+Every claim below was checked against the code, not read off the board. Two of
+the four items I had queued as "confident, outstanding" were already done, so
+the board is the thing being corrected here.
+
+**STRIKE -- verified closed, do not re-open:**
+- Row 215 (em dashes): DONE at `d7f2523`. All three supplemental-methods files
+  are at zero em dashes on the house `--`. TaxaLikely 187 double-hyphens.
+- Row 219 "advertise `corroborate_references_locally()`": the README already
+  had a dedicated section and a "run this before BLASTing anything"
+  recommendation. What was missing was the SIZE of the saving; added at
+  `88f9fc9` (3,507 of 6,618 accessions, 53%, ~0.3 s), framed as one reference
+  set because the saving depends on how densely a set covers its own taxa.
+- `TaxaTools::extended_ranks` "undocumented": NEVER A DEFECT. It has roxygen
+  and `man/extended_ranks.Rd`. My earlier note conflated "not named in the
+  generated CONTEXT prose" (which is just what the generator does with data
+  objects) with "undocumented". Correction recorded.
+- Row 207 (PtCon 12S B2 run): CLOSED by the maintainer 2026-10-14 --
+  CalIntertidal supersedes it. Do not run it.
+- Row 209's warning that the shared checkout holds an uncommitted README round
+  which will conflict on its next pull: STALE. That checkout is clean; it has
+  only four untracked `HANDOFF_*`/`REENTRY_*` files.
+- single-ecoregion geography: FIXED at `983324c`, and my logged note had
+  OVERSTATED it -- see below.
+- Row 208 (cache refetch): AUTHORISED by the maintainer 2026-10-14. Precondition
+  was already met (`c9e0a76` in main, reinstall done at 1.0.0). Each pre-A2
+  project refetches once at its next Step 7; CalIntertidal unaffected.
+
+**THE ONE SUBSTANTIVE UNFIXED DEFECT.** `restore_suppressed_candidates()` /
+`TaxaLikely/R/restore_hierarchy.R` imputes the QUERY's score from
+reference-vs-reference identity (median `seq_matrix` `p_match` between the
+anchor's and the candidate's references). Valid only when the query matches its
+anchor near-exactly. Verified still unfixed: the only "cap" in that file
+(`.level4_attempt_allowed`, line 383) counts ALIGNMENT ATTEMPTS and has nothing
+to do with the score. Measured scale on the 10-06 rerun's final files: inflated
+restored rows are the Round-2 winner for 233 (12S) / 190 (18S) / 403 (COI)
+ESV@site and drive species-rank consensus calls for 67 / 20 / 283 = **370
+total**; COI excess median 8.7 points, max 30.1. An imputed score above every
+observed hit manufactures a confident species call, which is the error
+direction the maintainer weights most. Accepted fix framing:
+`anchor - (100 - ref_ref)`, a conservative data-derived LOWER estimate, not a
+triangle-inequality bound. NEEDS A DECISION -- it changes numbers.
+
+**Open, needs a maintainer decision (all numbers-changing):** the restore
+imputation above; deterministic tie ordering (reaches the deposit via
+`plausible_top`/`n_plausible` on 4 units, no call changes); seeding
+`workflow:3960` (`consensus_confidence_score`, 876 units, median 0.002,
+reaches no deposited file); flipping `habitat_filter`'s default (still
+`c("none", ...)` at `TaxaExpect/R/estimate_kernel_priors_from_counts.R:158`).
+
+**Open, no decision needed, buildable whenever:**
+- `taxa_lineage`'s name-keyed cache orphans silently -- verified no orphan
+  handling in `TaxaLikely/R/fetch.R`. Wants a loud message naming the file
+  count. Small.
+- lineage-guard report split by whether the disagreement crosses a higher rank.
+- `audit_barcode_coverage()`: 3-hour I/O-bound tail, possibly network. Batch
+  the reads or make it opt-in. Not small.
+
+**Verified NOT built, deferred past 1.0:**
+- `DROP_FLAGS` wiring: exists ONLY in workflow scripts
+  (`hop_wrapper_r2.R`, `build_reads_long_hopflagged.R`), zero package files.
+- `X..species` BLAST hit-set ambiguity gate: absent from all nine packages.
+- contaminated-blank detector: PARTIAL, and the board overstates it.
+  `contaminated_blank` already exists as a verdict label in
+  `review_sample_identity()`'s vocabulary; what does not exist is a standalone
+  statistical detector. The only blank/contaminant export is
+  `flag_contaminant()`.
+
+**Housekeeping:** branch `1.0.0` (`44e8a6e`) now sits BEHIND main and predates
+the CI enforcement -- re-cut it from main at the real USGS release rather than
+reuse it. Four untracked files in the shared checkout belong to another session.
