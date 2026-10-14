@@ -2999,3 +2999,64 @@ nothing gates on it.**
 Not fixed; diagnosis only. Also logged, not fixed: `build_context()` returns a
 single-ecoregion context and `review_assignments()` uses it as GEOGRAPHY
 (TaxaFlag review_assignments.R:1390), a footgun for multi-ecoregion studies.
+
+### The downranking fix, MEASURED -- and my first proposal was wrong (2026-10-13)
+
+**I proposed requiring the relabel target to be the ARGMAX at the finer rank.
+The measurement refutes it: that blocks 28 of 451 downranked species calls, and
+27 of the 28 look CORRECT.** The downranking is mostly correcting
+**reference-database bias** -- choosing the regionally-recorded species over a
+better-matching congener that is over-represented in GenBank:
+*Kirchenpaueria goodei* over cosmopolitan *K. pinnata* (16 calls, 106 species in
+the candidate set), *Ectocarpus commensalis* over the model organism
+*E. siliculosus* (5), *Atherinops affinis*, *Hyporhamphus rosae* over the
+Panamanian *H. naos*, *Stenobrachius leucopsarus*. Blocking those to fix one bad
+call is a bad trade. **Argmax is withdrawn.**
+
+**What separates the bad call is its OWN plausibility, and the separation is
+enormous.** Among the 28, own share of species-rank mass: min **2.35e-05**
+(*Catostomus occidentalis*), **second lowest 0.120**, median 0.313, max 0.424.
+A **5,000x gap** with nothing in between.
+
+**THE FIX: `.downrank_consensus()`'s `require_candidate` gate must require the
+proposed taxon to be plausible IN ITS OWN RIGHT -- at or above
+`min_posterior` -- not merely a MEMBER of `plausible_taxa`.** The row's
+`plausible_taxa` is padded whenever `tail_pooled = TRUE`: the tail block joins
+the plausible set, so a taxon holding 2.35e-05 enters the candidate list and
+satisfies a membership test. `min_posterior` is **already a parameter of the
+call** (0.05 in this run), so this introduces **no new knob**.
+
+Measured over all 451 downranked species calls, own share below:
+  0.001 -> 1 blocked | 0.005 -> 1 | 0.01 -> 1 | 0.02 -> 1 | 0.05 -> 1
+**Every cutoff across three orders of magnitude blocks exactly the one bad call
+and costs none of the other 450.** The result does not depend on the value,
+which is what makes it robust rather than tuned.
+
+### The hop check: it never ran, and it is right that this is not a hop
+
+- **NOT WIRED IN.** `DROP_FLAGS <- character(0)` in
+  `build_reads_long_hopflagged.R`, and only that builder and
+  `failed_library_flags.R` read the hopflagged files -- the main workflow never
+  does. **The hop flag has never filtered a detection, R1013 included.** It is
+  diagnostic only.
+- **It also correctly excludes diffuse hopping here.** All eleven 12S runs:
+  `basis = controls`, `spill_reads = 0`, `rate = 0`, `evidence = "bound_only"`.
+  JVB3735 (the batch carrying BOTH errors): `rate_upper = 9.57e-06`,
+  `n_control_excess = 40`, `rate_untrimmed = 0.0094`. Explaining 112 reads in
+  the receiver needs a rate ~4 orders of magnitude above that bound.
+  **So my "shape of a hop" remark on ESV_065368 was wrong** -- the estimator
+  rules it out quantitatively. The remaining explanations are well-to-well
+  contamination or a true detection.
+- **The real gap: contamination has NO detector.** The 2026-09-27 decision was
+  that `flag_hopped_detections()` stays hops-only and that dropping
+  contaminated blanks would be a SEPARATE function. **That second function was
+  never built.** So hopping has a detector that is not connected, and
+  contamination has none at all.
+- `evidence = "bound_only"` on every run means no run ever had positive hop
+  evidence, which is why `p_spill = 0` everywhere. `dispersion = Inf` on every
+  run deserves one look, but with `rate_upper ~1e-5` the bound is not vacuous.
+
+**Closed, incidentally:** the `712ed59` unit mismatch. `consensus_settings$species_reference`
+has **3,489 rows**, so my "49 of 3,489 family assignments" counted changes in
+that table and the workflow session's 99 counted (marker, taxon) rows. Both
+right, different denominators, now reconciled.
