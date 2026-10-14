@@ -3317,3 +3317,28 @@ Told to Intertidal Reports for the notes, and it goes in the tag message too.
 **Old tags are NOT renamed.** `calintertidal-R1009f` and `calintertidal-R1013`
 correctly identify what they identify; only the r-number mapping is recorded, so
 nothing looks retroactively renamed.
+
+**LABEL FINAL: `calintertidal-r2-2026-10-13`** (zip `code_2026-10-13_r2.zip`,
+products `r2x`). Kevin chose the **collapse** over my r3 correction: I proposed
+counting deposits so each number maps 1:1 to a code state, he considered it and
+kept r1 covering both earlier deposits. Recorded so the trail shows the
+objection was raised and overruled, not skipped.
+
+**The collapse is coherent on his own scheme, which I missed at first:** the
+number is a **RELEASE** ordinal -- r1 the pre-fix analysis, r2 the corrected one
+-- not a deposit ordinal. The two r1 deposits were the same analysis era at
+different stages of reporting polish. That fits his decision to keep content out
+of the identifier.
+
+**What makes it safe:** the mapping must be SPELLED OUT in both the notes and
+the annotated tag message, since the number alone no longer disambiguates --
+
+    r1  pre-fix analysis, deposited twice:
+          R1009f  068d6ff   (first Zegar_Dryad deposit)
+          R1013   5df0b6e   (swapped in 2026-10-13 13:44 HST)
+    r2  corrected analysis:
+          dafe7a2, run run_next_2026-10-13_1502
+
+Without that block anyone reconciling r1 to a commit gets two answers and no way
+to choose. It goes in `code_notes_2026-10-13_r2_taxaid.md` AND in the tag
+message, so it is recoverable from the tag alone.
