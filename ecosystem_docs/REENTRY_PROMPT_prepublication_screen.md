@@ -3620,3 +3620,60 @@ remains `dafe7a2`; anything citing a tree for r2 work cites `dafe7a2`, never
 All three items Kevin asked for are closed. Still awaiting his decision:
 seeding `workflow:3960`; deterministic tie order (freeze-gated); tightening CI
 to `error_on = "warning"` (safe today -- all nine at zero warnings).
+
+## CI has been RED on main for 52 runs (found 2026-10-14 via PR #2)
+
+**This was missed for four days, including by me.** I repeatedly reported "all
+nine 0 errors / 0 warnings / 0 notes, CI-style" from LOCAL `rcmdcheck` runs and
+never once looked at the actual GitHub Actions status. The local runs were
+real; they were a proxy. Actual CI was failing the whole time.
+
+**The streak:** last green run `64b5b37` (2026-10-01 19:39). First failure
+`068d6ff` (2026-10-10 23:52). **52 consecutive failing runs** through
+`6d5ef70`. Historical record is 137 success / 63 failure, so this is a
+regression, not a never-worked state. Every commit in the r2 and 1.0.0 work
+was pushed onto a red CI.
+
+**Always the same single job: `Check TaxaMatch`.** Same cause from the first
+failure to the last:
+
+    Packages suggested but not available for checking: 'Biostrings', 'rBLAST'
+    Error: Package 'Biostrings' is required for barcode_term trimming.
+    Status: 1 ERROR, 1 WARNING, 1 NOTE
+
+**Root cause.** `Biostrings` is in `TaxaMatch/DESCRIPTION` Suggests but is a
+**Bioconductor** package, so `remotes::install_deps(dependencies = TRUE)`
+cannot fetch it and CI installs nothing from Bioconductor at all. This is
+exactly the `rnaturalearthhires` situation the CI file already special-cases at
+line 122 -- Biostrings was never given the same treatment.
+`TaxaMatch/R/trim_query_to_amplicon.R:170` then hard-`stop()`s, and **five**
+tests reach that path with no guard:
+`test-evaluate-reference-accessions.R:804, 883, 934, 2302, 2343`. Twenty other
+Biostrings-dependent tests skip correctly; these five do not.
+
+**Why local never caught it:** `Biostrings` and `rBLAST` are both installed in
+`~/Library/R/4.0/library`. A local check exercises the real path; CI skips or
+errors. **A local `rcmdcheck` is not CI.** Check the Actions status.
+
+**PR #2 (`ci-warnings-gate`) result: 8 pass, 1 fail.** The failure is this
+pre-existing error, NOT the gate change, and the status line proves the change
+did what it claimed:
+
+    main   @ 6d5ef70   Status: 1 ERROR, 1 WARNING, 1 NOTE
+    branch @ 658a267   Status: 1 ERROR, 1 NOTE          <- warning gone
+
+The ERROR would have failed under the old `error_on = "error"` too. Eight of
+nine are green under `error_on = "warning"` on ubuntu with the latest R, which
+is the platform risk the PR existed to measure -- it came back clean.
+
+**Proposed fix (NOT built, awaiting Kevin).** Two parts, mirroring the
+`rnaturalearthhires` precedent:
+  (a) install Biostrings from Bioconductor in CI inside `try()` (non-fatal), so
+      the barcode_term trimming path is actually exercised -- this is the
+      coi-amplicon-gate code area;
+  (b) add `skip_if_not_installed("Biostrings")` to the five tests, so the suite
+      degrades to skips instead of errors when Bioconductor is unreachable.
+Both: (a) for coverage, (b) so CI is not hostage to Bioconductor uptime.
+
+A warnings gate is worth little on a permanently red CI, so this should land
+before or with PR #2.
