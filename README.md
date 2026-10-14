@@ -902,7 +902,7 @@ describe each in full.
 | TaxaTools   | 57                 | 30         | Yes      |
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
-| TaxaMatch   | 30                 | 24         | Yes      |
+| TaxaMatch   | 30                 | 22         | Yes      |
 | TaxaLikely  | 33                 | 35         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
 | TaxaAssign  | 14                 | 19         | Yes      |
