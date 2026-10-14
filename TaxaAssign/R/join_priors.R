@@ -302,11 +302,7 @@ utils::globalVariables(c(
   # priced elsewhere. N* = (f1 + kappa * Nhat) / (1 + kappa), Nhat = the
   # parent's N* apportioned by the clade's share of the parent's candidates.
   key <- function(r, v) paste(r, v, sep = "\r")
-  budget <- list()
   root <- list(N = nrow(singleton_df), D = gsm, K = n)
-  parent_of <- function(df, r_i) {
-    if (r_i == 1L) rep("ROOT", nrow(df)) else key(ranks[r_i - 1L], df[[ranks[r_i - 1L]]])
-  }
   bud <- data.frame(rank = "ROOT", clade = "ROOT", key = "ROOT", f1 = root$N, D = root$D,
     K = root$K, W = 0, N = root$N, stringsAsFactors = FALSE)
   for (ri in seq_along(ranks)) {

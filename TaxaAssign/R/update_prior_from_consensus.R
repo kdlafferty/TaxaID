@@ -84,7 +84,7 @@
 #' carry a ring likelihood but no sequence match of their own; their support
 #' at one observation comes from the same rows at the others, so letting them
 #' confirm one another is circular. Without this, on CalIntertidal
-#' (2026-10-06) ring and named-row priors rose up to ~14,000-fold across a
+#' ring and named-row priors rose up to ~14,000-fold across a
 #' Site and turned honest no-calls into confident wrong-phylum calls.
 #'
 #' @section Soft confirmation:
@@ -174,7 +174,7 @@
 #'     `consensus` (from [posterior_consensus()] with
 #'     `likelihood_consensus = TRUE`, its default), so it reflects the
 #'     sequence evidence before any raise. An observation with no such node
-#'     has no row raised. Measured on CalIntertidal (2026-10-07): raising a
+#'     has no row raised. Measured on CalIntertidal: raising a
 #'     row outside its node let a rare recorded brown alga (likelihood 0.016)
 #'     overturn a red-alga match (likelihood 1.0) once its prior was raised
 #'     about 300-fold.
@@ -199,7 +199,7 @@
 #'     (15) or order (1), never off-lineage and never to no call. A
 #'     comparator with an `NA` likelihood is left out of the comparison; a row
 #'     whose own likelihood is `NA` is never raised. Measured
-#'     on CalIntertidal (2026-10-07, after the two guards above): a recorded
+#'     on CalIntertidal, with the two guards above in place: a recorded
 #'     but rare red alga with 44-fold lower likelihood than its congener was
 #'     raised about 160,000-fold inside a class-level likelihood node and
 #'     called at posterior 0.98; this guard blocks such raises, and also lets
@@ -255,15 +255,15 @@
 #' TRUE`).
 #'
 #' @section Confirmed without an occurrence record:
-#' Until 2026-10-07 a row with no occurrence record (`theta_mean` `NA`) was
-#' still raised and only flagged in `confirmed_without_occurrence_record`.
-#' Measured on CalIntertidal, such raises produced most of the confident new
-#' species calls whose Round 1 support was weak (131 of 176 reviewed winners:
-#' sibling sequence variants of one organism, matching a reference at a
-#' mediocre identity, confirmed each other). The maintainer chose to suppress
-#' them (error-first): such rows are now never raised (see
-#' \emph{Receiver guards}). The column is kept for compatibility and is
-#' `FALSE` whenever `theta_mean` is present. A taxon missing from the
+#' A row with no occurrence record (`theta_mean` `NA`) is never raised (see
+#' \emph{Receiver guards}), and `confirmed_without_occurrence_record` is
+#' `FALSE` whenever `theta_mean` is present; the column is kept so that
+#' downstream code reading it keeps working. Raising such rows instead of
+#' suppressing them was measured on CalIntertidal to produce most of the
+#' confident new species calls whose Round 1 support was weak (131 of 176
+#' reviewed winners: sibling sequence variants of one organism, matching a
+#' reference at a mediocre identity, confirmed each other), which is why the
+#' error-first choice is to suppress them. A taxon missing from the
 #' occurrence priors through an upstream join gap is therefore not raised
 #' either; that gap must be fixed upstream.
 #'
@@ -616,7 +616,6 @@ update_prior_from_consensus <- function(result,
   # likelihood_consensus_rank, from the consensus this update starts from) are
   # raised; an observation with no such node has no row raised. (G1) a row with
   # no occurrence record (theta_mean NA) is never raised.
-  lik_cols <- c("likelihood_consensus_taxon", "likelihood_consensus_rank")
   in_node <- rep(TRUE, n_ur)
   has_record <- rep(TRUE, n_ur)
   top_lik <- rep(TRUE, n_ur)

@@ -139,6 +139,27 @@
 #'   its \code{lineage_conflict} column, which reports the same-rank case
 #'   WITHIN one observation while this function learns placement across the
 #'   whole table.
+#' @examples
+#' # Invented names: "Pa" is used as a phylum on two rows and as a class on
+#' # another, so every observation that carries it is flagged.
+#' taxonomy <- data.frame(
+#'   observation_id = c("O1", "O1", "O1", "O2", "O2", "O3", "O3"),
+#'   taxon_name     = c("Aa aa", "Pb thing", "Pa", "Qq one", "Qq two", "Zz a", "Zz b"),
+#'   phylum         = c("Pa", "Pb", "Pa", "Ph1", "Ph2", "Pz", "Pz"),
+#'   class          = c("Ca", "Pa", "Ca", "Cc", "Cc", "Cz", "Cz"),
+#'   order          = c("Oa", "Ob", "Oa", "Oc", "Oc", "Oz", "Oz"),
+#'   posterior_point_est = c(0.6, 0.09, 0.31, 0.5, 0.5, 0.9, 0.1)
+#' )
+#' consensus <- data.frame(
+#'   observation_id  = c("O1", "O2", "O3"),
+#'   consensus_taxon = c("Pa", "Cc", "Oz"),
+#'   consensus_rank  = c("phylum", "class", "order"),
+#'   consensus_limit = c("cross_phylum", "cross_phylum", "threshold")
+#' )
+#' out <- flag_backbone_conflicts(consensus, taxonomy)
+#' out[, c("observation_id", "backbone_conflict", "backbone_conflict_kind",
+#'         "backbone_conflict_mass")]
+#' attr(out, "backbone_conflicts")
 #' @export
 flag_backbone_conflicts <- function(consensus,
                                     taxonomy,
