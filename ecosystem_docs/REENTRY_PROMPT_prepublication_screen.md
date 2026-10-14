@@ -3222,3 +3222,52 @@ results.
   Kevin's convention before tagging anything.
 - **The correction email to Alexa about which version is current is Kevin's to
   send.** Nobody drafts or sends it on his behalf.
+
+### R1013b re-run LAUNCHED (2026-10-13)
+
+`run_next_2026-10-13_1502`, started **Tue Oct 13 15:02:12 HST 2026**, report
+tables ~17:35 HST, all done ~17:47 HST. Preflight **VERDICT 0, full restore**;
+installed TaxaAssign built 2026-10-14 00:46:32 UTC, i.e. **`dafe7a2`**. R1013's
+outputs archived to `archive_2026-10-13_0406_PROVISIONAL/`, so the live
+deposit's source files stay recoverable -- which matters more than usual, the
+deposit being already public.
+
+**Ceiling 16 GB on Kevin's direct word** ("16 GB (Recommended)"), chosen over
+keeping 13 GB with a watcher and over not re-running. Enforced by an external
+sidecar that stops the stage's process group on breach, rather than trusting
+the stage to behave. The revised peak range was verified from the `.rss` logs
+rather than relayed: `2026-10-09_2123` W1 15.67 / U 14.23, R1009f W1 14.54 / U
+14.17, R1013 W1 12.80 / U 11.79 -- two of three over 13 GB. R1013's low reading
+is **unexplained**; restore-versus-rebuild is ruled out, R1009f having been a
+rebuild at 14.54. Sized for the measured maximum, not for a theory.
+
+**LABEL STILL UNCONFIRMED BY KEVIN. Do not tag.** `R1013b` /
+`calintertidal-R1013b` / `code_<date>_R1013b.zip` / products `R1013bx` is the
+proposal from the workflow and reports sessions, following the R1009 ->
+R1009d/e/f same-date letter habit. I briefly wrote "confirmed as coordinator",
+meaning myself as the tag owner; the peer coordinator read "the coordinator" as
+itself and both peers then held. **My wording was the fault** -- two sessions
+answer to that word -- and the label is back to provisional. Nothing is blocked:
+no tag should exist until the run has used `dafe7a2`, since tagging earlier
+names a commit as producing results that do not yet exist.
+
+**I did not substitute my GO for the peer coordinator's.** The workflow
+session's heavy-run gate is theirs; I sent them Kevin's verbatim words and
+asked them to release it, and have asked the workflow session to confirm for
+the record that it arrived before launch.
+
+**AFTER THE RUN, four things, none reused from R1013:**
+1. fresh function-by-function check against **`dafe7a2`**;
+2. Step 7 provenance redone from the new `lik_*.dep` digests -- VERDICT 0 means
+   a RESTORE, so the models are unchanged from R1013's and **predate** the cited
+   commit; R1013's "trained in this run by the cited commit" wording is FALSE
+   here. Frame it positively: models unchanged is what makes the one-call
+   difference attributable to the consensus fix alone;
+3. the measurement at every rank, both Round-1 and final consensus, the
+   `downranked` count (expect 724 -> 723), and **explicitly whether any changed
+   unit fell OUTSIDE R1013's 724 downranked units** -- that is the structural
+   test, and if it fires my account of the mechanism is wrong and that is the
+   headline;
+4. the tag, once Kevin names the label.
+
+**The correction email to Alexa is Kevin's.** Both peers told nobody drafts it.
