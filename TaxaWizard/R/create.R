@@ -132,16 +132,6 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
 
 
 
-#' Check if Running Inside RStudio
-#' @return Logical.
-#' @noRd
-.is_rstudio <- function() {
-  Sys.getenv("RSTUDIO") == "1" || !is.null(tryCatch(
-    get(".rs.api.versionInfo", envir = as.environment("tools:rstudio")),
-    error = function(e) NULL
-  ))
-}
-
 
 # =========================================================================
 # Console Mode
