@@ -172,9 +172,15 @@
 #'   Same treatment as \code{consensus_plausibility_col}. Default
 #'   \code{"consensus_discrimination"}. Set to \code{NULL} to disable.
 #' @param context Named list or data frame describing the study context.
-#'   Recognised fields: \code{geography} (or \code{ecoregion}),
-#'   \code{habitat} (or \code{main_habitat}), \code{date}. A
-#'   \code{build_context()} output works directly. At minimum, supply
+#'   Recognised fields: \code{geography}, \code{habitat} (or
+#'   \code{main_habitat}), \code{date}. A \code{build_context()} output
+#'   works directly: with no explicit \code{geography}, its
+#'   \code{geographic_hint} and \code{ecoregion} are combined as
+#'   \code{"hint (ecoregion)"}, so the wording you supplied is not replaced
+#'   by the single ecoregion synthesised for the whole taxon list. Supply
+#'   \code{geography} yourself to control the line exactly -- most useful
+#'   when a study spans more than one ecoregion, since the context describes
+#'   one study and is shared by every taxon in the call. At minimum, supply
 #'   \code{geography} and \code{habitat}.
 #' @param target_group Character or \code{NULL}. Taxonomic target group
 #'   (e.g., \code{"fish"}, \code{"birds"}). When supplied, the LLM
@@ -1493,8 +1499,30 @@ review_assignments <- function(input_df,
     stop("'context' must be a named list or data frame.", call. = FALSE)
   }
 
-  if (is.null(ctx$geography) && !is.null(ctx$ecoregion)) {
-    ctx$geography <- ctx$ecoregion
+  # geography from a build_context() output: COMBINE the analyst's own wording
+  # with the synthesised ecoregion, do not choose between them.
+  # build_context() keeps geographic_hint verbatim precisely so the analyst's
+  # phrasing survives ("otherwise only the synthesised ecoregion reaches that
+  # prompt"), but ecoregion is ONE string synthesised for the whole taxon list.
+  # For a study spanning more than one ecoregion that single string is narrower
+  # than the study, and reading it alone would hand the LLM a geography the
+  # analyst never wrote. An explicit ctx$geography is always left untouched, so
+  # a hand-written context produces a byte-identical prompt.
+  if (is.null(ctx$geography)) {
+    .chr1 <- function(x) {
+      if (is.null(x)) return(NULL)
+      x <- as.character(x)[1L]
+      if (is.na(x) || !nzchar(trimws(x))) NULL else trimws(x)
+    }
+    .hint <- .chr1(ctx$geographic_hint)
+    .eco <- .chr1(ctx$ecoregion)
+    if (!is.null(.hint) && !is.null(.eco) && !identical(.hint, .eco)) {
+      ctx$geography <- paste0(.hint, " (", .eco, ")")
+    } else if (!is.null(.hint)) {
+      ctx$geography <- .hint
+    } else if (!is.null(.eco)) {
+      ctx$geography <- .eco
+    }
   }
   if (is.null(ctx$habitat) && !is.null(ctx$main_habitat)) {
     ctx$habitat <- ctx$main_habitat
