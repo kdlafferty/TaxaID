@@ -403,6 +403,13 @@ anything. `evaluate_reference_accessions()`'s
 this step already resolves, so only the genuinely ambiguous remainder
 ever costs a BLAST call.
 
+How much this saves depends on how densely your own reference set covers
+the taxa in it, so measure it rather than assume. On one real multi-marker
+set of 6,618 accessions it resolved 3,507 of them -- 53% -- in about three
+tenths of a second, and those 3,507 never reached BLAST. Note that
+`same_batch_only` is deliberately not counted as corroborated: a
+submission corroborating itself is not independent evidence.
+
 ``` r
 # 1. Free, zero-NCBI-cost: does an independent conspecific already in your
 #    own reference set corroborate each accession's label?
