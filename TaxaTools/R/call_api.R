@@ -80,7 +80,7 @@
     "  call_api(prompt, provider = 'ollama')         # local models, no key needed\n",
     "  register_provider() for third-party OpenAI-compatible APIs\n\n",
     "Supported providers and required environment variables:\n",
-    "  Anthropic    -- ANTHROPIC_API_KEY    (https://console.anthropic.com/)\n",
+    "  Anthropic    -- ANTHROPIC_API_KEY    (https://platform.claude.com/)\n",
     "  Gemini       -- GEMINI_API_KEY       (https://aistudio.google.com/apikey, free tier)\n",
     "  OpenAI       -- OPENAI_API_KEY       (https://platform.openai.com/api-keys)\n",
     "  Azure OpenAI -- AZURE_OPENAI_API_KEY (DOI employees only; DOI network/VPN required)\n",

@@ -495,7 +495,7 @@ could use a different LLM by modifying one of the existing LLM calls.
 
 | Key | Required By | How to Obtain |
 |----|----|----|
-| `ANTHROPIC_API_KEY` | TaxaTools (LLM calls) | <https://console.anthropic.com/> |
+| `ANTHROPIC_API_KEY` | TaxaTools (LLM calls) | <https://platform.claude.com/> |
 | `GEMINI_API_KEY` | TaxaTools (LLM calls) | <https://aistudio.google.com/apikey> (free tier) |
 | `OPENAI_API_KEY` | TaxaTools (LLM calls) | <https://platform.openai.com/> (paid) |
 | `AZURE_OPENAI_API_KEY` | TaxaTools (LLM calls; DOI employees only, requires DOI network or VPN) | Obtained through DOI IT channels |
