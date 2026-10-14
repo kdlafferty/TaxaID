@@ -3677,3 +3677,37 @@ Both: (a) for coverage, (b) so CI is not hostage to Bioconductor uptime.
 
 A warnings gate is worth little on a permanently red CI, so this should land
 before or with PR #2.
+
+### PR #2 GREEN: 9/9 pass, Biostrings installs, 25 tests un-skipped (2026-10-14)
+
+Run `38608020222` on `ci-warnings-gate` @ `039c054`: **all nine pass** under
+`error_on = "warning"` on ubuntu-latest with the latest R. The 52-run red
+streak is fixed, and the gate is enforceable on CI's real platform.
+
+`Biostrings available: TRUE` -- BiocManager got a binary in ~3.5 min, so the
+fix restored **coverage**, not skips. `{Biostrings} is not installed` appears
+**zero** times in the log, against 20 before, and the five newly guarded tests
+ran too: **25 TaxaMatch tests now execute in CI that previously skipped or
+errored**, including the coi-amplicon-gate trimming path.
+
+Advisory `Check URLs` step: success on all nine.
+
+**Remaining NOTE, benign and not worth fixing.** Six packages report
+`1 NOTE` -> `checking Rd cross-references ... NOTE / Unknown packages ... in
+Rd xrefs` (e.g. TaxaTools cites TaxaLikely, TaxaMatch, TaxaFetch). The matrix
+installs only the TARGET package's dependencies, so `\link[SiblingPkg]{}`
+cross-references cannot resolve in that job. It is structural to the
+per-package matrix, it is a NOTE so it does not gate the build, and it does
+not appear locally because all nine are installed here. Fixing it would mean
+installing all nine siblings in every job (slow, and it discards the isolation
+the matrix exists to provide) or dropping cross-package `\link[]{}` refs.
+Neither is worth it.
+
+**One correction to the env work:** `_R_CHECK_SYSTEM_CLOCK_` is set to `FALSE`
+by `r-lib/actions/setup-r@v2` itself from its own step onward -- the log shows
+my `0` in the first three steps, then `FALSE` for the rest. So that pin was
+**redundant**; harmless, and it still covers the pre-setup steps.
+`_R_CHECK_CRAN_INCOMING_: false` IS load-bearing and survives as mine through
+every step -- that is the pin the whole change depended on.
+
+PR #2 is ready to merge on Kevin's word. Nothing is merged.
