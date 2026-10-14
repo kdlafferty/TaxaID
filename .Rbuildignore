@@ -1,2 +1,63 @@
+# ---------------------------------------------------------------------------
+# The repository root is ALSO an R package: the `TaxaID` meta-package, whose
+# only job is to install the nine. Everything else in this repository is the
+# monorepo around it -- the nine package sources, the development record, the
+# release record, the generated prompt pack. None of that belongs inside the
+# meta-package's own tarball, and leaving it in produced three R CMD check
+# NOTEs plus a WARNING, which is why CI could not check this package at all.
+# Nothing here is renamed or moved; this only scopes the BUILD.
+# ---------------------------------------------------------------------------
+
+# RStudio
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.Rprofile$
+
+# The nine package sources. They are installed from their own directories,
+# never from inside this tarball; shipping them here also drags in every
+# per-package .Rbuildignore/.lintr (the "hidden files" NOTE) and every
+# inst/CITATION (the "CITATION in a non-standard place" NOTE).
+^TaxaTools$
+^TaxaFetch$
+^TaxaHabitat$
+^TaxaMatch$
+^TaxaLikely$
+^TaxaExpect$
+^TaxaAssign$
+^TaxaFlag$
+^TaxaWizard$
+
+# Development and release records, and the generated prompt pack.
+^ecosystem_docs$
+^llm_prompts$
+^usgs_release_review$
+^CLAUDE\.md$
+^code\.json$
+^USGS_logo_green\.png$
+
+# CI configuration and VCS
+^\.github$
+^\.git$
+^\.gitignore$
+
+# NOTE ON THIS FILE'S SYNTAX, learned the hard way: every line here is a
+# PCRE regex, and R does NOT treat # as a comment. A "comment" is simply a
+# regex that happens to match nothing -- so it must still COMPILE. An
+# unbalanced parenthesis in prose makes R CMD build fail outright with
+# "Build process failed", naming no line. Keep brackets out of these notes.
+#
+# DELIBERATELY NOT ignored: DISCLAIMER.md and LICENSE.md stay in the build
+# and leave one NOTE about non-standard top-level files. They exist ONLY at
+# this root -- the nine packages had their copies removed when these were
+# centralised here -- so excluding them would ship a USGS meta-package
+# carrying neither its required disclaimer nor its licence text. A NOTE does
+# not fail CI, because the gate is error_on = warning; a missing disclaimer
+# would fail a USGS review.
+
+# The two space-named review files under inst/ trip --as-cran's "non-portable
+# file names" WARNING, and CI now fails on warnings. Deliberately NOT renamed:
+# eight files reference these paths, and where development records live is an
+# open question with the maintainer. Excluding them from this package's build
+# is the narrow fix -- they stay in the repository, they just do not ship
+# inside the tarball.
+^inst/Code and Domain Review
