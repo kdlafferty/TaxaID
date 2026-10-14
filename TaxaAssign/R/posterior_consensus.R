@@ -1724,8 +1724,10 @@ posterior_consensus <- function(posterior_df,
   # whatever order the rows arrived in -- which makes plausible_taxa's element
   # order, and therefore the leading taxon of the deposited plausible_top string,
   # an artifact of upstream row order rather than of the evidence. Measured on
-  # CalIntertidal r2: 200 of 49,463 units have the top slot tied at the 3 dp the
-  # deposited file prints. No CALL changes -- where species tie, the consensus
+  # CalIntertidal r2, of the 49,463 units with a shown plausible set: 508 hold
+  # an EXACTLY tied pair among the shown taxa and 6 have the top slot exactly
+  # tied. Only exact ties can reorder, so those 6 are where the presented
+  # leader was arbitrary. No CALL changes -- where species tie, the consensus
   # already backs off to their LCA -- so this fixes which of several equals is
   # PRESENTED first, nothing more. "radix" is required rather than incidental:
   # the default method collates character by LOCALE, so a locale difference
