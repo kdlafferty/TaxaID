@@ -1459,6 +1459,52 @@ test_that("credible_node is unresolved when unnamed mass keeps every taxon below
   expect_equal(out$consensus_reason, "no_credible_node")
 })
 
+# A fixture with the four columns the robust bound needs but NO record count:
+# no prior_site_records and no kernel-estimated rows. The bound cannot run, so
+# the call falls back to the plain credible node and must say so.
+.cn_robust_df <- function() {
+  df <- .cn_df()
+  df$score_likelihood <- c(1, rep(0.2, 5), 0.3)
+  df$prior_mean <- df$posterior_point_est
+  df$prior_alpha <- df$prior_mean * 20
+  df$prior_beta <- (1 - df$prior_mean) * 20
+  df
+}
+
+test_that("credible_node warns once per call when the robust bound is skipped for want of a record count", {
+  df <- .cn_robust_df()
+  expect_warning(
+    suppressMessages(posterior_consensus(df, rank_system = c("order", "family", "genus", "species"),
+      consensus_method = "credible_node", robust_prior_s = 1)),
+    "robust-prior check .* skipped for 1 of 1 observation"
+  )
+  out <- .cn(df, consensus_method = "credible_node", robust_prior_s = 1)
+  expect_true(is.na(out$robust_lower_posterior))   # the plain credible node was used
+  expect_equal(out$consensus_taxon, "Oligocottus")
+  expect_false(".robust_skip" %in% names(out))     # internal plumbing never returned
+})
+
+test_that("the robust-skip warning is silent when prior_site_records supplies the record count", {
+  df <- .cn_robust_df()
+  df$prior_site_records <- 500
+  expect_no_warning(
+    out <- suppressMessages(posterior_consensus(df, rank_system = c("order", "family", "genus", "species"),
+      consensus_method = "credible_node", robust_prior_s = 1))
+  )
+  expect_false(is.na(out$robust_lower_posterior))  # the bound ran
+})
+
+test_that("the robust-skip warning is silent when the caller asks for the plain credible node", {
+  df <- .cn_robust_df()
+  expect_no_warning(
+    suppressMessages(posterior_consensus(df, rank_system = c("order", "family", "genus", "species"),
+      consensus_method = "credible_node", robust_prior_s = 0))
+  )
+  expect_no_warning(
+    suppressMessages(posterior_consensus(df, rank_system = c("order", "family", "genus", "species")))
+  )
+})
+
 test_that("the default consensus_method is lca and unchanged", {
   expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
 })
@@ -1690,7 +1736,8 @@ test_that("robust N never comes from floor or dark-diversity pseudo-counts", {
   # so the plain rule applies rather than eps = 1/5
   df <- .rb_df(c(1, 0.05), c(2.5e-6, 2.5e-6), N = 4)
   df$prior_branch <- "resident_undetected"
-  out <- .rb(df)
+  # ... and the skip is announced, since the plain node is the less conservative call
+  expect_warning(out <- .rb(df), "robust-prior check .* skipped for 1 of 1")
   expect_equal(out$consensus_taxon, "Rhacochilus vacca")
   expect_true(is.na(out$robust_lower_posterior))
   # the site's record count, when supplied, is used instead

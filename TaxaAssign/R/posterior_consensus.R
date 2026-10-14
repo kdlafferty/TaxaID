@@ -151,7 +151,10 @@
 #'   worse, because one record then moves the prior noticeably. The bound is
 #'   reported as `robust_lower_posterior`. Skipped (plain credible node) when
 #'   `score_likelihood`, `prior_mean`, `prior_alpha` or `prior_beta` is
-#'   missing, or when no record count is available.
+#'   missing, or when no record count is available; a skip is announced by
+#'   one warning per call naming how many observations it affected and why,
+#'   because a plain credible node is a less conservative call than the
+#'   robust one the caller asked for.
 #' @param cross_phylum_eps Numeric in `[0, 0.5)` (default `0.05`; `0` turns
 #'   it off). Used with `consensus_method = "credible_node"`. When the
 #'   runner-up phylum holds at least this share of an observation's total
@@ -1174,6 +1177,23 @@ posterior_consensus <- function(posterior_df,
   # part of the returned contract. Dropped after the attributes are set, since
   # `[`-style column removal preserves them.
   result$.cross_phylum_pending <- NULL
+  if (".robust_skip" %in% names(result)) {
+    skip_reason <- result$.robust_skip
+    n_skip <- sum(!is.na(skip_reason))
+    if (n_skip > 0L) {
+      n_total <- nrow(result)
+      n_no_count <- sum(skip_reason %in% "no_record_count")
+      n_no_cols <- sum(skip_reason %in% "missing_columns")
+      cli::cli_warn(c(
+        "robust-prior check (robust_prior_s = {robust_prior_s}) skipped for {n_skip} of {n_total} observation{?s}; \\
+        their calls are plain credible nodes, which are less conservative than the robust bound requested.",
+        "i" = if (n_no_count > 0L) "{n_no_count} had no record count: no finite {.field prior_site_records} and no kernel-estimated rows to take alpha + beta from." else NULL,
+        "i" = if (n_no_cols > 0L) "{n_no_cols} lacked one of {.field score_likelihood}, {.field prior_mean}, {.field prior_alpha}, {.field prior_beta}." else NULL,
+        "i" = "Supply {.field prior_site_records} (from {.fn join_priors} on kernel priors) or set {.arg robust_prior_s = 0} to ask for the plain credible node explicitly."
+      ))
+    }
+    result$.robust_skip <- NULL
+  }
   result
 }
 
@@ -1838,13 +1858,18 @@ posterior_consensus <- function(posterior_df,
     lca$consensus_reason <- "unnamed_mass"
   }
   robust_lower <- NA_real_
+  robust_skip <- NA_character_
   consensus_limit <- NA_character_
   cross_phylum_pending <- FALSE
   if (consensus_method == "credible_node") {
-    can_robust <- robust_prior_s > 0 &&
-      all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
+    has_cols <- all(c("score_likelihood", "prior_mean", "prior_alpha", "prior_beta") %in% names(chunk))
+    can_robust <- robust_prior_s > 0 && has_cols
     node <- if (can_robust) .credible_node_robust(chunk, rank_system, robust_prior_s, cumulative_threshold, unsupplied,
       cross_phylum_eps, lineage_map = lineage_map)
+    # Record WHY the robust bound did not run, so the caller can be told once
+    # per call: the fallback below is a less conservative call than requested.
+    if (robust_prior_s > 0 && !has_cols) robust_skip <- "missing_columns"
+    if (is.null(node) && can_robust) robust_skip <- "no_record_count"
     if (is.null(node)) can_robust <- FALSE
     node <- if (can_robust) {
       node
@@ -2107,6 +2132,7 @@ posterior_consensus <- function(posterior_df,
     consensus_limit = consensus_limit,
     # internal only: dropped before posterior_consensus() returns
     .cross_phylum_pending = cross_phylum_pending,
+    .robust_skip = robust_skip,
     lineage_conflict = .lineage_conflicts(chunk, rank_system),
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,

@@ -264,7 +264,10 @@ few records is coarsened even when the outside taxon fits somewhat
 worse, because one record then moves the prior noticeably. The bound is
 reported as \code{robust_lower_posterior}. Skipped (plain credible node) when
 \code{score_likelihood}, \code{prior_mean}, \code{prior_alpha} or \code{prior_beta} is
-missing, or when no record count is available.}
+missing, or when no record count is available; a skip is announced by
+one warning per call naming how many observations it affected and why,
+because a plain credible node is a less conservative call than the
+robust one the caller asked for.}
 
 \item{cross_phylum_eps}{Numeric in \verb{[0, 0.5)} (default \code{0.05}; \code{0} turns
 it off). Used with \code{consensus_method = "credible_node"}. When the
