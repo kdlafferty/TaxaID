@@ -1432,7 +1432,13 @@ posterior_consensus <- function(posterior_df,
   } else {
     rep(0, nrow(posterior_df))
   }
-  ord <- order(!is.na(tax_p), post, decreasing = TRUE, na.last = TRUE)
+  # hypothesis_type breaks the remaining ties, again by byte order. Rows sharing
+  # one (observation, taxon_name) can hold the same posterior, and the first of
+  # them decides the reported consensus_hypothesis_type -- a DEPOSITED column.
+  # Without a content-based key that choice follows input row order.
+  ord <- order(-as.integer(!is.na(tax_p)), -post,
+               as.character(posterior_df$hypothesis_type),
+               method = "radix", na.last = TRUE)
   key_p <- paste(oid_p[ord], tax_p[ord], sep = "\r")
   first <- !duplicated(key_p)
   idx <- ord[first][match(paste(oid_r, tax_r, sep = "\r"), key_p[first])]
@@ -1713,7 +1719,20 @@ posterior_consensus <- function(posterior_df,
   # mass is not renormalised away (a lone survivor at 0.13 beside twenty
   # hypotheses at 0.02-0.03 used to be reported as a species on its own).
   # The consensus of a pooled tail is its members' LCA, via .find_lca().
-  named_all <- named_all[order(named_all[[posterior_col]], decreasing = TRUE), ]
+  # Ties broken on taxon_name, by BYTE order (method = "radix"), not by posterior
+  # alone. R's order() is stable, so a posterior-only sort leaves exact equals in
+  # whatever order the rows arrived in -- which makes plausible_taxa's element
+  # order, and therefore the leading taxon of the deposited plausible_top string,
+  # an artifact of upstream row order rather than of the evidence. Measured on
+  # CalIntertidal r2: 200 of 49,463 units have the top slot tied at the 3 dp the
+  # deposited file prints. No CALL changes -- where species tie, the consensus
+  # already backs off to their LCA -- so this fixes which of several equals is
+  # PRESENTED first, nothing more. "radix" is required rather than incidental:
+  # the default method collates character by LOCALE, so a locale difference
+  # between two machines would otherwise reorder tied taxa.
+  named_all <- named_all[order(-named_all[[posterior_col]],
+                               as.character(named_all$taxon_name),
+                               method = "radix", na.last = TRUE), ]
   named_total <- sum(named_all[[posterior_col]], na.rm = TRUE)
   if (!is.finite(named_total) || named_total == 0) {
     return(.empty_consensus_row(sid))

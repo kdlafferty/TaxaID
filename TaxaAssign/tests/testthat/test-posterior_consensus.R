@@ -2370,3 +2370,82 @@ test_that("posterior_consensus() passes min_posterior into the downranking gate"
   expect_equal(res$consensus_taxon, "Aus")
   expect_false(res$is_resolved)
 })
+
+# ==============================================================================
+# Deterministic tie ordering
+# ==============================================================================
+
+test_that("plausible_taxa order does not depend on input row order", {
+  # Two species at an EXACT tie plus a clear third. Row order is the only thing
+  # that differed between them before the taxon_name tiebreaker existed.
+  mk <- function(order_of_tied) {
+    make_posterior(
+      observation_id  = rep("obs1", 3L),
+      taxon_name      = c(order_of_tied, "Catostomus occidentalis"),
+      taxon_name_rank = rep("species", 3L),
+      hypothesis_type = rep("specific_candidate", 3L),
+      posterior_mean  = c(0.4, 0.4, 0.2),
+      genus           = rep("Catostomus", 3L),
+      family          = rep("Catostomidae", 3L),
+      species         = c(order_of_tied, "Catostomus occidentalis")
+    )
+  }
+  fwd <- posterior_consensus(mk(c("Catostomus rimiculus", "Catostomus snyderi")))
+  rev <- posterior_consensus(mk(c("Catostomus snyderi", "Catostomus rimiculus")))
+
+  expect_identical(fwd$plausible_taxa[[1]], rev$plausible_taxa[[1]])
+  # and the order is the stated rule -- posterior desc, then name ascending
+  expect_identical(
+    fwd$plausible_taxa[[1]][1:2],
+    c("Catostomus rimiculus", "Catostomus snyderi")
+  )
+  expect_identical(fwd$plausible_posteriors[[1]], rev$plausible_posteriors[[1]])
+  # The CALL is unchanged by any of this: two tied species back off to genus.
+  expect_identical(fwd$consensus_taxon, rev$consensus_taxon)
+  expect_identical(fwd$consensus_rank, rev$consensus_rank)
+})
+
+test_that("consensus_hypothesis_type does not depend on input row order", {
+  # Two rows share one (observation, taxon_name) at the same posterior, so which
+  # one supplies the DEPOSITED consensus_hypothesis_type was previously decided
+  # by row order. hypothesis_type itself is the tiebreaker.
+  mk <- function(types) {
+    make_posterior(
+      observation_id  = rep("obs1", 2L),
+      taxon_name      = rep("Sebastes mystinus", 2L),
+      taxon_name_rank = rep("species", 2L),
+      hypothesis_type = types,
+      posterior_mean  = c(0.9, 0.9),
+      genus           = rep("Sebastes", 2L),
+      family          = rep("Sebastidae", 2L),
+      species         = rep("Sebastes mystinus", 2L)
+    )
+  }
+  a <- posterior_consensus(mk(c("specific_candidate", "unreferenced_species")))
+  b <- posterior_consensus(mk(c("unreferenced_species", "specific_candidate")))
+  expect_identical(a$consensus_hypothesis_type, b$consensus_hypothesis_type)
+  expect_identical(a$consensus_hypothesis_type, "specific_candidate")
+})
+
+test_that("the tie order is byte order, so it cannot shift with the locale", {
+  # method = "radix" is load-bearing, not incidental: the default order() method
+  # collates character data by LOCALE, so the same code on two machines could
+  # otherwise emit tied taxa in different orders and the deposited string would
+  # differ for a reason that is not in the data. "Zebrasoma" vs "apogon"
+  # discriminates the two rules: byte order puts "Z" (90) before "a" (97), while
+  # any case-insensitive locale collation puts "apogon" first. No locale is
+  # switched here -- that would need a new test dependency and would not prove
+  # more than the discriminating pair does.
+  out <- posterior_consensus(make_posterior(
+    observation_id  = rep("obs1", 2L),
+    taxon_name      = c("apogon maculatus", "Zebrasoma flavescens"),
+    taxon_name_rank = rep("species", 2L),
+    hypothesis_type = rep("specific_candidate", 2L),
+    posterior_mean  = c(0.5, 0.5),
+    genus           = c("apogon", "Zebrasoma"),
+    family          = c("Apogonidae", "Acanthuridae"),
+    species         = c("apogon maculatus", "Zebrasoma flavescens")
+  ))
+  expect_identical(out$plausible_taxa[[1]],
+                   c("Zebrasoma flavescens", "apogon maculatus"))
+})
