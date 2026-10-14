@@ -3711,3 +3711,29 @@ my `0` in the first three steps, then `FALSE` for the rest. So that pin was
 every step -- that is the pin the whole change depended on.
 
 PR #2 is ready to merge on Kevin's word. Nothing is merged.
+
+### MERGED and main is GREEN (2026-10-14)
+
+PR #2 merged as `23215af` (merge commit, matching the repo's 176-merge
+convention; both branch commits preserved, not squashed). CI run
+`38610650310` on `main` @ `23215af`: **all nine jobs success.**
+
+**The red streak is over at 53 runs** -- `068d6ff` (2026-10-10 23:52) through
+`c935885`, ended by `23215af`. main now enforces `error_on = "warning"`.
+
+Cleanup done: worktrees `amb`, `blank`, `coi`, `ciwarn` removed (`rm -rf` +
+`git worktree prune`; git 2.15 has no `worktree remove`), each verified clean
+and an ancestor of `origin/main` first; local branch refs deleted with
+`git branch -d` so git re-checked the merge itself. `~/taxaid-worktrees/` now
+holds only `main`. The shared Drive checkout was not touched -- it is on
+`workflow-ptcon-multisite`, which is NOT merged and belongs to another session.
+
+Still open, each needing Kevin's word:
+- delete `origin/ci-warnings-gate` (merged; outward action on a public repo)
+- delete local `downrank-own-plausibility` (`523acaa`, merged). Safe: the r2
+  provenance is the TAG `calintertidal-r2-2026-10-13` -> `dafe7a2`, not this
+  branch ref.
+- **branch `1.0.0` (`44e8a6e`) now sits BEHIND main.** It predates the cli
+  fix's CI enforcement, the URL corrections and the Biostrings fix, so it no
+  longer marks a tree whose CI passes. At the real USGS release it should be
+  re-cut from main rather than reused. Keeping it for now.
