@@ -3501,3 +3501,60 @@ Checked CI-style on the BUMPED tree, not before the bump:
 `rcmdcheck(args = c("--no-manual", "--as-cran"), build_args = "--no-manual")`
 with `_R_CHECK_CRAN_INCOMING_=false` and `_R_CHECK_SYSTEM_CLOCK_=0`, so neither
 network-dependent result can wander between runs.
+
+### 1.0.0 install: WINDOW AGREED ~02:00 HST 2026-10-14
+
+Pushed and done: `main` and branch `1.0.0` both at `44e8a6e`. All nine check
+`0 errors / 0 warnings / 0 notes` CI-style on the BUMPED tree, with
+`_R_CHECK_CRAN_INCOMING_=false` and `_R_CHECK_SYSTEM_CLOCK_=0` so neither
+network-dependent result can wander.
+
+`44e8a6e` also fixes a defect the bump did not cause: `review_assignments()`
+called `cli::cli_abort()` while TaxaFlag never declared `cli` (introduced
+`fbdd99f`, 2026-10-12 22:09). It always resolved -- `cli` is the first entry in
+dplyr's own Imports and TaxaFlag imports dplyr -- so it was a declaration bug,
+not a runtime failure, and no result anywhere is affected.
+
+**CI could not have caught it.** `.github/workflows/R-CMD-check.yaml:126` sets
+`error_on = "error"`, so warnings never fail the build. All nine are now at zero
+warnings, which makes `error_on = "warning"` safe to adopt -- a maintainer policy
+call, not taken here.
+
+**`dafe7a2` (tag `calintertidal-r2-2026-10-13`) carries the undeclared import.**
+The tag stays: reporting already has that SHA, re-pointing a published tag is
+worse than the defect, and no deposited number changes. The r2 tree and the
+1.0.0 tree differ by exactly that one DESCRIPTION line, so anything citing a
+TREE for r2 work cites `dafe7a2`, never `1.0.0`.
+
+### What the install window is for, and why it waited
+
+The `sampling optimization` session runs frame-2 scripts back-to-back until
+~02:00 HST. It demonstrated that none of its scripts loads any of the nine, and
+that was verified independently here: `lsof` over every live R pid shows no file
+open under `Library/R/4.0/library/Taxa*`, and `lsof +D` on TaxaFlag returns zero
+handles. So installing early would have been safe in fact.
+
+It waited anyway, for reasons unrelated to that evidence: the maintainer's
+condition was "install when the peer's jobs finish", which a peer cannot relax;
+and `lsof` reports what is open NOW, not what a later lazy `loadNamespace()`
+might open during the remaining batch.
+
+Agreed with that session: it messages at batch end and starts no R until told
+the install is done.
+
+### Then, in one unit
+
+1. Install nine at 1.0.0 in CI's topological order (`TaxaTools, TaxaFetch,
+   TaxaHabitat, TaxaMatch, TaxaLikely, TaxaExpect, TaxaAssign, TaxaFlag,
+   TaxaWizard`), `upgrade = FALSE`, user library first via `.libPaths()`.
+2. Confirm the Step 7 code key did NOT move, against the r2 preflight digests
+   `TaxaLikely=f454a321... TaxaMatch=a18606a7... TaxaTools=22234a73...`. The
+   digest hashes namespace objects and deparsed bodies, not the version string,
+   so CalIntertidal should still RESTORE. If any digest moved, the next run
+   would RETRAIN and that must reach Kevin before any run is scheduled.
+3. Regenerate the ten `llm_prompts/CONTEXT_*.md` with
+   `workflow_export_prompts("llm_prompts", overwrite = TRUE)` -- never by hand.
+   Baseline to diff against: eight package files totalling **209** exports with
+   **no `CONTEXT_TaxaWizard.md` at all**, against a ratified surface of 223. They
+   predate the export prune (232 -> 223) and the four later ratifications, so
+   the count delta measures how long they had drifted.
