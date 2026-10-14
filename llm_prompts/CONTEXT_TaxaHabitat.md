@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 14 exported function(s).
+Version 1.0.0. 14 exported function(s).
 
 ## Functions
 
@@ -143,7 +143,7 @@ Parses the raw text returned by any LLM in response to a 'build_habitat_prompt' 
 |---|---|---|---|
 | raw_text | yes |  | Character. Length-1 string containing the LLM response. Markdown code fences, leading/trailing preamble, and postamble text are handled automatically. |
 | taxon_list | yes |  | Character vector. Species submitted in the prompt. Used to detect taxa missing from the response. |
-| habitat_scheme | no | NULL | A habitat_prompt object from build_habitat_prompt. Always supply this -- its $habitat_cols element is used to identify and validate the weight columns, and its $scheme drives IUCN vs. custom mode. NULL triggers a deprecated IUCN-only mode; passing a habitat_prompt object uses the current wide-weighted format instead. |
+| habitat_scheme | no | NULL | A habitat_prompt object from build_habitat_prompt. Always supply this -- its $habitat_cols element is used to identify and validate the weight columns, and its $scheme drives IUCN vs. custom mode. NULL triggers a reduced IUCN-only mode; passing a habitat_prompt object uses the full wide-weighted format instead. |
 | extra_covariates | no | NULL | Character vector. Names of any additional binary covariate columns to retain from the parsed output. Default NULL (no extra columns retained). Ignored when no matching columns are found. |
 
 **Value:** A data.frame with one row per species and the following columns: taxon_name Character. Species name as returned by the LLM. Numeric. One column per habitat in the scheme, named exactly as in 'prompt$habitat_cols'. Values are 0.0-1.0. Other_weight Numeric. Weight assigned to habitats outside the scheme. 0 for specialists that fit the scheme. habitat_best_guess Character. Free-text description of the actual habitat for species with non-zero 'Other_weight'. Empty string otherwise. Habitat Character. Convenience column: name of the habitat column with the highest weight (argmax), ties broken by column order. '"Other"' when 'Other_weight' is the largest, 'NA' when all weights are zero. *Diagnostic only* - see Details; nothing in the pipeline consumes it as a habitat assignment. habitat_breadth Numeric. Levins' niche breadth, 'B = 1 / sum(p^2)', over the scheme's habitat columns with the weights renormalised to sum to 1, in units of *effective number of habitats*: '1' is a pure specialist and the maximum is the number of habitat columns. 'NA' when all scheme weights are zero. See Details for why it exists and how to read it with 'Other_weight'.
