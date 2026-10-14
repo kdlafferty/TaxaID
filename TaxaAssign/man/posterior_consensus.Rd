@@ -108,13 +108,50 @@ produced, not merely one that is locally plausible in the abstract.}
 \item{downrank_requires_candidate}{Logical. When \code{TRUE} (default), a
 downranking step is taken only if the reference's single finer taxon is
 at or above a taxon this observation actually scored (its
-\code{plausible_taxa}). A narrowing to a coarser-than-finest rank is kept when
-the candidates belong to it (family to genus \emph{Ulva} when the candidates
-are \emph{Ulva} species), so this is a taxonomy test, not a string match. Rows
-with no \code{plausible_taxa} column, or an empty one, are not gated. \code{FALSE}
-disables this check, so the reference alone decides. Measured across
-four production sites without this gate: 35 of 150 downranked rows
-named a taxon outside their own candidate set.}
+\code{plausible_taxa}) and, \strong{for a step to the finest rank}, the plausible
+set places at least \code{min_posterior} on that taxon. A narrowing to a
+coarser-than-finest rank is kept when the candidates belong to it (family
+to genus \emph{Ulva} when the candidates are \emph{Ulva} species), so this is a
+taxonomy test, not a string match.
+
+The mass half is deliberately a finest-rank test. \code{min_posterior} is a
+floor on a HYPOTHESIS's posterior, and only at the finest rank is the
+proposed taxon itself a hypothesis the observation scored, so only there
+are the two directly comparable. At a coarser rank the node's mass can be
+assembled only from plausible rows that map into \code{species_reference},
+while the floor is read against the whole plausible set -- and the rows
+that cannot map (ring and unreferenced hypotheses, names coarser than
+species) are usually most of the mass, so gating there would count
+unmappable mass as evidence AGAINST the node.
+
+Rows with no \code{plausible_taxa} column, or an empty one, are not gated, and
+the mass half is skipped when \code{plausible_posteriors} is absent or
+\code{min_posterior = 0}. \code{FALSE} disables both checks, so the reference alone
+decides.
+
+Why membership alone is not enough: \code{plausible_taxa} is PADDED whenever
+\code{tail_pooled} is \code{TRUE}, because the tail block then joins the plausible
+set -- so a hypothesis far below \code{min_posterior} becomes a member and
+passes a membership test, and the relabel lands on a taxon the sequence
+had effectively excluded while the row keeps the coarser node's
+posterior. No new threshold is introduced: the floor is \code{min_posterior},
+the same one that decided plausibility.
+
+Measured across four production sites with no gate at all: 35 of 150
+downranked rows named a taxon outside their own candidate set. Measured
+on one multi-marker study of 49,466 observations with 451 downranked
+species calls, the mass half blocks exactly ONE -- a species holding
+2.4e-05 of the species-rank mass yet reported at a posterior of 1.00 --
+and leaves the other 450 untouched at every floor from 0.001 to 0.05,
+the next lowest surviving call holding 0.120. Re-running the whole
+consensus over that study's 724 downranked observations confirms it: one
+call changes, none to or from no call. Two alternatives were measured and
+rejected. Requiring the relabel target to be the HIGHEST-scoring
+candidate blocks 28, and 27 are the reference-bias correction this step
+exists to make -- naming the regionally recorded species over a
+better-matching congener over-represented in the sequence databases.
+Applying the mass test at EVERY rank blocks 26 further steps, each a
+genus call falling back to class, for the unmappable-mass reason above.}
 
 \item{group_priors}{Optional data frame from \code{\link[=compute_group_priors]{compute_group_priors()}}
 (\code{rank}/\code{taxon}/\code{theta_sum}/\code{n_members} columns), the SUM of
@@ -313,7 +350,12 @@ only assignments with \code{consensus_posterior >= 0.95}).
 \code{NA} when \code{consensus_taxon} is \code{NA}. When \code{downranked = TRUE} this is
 the mass of the coarser rank that was actually resolved, not a
 re-estimate at the finer reported rank; gate any confidence-threshold
-filter on \code{downranked}.}
+filter on \code{downranked}. For how much of the evidence the REPORTED
+taxon itself carries on such a row, read \code{likelihood_support}: a
+downranked row can hold a \code{consensus_posterior} near 1 while the
+named taxon holds a small fraction of the mass at its own rank,
+because the number describes the node that was resolved and the name
+describes the reference's one finer taxon within it.}
 \item{\code{consensus_confidence_score}}{Sum of \code{confidence_score} values for
 all named hypotheses within the consensus taxon (computed over all named
 hypotheses, not just the plausible set).  \code{confidence_score} is the

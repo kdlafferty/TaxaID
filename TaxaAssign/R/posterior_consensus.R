@@ -247,13 +247,50 @@
 #' @param downrank_requires_candidate Logical. When `TRUE` (default), a
 #'   downranking step is taken only if the reference's single finer taxon is
 #'   at or above a taxon this observation actually scored (its
-#'   `plausible_taxa`). A narrowing to a coarser-than-finest rank is kept when
-#'   the candidates belong to it (family to genus *Ulva* when the candidates
-#'   are *Ulva* species), so this is a taxonomy test, not a string match. Rows
-#'   with no `plausible_taxa` column, or an empty one, are not gated. `FALSE`
-#'   disables this check, so the reference alone decides. Measured across
-#'   four production sites without this gate: 35 of 150 downranked rows
-#'   named a taxon outside their own candidate set.
+#'   `plausible_taxa`) and, **for a step to the finest rank**, the plausible
+#'   set places at least `min_posterior` on that taxon. A narrowing to a
+#'   coarser-than-finest rank is kept when the candidates belong to it (family
+#'   to genus *Ulva* when the candidates are *Ulva* species), so this is a
+#'   taxonomy test, not a string match.
+#'
+#'   The mass half is deliberately a finest-rank test. `min_posterior` is a
+#'   floor on a HYPOTHESIS's posterior, and only at the finest rank is the
+#'   proposed taxon itself a hypothesis the observation scored, so only there
+#'   are the two directly comparable. At a coarser rank the node's mass can be
+#'   assembled only from plausible rows that map into `species_reference`,
+#'   while the floor is read against the whole plausible set -- and the rows
+#'   that cannot map (ring and unreferenced hypotheses, names coarser than
+#'   species) are usually most of the mass, so gating there would count
+#'   unmappable mass as evidence AGAINST the node.
+#'
+#'   Rows with no `plausible_taxa` column, or an empty one, are not gated, and
+#'   the mass half is skipped when `plausible_posteriors` is absent or
+#'   `min_posterior = 0`. `FALSE` disables both checks, so the reference alone
+#'   decides.
+#'
+#'   Why membership alone is not enough: `plausible_taxa` is PADDED whenever
+#'   `tail_pooled` is `TRUE`, because the tail block then joins the plausible
+#'   set -- so a hypothesis far below `min_posterior` becomes a member and
+#'   passes a membership test, and the relabel lands on a taxon the sequence
+#'   had effectively excluded while the row keeps the coarser node's
+#'   posterior. No new threshold is introduced: the floor is `min_posterior`,
+#'   the same one that decided plausibility.
+#'
+#'   Measured across four production sites with no gate at all: 35 of 150
+#'   downranked rows named a taxon outside their own candidate set. Measured
+#'   on one multi-marker study of 49,466 observations with 451 downranked
+#'   species calls, the mass half blocks exactly ONE -- a species holding
+#'   2.4e-05 of the species-rank mass yet reported at a posterior of 1.00 --
+#'   and leaves the other 450 untouched at every floor from 0.001 to 0.05,
+#'   the next lowest surviving call holding 0.120. Re-running the whole
+#'   consensus over that study's 724 downranked observations confirms it: one
+#'   call changes, none to or from no call. Two alternatives were measured and
+#'   rejected. Requiring the relabel target to be the HIGHEST-scoring
+#'   candidate blocks 28, and 27 are the reference-bias correction this step
+#'   exists to make -- naming the regionally recorded species over a
+#'   better-matching congener over-represented in the sequence databases.
+#'   Applying the mass test at EVERY rank blocks 26 further steps, each a
+#'   genus call falling back to class, for the unmappable-mass reason above.
 #' @param group_priors Optional data frame from [compute_group_priors()]
 #'   (`rank`/`taxon`/`theta_sum`/`n_members` columns), the SUM of
 #'   `theta_mean` over every locally modelled member of a genus or family --
@@ -438,7 +475,12 @@
 #'       `NA` when `consensus_taxon` is `NA`. When `downranked = TRUE` this is
 #'       the mass of the coarser rank that was actually resolved, not a
 #'       re-estimate at the finer reported rank; gate any confidence-threshold
-#'       filter on `downranked`.}
+#'       filter on `downranked`. For how much of the evidence the REPORTED
+#'       taxon itself carries on such a row, read `likelihood_support`: a
+#'       downranked row can hold a `consensus_posterior` near 1 while the
+#'       named taxon holds a small fraction of the mass at its own rank,
+#'       because the number describes the node that was resolved and the name
+#'       describes the reference's one finer taxon within it.}
 #'     \item{`consensus_confidence_score`}{Sum of `confidence_score` values for
 #'       all named hypotheses within the consensus taxon (computed over all named
 #'       hypotheses, not just the plausible set).  `confidence_score` is the
@@ -1087,7 +1129,8 @@ posterior_consensus <- function(posterior_df,
       .pre_resolved <- result$is_resolved
       result <- .downrank_consensus(
         result, species_ref, rank_system_eff,
-        require_candidate = downrank_requires_candidate
+        require_candidate = downrank_requires_candidate,
+        min_posterior = min_posterior
       )
       # Cross-phylum, second half: a call that sat AT phylum with a runner-up
       # phylum over cross_phylum_eps was flagged, not withheld, because the
@@ -2306,7 +2349,7 @@ posterior_consensus <- function(posterior_df,
 #' is_resolved, and downranked in place.
 #' @noRd
 .downrank_consensus <- function(consensus_df, species_ref, rank_system,
-                                require_candidate = TRUE) {
+                                require_candidate = TRUE, min_posterior = 0) {
   finest_rank <- rank_system[length(rank_system)]
 
   # Map a rank name to its column in species_ref.
@@ -2356,8 +2399,53 @@ posterior_consensus <- function(posterior_df,
     out
   }
 
+  # Posterior mass the plausible set places on each value at `rk`. Deliberately
+  # uses the SAME candidate -> value mapping as .cand_rank_values() above,
+  # including the genus fallback, so a value this returns mass for is always a
+  # value that one admits: the mass test can only ever TIGHTEN the membership
+  # test, never widen it.
+  .cand_rank_mass <- function(cand, mass, rk) {
+    if (length(cand) == 0L) {
+      return(numeric(0))
+    }
+    if (rk == finest_rank) {
+      return(vapply(split(mass, cand), sum, numeric(1)))
+    }
+    col <- .ref_col(rk)
+    fin <- .ref_col(finest_rank)
+    keys <- character(0)
+    vals <- numeric(0)
+    if (!is.na(col) && !is.na(fin)) {
+      map <- unique(data.frame(
+        fin = as.character(species_ref[[fin]]),
+        col = as.character(species_ref[[col]]),
+        stringsAsFactors = FALSE
+      ))
+      keep <- !is.na(map$fin) & !is.na(map$col) & map$fin %in% cand
+      if (any(keep)) {
+        keys <- c(keys, map$col[keep])
+        vals <- c(vals, mass[match(map$fin[keep], cand)])
+      }
+    }
+    if (identical(rk, "genus")) {
+      bi <- grepl(" ", cand, fixed = TRUE)
+      if (any(bi)) {
+        keys <- c(keys, sub(" .*", "", cand[bi]))
+        vals <- c(vals, mass[bi])
+      }
+    }
+    if (!length(keys)) {
+      return(numeric(0))
+    }
+    vapply(split(vals, keys), sum, numeric(1))
+  }
+
   has_plausible <- "plausible_taxa" %in% names(consensus_df)
+  has_plaus_post <- "plausible_posteriors" %in% names(consensus_df) &&
+    is.numeric(min_posterior) && length(min_posterior) == 1L &&
+    !is.na(min_posterior) && min_posterior > 0
   n_blocked <- 0L
+  n_blocked_support <- 0L
 
   consensus_df$downranked <- FALSE
 
@@ -2372,11 +2460,19 @@ posterior_consensus <- function(posterior_df,
     if (is.na(rank_idx) || rank_idx >= length(rank_system)) next
 
     plaus <- character(0)
+    plaus_post <- NULL
     if (has_plausible) {
       pv <- consensus_df$plausible_taxa[[i]]
       if (!is.null(pv)) {
         pv <- as.character(pv)
         plaus <- pv[!is.na(pv) & nzchar(pv)]
+      }
+    }
+    if (has_plaus_post && length(plaus) > 0L) {
+      qv <- consensus_df$plausible_posteriors[[i]]
+      if (!is.null(qv) && length(qv) > 0L && !is.null(names(qv))) {
+        plaus_post <- suppressWarnings(as.numeric(qv[plaus]))
+        plaus_post[!is.finite(plaus_post)] <- 0
       }
     }
 
@@ -2417,6 +2513,47 @@ posterior_consensus <- function(posterior_df,
           n_blocked <- n_blocked + 1L
           break
         }
+        # Membership in the candidate set is not enough. `plausible_taxa` is
+        # PADDED whenever `tail_pooled` is TRUE: the tail block joins the
+        # plausible set, so a hypothesis far below `min_posterior` becomes a
+        # member and satisfies a membership test. The relabel must therefore
+        # land on a node the observation supports IN ITS OWN RIGHT -- the mass
+        # the plausible set places at `finer_rank` must reach `min_posterior`,
+        # the same floor that decided plausibility in the first place, so no
+        # new threshold enters here. Mass is summed over the node, not taken
+        # per species, so a genus supported by several individually
+        # sub-threshold species still qualifies.
+        #
+        # Measured on one real multi-marker study (49,466 observations, 451
+        # downranked species calls): this blocks exactly ONE call -- a species
+        # holding 2.4e-05 of the species-rank mass, reported at a posterior of
+        # 1.00 -- and leaves the other 450 untouched at every floor from 0.001
+        # to 0.05, the next lowest surviving call holding 0.120. Requiring the
+        # relabel target to be the HIGHEST-scoring candidate instead was tried
+        # and rejected: it blocks 28, and 27 of those are the reference-bias
+        # correction this step exists to make, naming the regionally recorded
+        # species over a better-matching congener over-represented in GenBank.
+        #
+        # ONLY at the finest rank. `min_posterior` is a floor on a HYPOTHESIS's
+        # posterior, and only here is the proposed taxon itself a hypothesis
+        # the observation scored, so only here are the two directly
+        # comparable. At a coarser rank the node's mass can be assembled only
+        # from plausible rows that map into `species_ref`, while the floor is
+        # read against the whole plausible set -- and the rows that cannot map
+        # (ring and unreferenced hypotheses, names coarser than species) are
+        # usually most of the mass. Applying it there counts unmappable mass as
+        # evidence AGAINST the node: measured on the same study, gating every
+        # rank blocked 26 further steps that the membership test allows and
+        # that nothing else objects to, each one a genus call falling back to
+        # class.
+        if (!is.null(plaus_post) && identical(finer_rank, finest_rank)) {
+          node_mass <- .cand_rank_mass(plaus, plaus_post, finer_rank)
+          got <- unname(node_mass[finer_vals[[1L]]])
+          if (length(got) != 1L || is.na(got) || got < min_posterior) {
+            n_blocked_support <- n_blocked_support + 1L
+            break
+          }
+        }
       }
 
       cur_rank <- finer_rank
@@ -2437,6 +2574,15 @@ posterior_consensus <- function(posterior_df,
       "posterior_consensus: {n_blocked} downranking step(s) blocked because the ",
       "reference's only finer taxon was not among the observation's own ",
       "candidates (see {.arg downrank_requires_candidate})."
+    ))
+  }
+  if (n_blocked_support > 0L) {
+    cli::cli_inform(paste0(
+      "posterior_consensus: {n_blocked_support} downranking step(s) blocked ",
+      "because the reference's only finer taxon held less than ",
+      "{.arg min_posterior} of the observation's plausible mass at that rank -- ",
+      "it was a candidate, but not one the observation supports ",
+      "(see {.arg downrank_requires_candidate})."
     ))
   }
 

@@ -92,6 +92,18 @@
 #'   for `site_habitat` is at least `habitat_threshold`. See "What differs
 #'   from the records path" for the trade-off. Applies to the band counts
 #'   only; `extra_occurrences` carry their own record-level habitat.
+#'
+#'   **What the default admits.** Under `"none"` a taxon of ANY habitat
+#'   enters a site's composition if occurrence records put it within the
+#'   bands, so a freshwater species can receive a (small) prior at a marine
+#'   site. That is deliberate -- it keeps the counts path comparable with the
+#'   records path, which also carries whatever the records say -- but it means
+#'   the prior is not a habitat filter and should not be read as one.
+#'   Downstream steps that pick one species out of a genus can then select
+#'   such a taxon purely because it is the only locally recorded member, so
+#'   pass `"taxon_threshold"` with a `habitat_lookup` when the study wants
+#'   habitat to constrain the prior. Note that `main_habitat` on the returned
+#'   rows records the SITE's habitat, not the taxon's, in both modes.
 #' @param habitat_lookup Data frame or `NULL`. Required for
 #'   `habitat_filter = "taxon_threshold"`. Per-taxon habitat weights with a
 #'   `taxon_name` column and one numeric column per habitat, named as in
