@@ -19,3 +19,4 @@
 ^DISCLAIMER\.md$
 ^GL_fish_errors\.csv$
 ^.*\.bak_.*$
+^inst/extra_functions_review_inputs\.R$

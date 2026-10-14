@@ -10,3 +10,6 @@
 ^DISCLAIMER\.md$
 ^\.lintr$
 ^.*\.bak_.*$
+^inst/extra_functions_review_inputs\.R$
+^inst/test_api_keys\.R$
+^inst/draft_text_workflow\.R$
