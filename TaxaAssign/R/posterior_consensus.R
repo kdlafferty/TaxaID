@@ -1355,7 +1355,11 @@ posterior_consensus <- function(posterior_df,
     open_nodes <- if (!gated) nodes else if (is.null(gate) || is.na(gate$i) || i > gate$i) character(0) else {
       g <- vals[[gate$i]]; unique(v[!is.na(g) & g == gate$taxon & !is.na(v)])
     }
-    p <- vapply(nodes, function(nd) share(!is.na(v) & v == nd, e, relax = nd %in% open_nodes), numeric(1))
+    # The elimination argument needs a locally recorded member inside the node:
+    # a node made only of floor / undetected / placeholder rows keeps the
+    # current bound under every variant.
+    p <- vapply(nodes, function(nd) { inn <- !is.na(v) & v == nd
+      share(inn, e, relax = nd %in% open_nodes && (is.null(local) || any(local[inn]))) }, numeric(1))
     b <- which.max(p)
     list(node = nodes[b], p = unname(p[b]))
   }
