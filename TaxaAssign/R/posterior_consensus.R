@@ -1299,7 +1299,8 @@ posterior_consensus <- function(posterior_df,
 .credible_node <- function(chunk, w, rank_system, threshold, eps = 0, L = NULL,
                            unsupplied = character(0), cross_phylum_eps = 0,
                            lineage_map = NULL,
-                           robust_variant = "current", s_records = 1, alpha = NULL, local = NULL) {
+                           robust_variant = "current", s_records = 1, alpha = NULL, local = NULL,
+                           gate = NULL) {
   out <- list(taxon = NA_character_, rank = NA_character_, lower = NA_real_, limit = NA_character_,
     cross_phylum_pending = FALSE)
   w[is.na(w) | w < 0] <- 0
@@ -1319,16 +1320,23 @@ posterior_consensus <- function(posterior_df,
   #               competitor gains 2.5%. The largest such gain is the term.
   #   "exempt":   as "current", but hypotheses with no local record (undetected
   #               rows, unreferenced placeholders) cannot receive the record.
-  share <- function(inn, e) {
+  #   "*_gated":  the relaxation applies only at a node the SEQUENCE ALONE
+  #               reaches: the node is at or above the likelihood-only call
+  #               and contains it (`gate` = list(i = rank index, taxon)).
+  #               Elsewhere the current bound applies unchanged.
+  base_variant <- sub("_gated$", "", robust_variant)
+  gated <- grepl("_gated$", robust_variant)
+  share <- function(inn, e, relax = TRUE) {
     if (e <= 0) return(sum(w[inn]) / tot)
-    if (identical(robust_variant, "relative") && !is.null(alpha)) {
+    variant <- if (relax) base_variant else "current"
+    if (identical(variant, "relative") && !is.null(alpha)) {
       gain <- w * pmin(1, s_records / pmax(alpha, 1e-12))
       gain[is.na(gain)] <- 0
       term <- if (any(!inn)) max(gain[!inn]) else 0
       return(sum(w[inn]) / (tot + term))
     }
     out_ok <- !inn
-    if (identical(robust_variant, "exempt") && !is.null(local)) out_ok <- out_ok & local
+    if (identical(variant, "exempt") && !is.null(local)) out_ok <- out_ok & local
     Ls <- if (any(out_ok)) max(L[out_ok]) else 0
     (1 - e) * sum(w[inn]) / ((1 - e) * tot + e * Ls)
   }
@@ -1342,7 +1350,12 @@ posterior_consensus <- function(posterior_df,
     v <- vals[[i]]
     nodes <- unique(v[!is.na(v)])
     if (!length(nodes)) return(list(node = NA_character_, p = 0))
-    p <- vapply(nodes, function(nd) share(!is.na(v) & v == nd, e), numeric(1))
+    # Which nodes at this rank the gate opens: the ancestor (or self) of the
+    # likelihood-only call at rank i, and only when i is at or above its rank.
+    open_nodes <- if (!gated) nodes else if (is.null(gate) || is.na(gate$i) || i > gate$i) character(0) else {
+      g <- vals[[gate$i]]; unique(v[!is.na(g) & g == gate$taxon & !is.na(v)])
+    }
+    p <- vapply(nodes, function(nd) share(!is.na(v) & v == nd, e, relax = nd %in% open_nodes), numeric(1))
     b <- which.max(p)
     list(node = nodes[b], p = unname(p[b]))
   }
@@ -1687,13 +1700,25 @@ posterior_consensus <- function(posterior_df,
     return(NULL)
   }
   robust_variant <- getOption("TaxaAssign.robust_variant", "current")
+  gate <- NULL
+  if (grepl("_gated$", robust_variant)) {
+    # The sequence's own call: the same credible node on likelihood times a
+    # prior flattened among the named candidates, bound off (as the
+    # likelihood_consensus_* columns are computed).
+    spec <- if ("hypothesis_type" %in% names(chunk)) chunk$hypothesis_type %in% "specific_candidate" else rep(TRUE, length(pi))
+    pr_flat <- pi
+    if (any(spec)) pr_flat[spec] <- mean(pi[spec])
+    lk <- .credible_node(chunk, L * pr_flat, rank_system, threshold, eps = 0, L = L, unsupplied = unsupplied,
+      lineage_map = lineage_map, cross_phylum_eps = cross_phylum_eps)
+    gate <- list(i = if (is.na(lk$rank)) NA_integer_ else match(lk$rank, rank_system), taxon = lk$taxon)
+  }
   alpha <- if ("prior_alpha" %in% names(chunk)) chunk$prior_alpha else NULL
   local <- if ("prior_branch" %in% names(chunk)) .is_kernel_branch(chunk$prior_branch) else NULL
   if (!is.null(local)) local[is.na(local)] <- FALSE
   .credible_node(chunk, L * pi, rank_system, threshold, eps = s / (N + s), L = L, unsupplied = unsupplied,
     lineage_map = lineage_map,
     cross_phylum_eps = cross_phylum_eps,
-    robust_variant = robust_variant, s_records = s, alpha = alpha, local = local)
+    robust_variant = robust_variant, s_records = s, alpha = alpha, local = local, gate = gate)
 }
 
 .row_col_or <- function(row, col, default = NA_real_) {
