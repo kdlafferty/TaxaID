@@ -2221,3 +2221,146 @@ test_that("provenance is per observation, not recycled across them", {
     c("unreferenced_species", "specific_candidate"))
   expect_equal(out$consensus_scope_n_named, c(1L, NA_integer_))
 })
+
+
+# ===========================================================================
+# downrank_requires_candidate: the own-plausibility half of the gate
+# ===========================================================================
+
+# A frame shaped like .downrank_consensus()'s input: a genus call, the
+# reference knowing exactly one species in that genus, and a plausible set
+# that CONTAINS that species. Mass on the species is the variable under test.
+.dr_frame <- function(species_mass, plaus = c("Aus bus", "Aus cus")) {
+  mass <- c(species_mass, 1 - species_mass)
+  data.frame(
+    observation_id = "o1",
+    consensus_taxon = "Aus",
+    consensus_rank = "genus",
+    is_resolved = FALSE,
+    plausible_taxa = I(list(plaus)),
+    plausible_posteriors = I(list(stats::setNames(mass[seq_along(plaus)], plaus))),
+    stringsAsFactors = FALSE
+  )
+}
+
+.dr_ref <- function(species = "Aus bus") {
+  TaxaAssign:::.build_species_ref(
+    data.frame(taxon_name = species, genus = "Aus", stringsAsFactors = FALSE),
+    c("genus", "species")
+  )
+}
+
+test_that("downranking is blocked when the reference's taxon holds less than min_posterior", {
+  out <- TaxaAssign:::.downrank_consensus(
+    .dr_frame(species_mass = 0.001), .dr_ref(), c("genus", "species"),
+    require_candidate = TRUE, min_posterior = 0.05
+  )
+  # the taxon IS a candidate, so the membership half passes; the mass half does not
+  expect_equal(out$consensus_taxon, "Aus")
+  expect_equal(out$consensus_rank, "genus")
+  expect_false(out$downranked)
+})
+
+test_that("downranking proceeds when the reference's taxon clears min_posterior", {
+  out <- TaxaAssign:::.downrank_consensus(
+    .dr_frame(species_mass = 0.30), .dr_ref(), c("genus", "species"),
+    require_candidate = TRUE, min_posterior = 0.05
+  )
+  expect_equal(out$consensus_taxon, "Aus bus")
+  expect_equal(out$consensus_rank, "species")
+  expect_true(out$downranked)
+})
+
+test_that("the own-plausibility half does not depend on the floor's exact value", {
+  # the measured property: the same call is blocked across three orders of
+  # magnitude, so the result is not an artefact of one chosen threshold
+  for (mp in c(0.001, 0.005, 0.01, 0.02, 0.05)) {
+    out <- TaxaAssign:::.downrank_consensus(
+      .dr_frame(species_mass = 2.4e-05), .dr_ref(), c("genus", "species"),
+      require_candidate = TRUE, min_posterior = mp
+    )
+    expect_equal(out$consensus_taxon, "Aus", info = paste("min_posterior =", mp))
+  }
+  # and a well-supported relabel survives every one of them
+  for (mp in c(0.001, 0.005, 0.01, 0.02, 0.05)) {
+    out <- TaxaAssign:::.downrank_consensus(
+      .dr_frame(species_mass = 0.12), .dr_ref(), c("genus", "species"),
+      require_candidate = TRUE, min_posterior = mp
+    )
+    expect_equal(out$consensus_taxon, "Aus bus", info = paste("min_posterior =", mp))
+  }
+})
+
+test_that("min_posterior = 0 leaves the membership-only behaviour unchanged", {
+  out <- TaxaAssign:::.downrank_consensus(
+    .dr_frame(species_mass = 2.4e-05), .dr_ref(), c("genus", "species"),
+    require_candidate = TRUE, min_posterior = 0
+  )
+  expect_equal(out$consensus_taxon, "Aus bus")
+  # and so does the absence of the plausible_posteriors column
+  f <- .dr_frame(species_mass = 2.4e-05)
+  f$plausible_posteriors <- NULL
+  out2 <- TaxaAssign:::.downrank_consensus(
+    f, .dr_ref(), c("genus", "species"),
+    require_candidate = TRUE, min_posterior = 0.05
+  )
+  expect_equal(out2$consensus_taxon, "Aus bus")
+})
+
+test_that("require_candidate = FALSE disables the own-plausibility half too", {
+  out <- TaxaAssign:::.downrank_consensus(
+    .dr_frame(species_mass = 2.4e-05), .dr_ref(), c("genus", "species"),
+    require_candidate = FALSE, min_posterior = 0.05
+  )
+  expect_equal(out$consensus_taxon, "Aus bus")
+})
+
+test_that("node mass is summed, so several sub-threshold species still carry a genus", {
+  # family -> genus, where no single Aus species reaches min_posterior but the
+  # genus does. Blocking this would make the gate over-strict at coarse ranks.
+  df <- data.frame(
+    observation_id = "o1",
+    consensus_taxon = "Aidae",
+    consensus_rank = "family",
+    is_resolved = FALSE,
+    plausible_taxa = I(list(c("Aus bus", "Aus cus", "Aus dus"))),
+    plausible_posteriors = I(list(stats::setNames(c(0.03, 0.03, 0.03),
+      c("Aus bus", "Aus cus", "Aus dus")))),
+    stringsAsFactors = FALSE
+  )
+  ref <- TaxaAssign:::.build_species_ref(
+    data.frame(
+      taxon_name = c("Aus bus", "Aus cus", "Aus dus"),
+      genus = "Aus", family = "Aidae", stringsAsFactors = FALSE
+    ),
+    c("family", "genus", "species")
+  )
+  out <- TaxaAssign:::.downrank_consensus(
+    df, ref, c("family", "genus", "species"),
+    require_candidate = TRUE, min_posterior = 0.05
+  )
+  # 0.03 each is below the floor; 0.09 on the genus node is above it
+  expect_equal(out$consensus_taxon, "Aus")
+  expect_equal(out$consensus_rank, "genus")
+})
+
+test_that("posterior_consensus() passes min_posterior into the downranking gate", {
+  # end to end: the species is in the plausible set but holds almost nothing,
+  # so the call must stay at genus rather than take the reference's name
+  post <- data.frame(
+    observation_id = rep("o1", 3),
+    taxon_name = c("Aus bus", "Aus cus", "Aus dus"),
+    taxon_name_rank = rep("species", 3),
+    genus = rep("Aus", 3),
+    hypothesis_type = rep("specific_candidate", 3),
+    posterior_point_est = c(0.0001, 0.55, 0.4499),
+    stringsAsFactors = FALSE
+  )
+  ref <- data.frame(taxon_name = "Aus bus", genus = "Aus", stringsAsFactors = FALSE)
+  res <- suppressMessages(posterior_consensus(
+    post, rank_system = c("genus", "species"), species_reference = ref,
+    min_posterior = 0.05
+  ))
+  expect_equal(res$consensus_taxon, "Aus")
+  expect_false(res$is_resolved)
+})

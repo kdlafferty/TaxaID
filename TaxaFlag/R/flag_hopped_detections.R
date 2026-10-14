@@ -190,6 +190,28 @@
 #' means the test had limited power, not that there was no spillover. Read
 #' \code{rate_upper}: it is the largest rate the controls cannot exclude.
 #'
+#' @section What "not spillover" does not mean:
+#' This function answers one question: is this detection no larger than what
+#' the SAME feature's abundance elsewhere on the run would spill into this
+#' sample? A clean verdict is therefore evidence about spillover and about
+#' nothing else. In particular it does not mean the detection is real.
+#'
+#' A detection far ABOVE the run's spillover bound is correctly left
+#' unflagged, and that is exactly the shape of the artefacts this test cannot
+#' see: well-to-well or reagent carry-over, which does not scale with a
+#' feature's run-wide abundance; a mislabelled reference sequence; a
+#' genuinely sequenced but non-local organism, such as food, bait or
+#' wastewater DNA. One real case: a feature appearing at two sites 1,500 km
+#' apart in one run, the more distant site holding the larger count, against
+#' a \code{rate_upper} four orders of magnitude too small to explain it. The
+#' verdict "not spillover" was right, and the detection was still not
+#' plausible biology.
+#'
+#' So read a clean verdict as narrowing the explanations, not as clearing the
+#' detection, and pair it with \code{\link{flag_contaminant}} for
+#' control-based contamination and with range or habitat evidence for
+#' whether the organism belongs where it was found.
+#'
 #' @seealso \code{\link{flag_contaminant}} for reagent contamination (whole
 #'   features more abundant in controls than in the field), and
 #'   \code{\link{validate_controls}}, which should pass before either is trusted.

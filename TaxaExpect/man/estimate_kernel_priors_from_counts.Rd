@@ -35,7 +35,19 @@ a sampling-group column added by \code{TaxaTools::assign_sampling_group()}.}
 composition. \code{"taxon_threshold"}: only taxa whose \code{habitat_lookup} weight
 for \code{site_habitat} is at least \code{habitat_threshold}. See "What differs
 from the records path" for the trade-off. Applies to the band counts
-only; \code{extra_occurrences} carry their own record-level habitat.}
+only; \code{extra_occurrences} carry their own record-level habitat.
+
+\strong{What the default admits.} Under \code{"none"} a taxon of ANY habitat
+enters a site's composition if occurrence records put it within the
+bands, so a freshwater species can receive a (small) prior at a marine
+site. That is deliberate -- it keeps the counts path comparable with the
+records path, which also carries whatever the records say -- but it means
+the prior is not a habitat filter and should not be read as one.
+Downstream steps that pick one species out of a genus can then select
+such a taxon purely because it is the only locally recorded member, so
+pass \code{"taxon_threshold"} with a \code{habitat_lookup} when the study wants
+habitat to constrain the prior. Note that \code{main_habitat} on the returned
+rows records the SITE's habitat, not the taxon's, in both modes.}
 
 \item{habitat_lookup}{Data frame or \code{NULL}. Required for
 \code{habitat_filter = "taxon_threshold"}. Per-taxon habitat weights with a
