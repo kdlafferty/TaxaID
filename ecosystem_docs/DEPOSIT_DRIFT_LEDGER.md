@@ -28,7 +28,16 @@ r2 cites `dafe7a2`, never `main` and never `1.0.0`.
 
 ## Open drift -- in `main`, NOT in the deposit
 
-### 1. Deterministic candidate tie ordering (`e3b03e3`, + eDNA `7fe9176`)
+### 1. Deterministic candidate tie ordering
+
+**Merged to `main` as `ae351ea`** (PR #4, branch commit `e3b03e3`), plus eDNA
+`7fe9176` in the reporting layer.
+
+> This row originally read "in `main`" while the change was still only on an
+> unmerged branch -- caught by the Fable final-pass session, not by me. The
+> status line above is now the merge commit, which is checkable with
+> `git merge-base --is-ancestor`. A row here claims nothing about where a change
+> lives unless it names a commit reachable on `main`.
 
 | | |
 |---|---|
