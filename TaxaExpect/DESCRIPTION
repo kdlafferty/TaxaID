@@ -1,6 +1,6 @@
 Package: TaxaExpect
 Title: Kernel Priors for Expected Species Composition from Occurrence Data
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: person("Kevin", "Lafferty", role = c("aut", "cre"),
     email = "klafferty@usgs.gov")
 Description: Estimates theta priors -- each taxon's expected share of the

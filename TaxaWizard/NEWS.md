@@ -1,3 +1,3 @@
-# TaxaWizard 0.1.0
+# TaxaWizard 1.0.0
 
 * Initial release.

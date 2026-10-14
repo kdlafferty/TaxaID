@@ -1,4 +1,4 @@
-# TaxaLikely 0.1.0
+# TaxaLikely 1.0.0
 
 * Initial release.
 * `annotate_reference_support()` adds four information-only columns saying how

@@ -1,7 +1,7 @@
 Package: TaxaID
 Type: Package
 Title: Probabilistic Taxonomic Assignment for eDNA, Acoustic, and Image Data
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: person("Kevin", "Lafferty", email = "klafferty@usgs.gov",
     role = c("aut", "cre"))
 Description: Meta-package that installs the full TaxaID ecosystem.

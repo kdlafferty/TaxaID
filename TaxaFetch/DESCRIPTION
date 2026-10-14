@@ -1,7 +1,7 @@
 Package: TaxaFetch
 Type: Package
 Title: Fetch and Prepare Taxonomic Occurrence Data
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
 Description: Provides tools for acquiring, combining, and preparing taxonomic
     occurrence data from multiple sources including GBIF and DataONE. The user

@@ -1,7 +1,7 @@
 Package: TaxaHabitat
 Type: Package
 Title: Habitat Assignment and Spatial Quality Control for Taxonomic Occurrences
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
 Description: Assigns habitat classifications to taxonomic occurrence records
     using LLM prompts and performs spatial quality control. Receives occurrence

@@ -3,7 +3,7 @@
     "name": "TaxaID",
     "organization": "U.S. Geological Survey",
     "description": "A modular R ecosystem for Bayesian taxonomic assignment of biological observations (eDNA sequences, images, acoustic recordings). Combines match-score likelihoods with spatially-explicit occurrence-based priors to compute posterior probabilities of taxonomic identity.",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "status": "Preliminary",
     "permissions": {
       "usageType": "openSource",
@@ -31,7 +31,7 @@
     },
     "date": {
       "created": "2026-02-01",
-      "lastModified": "2026-06-27"
+      "lastModified": "2026-10-13"
     },
     "repositoryURL": "https://github.com/kdlafferty/TaxaID",
     "disclaimerURL": "https://www.usgs.gov/information-policies-and-instructions/software-management",

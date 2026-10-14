@@ -1,3 +1,3 @@
-# TaxaHabitat 0.1.0
+# TaxaHabitat 1.0.0
 
 * Initial release.
