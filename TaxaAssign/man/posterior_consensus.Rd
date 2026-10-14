@@ -108,15 +108,24 @@ produced, not merely one that is locally plausible in the abstract.}
 \item{downrank_requires_candidate}{Logical. When \code{TRUE} (default), a
 downranking step is taken only if the reference's single finer taxon is
 at or above a taxon this observation actually scored (its
-\code{plausible_taxa}) \strong{and} the plausible set places at least
-\code{min_posterior} of its mass on that taxon's node at that rank. A
-narrowing to a coarser-than-finest rank is kept when the candidates
-belong to it (family to genus \emph{Ulva} when the candidates are \emph{Ulva}
-species), so this is a taxonomy test, not a string match; the mass is
-likewise summed over the node, so a genus supported by several
-individually sub-threshold species still qualifies. Rows with no
-\code{plausible_taxa} column, or an empty one, are not gated, and the mass
-half is skipped when \code{plausible_posteriors} is absent or
+\code{plausible_taxa}) and, \strong{for a step to the finest rank}, the plausible
+set places at least \code{min_posterior} on that taxon. A narrowing to a
+coarser-than-finest rank is kept when the candidates belong to it (family
+to genus \emph{Ulva} when the candidates are \emph{Ulva} species), so this is a
+taxonomy test, not a string match.
+
+The mass half is deliberately a finest-rank test. \code{min_posterior} is a
+floor on a HYPOTHESIS's posterior, and only at the finest rank is the
+proposed taxon itself a hypothesis the observation scored, so only there
+are the two directly comparable. At a coarser rank the node's mass can be
+assembled only from plausible rows that map into \code{species_reference},
+while the floor is read against the whole plausible set -- and the rows
+that cannot map (ring and unreferenced hypotheses, names coarser than
+species) are usually most of the mass, so gating there would count
+unmappable mass as evidence AGAINST the node.
+
+Rows with no \code{plausible_taxa} column, or an empty one, are not gated, and
+the mass half is skipped when \code{plausible_posteriors} is absent or
 \code{min_posterior = 0}. \code{FALSE} disables both checks, so the reference alone
 decides.
 
@@ -134,11 +143,15 @@ on one multi-marker study of 49,466 observations with 451 downranked
 species calls, the mass half blocks exactly ONE -- a species holding
 2.4e-05 of the species-rank mass yet reported at a posterior of 1.00 --
 and leaves the other 450 untouched at every floor from 0.001 to 0.05,
-the next lowest surviving call holding 0.120. Requiring the relabel
-target to be the HIGHEST-scoring candidate was tried and rejected: it
-blocks 28, and 27 are the reference-bias correction this step exists to
-make -- naming the regionally recorded species over a better-matching
-congener over-represented in the sequence databases.}
+the next lowest surviving call holding 0.120. Re-running the whole
+consensus over that study's 724 downranked observations confirms it: one
+call changes, none to or from no call. Two alternatives were measured and
+rejected. Requiring the relabel target to be the HIGHEST-scoring
+candidate blocks 28, and 27 are the reference-bias correction this step
+exists to make -- naming the regionally recorded species over a
+better-matching congener over-represented in the sequence databases.
+Applying the mass test at EVERY rank blocks 26 further steps, each a
+genus call falling back to class, for the unmappable-mass reason above.}
 
 \item{group_priors}{Optional data frame from \code{\link[=compute_group_priors]{compute_group_priors()}}
 (\code{rank}/\code{taxon}/\code{theta_sum}/\code{n_members} columns), the SUM of

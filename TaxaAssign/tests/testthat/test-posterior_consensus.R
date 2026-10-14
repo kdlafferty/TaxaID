@@ -2315,23 +2315,28 @@ test_that("require_candidate = FALSE disables the own-plausibility half too", {
   expect_equal(out$consensus_taxon, "Aus bus")
 })
 
-test_that("node mass is summed, so several sub-threshold species still carry a genus", {
-  # family -> genus, where no single Aus species reaches min_posterior but the
-  # genus does. Blocking this would make the gate over-strict at coarse ranks.
+test_that("the mass test applies at the finest rank only, not at coarser steps", {
+  # A coarse node's mass can be assembled only from plausible rows that map
+  # into species_ref, while min_posterior is read against the WHOLE plausible
+  # set -- and ring/unreferenced rows, which cannot map, are usually most of
+  # it. Gating a coarse step would therefore count unmappable mass as evidence
+  # against the node. Here the ring row holds 0.98 and the one mappable
+  # species 0.02: the family -> genus step must still be taken, and only the
+  # genus -> species step is gated.
   df <- data.frame(
     observation_id = "o1",
     consensus_taxon = "Aidae",
     consensus_rank = "family",
     is_resolved = FALSE,
-    plausible_taxa = I(list(c("Aus bus", "Aus cus", "Aus dus"))),
-    plausible_posteriors = I(list(stats::setNames(c(0.03, 0.03, 0.03),
-      c("Aus bus", "Aus cus", "Aus dus")))),
+    plausible_taxa = I(list(c("Aidae", "Aus bus"))),
+    plausible_posteriors = I(list(stats::setNames(c(0.98, 0.02),
+      c("Aidae", "Aus bus")))),
     stringsAsFactors = FALSE
   )
   ref <- TaxaAssign:::.build_species_ref(
     data.frame(
-      taxon_name = c("Aus bus", "Aus cus", "Aus dus"),
-      genus = "Aus", family = "Aidae", stringsAsFactors = FALSE
+      taxon_name = "Aus bus", genus = "Aus", family = "Aidae",
+      stringsAsFactors = FALSE
     ),
     c("family", "genus", "species")
   )
@@ -2339,9 +2344,10 @@ test_that("node mass is summed, so several sub-threshold species still carry a g
     df, ref, c("family", "genus", "species"),
     require_candidate = TRUE, min_posterior = 0.05
   )
-  # 0.03 each is below the floor; 0.09 on the genus node is above it
+  # family -> genus taken (not gated); genus -> species blocked (0.02 < 0.05)
   expect_equal(out$consensus_taxon, "Aus")
   expect_equal(out$consensus_rank, "genus")
+  expect_true(out$downranked)
 })
 
 test_that("posterior_consensus() passes min_posterior into the downranking gate", {
