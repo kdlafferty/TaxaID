@@ -1121,3 +1121,59 @@ test_that("provenance alone is enough context to annotate", {
   expect_false(is.null(ctx))
   expect_match(ctx$pipeline_note[[1L]], "NO reference sequence")
 })
+
+test_that(".normalise_context() combines the analyst's wording with the synthesised ecoregion", {
+  nc <- TaxaFlag:::.normalise_context
+
+  # A build_context() output: geographic_hint is the analyst's own wording and
+  # ecoregion is ONE string synthesised for the whole taxon list. Reading the
+  # ecoregion alone would hand the LLM a geography narrower than the study.
+  ctx <- nc(data.frame(
+    ecoregion       = "Southern California Bight",
+    main_habitat    = "rocky nearshore reef",
+    date            = "2025",
+    geographic_hint = "California coast, Point Conception to the Oregon border",
+    stringsAsFactors = FALSE
+  ))
+  expect_equal(
+    ctx$geography,
+    "California coast, Point Conception to the Oregon border (Southern California Bight)"
+  )
+  expect_equal(ctx$habitat, "rocky nearshore reef")
+
+  # An explicit geography is authoritative and must survive untouched, so a
+  # hand-written context produces a byte-identical prompt.
+  expect_equal(
+    nc(list(geography = "Pt. Conception, CA Pacific Ocean",
+            ecoregion = "Southern California Bight",
+            habitat = "coastal marine"))$geography,
+    "Pt. Conception, CA Pacific Ocean"
+  )
+
+  # Either field alone is used as-is.
+  expect_equal(nc(list(ecoregion = "Lake Michigan", habitat = "x"))$geography,
+               "Lake Michigan")
+  expect_equal(nc(list(geographic_hint = "Burns Harbor", habitat = "x"))$geography,
+               "Burns Harbor")
+
+  # A hint identical to the ecoregion must not be duplicated into "X (X)".
+  expect_equal(
+    nc(list(geographic_hint = "Lake Michigan", ecoregion = "Lake Michigan",
+            habitat = "x"))$geography,
+    "Lake Michigan"
+  )
+
+  # NA and empty-string placeholders are not geography. build_context() writes
+  # NA_character_ for an absent hint, so this is the common case, not a corner.
+  expect_warning(
+    g <- nc(list(geographic_hint = NA_character_, ecoregion = NA_character_,
+                 habitat = "x"))$geography,
+    "geography"
+  )
+  expect_null(g)
+  expect_equal(
+    nc(list(geographic_hint = "   ", ecoregion = "Lake Michigan",
+            habitat = "x"))$geography,
+    "Lake Michigan"
+  )
+})

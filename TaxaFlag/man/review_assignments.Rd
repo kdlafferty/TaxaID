@@ -187,9 +187,15 @@ context" below). Default \code{"matched_name"}. Set to \code{NULL} to
 disable.}
 
 \item{context}{Named list or data frame describing the study context.
-Recognised fields: \code{geography} (or \code{ecoregion}),
-\code{habitat} (or \code{main_habitat}), \code{date}. A
-\code{build_context()} output works directly. At minimum, supply
+Recognised fields: \code{geography}, \code{habitat} (or
+\code{main_habitat}), \code{date}. A \code{build_context()} output
+works directly: with no explicit \code{geography}, its
+\code{geographic_hint} and \code{ecoregion} are combined as
+\code{"hint (ecoregion)"}, so the wording you supplied is not replaced
+by the single ecoregion synthesised for the whole taxon list. Supply
+\code{geography} yourself to control the line exactly -- most useful
+when a study spans more than one ecoregion, since the context describes
+one study and is shared by every taxon in the call. At minimum, supply
 \code{geography} and \code{habitat}.}
 
 \item{target_group}{Character or \code{NULL}. Taxonomic target group
