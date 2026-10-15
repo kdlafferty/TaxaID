@@ -14,17 +14,18 @@ Bayesian taxonomic assignment from match scores and priors. Part of the
 TaxaAssign makes a consensus taxonomic assignment to an observation
 based on similar labeled accessions found in a reference library. It
 uses Bayes' theorem to multiply the likelihood that a match score
-corresponds to a particular species (from TaxaLikely) by the prior
-probability that the species would be selected at random from a sample
-of similar species expected from that site and habitat (estimated by
-TaxaExpect). After normalization and Monte Carlo simulation, each
-candidate receives a posterior probability. If a single candidate has
-strong posterior support, it is assigned as the consensus taxon;
-otherwise, a coarser rank (genus, family, etc.) is assigned via lowest
-common ancestor. All competing hypotheses and their probabilities are
-retained in the output. The user can also update priors iteratively: if
-one observation strongly supports species A, that evidence can sharpen
-the prior for species A in other observations from the same sample.
+corresponds to a particular species (converted from a score by
+TaxaLikely) by the prior probability that the species would be selected
+at random from a sample of similar species expected from that site and
+habitat (estimated from occurrence data by TaxaExpect). After
+normalization and Monte Carlo simulation, each candidate receives a
+posterior probability. If a single candidate has strong posterior
+support, it is assigned as the consensus taxon; otherwise, a coarser
+rank (genus, family, etc.) is assigned via lowest common ancestor. All
+competing hypotheses and their probabilities are retained in the output.
+The user can also update priors iteratively: if one observation strongly
+supports species A, that evidence can sharpen the prior for species A in
+other observations from the same sample.
 
 Three workflows:
 
@@ -168,9 +169,9 @@ LLM-estimated biogeographic prior).
 -   Dark diversity fallback: "dark diversity" is an ecological concept
     (Pärtel et al. 2011) for species that belong to the regional species
     pool and could plausibly occur at a site given its environmental
-    conditions, but have not actually been observed there. TaxaExpect
-    computes per-species Tier 3 ("undetected species") estimates using
-    this concept. See TaxaExpect's README for the full
+    conditions, but have not actually been observed there yet.
+    TaxaExpect computes per-species Tier 3 ("undetected species")
+    estimates using this concept. See TaxaExpect's README for the full
     occurrence-modeling mechanism. For species with no prior row from
     TaxaExpect at all, `join_priors()` builds its own fallback from
     those Tier 3 estimates, site-level or global averaging, or (with
@@ -221,8 +222,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 

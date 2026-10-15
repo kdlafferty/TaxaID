@@ -36,12 +36,12 @@ The records usually come from GBIF (Global Biodiversity Information
 Facility; GBIF Secretariat, Copenhagen, Denmark) through TaxaFetch,
 which also handles other providers and user-supplied tables. The
 estimate is spatial: each species' theta is its kernel-weighted share of
-the related records around the query site, with weight decaying
-smoothly with distance and, optionally, with a covariate such as depth,
-altitude or temperature, and stratified by habitat. Lightly sampled
-sites shrink toward the surrounding region's composition instead of
-returning nothing. The kernel bandwidth and the regional back-off are
-chosen from the data by leave-one-block-out composition prediction
+the related records around the query site, with weight decaying smoothly
+with distance and, optionally, with a covariate such as depth, altitude
+or temperature, and stratified by habitat. Lightly sampled sites shrink
+toward the surrounding region's composition instead of returning
+nothing. The kernel bandwidth and the regional back-off are chosen from
+the data by leave-one-block-out composition prediction
 (`calibrate_kernel_bandwidth()`), not hand-set. Taxa never reported in
 the study area are not treated as impossible: TaxaExpect prices a dark
 diversity prior for them from a Good-Turing/Chao-anchored
@@ -82,11 +82,10 @@ accessible places and charismatic taxa, so priors derived from GBIF and
 similar unstandardized sources are coarse. They remain useful because
 the question they answer is comparative: which of several candidates
 with similar match scores is plausible here. Distinguishing a locally
-common species from one with no record within a thousand kilometres
-does not need standardized effort. What the bias does affect is the
-absolute share, which is why theta is best read within an observation
-rather than as an estimate of abundance (see the pooling discussion
-below).
+common species from one with no record within a thousand kilometres does
+not need standardized effort. What the bias does affect is the absolute
+share, which is why theta is best read within an observation rather than
+as an estimate of abundance (see the pooling discussion below).
 
 ### Shared detection effort
 
@@ -209,14 +208,13 @@ Prior estimation:
 -   `estimate_kernel_priors_from_counts()`: the same estimator and the
     same prior object from GBIF record counts in distance bands
     (`TaxaFetch::fetch_gbif_occurrence_counts()`) instead of records --
-    the counts path, for pools too large to download; point records
-    from other sources join the fit via `extra_occurrences`. No
-    record-level habitat, covariate kernel or bandwidth calibration.
-    One site per call: the bands are centred on a single site, so each
-    site needs its own count fetch and fit; the records path downloads a
-    polygon once and serves every site inside it
-    (`estimate_kernel_priors()` per site,
-    `TaxaAssign::combine_multisite_priors()` across them)
+    the counts path, for pools too large to download; point records from
+    other sources join the fit via `extra_occurrences`. No record-level
+    habitat, covariate kernel or bandwidth calibration. One site per
+    call: the bands are centred on a single site, so each site needs its
+    own count fetch and fit; the records path downloads a polygon once
+    and serves every site inside it (`estimate_kernel_priors()` per
+    site, `TaxaAssign::combine_multisite_priors()` across them)
 -   `generate_undetected_diversity()`: singleton-mirror and global-floor
     `resident_undetected` priors from a kernel fit
 -   `generate_presence_curve_evidence()` /
@@ -335,8 +333,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 
