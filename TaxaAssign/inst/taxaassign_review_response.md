@@ -1499,3 +1499,13 @@ Tests: two blocks from the deposit rows, *Anisotremus* at Punta Abreojos (strict
 the genus at 0.931; the default is never coarser and never lower) and the *Labrisomus*
 case. Suite at this tip: 1,375 pass / 0 fail / 0 error; rcmdcheck --as-cran, warnings
 counted: 0 / 0 / 0.
+
+### 2026-10-15: unreferenced-taxonomy lookups pass each hypothesis's own rank
+
+`posterior_consensus(lookup_missing_taxonomy = TRUE)`, its phylum-lineage lookup and
+`join_priors()`'s TaxaTools fallback now pass the rank each row means its name at
+(`taxon_name_rank`) to `verify_taxon_names(ranks =)`, so an NCBI homonym such as
+*Etheostoma* (genus and subgenus) is resolved from data already in hand instead of aborting
+the whole batch -- which at Great Lakes cost 75 of 75 unreferenced taxa their lineage. The
+argument is passed only when the installed TaxaTools takes it, the same guard as
+`cache_dir`. Test: the ranks reaching the lookup equal the rows' own ranks.

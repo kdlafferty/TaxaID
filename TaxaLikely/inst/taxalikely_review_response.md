@@ -1768,3 +1768,23 @@ is a new user-facing argument and needs the maintainer's yes before release.
 Tests: a failed enumeration is named, excluded from `unreferenced` and not checkpointed while
 an answered sibling genus is kept; a failed reverse check no longer reports its candidates
 unreferenced; `"error"` stops; a clean run reports no failures.
+
+### 2026-10-15: `apply_coverage_constraints(relabel)` removes a closed genus's placeholder weight
+
+Every query carries an "unsequenced congener" row (`unreferenced_species`, named by the
+best candidate's genus). When the coverage census says every species of that genus is
+referenced, the row stands for nothing, yet `"relabel"` mode -- the mode every production
+workflow passes -- only renamed it and left its likelihood in place. At Great Lakes the
+grass carp placeholder (*Ctenopharyngodon*, a monotypic genus) carried a likelihood of
+0.43 against the species' 0.51 and a slightly larger prior, won the posterior 0.51 to
+0.41, and the credible node coarsened. (That run's census had in fact failed silently,
+which the 2026-10-15 lookup-failure fix now reports; the placeholder's weight was the
+second defect behind it.)
+
+`"relabel"` now does what `"zero"` does to the likelihoods -- multiplies
+`score_likelihood`/`score_likelihood_mean` by `penalty_factor`, default 0 -- and keeps
+the relabel, so the constraint stays visible per observation while the row carries no
+weight. Ambiguity among the referenced species is carried by their own rows and the
+consensus's rank walk, not by this placeholder. A census lookup that FAILED is reported as
+incomplete, never complete, so a failure can leave a placeholder in play but never remove
+a real one. Test: the grass carp shape under both modes.
