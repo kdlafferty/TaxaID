@@ -458,3 +458,47 @@ test_that("a cross-lineage homonym at a finer rank is still REJECTED", {
   expect_equal(out$kingdom, "Chromista")
   expect_equal(out$phylum, "Ciliophora")
 })
+
+test_that("harmonise: a name whose lookup FAILED is warned about, left unharmonised and never cached", {
+  failing_verify <- function(names, backbone_id = 11L, ...) {
+    out <- .mock_verify(names, backbone_id, ...)
+    out$verified[out$user_supplied_name == "Polychaeta"] <- FALSE
+    out$matched_name[out$user_supplied_name == "Polychaeta"] <- NA_character_
+    out$classification_path[out$user_supplied_name == "Polychaeta"] <- NA_character_
+    out$classification_ranks[out$user_supplied_name == "Polychaeta"] <- NA_character_
+    out
+  }
+  local_mocked_bindings(verify_taxon_names = failing_verify)
+  cd <- withr::local_tempdir()
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = NA_character_,
+                   stringsAsFactors = FALSE)
+  expect_warning(
+    out <- assign_sampling_group(tx, harmonise = TRUE, cache_dir = cd, verbose = FALSE),
+    "lookup FAILED for 1 of 1"
+  )
+  expect_equal(out$class, "Polychaeta")                       # untouched, not fabricated
+  expect_false(file.exists(file.path(cd, "sampling_group_harmonise_cache.rds")))
+})
+
+test_that("harmonise: an unmarked cache's lineage-less row is re-resolved, a lineage-bearing one is kept", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  cd <- withr::local_tempdir()
+  saveRDS(
+    data.frame(source_name = c("Polychaeta", "Annelida"), matched_rank = c(NA, "phylum"),
+               kingdom = c(NA, "Animalia"), phylum = c(NA, "Annelida"), class = NA_character_,
+               order = NA_character_, stringsAsFactors = FALSE),
+    file.path(cd, "sampling_group_harmonise_cache.rds")     # no answered_only attribute
+  )
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = NA_character_, stringsAsFactors = FALSE)
+  expect_message(
+    suppressWarnings(assign_sampling_group(tx, harmonise = TRUE, cache_dir = cd, verbose = TRUE)),
+    "1 unmatched row\\(s\\) cannot be told from failed lookups"
+  )
+  lookup <- readRDS(file.path(cd, "sampling_group_harmonise_cache.rds"))
+  expect_true(isTRUE(attr(lookup, "answered_only")))
+  expect_true("Annelida" %in% lookup$source_name)              # kept, not re-asked
+  expect_true("Polychaeta" %in% lookup$source_name)            # re-resolved and rewritten
+  expect_false(all(is.na(lookup[lookup$source_name == "Polychaeta", c("kingdom", "phylum")])))
+})

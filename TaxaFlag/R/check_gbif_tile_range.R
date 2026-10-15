@@ -130,7 +130,11 @@
 #' caller with no cache read or write, so a transient failure is retried
 #' plainly on the next call rather than being frozen as "unknown."
 #'
-#' The returned data frame carries `attr(out, "cache_age_days")`: the age in
+#' A verdict built on a tile GBIF did not return (HTTP status other than 200
+#' or 204, e.g. a 5xx under load) is reported for the call with
+#' `attr(out, "tile_fetch_failed") = TRUE` and is never cached, because its
+#' "no occurrences" reading is what a server error looks like, not what it
+#' means. The returned data frame carries `attr(out, "cache_age_days")`: the age in
 #' days of the cached verdict on a hit, or `NA` on a miss/uncached call --
 #' lets a caller report how stale the tile checks behind a run were, rather
 #' than that staleness being silent.
@@ -256,6 +260,7 @@ check_gbif_tile_range <- function(taxon_key,
     hit <- .tile_cache_read(cache_path, cache_key)
     if (!is.null(hit)) {
       out <- hit$row
+      attr(out, "tile_fetch_failed") <- FALSE # a cached verdict was never built on a failed tile
       attr(out, "cache_age_days") <- as.numeric(difftime(Sys.time(), hit$fetched_at, units = "days"))
       return(out)
     }
@@ -276,10 +281,12 @@ check_gbif_tile_range <- function(taxon_key,
   first_attempt <- NULL
   found_attempt <- NULL
   zoom_used <- NA_integer_
+  any_fetch_failed <- FALSE
 
   for (z in zoom_seq) {
     attempt <- .check_gbif_tile_range_at_zoom(taxon_key, query_lat, query_lon, z, buffer_px, base_url, tile_size)
     n_tiles_fetched_total <- n_tiles_fetched_total + attempt$n_tiles_fetched
+    any_fetch_failed <- any_fetch_failed || isTRUE(attempt$fetch_failed)
     if (is.null(first_attempt)) first_attempt <- attempt
     if (attempt$found) {
       found_attempt <- attempt
@@ -333,10 +340,14 @@ check_gbif_tile_range <- function(taxon_key,
   # missing package, a malformed tile -- propagates before this point and is
   # never cached, matching the "unresolved verdicts are never cached"
   # convention). Every outcome that reaches here, beyond_buffer included, is
-  # a real, decisive verdict per this function's own @return docs.
-  if (!is.null(cache_dir)) {
+  # a real, decisive verdict per this function's own @return docs -- EXCEPT
+  # one built on a tile the server did not return (HTTP != 200/204): that
+  # verdict is reported for this call with attr "tile_fetch_failed" but is
+  # never cached, so the next call asks GBIF again.
+  if (!is.null(cache_dir) && !any_fetch_failed) {
     .tile_cache_write(cache_path, cache_key, out, fetched_at = Sys.time())
   }
+  attr(out, "tile_fetch_failed") <- any_fetch_failed
   attr(out, "cache_age_days") <- NA_real_
   out
 }
@@ -357,10 +368,12 @@ check_gbif_tile_range <- function(taxon_key,
 
   mosaic <- matrix(0, nrow = length(y_range) * tile_size, ncol = length(x_range) * tile_size)
   n_tiles_fetched <- 0L
+  fetch_failed <- FALSE
   for (yi in seq_along(y_range)) {
     for (xi in seq_along(x_range)) {
       xw <- ((x_range[xi] %% n_tiles) + n_tiles) %% n_tiles # wrap the antimeridian
       alpha <- .fetch_gbif_tile_alpha(base_url, zoom, xw, y_range[yi], taxon_key, tile_size)
+      fetch_failed <- fetch_failed || isTRUE(attr(alpha, "fetch_failed"))
       n_tiles_fetched <- n_tiles_fetched + 1L
       row_off <- (yi - 1L) * tile_size
       col_off <- (xi - 1L) * tile_size
@@ -387,7 +400,7 @@ check_gbif_tile_range <- function(taxon_key,
   occ_idx <- which(presence, arr.ind = TRUE)
   if (nrow(occ_idx) == 0L) {
     return(list(
-      found = FALSE, n_tiles_fetched = n_tiles_fetched,
+      found = FALSE, n_tiles_fetched = n_tiles_fetched, fetch_failed = fetch_failed,
       resolution_km_per_px = res_km_per_px, point_occupied = point_occupied
     ))
   }
@@ -398,7 +411,7 @@ check_gbif_tile_range <- function(taxon_key,
   patch <- .grow_patch_size(presence, occ_idx[nearest_i, 1], occ_idx[nearest_i, 2])
 
   list(
-    found = TRUE, n_tiles_fetched = n_tiles_fetched,
+    found = TRUE, n_tiles_fetched = n_tiles_fetched, fetch_failed = fetch_failed,
     resolution_km_per_px = res_km_per_px, point_occupied = point_occupied,
     dist_nearest_occupied_km = dist_km,
     patch_size_px = patch$size, patch_size_capped = patch$capped
@@ -447,10 +460,13 @@ check_gbif_tile_range <- function(taxon_key,
   }
   if (status != 200L) {
     warning(sprintf(
-      "check_gbif_tile_range: tile z=%d/x=%d/y=%d returned HTTP %d -- treated as empty.",
+      "check_gbif_tile_range: tile z=%d/x=%d/y=%d returned HTTP %d -- treated as empty for this call; the verdict is NOT cached.",
       zoom, x, y, status
     ), call. = FALSE)
-    return(matrix(0, tile_size, tile_size))
+    # The verdict built from this tile reads as "no occurrences here", which
+    # is what a server error looks like, not what it means. It is marked so
+    # the caller reports it and never writes it to the cache.
+    return(structure(matrix(0, tile_size, tile_size), fetch_failed = TRUE))
   }
   img <- png::readPNG(httr2::resp_body_raw(resp))
   # GBIF's @1x.png tiles are always RGBA (confirmed empirically) -- guarded

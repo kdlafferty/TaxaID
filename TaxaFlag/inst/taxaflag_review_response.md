@@ -605,3 +605,14 @@ on functions this document already covers above.
   accepts a named vector, one medium per tube, and the prompt says a purified medium (RO,
   distilled) should be near-empty. The cache key version was raised, so every tube is
   re-asked once.
+### 2026-10-15: `check_gbif_tile_range()` never caches a verdict built on a tile GBIF did not return
+
+A tile returning any HTTP status other than 200 or 204 was "treated as empty" with a
+warning, and the verdict built on it -- `beyond_buffer = TRUE` when nothing else was found,
+i.e. "no occurrences anywhere" -- was then written to the tile cache and served on every
+later run. That reading is what a server error under load looks like, not what it means
+(a connection failure threw and was never cached; a 5xx was). The verdict is still
+reported for the call, now with `attr(out, "tile_fetch_failed") = TRUE`, but the cache
+write is skipped so the next call asks GBIF again; a cache hit carries the attribute as
+`FALSE`. One test: a mocked failing tile yields the verdict with the attribute, writes no
+file, and a second call fetches again.
