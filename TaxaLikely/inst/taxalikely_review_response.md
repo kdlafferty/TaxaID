@@ -1739,3 +1739,32 @@ the measured scatter from the restoration rule rather than the data.
 Tests: tight restored rows that would otherwise be the confident top hits leave sigma_ratio and the
 offset identical to the observed-only result; any one restoration marker excludes a row; an
 observation whose only rows are restored contributes nothing.
+
+### 2026-10-15: `audit_barcode_coverage()` reports an NCBI failure instead of returning a shorter list
+
+While NCBI was unreachable a Mugu run's coverage audit returned 59 unreferenced 12S species
+where a normal run returns 445, and 0 for 16S where it returns 380, without an error; the
+workflow then cached both as `coverage_<marker>.rds`. Three paths produced that: a failed
+taxid resolution (`.genus_taxid()`) and a failed species enumeration
+(`.ncbi_species_enumerate()`) both left the genus as an NA record that contributed nothing
+to `unreferenced`, indistinguishable from a genus NCBI does not hold; a failed summary batch
+inside the enumeration silently truncated the species list; and a failed reverse barcode
+check (`.reverse_barcode_check()`) returned its `empty` value, which reads as "every
+candidate is unreferenced" -- the right answer when NCBI holds no sequences and the wrong
+one when NCBI could not be asked.
+
+Fix. Each helper flags a failed request on its return value (`attr(, "lookup_failed")`,
+attached only on failure so an answered value stays a plain vector or list); the per-genus
+record carries `lookup_failed`; a failed genus is never checkpointed (it is asked again on
+resume), contributes nothing to `unreferenced`, and has `is_complete = FALSE`. The census
+gains a `lookup_failed` column, the result gains `attr(x, "lookup_failures")`, and the
+function reports the failed groups by name in one consolidated message and warning that
+states the consequence (the set is incomplete and must not be cached). The new argument
+`on_lookup_failure = c("warn", "error")`, the same shape as
+`fetch_ncbi_reference_sequences(on_count_failure =)`, lets an unattended workflow stop
+rather than cache a truncated set; the default keeps the warn-and-continue behaviour. This
+is a new user-facing argument and needs the maintainer's yes before release.
+
+Tests: a failed enumeration is named, excluded from `unreferenced` and not checkpointed while
+an answered sibling genus is kept; a failed reverse check no longer reports its candidates
+unreferenced; `"error"` stops; a clean run reports no failures.

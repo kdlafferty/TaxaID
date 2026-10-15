@@ -402,3 +402,52 @@ first: under the installed pre-change build it reproduces all 316 as Chordata at
 
 12 taxa remain unresolved and are reported by warning (the Apogon group above). Suite 1,295 pass / 0
 fail / 19 skip; `rcmdcheck --as-cran` 0 errors / 0 warnings / 1 pre-existing note.
+
+### 2026-10-15: a failed lookup is never cached as an answer (verify_taxon_names, assign_sampling_group, fill_higher_ranks)
+
+During a network outage (the machine slept, 2026-10-14 20:41-20:44 HST) a Mugu run's
+`posterior_consensus(taxonomy_cache_dir =)` wrote cache entries for *Notropis* and
+*Atherinops* -- both valid NCBI genera -- as `verified = TRUE`, `matched = FALSE`,
+`matched_name = NA`, and would have served that non-answer as a definitive non-match on
+every later run. The cache writer in `verify_taxon_names()` was correct: it stores only rows
+with `verified = TRUE`. The NCBI path (`.verify_via_ncbi()`, `backbone_id = 4`) was not: a
+search batch that failed all three attempts, a failed `[All Names]` synonym fallback and a
+failed lineage fetch all reached Step 3 as `verified = TRUE` / `matched_name = NA`, the same
+shape as a genuine non-match. The GlobalNames path has always returned `verified = FALSE` on
+failure, which is why the CalIntertidal cache (5,169 GlobalNames entries) carried no poison.
+
+Fix. The NCBI path now tracks the names it could not ask about (a failed search batch's
+names, a failed synonym check's name, the taxids of a failed lineage batch) and reports them
+with `verified = FALSE`; the summary line counts them separately from "no match". Every cache
+entry written from now on carries an `answered = TRUE` marker. An entry from before the
+marker existed is served only if it holds a matched name (a failure never produces one, on
+either path, since a name is assigned only from a fetched lineage or an API record); an
+unmarked entry without a name is treated as a miss, asked once more and rewritten with the
+marker. Measured one-time cost on the three validation caches: CalIntertidal 132 unmarked
+nameless entries (GlobalNames: 100 names re-asked in 0.6 s), Mugu 0 (its 89 entries all
+matched), Great Lakes 0 live (the 66 poisoned entries had been moved to a quarantine folder
+by hand), so no pre-warm step was needed.
+
+`assign_sampling_group(harmonise = TRUE)` had the same shape one level up: its cache was
+built from `change_backbone(keep_unmatched = TRUE)` with no filter on `verified`, so a
+GlobalNames batch that failed was stored as an unmatched name. Rows with `verified = FALSE`
+are now dropped before the cache is built, with a warning naming them (they are left
+unharmonised this run and asked again next run); the saved cache carries
+`attr(, "answered_only")`, and a cache lacking it has its lineage-less rows treated as misses
+while its lineage-bearing rows are kept, the same rule as the `matched_rank` check already
+applied to caches written before the rank-agreement gate.
+
+`fill_higher_ranks(character(0))` used to stop with "taxon_names must be a non-empty
+character vector". An empty input is a legitimate upstream outcome (a coverage audit that
+finds no unreferenced species for a marker) and was killing a Mugu Round-1 loop on its
+emptiest marker. It now returns the documented zero-row table with the usual columns
+(`taxon_name`, `genus`, each requested rank and, with `record_source = TRUE`, each
+`<rank>_source`) and says so in a message; a non-character input still stops.
+
+Tests: three mocked-rentrez failure cases (search batch, lineage fetch, synonym fallback;
+the last also through `verify_taxon_names(cache_dir =)`, asserting the failed name is not
+written and is asked again while its answered siblings are cached with the marker), two
+cache-marker cases (an unmarked nameless entry is re-asked and rewritten; an unmarked named
+entry is served), two harmonise cases (a failed row is warned about and never cached; an
+unmarked cache's lineage-less row is re-resolved while its lineage-bearing row is kept), and
+the empty `fill_higher_ranks()` input.
