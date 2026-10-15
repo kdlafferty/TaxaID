@@ -10,21 +10,21 @@ editor_options:
 
 # Project Overview and Purpose
 
-Biologists increasingly measure biodiversity from sequence, sound, and
-image data. Automated classifiers can already assign a detection to a
-taxon. Yet current pipelines can have high false-positive and
-false-negative rates, leaving users to choose between precision and
-recall. Some adopt defensive upranking (assigning detections to higher
-taxonomic ranks like genus or family). Others use regional species lists
-to prevent implausible assignments, or post-hoc expert review to
-override obvious errors. But Bayes' Theorem is the natural statistical
-framework for classification under prior knowledge and uncertain
-evidence.
+Biologists increasingly measure biodiversity from detected sequences,
+sounds, and images. A detection can be assigned to a taxon by various
+automated classifiers. Yet current classifiers can have high
+false-positive and false-negative rates, leaving users to choose between
+precision and recall. Some adopt defensive upranking (assigning
+detections to higher taxonomic ranks like genus or family). Others use
+regional species lists to prevent implausible assignments, or post-hoc
+expert review to override obvious errors. But Bayes' Theorem is the
+natural statistical framework for classification under prior knowledge
+and uncertain evidence.
 
 TaxaID is a modular ecosystem of nine packages for the R programming
 language (R Core Team 2025; see Table 2, Software Requirements) that
 improve taxonomic assignment accuracy. A typical input is a table of
-candidate matches for each observation (sequence, image, or acoustic
+candidate matches for each detection (sequence, image, or acoustic
 recording) previously obtained by querying a reference library. Its main
 advances are to:
 
@@ -81,7 +81,10 @@ categories: false positives (FP; wrong taxon assigned, or overly
 confident in), false negatives (FN; correct taxon missed or
 underestimated), and combined errors where one taxon's false positive is
 another's false negative. FP/FN labels below mark seven common sources
-of error that TaxaID can reduce.
+of error that TaxaID can reduce. Yet classification errors abound, and,
+in some cases, authors confuse errors with interesting biological
+patterns (Leray et al. 2026). Reducing errors before analyzing data can
+avoid such mistakes.
 
 #### Field and lab artifacts
 
@@ -110,9 +113,9 @@ of error that TaxaID can reduce.
     accession matches taxa related to its label, and
     `review_flagged_accessions()` gives flagged/borderline accessions a
     third look from an LLM; after which `resolve_review_overrides()`
-    double checks if flagged accessions should be kept or removed. I
-    find less than 1% of NCBI references to be mislabeled, but worth
-    removing.
+    double checks if flagged accessions should be kept or removed. For
+    my data, I find less than 1% of NCBI references to be mislabeled,
+    but worth removing.
 3.  Missing reference redirect (FP + FN). The reference database itself
     is usually incomplete: when the true species has no entry in the
     reference library, its detections are incorrectly assigned to the
@@ -130,7 +133,9 @@ of error that TaxaID can reduce.
     still be ambiguous at species rank if competing candidates also
     score well. TaxaLikely models likelihoods from scores by using the
     reference database to discover how scores, and gaps between scores,
-    help predict self vs non-self matches.
+    help predict self vs non-self matches. TaxaAssign can use defensive
+    upranking when there are several candidates that are difficult to
+    distinguish.
 5.  Overly strict thresholds (FN). Conservative score cutoffs aimed to
     reduce false positives discard correct assignments that fall just
     below arbitrary thresholds. TaxaID's probabilistic framework
@@ -143,7 +148,7 @@ of error that TaxaID can reduce.
     to a species that doesn't plausibly occur at the sampling location,
     season, or habitat. Filtering on a regional list is a coarse way to
     reduce such errors. Spatially explicit priors from TaxaExpect
-    down-weight implausible taxa across a continuous gradient, and allow
+    down-weight implausible taxa across a continuous gradient, yet allow
     for the discovery of novel or introduced species.
 7.  Defensive upranking (FN). When multiple similar species produce
     near-identical scores, conventional systems uprank to genus (or
@@ -187,7 +192,7 @@ of error that TaxaID can reduce.
     about their data and goals, then generates a complete R script,
     methods section, or Shiny application.
 
-See the README.md file for each package for more details.
+See each package's README.md file for more details.
 
 ### Dependency Chain (import order)
 
@@ -327,7 +332,8 @@ precision that does not exist, so this repository-level statement is the
 annotation. All of it was reviewed and tested before release: every
 package carries a `testthat` suite, and each was checked with
 `R CMD check` before release. The author reviewed the code and takes
-responsibility for it.
+responsibility for it and the code was subject to a human code review as
+well.
 
 In assisting the user: TaxaWizard has three ways for users to interface
 with LLMs to help write code and generate products.
@@ -342,7 +348,7 @@ occurrence data, and its support for sequence, image and acoustic data.
 Table 1. Comparison of TaxaID with related taxonomic assignment tools.
 
 | Tool | Approach | Posterior probabilities | Spatial priors | Unreferenced taxa | Multi-data-type |
-|----|----|----|----|----|----|
+|------------|------------|------------|------------|------------|------------|
 | TaxaID | Generative Bayesian (MVN score + gap) | Yes (full distribution) | Yes (GBIF + habitat) | Yes (NCBI census + LLM) | Yes |
 | PROTAX (Somervuo et al. 2016) | Bayesian with taxonomy-tree prior | Yes | No | Yes (tree-based) | No (DNA only) |
 | BayesANT (Zito et al. 2023) | Bayesian nonparametric (kmer) | Yes | No | Yes (Pitman-Yor) | No (DNA only) |
@@ -361,7 +367,7 @@ DECIPHER aligns reference sequences inside TaxaLikely. A large benchmark
 composition- and placement-based classifiers found that no single
 algorithm works across taxa and markers, which is why TaxaID treats
 reference-database completeness as a modelled problem rather than
-assuming one classification strategy generalizes.
+assuming a single generalizable classification strategy.
 
 `TaxaLikely/README.md` compares TaxaLikely with Anacapa/BLCA in more
 detail, including why BLCA's flat prior and its similarity-weighted
@@ -409,7 +415,7 @@ classifiers, which produce the raw scores TaxaMatch and TaxaLikely
 process.
 
 | Tool | Taxa scope | Score output | Spatial priors | Unreferenced taxa | R access |
-|----|----|----|----|----|----|
+|------------|------------|------------|------------|------------|------------|
 | TaxaID (image path) | Any (classifier-agnostic) | Calibrated likelihoods → Bayesian posteriors | Yes (GBIF + habitat) | Yes (coverage audit) | Native |
 | animl / SpeciesNet (Tabak et al. 2019; Wildlife Insights\*) | Camera trap mammals | Confidence (0--1), top-5; rollup ensemble | No | No | `animl` R package |
 | iNaturalist computer vision | General wildlife (108,000+ taxa) | Softmax (0--1), top-10; genus/family fallback | Limited (app UI only) | No | `rinat` (indirect) |
@@ -484,7 +490,7 @@ do. The TaxaFlag README describes both.
 Table 2. Software dependencies required for the TaxaID ecosystem.
 
 | Software | Version | OS bit | Reference |
-|----|----|----|----|
+|------------------|------------------|------------------|------------------|
 | R | \>= 4.1.0 | 64 | R Core Team. 2025. R: A Language and Environment for Statistical Computing. V.4.5.2. <https://www.r-project.org>. |
 | Bioconductor (DECIPHER, Biostrings) | \>= 3.17 | 64 | Gentleman et al. 2004. Bioconductor. <https://www.bioconductor.org>. DECIPHER is required for `TaxaLikely::build_sequence_matrix()`; Biostrings is also required for `TaxaLikely::trim_to_amplicon()`. |
 | rBLAST | \>= 0.99 | 64 | Hahsler and Nagar. 2024. rBLAST. Bioconductor. <https://doi.org/10.18129/B9.bioc.rBLAST>. Optional; required only for local BLAST in TaxaMatch. |
@@ -500,7 +506,7 @@ or an API key provided by an LLM service (set in `~/.Renviron`). A user
 could use a different LLM by modifying one of the existing LLM calls.
 
 | Key | Required By | How to Obtain |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | `ANTHROPIC_API_KEY` | TaxaTools (LLM calls) | <https://platform.claude.com/> |
 | `GEMINI_API_KEY` | TaxaTools (LLM calls) | <https://aistudio.google.com/apikey> (free tier) |
 | `OPENAI_API_KEY` | TaxaTools (LLM calls) | <https://platform.openai.com/> (paid) |
@@ -559,7 +565,7 @@ TaxaTools (always required) plus the packages for your workflow.
 ## Packages
 
 | Package | Purpose | License |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | [TaxaTools](TaxaTools/) | Name verification, cleaning, parsing, rank lookup, column standardization; LLM provider functions; GBIF backbone census | CC0 |
 | [TaxaFetch](TaxaFetch/) | Occurrence data acquisition (GBIF, DataONE, PDF, literature search), source combination | CC0 |
 | [TaxaHabitat](TaxaHabitat/) | Habitat assignment via LLM biological consensus; spatial QAQC | CC0 |
@@ -615,10 +621,10 @@ via a guided interview: `workflow_create()`.
 
 If you're not sure where to start, don't just start typing into an LLM
 chat. Upload `llm_prompts/START_HERE.md` and
-`llm_prompts/CONTEXT_TaxaID.md` into an LLM chat window instead: they
-carry the package's own workflow graph, so the assistant identifies the
-workflow node and edge for your goal before guessing at individual
-functions. If you have an API key set up,
+`llm_prompts/CONTEXT_TaxaID.md` into an LLM chat window instead. These
+.md files carry the package's context and workflow graph, so the
+assistant identifies the workflow node and edge for your goal before
+guessing at individual functions. If you have an API key set up,
 `TaxaWizard::workflow_create()` runs the same interview from R, in the
 console or a browser window, and writes a complete, runnable script that
 `workflow_app()` can turn into a Shiny app. For example: "I have BLAST
@@ -636,7 +642,7 @@ If you'd rather find the right starting point yourself, match your data
 to a row below:
 
 | Your starting point | Start here |
-|----|----|
+|------------------------------------|------------------------------------|
 | DADA2 sequence table or FASTA file (eDNA/metabarcoding) | `TaxaMatch::read_sequence_table()` / `TaxaMatch::blast_sequences()`, see `TaxaMatch/inst/workflow_fastq_to_match.R` |
 | BirdNET CSV output (acoustic) | `TaxaMatch::read_birdnet_output()`, see `TaxaMatch/inst/workflow_image_acoustic.R` |
 | Camera-trap classifier output (Animl / iNaturalist CV / SpeciesNet) | `TaxaMatch::read_animl_output()` / `read_inaturalist_cv_output()` / `read_speciesnet_output()` |
@@ -731,7 +737,7 @@ Detailed, runnable workflow scripts are provided in each package's
 `inst/` or `inst/workflows/` directory:
 
 | Workflow | Package | Script |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | FASTQ to match data (eDNA) | TaxaMatch | `inst/workflow_fastq_to_match.R` |
 | Image and acoustic identification | TaxaMatch | `inst/workflow_image_acoustic.R` |
 | Fetch reference sequences (DNA) | TaxaLikely | `inst/workflows/1_fetch_references_workflow.R` |
@@ -753,14 +759,14 @@ conventions across all packages) see
 
 # Caching and resources {#caching-and-resources}
 
-Complex workflows are only tractable because slow or metered steps, like
-GBIF downloads, NCBI/BOLD fetches, BLAST calls, and LLM calls, are
-cached to disk and skipped on a repeat run. Caches differ in whether
-they are on by default, and in whether they're worth keeping between
-projects:
+Debugging complex workflows is made tractable because slow or metered
+steps, like GBIF downloads, NCBI/BOLD fetches, BLAST calls, and LLM
+calls, are cached to disk and skipped on a repeat run. Caches differ in
+whether they are on by default, and in whether they're worth keeping
+between projects:
 
 | Package | Cached by default? | What's cached | Worth keeping? |
-|----|----|----|----|
+|------------------|------------------|------------------|------------------|
 | TaxaFetch | Yes (`download_gbif_occurrences()`, `fetch_gbif_occurrences()`, `check_geographic_outliers()`) | GBIF occurrence downloads | No (large and re-downloadable; this is the biggest cache in practice, multiple GB is normal) |
 | TaxaLikely | Yes (`fetch_ncbi_reference_sequences()`, `audit_barcode_coverage()`) | NCBI reference-sequence metadata + FASTA | Somewhat (re-fetchable, but a large taxon list can take hours) |
 | TaxaMatch | Yes (`evaluate_reference_accessions()`, `investigate_flagged_accession()`, `review_flagged_accessions()`) | Reference-accession mislabel-screen verdicts (BLAST + LLM review) | Yes (expensive to rebuild, and it's row-level with its own TTLs, not a flat file store) |
@@ -775,8 +781,8 @@ All of the "Yes" and "Mixed" defaults above use
 your project, invisible unless you go looking for it. Where a function
 defaults to `cache_dir = NULL`, nothing is written to disk until you
 pass a directory; the production workflows pass one explicitly for
-exactly the functions listed above as "No," except TaxaAssign's, since no
-production workflow runs the LLM shortcut. TaxaAssign has no clear
+exactly the functions listed above as "No," except TaxaAssign's, since
+no production workflow runs the LLM shortcut. TaxaAssign has no clear
 function; to start its cache over, delete the directory or pass a new
 one.
 
@@ -789,9 +795,9 @@ so pass the same directory you gave the caching function). TaxaMatch has
 none: its cache is a few files holding many TTL'd rows each, not one
 file per key, so deleting by file would discard live verdicts. All five
 run on one shared engine,
-`TaxaTools::list_cache_files()`/`report_and_clear_cache()`, which
-refuses to clear a directory holding anything other than that package's
-own cache files unless `force = TRUE`.
+`TaxaTools::list_cache_files()`/`report_and_clear_cache()`, which won't
+clear a directory holding anything other than that package's own cache
+files unless `force = TRUE`.
 `TaxaTools::taxaid_cache_report(extra_dirs = NULL, warn_gb = 1)` reports
 every cache on the machine (size, file count, and age per package,
 flagging anything at or above `warn_gb` gigabytes) without deleting
@@ -893,7 +899,7 @@ Each stage writes a data frame the next stage reads; the package READMEs
 describe each in full.
 
 | Output | Package and function |
-|----|----|
+|------------------------------------|------------------------------------|
 | Occurrence records standardized to Darwin Core columns, with habitat assignments and spatial quality flags | TaxaFetch `stack_occurrences()`; TaxaHabitat `assign_habitat_biological()`, `flag_habitat_inconsistencies()` |
 | Reference-library assessment: mislabel verdicts, coverage audits, model diagnostics | TaxaMatch `corroborate_references_locally()`, `evaluate_reference_accessions()`; TaxaLikely `audit_barcode_coverage()`, `interpret_model()` |
 | Priors: a Beta prior per taxon at the focal site, including undetected diversity, and the prior field as a map or data frame | TaxaExpect `estimate_kernel_priors()`, `generate_undetected_diversity()`, `plot_theta_surface()` |
@@ -1014,6 +1020,10 @@ Ecology Resources*, 23(3), 725--738.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+Leray, M., Victor, B. C., Jeunen, G. J., & Robertson, D. R. (2026).
+Seeing Species Where They Are Not: Why eDNA Needs Better Taxonomic
+Standards. *Global Change Biology*, *32*(10), e71133.
 
 Macher, T.-H., Beermann, A.J. and Leese, F. (2021). TaxonTableTools: a
 comprehensive, platform-independent graphical user interface software to
