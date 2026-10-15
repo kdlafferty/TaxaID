@@ -1505,6 +1505,85 @@ test_that("the robust-skip warning is silent when the caller asks for the plain 
   )
 })
 
+# ---- robust bound: the one-member rule -------------------------------------
+# A genus whose only locally recorded species is the winner. The sequence alone
+# reaches the genus (two referenced congeners, one of them local); the prior
+# carries the species. Mirrors the Mugu COI ASV_21 rows: a 96% match to the one
+# local Fundulus, a restored F. lima with no local record, and the unsequenced
+# congener / family placeholders. N comes from prior_site_records.
+.one_member_df <- function() data.frame(
+  observation_id = "E1",
+  taxon_name = c("Fundulus parvipinnis", "Fundulus lima", "Fundulus", "Fundulidae"),
+  taxon_name_rank = c("species", "species", "genus", "family"),
+  hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species", "unreferenced_genus"),
+  order = "Cyprinodontiformes", family = "Fundulidae", genus = c("Fundulus", "Fundulus", "Fundulus", NA),
+  species = c("Fundulus parvipinnis", "Fundulus lima", NA, NA),
+  score_likelihood = c(0.0845, 0.1058, 1, 0.6168),
+  prior_mean = c(4.431e-4, 1.57e-9, 1.889e-6, 1.889e-6),
+  prior_alpha = c(42.91, 6.363e-5, 1, 1), prior_beta = c(96808, 40521, 529487, 529487),
+  prior_branch = c("kernel_estimated", "resident_undetected", NA, NA),
+  prior_site_records = 96851,
+  posterior_point_est = c(0.925, 4.1e-6, 0.0466, 0.0288), stringsAsFactors = FALSE)
+.om <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("order", "family", "genus", "species"), consensus_method = "credible_node", ...)))
+.with_variant <- function(v, expr) { old <- options(TaxaAssign.robust_variant = v); on.exit(options(old)); force(expr) }
+
+test_that("a genus with one locally recorded species keeps the genus, and the reference then names the species", {
+  out <- .om(.one_member_df())
+  expect_equal(out$consensus_taxon, "Fundulus")            # the node the sequence reaches
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_limit, "robust_prior")        # the species step is still refused
+  ref <- data.frame(taxon_name = "Fundulus parvipinnis", genus = "Fundulus", family = "Fundulidae", stringsAsFactors = FALSE)
+  out2 <- .om(.one_member_df(), species_reference = ref)
+  expect_equal(out2$consensus_taxon, "Fundulus parvipinnis")
+  expect_true(isTRUE(out2$downranked))
+  # the strict form (one record onto the best outside taxon, whatever its prior) holds the family
+  strict <- .with_variant("strict", .om(.one_member_df()))
+  expect_equal(strict$consensus_rank, "family")
+})
+
+test_that("a perfect match to a species outside the local list is not eliminated into its local congener", {
+  # Ameiurus melas at 100% (no local record) beside the local A. nebulosus at 60%.
+  df <- .one_member_df()
+  df$taxon_name <- c("Ameiurus nebulosus", "Ameiurus melas", "Ameiurus", "Ictaluridae")
+  df$species <- c("Ameiurus nebulosus", "Ameiurus melas", NA, NA); df$genus <- c("Ameiurus", "Ameiurus", "Ameiurus", NA)
+  df$family <- "Ictaluridae"; df$order <- "Siluriformes"
+  df$score_likelihood <- c(0.6, 1, 0.5, 0.3)
+  df$prior_mean <- c(2e-4, 1.889e-6, 1.889e-6, 1.889e-6); df$prior_alpha <- c(20, 1, 1, 1); df$prior_beta <- c(96831, 529487, 529487, 529487)
+  df$prior_branch <- c("kernel_estimated", NA, NA, NA)
+  df$posterior_point_est <- c(0.98, 0.009, 0.008, 0.003)
+  out <- .om(df)
+  expect_false(identical(out$consensus_taxon, "Ameiurus nebulosus"))  # the sequence's own call is A. melas
+  expect_true(out$consensus_rank %in% c("genus", "family"))
+})
+
+test_that("leave-species-out: flooring the true species adds no species call for its local congener", {
+  # Two local congeners, both referenced: A at 100% with 30 records, B at 30% with 25 records.
+  df <- .one_member_df()
+  df$taxon_name <- c("Genus a", "Genus b", "Genus", "Family"); df$species <- c("Genus a", "Genus b", NA, NA)
+  df$genus <- c("Genus", "Genus", "Genus", NA); df$family <- "Family"; df$order <- "Order"
+  df$score_likelihood <- c(1, 0.1, 0.2, 0.1)
+  df$prior_mean <- c(30 / 1000, 25 / 1000, 1e-6, 1e-6); df$prior_alpha <- c(30, 25, 1, 1); df$prior_beta <- c(970, 975, 1e6, 1e6)
+  df$prior_branch <- c("kernel_estimated", "kernel_estimated", NA, NA); df$prior_site_records <- 1000
+  df$posterior_point_est <- c(0.92, 0.077, 1e-5, 1e-5)
+  expect_equal(.om(df)$consensus_taxon, "Genus a")
+  # remove A from the local list: it keeps its sequence, loses its records
+  df$prior_mean[1] <- 1e-6; df$prior_alpha[1] <- 1; df$prior_beta[1] <- 1e6; df$prior_branch[1] <- NA
+  df$posterior_point_est <- c(4e-4, 0.9994, 1e-4, 1e-4)
+  out <- .om(df); strict <- .with_variant("strict", .om(df))
+  expect_false(identical(out$consensus_taxon, "Genus b"))       # the default adds no false positive ...
+  expect_equal(out$consensus_rank, strict$consensus_rank)       # ... and lands where the strict bound does
+})
+
+test_that("removing a genus's only locally recorded member invents no species call", {
+  df <- .one_member_df()
+  df$prior_mean[1] <- 1.889e-6; df$prior_alpha[1] <- 1; df$prior_beta[1] <- 529487; df$prior_branch[1] <- NA
+  df$posterior_point_est <- c(0.08, 0.001, 0.6, 0.32)
+  out <- .om(df)
+  expect_false(out$consensus_rank %in% "species")
+  expect_true(is.na(out$consensus_taxon) || out$consensus_rank %in% c("genus", "family", "order"))
+})
+
 test_that("the default consensus_method is lca and unchanged", {
   expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
 })

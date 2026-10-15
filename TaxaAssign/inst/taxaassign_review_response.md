@@ -1381,3 +1381,72 @@ fixture was wrong and the test caught it: with shares 0.60/0.31/0.09 nothing rea
 so there was no call for the rule to act on and all four arms returned `limit = "threshold"`.
 
 Suite at this tip: 1,276 pass / 0 fail / 0 error / 1 skip.
+
+### 2026-10-14: the robust bound lets a sequence's own node keep its one recorded member
+
+K. Lafferty, on a Mugu COI sentinel (*Fundulus parvipinnis*, a 96% match to the only
+locally recorded fundulid, refused at species and genus and reported as Fundulidae):
+"Mathematically, if a sequence is only good to family, but there is only one plausible
+member of a family, then the process of elimination should point to that species. But
+being more permissive increases the risk of false positives. So we need to understand the
+costs and benefits." Measured first, then built; he has not yet chosen the one constant
+(below).
+
+The defect. The robust bound (`robust_prior_s`, entry of 2026-10-02) moved one site
+record's share of prior mass onto the best-fitting hypothesis OUTSIDE a node whatever
+that hypothesis's own prior, so an unsequenced-congener placeholder carrying a floor
+prior (no local record) counted as a full competitor, and a family whose only recorded
+member is the winner was penalised exactly like a family with three. On ASV_21 the
+arithmetic is: node mass 3.7e-5 (likelihood 0.085 times a prior of 43 records in
+96,851), one record on the placeholder at likelihood 1.0 is 1.03e-5, so the species node
+holds 0.737 and the genus 0.839 against the 0.90 threshold.
+
+The rule. An outside hypothesis now gains one record RELATIVE to its own evidence (its
+mass grows by at most `s / alpha`, so a placeholder can at most double a tiny mass and a
+40-record competitor gains 2.5%), and only at a node the sequence alone reaches -- at or
+above the likelihood-only call and containing it -- that holds a locally recorded
+member. At every other node the previous strict move applies unchanged. So a sequence
+good to genus in a genus with one recorded species keeps the genus (ASV_21: 0.944), and
+`species_reference` may then name that species; a 100% match to a species outside the
+local list is never eliminated into its local congener, because the node the sequence
+reached is the non-local species, not its congener. No exported argument and no default
+moved. Two internal options, not a user surface: `TaxaAssign.robust_variant`
+(`"relative_gated"` default; `"strict"` reproduces the previous bound exactly;
+`"relative"`, `"exempt"`, `"exempt_gated"` are the measured alternatives) and
+`TaxaAssign.robust_member_records` (records a locally recorded row must exceed to count
+as a member; default 0, as measured -- the maintainer's remaining choice; the data-derived
+candidate is `s`, which keeps about 25 of the 137 calls below).
+
+Costs and benefits, measured before adoption. Leave-species-out: in units called to
+species at >= 99% identity whose genus has two or more locally recorded species, the true
+species' prior was set to the floor as if it were not locally recorded and the consensus
+re-run; a species call for the remaining congener is a false positive. CalIntertidal r2
+at the deposit grain (esv_site; 250 12S and 250 COI units; 18S has no species call at
+>= 99% identity to test): strict bound 27 of 500, which is its own baseline (the
+congener often carries its own sequence support), this rule 27 of 500, the ungated
+relative form 32, the exempt forms 34 and 27. Mugu full run, Round 2 (33 units):
+strict 0, this rule 0, ungated 1. Removing a genus's only recorded member (200 and 143
+units): no form invents a species call that the strict bound does not. Benefit: of
+CalIntertidal r2's 2,646 units held coarse by the bound, this rule moves 287 finer and
+137 to species (12S 114, 18S 8, COI 15; 130 sequence-named, 7 record-named; 83 of them
+through the reference downrank), median identity 99.4%, 20 below 97%. Of the 137, 5 are
+calls the maintainer has adjudicated correct (*Girella nigricans*, *Sarda chiliensis*,
+*Pleuronichthys decurrens*), 25 are plausible with more than 1.5 local records, 3 are a
+freshwater genus (*Cottus asper* at 100%), and 104 rest on a species with a floor or
+single-record prior (alpha <= 1.5, median 0.01), which is why the records floor exists.
+Mugu: 14 units move (2 to species, *Urobatis halleri* and *Cyprinus carpio* at 100%;
+12 family to genus, including Fundulidae to *Fundulus* for ASV_21 and ASV_99). The
+ungated and exempt forms also released 100% matches to non-local species into their
+local congeners (*Ameiurus melas* 100% called *A. nebulosus*); the gate stops those at
+the genus.
+
+Why the member must be recorded: 45% of kernel-branch rows carry under one effective
+record, so branch membership alone let the first version release thin-prior species the
+bound exists to coarsen; the condition requires a kernel-branch row with more than
+`TaxaAssign.robust_member_records` records inside the node.
+
+Tests: four new blocks on the Fundulus rows (genus kept, reference names the species,
+strict holds the family), a 100% non-local match stopped at its genus, leave-species-out
+landing where the strict bound lands, and a removed sole member inventing nothing. The
+existing 414 consensus tests pass unchanged under the new default. Suite at this tip:
+1,368 pass / 0 fail / 0 error; rcmdcheck --as-cran, warnings counted: 0 / 0 / 0.
