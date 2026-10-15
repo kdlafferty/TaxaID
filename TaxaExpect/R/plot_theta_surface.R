@@ -712,7 +712,8 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
       lambda_km = lambda_km, m = m, covariate_col = covariate_col,
       covariate_at = covariate_at, lambda_covariate = lambda_covariate,
       lambda_latitude = lambda_latitude, taxon = taxon, n_grid = n_grid,
-      n_records_stratum = nrow(rec)
+      n_records_stratum = sum(n_hab), # weighted, as the fit records it
+      n_records_whole = sum(n_hab >= 1)
     )
   )
 }
