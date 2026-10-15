@@ -90,6 +90,13 @@
 #' correct for the dominant group, 5x too narrow for the other. Treat that
 #' warning as a prompt to fit the groups separately, not as noise.
 #'
+#' @param habitat_levels,habitat_weights Optional, supplied together, as on
+#'   [estimate_kernel_priors()]: with both, a record whose habitat could not
+#'   be placed joins the cross-validation at its taxon's `site_habitat`
+#'   weight -- as that fraction of a record when it is a prediction target
+#'   and as that fraction of its kernel weight when it is held out -- so the
+#'   bandwidth is chosen on the pool the estimator will see. Pass the same
+#'   two arguments to both functions.
 #' @return A list with \describe{
 #'   \item{results}{Data frame: one row per parameter combination plus the
 #'     `regional` and `nearest_block` references; columns `lambda_km`,
@@ -140,7 +147,9 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
                                        taxon_col = "taxon_name",
                                        lat_col = "decimalLatitude",
                                        lon_col = "decimalLongitude",
-                                       habitat_col = "main_habitat") {
+                                       habitat_col = "main_habitat",
+                                       habitat_levels = NULL,
+                                       habitat_weights = NULL) {
   if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L) {
     stop("occurrence_data must be a non-empty data frame.")
   }
@@ -180,11 +189,24 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
   }
 
   hab <- occurrence_data[[habitat_col]]
-  keep <- !is.na(hab) & hab == site_habitat & !is.na(occurrence_data[[taxon_col]]) &
+  hw <- .habitat_record_weights(hab, occurrence_data[[taxon_col]], site_habitat,
+                                habitat_levels, habitat_weights, "calibrate_kernel_bandwidth")
+  keep <- hw$keep & !is.na(occurrence_data[[taxon_col]]) &
     !is.na(occurrence_data[[lat_col]]) & !is.na(occurrence_data[[lon_col]])
   rec <- occurrence_data[keep, , drop = FALSE]
   if (nrow(rec) < 2L * min_block_records) {
     stop("Too few records in the focal habitat stratum to cross-validate.")
+  }
+  # Per-record habitat weight: 1 in the stratum, the taxon's site-habitat
+  # weight for an unplaceable record (see estimate_kernel_priors()). It scales
+  # a record's contribution on both sides of the cross-validation -- its
+  # kernel weight when held out, its count when it is the target -- so the
+  # bandwidth is chosen on the same pool the estimator will see. Block
+  # eligibility and block weights still count records, not fractions.
+  hwt <- hw$weight[keep]
+  .wtab <- function(sel) {
+    t <- tapply(hwt[sel], taxa[sel], sum)
+    t[t > 0]
   }
   taxa <- as.character(rec[[taxon_col]])
   lat <- rec[[lat_col]]
@@ -286,11 +308,11 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
   # loss only when it has at least `min_group_records` target records there and
   # at least 1 held-out record to predict from. At one group this can never
   # bite: blocks already carry >= min_block_records by construction.
-  .score_cell <- function(tgt_g, w_g, taxa_g, m_gi, g) {
+  .score_cell <- function(tgt_g, w_g, taxa_g, m_gi, g, hw_g = rep(1, length(taxa_g))) {
     if (m_gi > 0) {
       sp_g <- species_by_g[[g]]
       cw <- tapply(w_g, taxa_g, sum)
-      p_reg <- table(taxa_g)
+      p_reg <- tapply(hw_g, taxa_g, sum)
       p_reg <- p_reg / sum(p_reg)
       q <- stats::setNames(rep(smoothing, length(sp_g)), sp_g)
       q[names(cw)] <- q[names(cw)] + cw
@@ -315,6 +337,7 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
     d <- km(lat[held], lon[held], ci$clat, ci$clon, ci$clat)
     grp_held <- grp[held]
     taxa_held <- taxa[held]
+    hwt_held <- hwt[held]
     lat_held <- lat[held]
     cov_held <- if (use_cov) cov_v[held] else NULL
     oth <- cen[cen$block != b, ]
@@ -340,18 +363,19 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
         w <- w * exp(-111 * abs(abs(lat_held) - abs(ci$clat)) /
           grid$lambda_latitude[gi])
       }
+      w <- w * hwt_held
       for (g in gs) {
         hg <- grp_held == g
         loss_by_g[[g]][bi, gi] <- .score_cell(
-          table(taxa[in_b & grp == g]), w[hg], taxa_held[hg], grid$m[gi], g)
+          .wtab(in_b & grp == g), w[hg], taxa_held[hg], grid$m[gi], g, hwt_held[hg])
       }
     }
     for (g in gs) {
       hg <- grp_held == g
-      tgt_g <- table(taxa[in_b & grp == g])
-      loss_by_g[[g]][bi, n_par + 1L] <- logloss(tgt_g, rep(1, sum(hg)), taxa_held[hg], g)
+      tgt_g <- .wtab(in_b & grp == g)
+      loss_by_g[[g]][bi, n_par + 1L] <- logloss(tgt_g, hwt_held[hg], taxa_held[hg], g)
       loss_by_g[[g]][bi, n_par + 2L] <- logloss(
-        tgt_g, as.numeric(block_held[hg] == nb_id), taxa_held[hg], g)
+        tgt_g, as.numeric(block_held[hg] == nb_id) * hwt_held[hg], taxa_held[hg], g)
     }
   }
 

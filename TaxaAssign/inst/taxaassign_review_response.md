@@ -1509,3 +1509,21 @@ counted: 0 / 0 / 0.
 the whole batch -- which at Great Lakes cost 75 of 75 unreferenced taxa their lineage. The
 argument is passed only when the installed TaxaTools takes it, the same guard as
 `cache_dir`. Test: the ranks reaching the lookup equal the rows' own ranks.
+
+### 2026-10-15: compute_posterior() passes a closed-genus placeholder's posterior to the genus's referenced species
+
+A row `TaxaLikely::apply_coverage_constraints("relabel")` marks `census_closed_genus_relabeled`
+stands for an unsequenced congener a complete census says does not exist. Its posterior now
+goes to the `specific_candidate` rows of the same observation and genus in proportion to their
+own posteriors (all of it to the one species of a monotypic genus), on the point-estimate path
+and in every Monte Carlo simulation, so `posterior_mean`, `posterior_sd` and
+`confidence_score` agree with the point estimate. The genus is read from the `genus` column
+when present, else from the placeholder's name and the candidates' binomials. A placeholder
+with no referenced member of its genus in the observation keeps its posterior; a message
+counts both cases. Why at posterior time: TaxaLikely holds no priors when it relabels, and
+zeroing the likelihood there renormalised the share over every hypothesis in the observation,
+outside the genus too (Great Lakes grass carp: genus 0.925 to 0.848, species 0.85 below the
+0.90 threshold, call to family). Measured read-only on the Great Lakes control run and Mugu:
+see the ecosystem record. Tests: a monotypic closed genus keeps its node mass on both paths;
+a two-species genus splits by posterior with the ratio unchanged; a moved placeholder is zero
+on both paths; no referenced congener keeps the mass; unmarked input is unchanged.

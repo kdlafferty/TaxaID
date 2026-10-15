@@ -1788,3 +1788,20 @@ weight. Ambiguity among the referenced species is carried by their own rows and 
 consensus's rank walk, not by this placeholder. A census lookup that FAILED is reported as
 incomplete, never complete, so a failure can leave a placeholder in play but never remove
 a real one. Test: the grass carp shape under both modes.
+
+### 2026-10-15: the closed-genus placeholder's weight is moved into the genus, not zeroed (supersedes the entry above)
+
+The Great Lakes control run under the entry above found that zeroing the placeholder's
+likelihood and renormalising over every hypothesis moves its share OUT of the genus: grass
+carp went from placeholder 0.51 + *C. idella* 0.41 (genus 0.93) to *C. idella* 0.85 with the
+rest on the family placeholder and *Hypophthalmichthys*, and the call fell from species to
+family on all five grass-carp sequences. The maintainer's intent was elimination: if every
+species of the genus is sequenced, an unsequenced congener is impossible, so its mass belongs
+to the genus's referenced members. `"relabel"` now leaves the likelihood alone and
+`TaxaAssign::compute_posterior()` passes the row's posterior to the genus's referenced
+species in proportion to their own posteriors (per simulation as well), so the genus node
+keeps its mass and only the split changes; *C. idella* holds 0.93 and resolves. `"zero"`
+mode also scales `score_likelihood_sd`, so the Monte Carlo path honours the zero that the
+point estimate did (a zero mean with a positive SD still drew positive likelihoods:
+`posterior_mean` 0.19 on a row whose `posterior_point_est` was 0). Tests: relabel leaves the
+likelihoods untouched; zero mode zeroes mean and SD.

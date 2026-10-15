@@ -106,6 +106,30 @@
 #' \code{prior_mean} equals the mixture's exact expectation by construction.
 #' Non-mixture rows are completely unaffected.
 #'
+#' \strong{Closed-genus placeholders (weight moved, not removed):}
+#' a row marked \code{constraint_applied == "census_closed_genus_relabeled"}
+#' by \code{TaxaLikely::apply_coverage_constraints(constraint_behavior =
+#' "relabel")} is the "unsequenced congener" hypothesis of a genus whose
+#' every species is referenced, so it stands for nothing: what the sequence
+#' attributes to it belongs to the genus's sequenced members. After the
+#' posterior is formed, such a row's posterior is passed to the
+#' \code{"specific_candidate"} rows of the same observation and genus, in
+#' proportion to their own posteriors (all of it to the one species of a
+#' monotypic genus), and the placeholder's posterior is set to 0. The genus
+#' keeps exactly the mass it had; only its split among the referenced
+#' species changes. This is done per simulation on the Monte Carlo path as
+#' well, so \code{posterior_mean}, \code{posterior_sd} and
+#' \code{confidence_score} agree with the point estimate. The genus is read
+#' from a \code{genus} column when present, else from the placeholder's own
+#' name and the first word of each candidate's binomial. A placeholder
+#' whose observation holds no referenced member of its genus keeps its
+#' posterior (there is nothing to eliminate into), and a message counts
+#' both cases. Why not zero the likelihood upstream: renormalising over
+#' every hypothesis then hands the placeholder's share to the other genera
+#' and families in the observation as well -- at Great Lakes the grass
+#' carp genus fell from 0.925 to 0.848 of the posterior and the call from
+#' species to family.
+#'
 #' \strong{Prior uncertainty (Beta distribution):}
 #' When \code{prior_alpha} and \code{prior_beta} columns are present, the prior
 #' for each hypothesis is modelled as \eqn{Beta(\alpha, \beta)} rather than a
@@ -124,8 +148,9 @@
 #'     (from TaxaLikely H3).
 #'   \item \code{"unknown_species"} -- catch-all for uncharacterised diversity
 #'     (from \code{assign_taxa_llm()}).
-#'   \item \code{"unresolved_species"} -- ambiguous among referenced members of
-#'     a fully-sampled genus (from \code{apply_coverage_constraints()}).
+#'   \item \code{"unresolved_species"} -- the placeholder of a fully-sampled
+#'     genus (from \code{apply_coverage_constraints()}); its posterior is
+#'     passed to the genus's referenced members, see above.
 #' }
 #'
 #' @examples
@@ -314,6 +339,66 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
     m_tp <- likelihood_w_prior$prior_mix_theta_present
     m_ta <- likelihood_w_prior$prior_mix_theta_absent
   }
+  # --- Closed-genus placeholders: weight is MOVED into the genus -----------
+  # A row apply_coverage_constraints("relabel") marked stands for an
+  # unsequenced congener a complete census says does not exist. Its posterior
+  # (point estimate, and every simulation) goes to the referenced species of
+  # the same observation and genus in proportion to their own posteriors, so
+  # the genus node keeps its mass and only the split changes. Done on the
+  # posterior rather than the likelihood because zeroing the likelihood and
+  # renormalising hands the share to every other hypothesis in the
+  # observation, outside the genus too.
+  closed <- if ("constraint_applied" %in% names(likelihood_w_prior)) {
+    likelihood_w_prior$constraint_applied %in% "census_closed_genus_relabeled"
+  } else {
+    rep(FALSE, n_tot)
+  }
+  any_closed <- any(closed)
+  n_moved <- 0L
+  n_kept <- 0L
+  if (any_closed) {
+    tn <- if ("taxon_name" %in% names(likelihood_w_prior)) {
+      as.character(likelihood_w_prior$taxon_name)
+    } else {
+      rep(NA_character_, n_tot)
+    }
+    gen <- if ("genus" %in% names(likelihood_w_prior)) {
+      as.character(likelihood_w_prior$genus)
+    } else {
+      rep(NA_character_, n_tot)
+    }
+    # The placeholder is named by its genus; a candidate's binomial carries
+    # the genus as its first word.
+    fallback <- ifelse(closed, tn, sub("\\s.*$", "", tn))
+    gen <- ifelse(is.na(gen) | !nzchar(gen), fallback, gen)
+    recip <- !closed & (
+      if ("hypothesis_type" %in% names(likelihood_w_prior)) {
+        likelihood_w_prior$hypothesis_type %in% "specific_candidate"
+      } else {
+        rep(FALSE, n_tot)
+      })
+  }
+  # P: posteriors of one observation's rows, one column per simulation (the
+  # point estimate is a one-column matrix). Returns P with every closed row's
+  # mass moved onto its genus's referenced rows, column by column.
+  move_closed <- function(P, i) {
+    for (c in which(closed[i])) {
+      r <- which(recip[i] & !is.na(gen[i]) & gen[i] == gen[i][c])
+      if (length(r) == 0L) {
+        n_kept <<- n_kept + 1L
+        next
+      }
+      share <- P[r, , drop = FALSE]
+      cs <- colSums(share)
+      w <- sweep(share, 2, ifelse(cs > 0, cs, 1), "/")
+      if (any(cs == 0)) w[, cs == 0] <- 1 / length(r)
+      P[r, ] <- share + sweep(w, 2, P[c, ], "*")
+      P[c, ] <- 0
+      n_moved <<- n_moved + 1L
+    }
+    P
+  }
+
   v_pt <- v_mean <- v_sd <- v_conf <- numeric(n_tot)
   pos <- 0L
   for (gi in seq_along(grp_rows)) {
@@ -327,6 +412,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
     norm_lik <- normalize_vec(s_lik[i])
     raw_post <- norm_lik * p_mean[i]
     pt <- normalize_vec(raw_post)
+    if (any_closed && any(closed[i])) {
+      pt <- as.vector(move_closed(matrix(pt, ncol = 1L), i))
+    }
     v_pt[k] <- pt
 
     # --- Monte Carlo path ---
@@ -421,6 +509,12 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
       sim_probs <- sweep(sim_raw, 2, col_sums_post, "/")
       sim_probs[, zero_post_cols] <- 1 / n_rows
 
+      # Closed-genus placeholders: the same move, simulation by simulation,
+      # so the Monte Carlo summaries agree with the point estimate.
+      if (any_closed && any(closed[i])) {
+        sim_probs <- move_closed(sim_probs, i)
+      }
+
       # Summarize across simulations
       v_mean[k] <- rowMeans(sim_probs)
       v_sd[k] <- apply(sim_probs, 1, sd)
@@ -439,6 +533,14 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
       v_sd[k] <- 0
       v_conf[k] <- as.numeric(pt == max(pt))
     }
+  }
+
+  if (any_closed) {
+    cli::cli_inform(
+      "{n_moved} closed-genus placeholder row(s) passed their posterior to \\
+      the genus's referenced species; {n_kept} with no referenced member of \\
+      the genus in the observation kept it."
+    )
   }
 
   # Return full dataframe sorted by observation_id, then best hypothesis first

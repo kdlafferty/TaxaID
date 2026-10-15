@@ -117,6 +117,30 @@ states in which the hypothesis wins. The point-estimate path is unchanged:
 \code{prior_mean} equals the mixture's exact expectation by construction.
 Non-mixture rows are completely unaffected.
 
+\strong{Closed-genus placeholders (weight moved, not removed):}
+a row marked \code{constraint_applied == "census_closed_genus_relabeled"}
+by \code{TaxaLikely::apply_coverage_constraints(constraint_behavior =
+"relabel")} is the "unsequenced congener" hypothesis of a genus whose
+every species is referenced, so it stands for nothing: what the sequence
+attributes to it belongs to the genus's sequenced members. After the
+posterior is formed, such a row's posterior is passed to the
+\code{"specific_candidate"} rows of the same observation and genus, in
+proportion to their own posteriors (all of it to the one species of a
+monotypic genus), and the placeholder's posterior is set to 0. The genus
+keeps exactly the mass it had; only its split among the referenced
+species changes. This is done per simulation on the Monte Carlo path as
+well, so \code{posterior_mean}, \code{posterior_sd} and
+\code{confidence_score} agree with the point estimate. The genus is read
+from a \code{genus} column when present, else from the placeholder's own
+name and the first word of each candidate's binomial. A placeholder
+whose observation holds no referenced member of its genus keeps its
+posterior (there is nothing to eliminate into), and a message counts
+both cases. Why not zero the likelihood upstream: renormalising over
+every hypothesis then hands the placeholder's share to the other genera
+and families in the observation as well -- at Great Lakes the grass
+carp genus fell from 0.925 to 0.848 of the posterior and the call from
+species to family.
+
 \strong{Prior uncertainty (Beta distribution):}
 When \code{prior_alpha} and \code{prior_beta} columns are present, the prior
 for each hypothesis is modelled as \eqn{Beta(\alpha, \beta)} rather than a
@@ -135,8 +159,9 @@ but plausible at this location (from TaxaLikely H2 or LLM suggestion).
 (from TaxaLikely H3).
 \item \code{"unknown_species"} -- catch-all for uncharacterised diversity
 (from \code{assign_taxa_llm()}).
-\item \code{"unresolved_species"} -- ambiguous among referenced members of
-a fully-sampled genus (from \code{apply_coverage_constraints()}).
+\item \code{"unresolved_species"} -- the placeholder of a fully-sampled
+genus (from \code{apply_coverage_constraints()}); its posterior is
+passed to the genus's referenced members, see above.
 }
 }
 \examples{
