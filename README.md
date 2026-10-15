@@ -346,6 +346,7 @@ Table 1. Comparison of TaxaID with related taxonomic assignment tools.
 | TaxaID | Generative Bayesian (MVN score + gap) | Yes (full distribution) | Yes (GBIF + habitat) | Yes (NCBI census + LLM) | Yes |
 | PROTAX (Somervuo et al. 2016) | Bayesian with taxonomy-tree prior | Yes | No | Yes (tree-based) | No (DNA only) |
 | BayesANT (Zito et al. 2023) | Bayesian nonparametric (kmer) | Yes | No | Yes (Pitman-Yor) | No (DNA only) |
+| Anacapa Toolkit (Curd et al. 2019) with BLCA (Gao et al. 2017) | Bowtie2 alignment + Bayesian LCA | Bootstrap confidence | No | No | No (DNA only) |
 | IdTaxa / DECIPHER (Murali et al. 2018) | Phylogenetic ML | Bootstrap confidence | No | No | No (DNA only) |
 | insect (Wilkinson et al. 2018) | Profile HMM + classification tree | Akaike weights | No | No | No (DNA only) |
 | SINTAX (Edgar 2016) | Kmer + bootstrap | Bootstrap confidence | No | No | No (DNA only) |
@@ -361,6 +362,11 @@ composition- and placement-based classifiers found that no single
 algorithm works across taxa and markers, which is why TaxaID treats
 reference-database completeness as a modelled problem rather than
 assuming one classification strategy generalizes.
+
+`TaxaLikely/README.md` compares TaxaLikely with Anacapa/BLCA in more
+detail, including why BLCA's flat prior and its similarity-weighted
+"Bayesian posterior probability" are different quantities from the prior
+and posterior used here.
 
 galaxy-tool-lca (Beentjes et al. 2019;
 <https://github.com/naturalis/galaxy-tool-lca>) filters BLAST hits by
@@ -683,17 +689,16 @@ canonical path from raw sequences to reviewed assignments. Edit its
 Section 0, supply your own input, and run it top to bottom. It carries
 no study's data and no real paths.
 
-It is generated, not written.
-`TaxaWizard/inst/tools/build_workflow_template.R` assembles it from the
-workflow graph's own snippets, the same files TaxaWizard generates
-scripts from, resolving each step's inputs from the graph's edge wiring
-and each parameter from one configuration table.
+The template is generated automatically, not written by hand. A script
+(`TaxaWizard/inst/tools/build_workflow_template.R`) builds it from the
+same code snippets TaxaWizard uses to write workflow scripts, so the
+template and the scripts TaxaWizard generates stay in step.
 
-`TaxaWizard/tests/testthat/test-workflow-template.R` regenerates it and
-fails if the committed file differs, and separately asserts that it
-parses, that every `Pkg::fn` it calls is a real export, and that every
-named argument is a real formal. A snippet change that never reached the
-template breaks the build rather than quietly making the template wrong.
+A test (`TaxaWizard/tests/testthat/test-workflow-template.R`) rebuilds
+the template and fails if it differs from the committed copy. It also
+checks that the template parses and that every function and argument it
+uses exists in the packages, so a snippet change that is not carried
+into the template fails the tests.
 
 To update it after changing a snippet:
 
@@ -947,6 +952,13 @@ Real-time identification of insects using an end-to-end machine learning
 pipeline. *PNAS Nexus*, 4(1), pgae575.
 <https://doi.org/10.1093/pnasnexus/pgae575>
 
+Curd, E.E., Gold, Z., Kandlikar, G.S., Gomer, J., Ogden, M., O'Connell,
+T., Pipes, L., Schweizer, T.M., Rabichow, L., Lin, M., Shi, B., Barber,
+P.H., Kraft, N., Wayne, R. and Meyer, R.S. (2019). Anacapa Toolkit: An
+environmental DNA toolkit for processing multilocus metabarcode
+datasets. *Methods in Ecology and Evolution*, 10(9), 1469--1475.
+<https://doi.org/10.1111/2041-210X.13214>
+
 Davis, N.M., Proctor, D.M., Holmes, S.P., Relman, D.A. and Callahan,
 B.J. (2018). Simple statistical identification and removal of
 contaminant sequences in marker-gene and metagenomics data.
@@ -969,6 +981,11 @@ Barba, M., Gielly, L., Lopes, C.M., Boyer, F., Pompanon, F., Rayé, G.
 and Taberlet, P. (2015). Replication levels, false presences and the
 estimation of the presence/absence from eDNA metabarcoding data.
 *Molecular Ecology Resources*, 15(3), 543--556.
+
+Gao, X., Lin, H., Revanna, K. and Dong, Q. (2017). A Bayesian taxonomic
+classification method for 16S rRNA gene sequences with improved
+species-level accuracy. *BMC Bioinformatics*, 18, 247.
+<https://doi.org/10.1186/s12859-017-1670-4>
 
 Gentleman, R.C., Carey, V.J., Bates, D.M., Bolstad, B., Dettling, M.,
 Dudoit, S., Ellis, B., Gautier, L., Ge, Y., Gentry, J., Hornik, K.,
