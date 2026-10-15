@@ -672,6 +672,27 @@ assign_sampling_group <- function(taxonomy,
         }
         lookup <- NULL
       } else {
+        # A cache written before the `answered_only` marker may hold a name
+        # whose lookup FAILED, stored as an unmatched row (every lineage
+        # column NA) -- byte-identical to a name the backbone genuinely does
+        # not hold. Keep the rows that carry a lineage (a failure never
+        # produces one); treat the empty ones as misses so they are asked
+        # once more and the cache is rewritten with the marker.
+        if (!isTRUE(attr(lookup, "answered_only"))) {
+          lin_cols <- setdiff(names(lookup), c("source_name", "matched_rank"))
+          empty <- if (length(lin_cols)) {
+            rowSums(!is.na(lookup[, lin_cols, drop = FALSE])) == 0L
+          } else {
+            rep(TRUE, nrow(lookup))
+          }
+          if (any(empty) && verbose) {
+            message(sprintf(
+              "assign_sampling_group: harmonise cache predates the answered-only marker; %d unmatched row(s) cannot be told from failed lookups and will be re-resolved.",
+              sum(empty)
+            ))
+          }
+          lookup <- lookup[!empty, , drop = FALSE]
+        }
         cached_n <- length(intersect(need, lookup$source_name))
         need <- setdiff(need, lookup$source_name)
         if (verbose) {
@@ -698,7 +719,25 @@ assign_sampling_group <- function(taxonomy,
       # warning under this function's own default (GBIF, 11).
       decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
     )
-    fresh <- change_backbone(
+    # A name the service could not be ASKED about (verified = FALSE) is not
+    # an unmatched name. It is left unharmonised this run and never written
+    # to the cache, so the next run asks again instead of being served a
+    # network outage as a verdict.
+    lookup_failed <- if ("verified" %in% names(verified)) {
+      !(verified$verified %in% TRUE)
+    } else {
+      rep(FALSE, nrow(verified))
+    }
+    if (any(lookup_failed)) {
+      warning(sprintf(
+        "assign_sampling_group: backbone lookup FAILED for %d of %d name(s) (%s%s); they are left unharmonised this run and are not cached, so a re-run asks again.",
+        sum(lookup_failed), nrow(verified),
+        paste(utils::head(verified$user_supplied_name[lookup_failed], 5L), collapse = ", "),
+        if (sum(lookup_failed) > 5L) ", ..." else ""
+      ), call. = FALSE)
+      verified <- verified[!lookup_failed, , drop = FALSE]
+    }
+    fresh <- if (nrow(verified) == 0L) NULL else change_backbone(
       verified,
       input_col = "user_supplied_name",
       old_backbone_label = "source_name",
@@ -709,7 +748,7 @@ assign_sampling_group <- function(taxonomy,
     # is taken from verify_taxon_names()'s own output rather than from
     # change_backbone()'s pass-through, so it survives regardless of what that
     # function chooses to keep. Without it the gate below cannot run.
-    fresh$matched_rank <- if ("matched_rank" %in% names(verified)) {
+    if (!is.null(fresh)) fresh$matched_rank <- if ("matched_rank" %in% names(verified)) {
       as.character(verified$matched_rank)[match(fresh$source_name,
                                                 verified$user_supplied_name)]
     } else {
@@ -721,10 +760,14 @@ assign_sampling_group <- function(taxonomy,
     keep_cols <- c("source_name", "matched_rank",
                    intersect(unique(c("kingdom", "phylum", "class", "order", rank_cols)),
                              names(fresh)))
-    fresh <- fresh[, keep_cols, drop = FALSE]
-    fresh <- fresh[!duplicated(fresh$source_name), , drop = FALSE]
+    if (!is.null(fresh)) {
+      fresh <- fresh[, keep_cols, drop = FALSE]
+      fresh <- fresh[!duplicated(fresh$source_name), , drop = FALSE]
+    }
 
-    lookup <- if (is.null(lookup)) {
+    lookup <- if (is.null(fresh)) {
+      lookup
+    } else if (is.null(lookup)) {
       fresh
     } else {
       # Take the columns the two frames share, on BOTH sides -- subsetting only
@@ -735,7 +778,9 @@ assign_sampling_group <- function(taxonomy,
       merged[!duplicated(merged$source_name), , drop = FALSE]
     }
 
-    if (!is.null(cache_path)) {
+    if (!is.null(cache_path) && !is.null(fresh)) {
+      # Every row below was written from a real backbone answer.
+      attr(lookup, "answered_only") <- TRUE
       saveRDS(lookup, cache_path)
       if (verbose) {
         message(sprintf(

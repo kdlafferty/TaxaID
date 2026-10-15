@@ -231,3 +231,25 @@ test_that("cache files are the file-per-key shape taxaflag_clear_cache() reports
   taxaflag_clear_cache(cache_dir = cache_dir)
   expect_equal(nrow(TaxaTools::list_cache_files(cache_dir, .taxaflag_cache_patterns)), 0L)
 })
+
+test_that("(g) a verdict built on a tile GBIF did not return is reported but never cached", {
+  cache_dir <- .new_cache_dir()
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  ctr <- new.env(); assign("n", 0L, ctr)
+  failing <- function(base_url, zoom, x, y, taxon_key, tile_size) {
+    assign("n", get("n", ctr) + 1L, ctr)
+    structure(matrix(0, tile_size, tile_size), fetch_failed = TRUE)   # what a 5xx returns
+  }
+  testthat::local_mocked_bindings(.fetch_gbif_tile_alpha = failing)
+  out <- check_gbif_tile_range(
+    taxon_key = 42, query_lat = .query_lat, query_lon = .query_lon, zoom = .zoom,
+    escalate = FALSE, cache_dir = cache_dir
+  )
+  expect_true(out$beyond_buffer)                               # the call's own reading
+  expect_true(isTRUE(attr(out, "tile_fetch_failed")))
+  expect_length(list.files(cache_dir, recursive = TRUE), 0L)   # nothing written
+  n1 <- get("n", ctr)
+  check_gbif_tile_range(taxon_key = 42, query_lat = .query_lat, query_lon = .query_lon,
+                        zoom = .zoom, escalate = FALSE, cache_dir = cache_dir)
+  expect_gt(get("n", ctr), n1)                                 # asked GBIF again
+})

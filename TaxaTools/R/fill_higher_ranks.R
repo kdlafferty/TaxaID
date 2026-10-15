@@ -21,7 +21,8 @@ utils::globalVariables(c(
 #' (e.g. newly described species, cross-backbone synonyms) are still resolved
 #' provided their genus is present.
 #'
-#' @param taxon_names Character vector of taxon names.  Binomial species names
+#' @param taxon_names Character vector of taxon names (an empty vector returns
+#'   a zero-row table with the usual columns).  Binomial species names
 #'   are expected; genus is extracted as the first word.  Single-word names
 #'   (genus only) are accepted and returned as-is in the `genus` column.
 #' @param local_sources List of data frames to consult before any API call.
@@ -199,8 +200,8 @@ fill_higher_ranks <- function(taxon_names,
                               verbose = TRUE,
                               decisions = NULL) {
   # ---- Input validation ------------------------------------------------------
-  if (!is.character(taxon_names) || length(taxon_names) == 0L) {
-    stop("taxon_names must be a non-empty character vector")
+  if (!is.character(taxon_names)) {
+    stop("taxon_names must be a character vector")
   }
   if (!is.list(local_sources)) {
     stop("local_sources must be a list of data frames")
@@ -229,6 +230,19 @@ fill_higher_ranks <- function(taxon_names,
   }
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
+  }
+
+  # An empty input is a legitimate outcome upstream (a coverage audit that
+  # finds no unreferenced species), not a caller error: return the documented
+  # zero-row shape so a workflow loop does not die on its emptiest marker.
+  if (length(taxon_names) == 0L) {
+    if (verbose) message("fill_higher_ranks: no taxon names supplied; returning an empty table.")
+    out <- tibble::tibble(taxon_name = character(0), genus = character(0))
+    for (r in ranks) {
+      out[[r]] <- character(0)
+      if (record_source) out[[paste0(r, "_source")]] <- character(0)
+    }
+    return(out)
   }
 
   # ---- Working table: unique non-NA names + extracted genus ------------------

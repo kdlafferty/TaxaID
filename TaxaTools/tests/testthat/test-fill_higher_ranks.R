@@ -30,8 +30,14 @@ test_that("stops if taxon_names is not character", {
   expect_error(fill_higher_ranks(123), regexp = "character")
 })
 
-test_that("stops if taxon_names is empty", {
-  expect_error(fill_higher_ranks(character(0)), regexp = "non-empty")
+test_that("an empty taxon_names returns a zero-row table with the usual columns, no error", {
+  expect_message(out <- fill_higher_ranks(character(0)), "no taxon names supplied")
+  expect_s3_class(out, "tbl_df")
+  expect_identical(nrow(out), 0L)
+  expect_identical(names(out), c("taxon_name", "genus", "family"))
+  out2 <- fill_higher_ranks(character(0), ranks = c("family", "order"), record_source = TRUE, verbose = FALSE)
+  expect_identical(names(out2), c("taxon_name", "genus", "family", "family_source", "order", "order_source"))
+  expect_identical(nrow(out2), 0L)
 })
 
 test_that("stops if local_sources is not a list", {
