@@ -110,6 +110,10 @@
 #' the 18S workflow already uses) rather than passing a grouped fit here.
 #'
 #' @param kernel_fit A `taxaexpect_kernel_priors` object from
+#'   A fit built with `habitat_levels`/`habitat_weights` (see
+#'   [estimate_kernel_priors()]) carries them in `$params`, and the surface
+#'   counts unplaceable-habitat records the same way, so the site-identity
+#'   invariant holds for such a fit too.
 #'   [estimate_kernel_priors()] -- the source of `lambda_km`, `m`,
 #'   `lambda_latitude`, `covariate_col`, `lambda_covariate`, `site_habitat`,
 #'   and the site coordinates (`site_lat`/`site_lon`, marked on the map).
@@ -350,7 +354,11 @@ plot_theta_surface <- function(kernel_fit,
     lambda_covariate = p$lambda_covariate,
     lambda_latitude = p$lambda_latitude,
     taxon = taxon, n_grid = n_grid, bbox = bbox,
-    taxon_col = taxon_col, lat_col = lat_col, lon_col = lon_col, habitat_col = habitat_col
+    taxon_col = taxon_col, lat_col = lat_col, lon_col = lon_col, habitat_col = habitat_col,
+    # A fit built with habitat_levels/habitat_weights counted unplaceable
+    # records at their taxon's weight; the surface must count them the same
+    # way or the site-identity invariant fails.
+    habitat_levels = p$habitat_levels, habitat_weights = p$habitat_weights
   )
 
   # Computed from the SAME `mask` argument that clips `surf` below, so a drawn
@@ -561,9 +569,12 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
                                   lambda_km, m, covariate_col, covariate_at,
                                   lambda_covariate, lambda_latitude,
                                   taxon, n_grid, bbox,
-                                  taxon_col, lat_col, lon_col, habitat_col) {
+                                  taxon_col, lat_col, lon_col, habitat_col,
+                                  habitat_levels = NULL, habitat_weights = NULL) {
   hab <- occurrence_data[[habitat_col]]
-  keep <- !is.na(hab) & hab == site_habitat & !is.na(occurrence_data[[taxon_col]]) &
+  hw <- .habitat_record_weights(hab, occurrence_data[[taxon_col]], site_habitat,
+                                habitat_levels, habitat_weights, "plot_theta_surface")
+  keep <- hw$keep & !is.na(occurrence_data[[taxon_col]]) &
     !is.na(occurrence_data[[lat_col]]) & !is.na(occurrence_data[[lon_col]])
   rec <- occurrence_data[keep, , drop = FALSE]
   if (nrow(rec) == 0L) {
@@ -614,19 +625,26 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
     cv <- rec[[covariate_col]]
     w_cov <- ifelse(is.na(cv), 1, exp(-abs(cv - covariate_at) / lambda_covariate))
   }
+  # Habitat weight (1 in the stratum, the taxon's weight for an unplaceable
+  # record) is record MULTIPLICITY, as in estimate_kernel_priors(): it scales
+  # the record's mass once and its squared-weight mass once (Kish's
+  # sum(n * w^2)), not twice, so the surface at the site reproduces the fit.
+  n_hab <- hw$weight[keep]
+  w_mass <- w_cov * n_hab
+  w_mass2 <- w_cov^2 * n_hab
 
   # ---- bin records onto the lattice ------------------------------------------
   i_idx <- .theta_surface_bin_index(rec_lat, lat_grid, dlat)
   j_idx <- .theta_surface_bin_index(rec_lon, lon_grid, dlon)
   in_bbox <- !is.na(i_idx) & !is.na(j_idx)
 
-  mass_all <- .theta_surface_accumulate(i_idx[in_bbox], j_idx[in_bbox], w_cov[in_bbox], n_grid, n_grid)
-  mass2_all <- .theta_surface_accumulate(i_idx[in_bbox], j_idx[in_bbox], w_cov[in_bbox]^2, n_grid, n_grid)
+  mass_all <- .theta_surface_accumulate(i_idx[in_bbox], j_idx[in_bbox], w_mass[in_bbox], n_grid, n_grid)
+  mass2_all <- .theta_surface_accumulate(i_idx[in_bbox], j_idx[in_bbox], w_mass2[in_bbox], n_grid, n_grid)
 
   mass_taxon <- stats::setNames(vector("list", length(taxon)), taxon)
   for (tx in taxon) {
     sel <- in_bbox & taxa == tx
-    mass_taxon[[tx]] <- .theta_surface_accumulate(i_idx[sel], j_idx[sel], w_cov[sel], n_grid, n_grid)
+    mass_taxon[[tx]] <- .theta_surface_accumulate(i_idx[sel], j_idx[sel], w_mass[sel], n_grid, n_grid)
   }
 
   # ---- kernel image (translation-invariant: geo x latitude factor) ----------
@@ -694,7 +712,8 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
       lambda_km = lambda_km, m = m, covariate_col = covariate_col,
       covariate_at = covariate_at, lambda_covariate = lambda_covariate,
       lambda_latitude = lambda_latitude, taxon = taxon, n_grid = n_grid,
-      n_records_stratum = nrow(rec)
+      n_records_stratum = sum(n_hab), # weighted, as the fit records it
+      n_records_whole = sum(n_hab >= 1)
     )
   )
 }

@@ -727,3 +727,52 @@ on functions this document already covers above.
 - `generate_regional_proximity_evidence()` passes a tile-cache directory
   through to the underlying GBIF tile-range check, so repeated runs reuse
   verdicts instead of re-querying.
+
+### 2026-10-15: unplaceable-habitat records count in the kernel at the taxon's own habitat weight
+
+The kernel stratum kept only records whose point the habitat consensus placed in the site's
+habitat, so a point it could not place (`"Uncertain"`, `NA`, `""`) was left out whatever lives
+there. At Great Lakes 1,268 of 11,154 records were such points, and at Mugu 143. The
+maintainer's decision (option C): count them at a reduced weight, the taxon's own probability
+of occupying the site habitat, which `condition_evidence_on_habitat()` already reads from the
+same `TaxaHabitat::build_habitat_lookup()` table; a record placed in a DIFFERENT declared
+habitat stays excluded.
+
+`estimate_kernel_priors()`, `calibrate_kernel_bandwidth()` and `estimate_kernel_priors_from_counts()`
+(for its extra records) gain `habitat_levels` (the scheme's declared habitats) and
+`habitat_weights` (the lookup), supplied together or not at all; `plot_theta_surface()` reads
+them from the fit. Unplaceable is read closed-world, as `generate_uncertain_habitat_evidence()`
+reads it, so no sentinel vocabulary lives here; an unfamiliar label is counted and named in a
+warning. The weight is record MULTIPLICITY: a 0.3-weight record is 0.3 of a record in W, in
+Kish's n_eff and in the regional composition, is held out and targeted at that fraction in the
+bandwidth cross-validation, and enters the surface's squared-weight mass once (not squared) so
+the site-identity invariant holds. It is not a whole detection and never makes its taxon a
+singleton. A taxon with no weight contributes nothing and is counted in the message. NA and
+`""` are read exactly as `"Uncertain"`: all three mean "could not be placed", not "placed
+elsewhere". The counts path drops its own below-threshold NA rows before the rule can read
+them, since there NA means "excluded". `generate_uncertain_habitat_evidence()` now says it
+double-counts if combined with this. Measured read-only (the calibrated bandwidth held
+fixed): see the ecosystem record for the Great Lakes, Mugu and CalIntertidal numbers.
+Tests: fractions of a record in theta, W and n_eff; a different declared habitat excluded; a
+no-weight taxon left out; validation; the arguments change nothing on a pool with no
+unplaceable records; the bandwidth sees them; the surface reproduces the fit; the counts path
+forwards them.
+
+### 2026-10-15: weighted stratum counts print; "Other" is a placed verdict
+
+Two follow-ups from the Great Lakes run under the entry above. (1) `print.taxaexpect_kernel_priors()`
+formatted the stratum count with `%d`; with habitat weights the count is a sum of weights (300.9 at
+Great Lakes) and the print errored. It now prints the weighted count (whole numbers without decimals,
+fractions with one), and the two consumers that read it as Good-Turing's sample size
+(`generate_undetected_diversity()`'s global floor and `generate_domestic_food_priors()`'s
+`N_total`) read the new `params$n_records_whole` instead: the whole-detection count f1/f2 are
+tallied over, since a fraction of a record is not a detection. The surface records both as the fit
+does. (2) The scheme's `habitat_levels` at Great Lakes is
+`c("Lentic", "Lotic")`, but `TaxaHabitat::assign_habitat_biological()` also emits `"Other"`, a PLACED
+verdict (none of the scheme's habitats), which the closed-world reading would have counted as
+unplaceable at the taxon's weight. The rule is now: a no-verdict label (`NA`, `""`, `"Uncertain"`,
+`"Unknown"`, `"Unassigned"`) is unplaceable; `"Other"` and any declared habitat are placed and stay
+excluded; any other label is excluded as well and named in a warning, because exclusion is the
+direction that cannot add weight by mistake. `generate_uncertain_habitat_evidence()` keeps its
+closed-world reading and the two are documented as different. Tests: `"Other"` stays out silently; an
+unfamiliar label is excluded and warned; a weighted fit prints and its consumers run.

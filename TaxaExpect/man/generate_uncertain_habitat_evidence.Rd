@@ -172,6 +172,16 @@ points before a pre-fetch scope filter and 145 after it -- 99.9\% of the
 records that motivated this function were out-of-scope birds that should
 never have been fetched. Expect a small residual, and treat a large one as
 a scope-filter problem first.
+
+\strong{Not alongside the kernel's own unplaceable-record rule.}
+\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} can count the same records itself, at their
+taxon's habitat weight, when given \code{habitat_levels} and
+\code{habitat_weights}. A taxon then has a resident row AND would be priced
+here as evidence from the same points: counted twice. Use one of the two.
+With the kernel rule in place this function finds no qualifying taxa only
+for taxa whose weight is positive; a taxon with no habitat weight still
+has no resident row and would be recovered here, which is the one case
+where the two are complementary.
 }
 \examples{
 occ <- data.frame(

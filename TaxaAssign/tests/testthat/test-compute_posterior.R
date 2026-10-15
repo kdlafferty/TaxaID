@@ -534,3 +534,97 @@ test_that("compute_posterior: a grouped input keeps its existing groups (pre-rew
   expect_warning(o <- suppressMessages(compute_posterior(g, n_sims = 0)), "ignores")
   expect_true(all(o$posterior_point_est == 1))
 })
+
+# ---------------------------------------------------------------------------
+# Closed-genus placeholders: weight moved into the genus, not removed
+# ---------------------------------------------------------------------------
+
+.closed_genus_df <- function(n_species = 1L, mark = TRUE) {
+  sp <- if (n_species == 1L) "Ctenopharyngodon idella" else c("Lepomis macrochirus", "Lepomis gibbosus")
+  gen <- sub("\\s.*$", "", sp[1])
+  dplyr::tibble(
+    observation_id = "ASV_1",
+    taxon_name = c(sp, gen, "Hypophthalmichthys nobilis", "Xenocyprididae"),
+    taxon_name_rank = c(rep("species", n_species), "genus", "species", "family"),
+    genus = c(rep(gen, n_species), gen, "Hypophthalmichthys", NA),
+    hypothesis_type = c(rep("specific_candidate", n_species), "unresolved_species",
+                        "specific_candidate", "unreferenced_genus"),
+    constraint_applied = c(rep(NA, n_species), if (mark) "census_closed_genus_relabeled" else NA,
+                           NA, NA),
+    score_likelihood = c(if (n_species == 1L) 0.49 else c(0.30, 0.19), 0.42, 0.04, 0.03),
+    score_likelihood_mean = c(if (n_species == 1L) 0.49 else c(0.30, 0.19), 0.42, 0.04, 0.03),
+    score_likelihood_sd = c(rep(0.05, n_species), 0.05, 0.01, 0.01),
+    prior_mean = c(rep(1.3e-4, n_species), 1.8e-4, 1.3e-4, 1.8e-4),
+    prior_alpha = c(rep(2.6, n_species), 3.6, 2.6, 3.6),
+    prior_beta = c(rep(19997, n_species), 19996, 19997, 19996)
+  )
+}
+
+test_that("a monotypic closed genus keeps its node mass: the placeholder's posterior goes to its one species", {
+  df <- .closed_genus_df(1L, mark = TRUE)
+  ref <- .closed_genus_df(1L, mark = FALSE)   # same rows, placeholder unmarked
+  set.seed(7); out <- suppressMessages(compute_posterior(df, n_sims = 300))
+  set.seed(7); base <- suppressMessages(compute_posterior(ref, n_sims = 300))
+  g <- function(x, nm) x[match(nm, x$taxon_name), ]
+  # point estimate: species gets placeholder + species; placeholder 0; outsiders untouched
+  expect_equal(g(out, "Ctenopharyngodon idella")$posterior_point_est,
+               g(base, "Ctenopharyngodon idella")$posterior_point_est + g(base, "Ctenopharyngodon")$posterior_point_est)
+  expect_identical(g(out, "Ctenopharyngodon")$posterior_point_est, 0)
+  expect_equal(g(out, "Hypophthalmichthys nobilis")$posterior_point_est, g(base, "Hypophthalmichthys nobilis")$posterior_point_est)
+  expect_equal(g(out, "Xenocyprididae")$posterior_point_est, g(base, "Xenocyprididae")$posterior_point_est)
+  expect_equal(sum(out$posterior_point_est), 1)
+  # Monte Carlo: identical draws (same seed), so the genus mass is preserved there too
+  expect_equal(g(out, "Ctenopharyngodon idella")$posterior_mean,
+               g(base, "Ctenopharyngodon idella")$posterior_mean + g(base, "Ctenopharyngodon")$posterior_mean)
+  expect_identical(g(out, "Ctenopharyngodon")$posterior_mean, 0)
+  expect_identical(g(out, "Ctenopharyngodon")$posterior_sd, 0)
+  expect_identical(g(out, "Ctenopharyngodon")$confidence_score, 0)
+  expect_equal(g(out, "Hypophthalmichthys nobilis")$posterior_mean, g(base, "Hypophthalmichthys nobilis")$posterior_mean)
+  # the species now wins every simulation the genus won
+  expect_equal(g(out, "Ctenopharyngodon idella")$confidence_score,
+               g(base, "Ctenopharyngodon idella")$confidence_score + g(base, "Ctenopharyngodon")$confidence_score)
+})
+
+test_that("a two-species closed genus splits the placeholder's posterior by the species' own posteriors", {
+  df <- .closed_genus_df(2L, mark = TRUE)
+  ref <- .closed_genus_df(2L, mark = FALSE)
+  out <- suppressMessages(compute_posterior(df, n_sims = 0))
+  base <- suppressMessages(compute_posterior(ref, n_sims = 0))
+  g <- function(x, nm) x$posterior_point_est[match(nm, x$taxon_name)]
+  sp <- c("Lepomis macrochirus", "Lepomis gibbosus")
+  expect_equal(sum(g(out, sp)), sum(g(base, sp)) + g(base, "Lepomis"))   # genus mass preserved
+  expect_equal(g(out, sp)[1] / g(out, sp)[2], g(base, sp)[1] / g(base, sp)[2])  # split unchanged
+  expect_identical(g(out, "Lepomis"), 0)
+  expect_equal(g(out, "Hypophthalmichthys nobilis"), g(base, "Hypophthalmichthys nobilis"))
+})
+
+test_that("posterior_mean agrees with posterior_point_est on a moved placeholder: both zero, both paths move", {
+  df <- .closed_genus_df(1L, mark = TRUE)
+  out <- suppressMessages(compute_posterior(df, n_sims = 200))
+  ph <- out[out$taxon_name == "Ctenopharyngodon", ]
+  expect_identical(ph$posterior_point_est, 0)
+  expect_identical(ph$posterior_mean, 0)
+  sp <- out[out$taxon_name == "Ctenopharyngodon idella", ]
+  expect_gt(sp$posterior_mean, 0.5)
+  expect_gt(sp$posterior_point_est, 0.5)
+  # without the marker nothing moves and the placeholder is non-zero on both paths
+  raw <- suppressMessages(compute_posterior(.closed_genus_df(1L, mark = FALSE), n_sims = 200))
+  expect_gt(raw$posterior_point_est[raw$taxon_name == "Ctenopharyngodon"], 0)
+  expect_gt(raw$posterior_mean[raw$taxon_name == "Ctenopharyngodon"], 0)
+})
+
+test_that("a marked placeholder with no referenced member of its genus in the observation keeps its posterior", {
+  df <- .closed_genus_df(1L, mark = TRUE)[-1, ]   # drop the one species
+  ref <- .closed_genus_df(1L, mark = FALSE)[-1, ]
+  expect_message(out <- compute_posterior(df, n_sims = 0), "1 with no referenced member")
+  base <- suppressMessages(compute_posterior(ref, n_sims = 0))
+  expect_equal(out$posterior_point_est, base$posterior_point_est)
+})
+
+test_that("an input without constraint_applied is unchanged by the closed-genus step", {
+  df <- make_test_df()
+  set.seed(3); a <- suppressMessages(compute_posterior(df, n_sims = 50))
+  set.seed(3); b <- suppressMessages(compute_posterior(dplyr::mutate(df, constraint_applied = NA_character_), n_sims = 50))
+  expect_equal(a$posterior_point_est, b$posterior_point_est)
+  expect_equal(a$posterior_mean, b$posterior_mean)
+})

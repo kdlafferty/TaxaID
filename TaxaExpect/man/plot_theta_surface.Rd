@@ -31,6 +31,10 @@ plot_theta_surface(
 }
 \arguments{
 \item{kernel_fit}{A \code{taxaexpect_kernel_priors} object from
+A fit built with \code{habitat_levels}/\code{habitat_weights} (see
+\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}) carries them in \verb{$params}, and the surface
+counts unplaceable-habitat records the same way, so the site-identity
+invariant holds for such a fit too.
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} -- the source of \code{lambda_km}, \code{m},
 \code{lambda_latitude}, \code{covariate_col}, \code{lambda_covariate}, \code{site_habitat},
 and the site coordinates (\code{site_lat}/\code{site_lon}, marked on the map).

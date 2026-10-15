@@ -107,11 +107,12 @@ test_that("apply_coverage_constraints: soft penalty factor applied (zero mode)",
   expect_equal(h2_row$score_likelihood, 0.25)
 })
 
-test_that("apply_coverage_constraints: default is relabel -- the row is kept and relabeled but carries no weight", {
-  out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result())
+test_that("apply_coverage_constraints: default is relabel -- the row is kept and relabeled, its likelihood untouched", {
+  lik <- .make_likelihood_df()
+  out <- apply_coverage_constraints(lik, .make_census_result())
   h2_row <- out[out$taxon_name == "Hybognathus", ]
   expect_equal(h2_row$hypothesis_type, "unresolved_species")
-  expect_equal(h2_row$score_likelihood, 0)          # 2026-10-15: a closed genus has no congener for the row to stand for
+  expect_equal(h2_row$score_likelihood, lik$score_likelihood[lik$taxon_name == "Hybognathus"]) # the weight moves at posterior time
   expect_equal(h2_row$constraint_applied, "census_closed_genus_relabeled")
 })
 
@@ -484,13 +485,14 @@ test_that("audit_reference_coverage: passes each group's own lineage_terms to ge
   expect_true(is.na(out$census$total[out$census$group == "Vertebrata"]))
 })
 
-test_that("apply_coverage_constraints(relabel) removes a closed genus's placeholder weight as well as relabeling it", {
+test_that("apply_coverage_constraints(relabel) marks a closed genus's placeholder and leaves its likelihood for the posterior step; zero mode zeroes the SD too", {
   lik <- data.frame(
     observation_id = "o1",
     taxon_name = c("Ctenopharyngodon idella", "Ctenopharyngodon", "Xenocyprididae"),
     taxon_name_rank = c("species", "genus", "family"),
     hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
     score_likelihood = c(0.51, 0.43, 0.03), score_likelihood_mean = c(0.51, 0.43, 0.03),
+    score_likelihood_sd = c(0.05, 0.05, 0.01),
     stringsAsFactors = FALSE
   )
   census <- data.frame(taxon_name = "Ctenopharyngodon", rank = "genus", status = "complete", stringsAsFactors = FALSE)
@@ -498,9 +500,13 @@ test_that("apply_coverage_constraints(relabel) removes a closed genus's placehol
   i <- out$taxon_name == "Ctenopharyngodon"
   expect_identical(out$hypothesis_type[i], "unresolved_species")
   expect_identical(out$constraint_applied[i], "census_closed_genus_relabeled")
-  expect_identical(out$score_likelihood[i], 0)                 # the placeholder no longer competes
-  expect_identical(out$score_likelihood_mean[i], 0)
-  expect_identical(out$score_likelihood[!i], c(0.51, 0.03))    # nothing else touched
+  expect_identical(out$score_likelihood, lik$score_likelihood)           # weight is MOVED by compute_posterior(), not removed here
+  expect_identical(out$score_likelihood_mean, lik$score_likelihood_mean)
+  expect_identical(out$score_likelihood_sd, lik$score_likelihood_sd)
   z <- apply_coverage_constraints(lik, census, constraint_behavior = "zero")
-  expect_identical(z$score_likelihood, out$score_likelihood)   # the two modes now remove the same weight
+  expect_identical(z$score_likelihood[i], 0)                 # zero mode removes the weight ...
+  expect_identical(z$score_likelihood_mean[i], 0)
+  expect_identical(z$score_likelihood_sd[i], 0)              # ... on the Monte Carlo path as well
+  expect_identical(z$score_likelihood_sd[!i], c(0.05, 0.01))
+  expect_identical(z$hypothesis_type[i], "unreferenced_species")
 })
