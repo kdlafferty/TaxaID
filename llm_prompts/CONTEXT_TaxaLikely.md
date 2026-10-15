@@ -40,7 +40,7 @@ Suppresses or relabels the '"unreferenced_species"' hypothesis for genera confir
 | penalty_factor | no | 0 | Numeric in [0, 1] (default 0.0). Multiplier applied to score_likelihood and score_likelihood_mean for constrained hypotheses when constraint_behavior = "zero". Ignored when constraint_behavior = "relabel" (the default). |
 | constraint_behavior | no | c("relabel", "zero") | Character scalar: "relabel" (default) or "zero". See Details above and "Census confidence" below. |
 
-**Value:** 'likelihood_df' with an added 'constraint_applied' column and updated likelihood and/or 'hypothesis_type' columns: '"zero"' mode 'score_likelihood' and 'score_likelihood_mean' multiplied by 'penalty_factor'; 'constraint_applied' set to '"census_closed_genus"'. '"relabel"' mode 'hypothesis_type' changed to '"unresolved_species"'; likelihoods unchanged; 'constraint_applied' set to '"census_closed_genus_relabeled"'. Rows not meeting the constraint have 'constraint_applied = NA'.
+**Value:** 'likelihood_df' with an added 'constraint_applied' column and updated likelihood and/or 'hypothesis_type' columns: '"zero"' mode 'score_likelihood' and 'score_likelihood_mean' multiplied by 'penalty_factor'; 'constraint_applied' set to '"census_closed_genus"'. '"relabel"' mode 'hypothesis_type' changed to '"unresolved_species"' AND 'score_likelihood'/'score_likelihood_mean' multiplied by 'penalty_factor', so the row stays visible but carries no weight (a genus with every species referenced has no unsequenced congener for the row to stand for); 'constraint_applied' set to '"census_closed_genus_relabeled"'. Rows not meeting the constraint have 'constraint_applied = NA'.
 
 ### assign_scores(hypotheses_df, score_type, score_col = "score_original", score_sharpness = 0.1)
 
