@@ -261,10 +261,10 @@ call is kept only if it survives \code{s} further records of the best-fitting
 taxon outside it. A call the sequence decides by a wide margin is
 unaffected; a marginal call whose candidates carry priors worth only a
 few records is coarsened even when the outside taxon fits somewhat
-worse, because one record then moves the prior noticeably. The outside
-taxon receives that record in proportion to its own evidence (its prior
-mass grows by at most \code{s / alpha}, so a placeholder with no local record
-cannot absorb a whole record), and only at a node the sequence alone
+worse, because one record then moves the prior noticeably. An outside
+taxon receives at most that one record, and less when its own evidence is
+thinner than a record (its prior mass grows by at most \code{s / alpha}, so a
+placeholder with no local record cannot absorb a whole record), and only at a node the sequence alone
 reaches -- at or above the likelihood-only call and containing it --
 that holds a locally recorded member; at every other node the full
 record moves onto the best-fitting outside taxon. So a sequence good to

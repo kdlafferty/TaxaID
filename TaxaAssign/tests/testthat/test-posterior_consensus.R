@@ -1584,6 +1584,54 @@ test_that("removing a genus's only locally recorded member invents no species ca
   expect_true(is.na(out$consensus_taxon) || out$consensus_rank %in% c("genus", "family", "order"))
 })
 
+# The deposit-grain Anisotremus rows (Punta Abreojos, 484 site records): the
+# recorded competitor Orthopristis reddingi is a named unreferenced row whose
+# Beta concentration (89) is far below the site N, so "one record relative to
+# its own evidence" would be worth 5.4 site records and refuse the genus the
+# strict bound holds. The cap keeps it at one site record.
+.anisotremus_df <- function() data.frame(
+  observation_id = "E1",
+  taxon_name = c("Anisotremus davidsonii", "Orthopristis reddingi", "Anisotremus", "Anisotremus surinamensis", "Haemulidae"),
+  taxon_name_rank = c("species", "species", "genus", "species", "family"),
+  hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_species", "specific_candidate", "unreferenced_genus"),
+  order = "Perciformes", family = "Haemulidae",
+  genus = c("Anisotremus", "Orthopristis", "Anisotremus", "Anisotremus", NA),
+  species = c("Anisotremus davidsonii", "Orthopristis reddingi", NA, "Anisotremus surinamensis", NA),
+  score_likelihood = c(0.814, 0.110, 1, 0.933, 0.110),
+  prior_mean = c(2.48e-2, 1.15e-2, 3.53e-6, 3.53e-6, 3.53e-6),
+  prior_alpha = c(2.21, 1.03, 1, 1, 1), prior_beta = c(87.0, 88.2, 282906, 282906, 282906),
+  prior_branch = c("kernel_estimated", NA, NA, NA, NA), prior_site_records = 484,
+  posterior_point_est = c(0.940, 0.0594, 1.65e-4, 1.54e-4, 1.82e-5), stringsAsFactors = FALSE)
+
+test_that("a recorded competitor with a small Beta concentration is charged one site record, not its own mass", {
+  out <- .om(.anisotremus_df()); strict <- .with_variant("strict", .om(.anisotremus_df()))
+  rs <- c("order", "family", "genus", "species")
+  expect_equal(strict$consensus_taxon, "Anisotremus")                       # strict holds the genus at 0.9308
+  expect_equal(round(strict$robust_lower_posterior, 3), 0.931)
+  expect_true(match(out$consensus_rank, rs) >= match(strict$consensus_rank, rs))   # never stricter
+  expect_true(out$robust_lower_posterior >= strict$robust_lower_posterior - 1e-9)
+})
+
+test_that("a named unreferenced competitor beside an unreferenced winner: never stricter than strict (Labrisomus)", {
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Labrisomus multiporosus", "Exerpes asper", "Labrisomus xanti", "Labrisomus", "Labrisomidae"),
+    taxon_name_rank = c("species", "species", "species", "genus", "family"),
+    hypothesis_type = c("unreferenced_species", "unreferenced_species", "specific_candidate", "unreferenced_species", "unreferenced_genus"),
+    order = "Blenniiformes", family = "Labrisomidae",
+    genus = c("Labrisomus", "Exerpes", "Labrisomus", "Labrisomus", NA),
+    species = c("Labrisomus multiporosus", "Exerpes asper", "Labrisomus xanti", NA, NA),
+    score_likelihood = c(1, 0.236, 0.901, 1, 0.236),
+    prior_mean = c(3.76e-2, 1.15e-2, 1.62e-4, 3.53e-6, 3.53e-6),
+    prior_alpha = c(3.35, 1.03, 1.45e-2, 1, 1), prior_beta = c(85.9, 88.2, 89.2, 282906, 282906),
+    prior_branch = c(NA, NA, "kernel_estimated", NA, NA), prior_site_records = 484,
+    posterior_point_est = c(0.929, 0.0674, 3.62e-3, 8.73e-5, 2.06e-5), stringsAsFactors = FALSE)
+  out <- .om(df); strict <- .with_variant("strict", .om(df)); rs <- c("order", "family", "genus", "species")
+  expect_equal(strict$consensus_taxon, "Labrisomus")
+  expect_true(match(out$consensus_rank, rs) >= match(strict$consensus_rank, rs))
+  expect_true(out$robust_lower_posterior >= strict$robust_lower_posterior - 1e-9)
+})
+
 test_that("the default consensus_method is lca and unchanged", {
   expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
 })
