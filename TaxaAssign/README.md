@@ -82,8 +82,10 @@ updated    <- update_prior_from_consensus(posteriors, consensus,
 consensus  <- posterior_consensus(updated)
 head(consensus)
 
-# The credible-node method, a more conservative option (see Statistical Methods)
-consensus_cn <- posterior_consensus(posteriors, consensus_method = "credible_node")
+# The credible-node method, a more conservative option (see Statistical Methods).
+# backbone_id lets the cross-phylum rule compare phyla by lineage, not by name.
+consensus_cn <- posterior_consensus(posteriors, consensus_method = "credible_node",
+                                    backbone_id = 11)
 ```
 
 ### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
@@ -145,6 +147,12 @@ Consensus:
 -   `compute_group_priors()`: aggregate occurrence-model shares to
     genus/family level for use as `posterior_consensus()`'s
     `group_priors`
+-   `add_unreferenced_prior_mass()`: give the generic unreferenced rows
+    the prior mass of the local relatives that are actually unreferenced,
+    instead of the dark-diversity floor `join_priors()` assigns them. A
+    posterior is normalised over the hypotheses an observation carries,
+    so without this the generic rows cannot express that none of the
+    named candidates is plausible at the site
 
 Context and reporting:
 
@@ -195,12 +203,15 @@ LLM-estimated biogeographic prior).
     hypothesis named at a coarser rank counts toward that taxon and its
     ancestors. Why choose it: it is the more conservative rule, and it
     reports why a call stopped where it did (`consensus_limit`). Evidence
-    so far: on the Great Lakes validation against an independent
-    conventional pipeline, species-level precision was about equal
-    (0.867 vs 0.865 for LCA) with fewer agreeing detections (704 vs
-    721), and it coarsens a monotypic genus with one local record where
-    LCA keeps the species. That is not yet enough to make it the default,
-    which stays LCA.
+    so far does not justify making it the default, which stays LCA: on
+    the Great Lakes validation against an independent conventional
+    pipeline, species-level precision was the same under both rules
+    (0.865), reached on fewer agreeing detections (703 of 813, against
+    722 of 835 for LCA). Relative to LCA it withheld 19 calls the
+    independent pipeline supported and avoided 3 it did not, so on that
+    dataset the extra conservatism bought no fewer errors. It also
+    coarsens a monotypic genus with one local record to family where LCA
+    keeps the species.
 -   Robust prior bound (`robust_prior_s`, default 1, active with the
     credible node): the occurrence prior is an estimate from finitely
     many records, so a node is reported only if its posterior stays at
@@ -221,10 +232,11 @@ LLM-estimated biogeographic prior).
     only): when the runner-up phylum holds at least this share of the
     posterior, a call finer than phylum would rest on a choice between
     phyla that the evidence barely makes, so the call is withheld to the
-    finest node at phylum or coarser that holds the threshold. Phyla are
-    compared by lineage on the backbone, not by name string, so a clade
-    carried as a phylum on some rows and as a class inside another phylum
-    on others does not count as a competitor.
+    finest node at phylum or coarser that holds the threshold. Given
+    `backbone_id`, phyla are compared by lineage rather than by name
+    string, so a clade carried as a phylum on some rows and as a rank
+    inside another phylum on others does not count as a competitor;
+    without it the comparison falls back to names, with a message.
 -   Downranking (`species_reference`, off by default): refines a coarse
     call to the one finer taxon that exists at the study site, step by
     step while each step is unambiguous. By default
@@ -371,8 +383,8 @@ shedding light on absent species. *Trends in Ecology & Evolution*,
 26(3), 124--128.
 
 Walley, P. (1996). Inferences from multinomial data: learning about a
-bag of marbles. *Journal of the Royal Statistical Society: Series B*,
-58(1), 3--34.
+bag of marbles (with discussion). *Journal of the Royal Statistical
+Society: Series B*, 58(1), 3--57.
 
 R Core Team (2025). R: A Language and Environment for Statistical
 Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,

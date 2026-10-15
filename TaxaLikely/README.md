@@ -422,8 +422,21 @@ expands them so they can join TaxaExpect priors directly; requires a
 TaxaExpect-derived unreferenced-species list, so it runs after both
 TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
 
+Reference preparation: - `match_reference_region()`: trim every
+reference to the stretch of the gene the study's own ESVs cover, learned
+from the ESVs rather than from primers. The model is trained on
+reference-vs-reference identities and applied to ESV-vs-reference
+identities, and the two scales are comparable only if both describe the
+same region
+
 Reference QC: - `audit_barcode_coverage()`: find unreferenced
-species (no barcode sequence; eDNA/DNA only) -
+species (no barcode sequence; eDNA/DNA only). A group NCBI could not be
+asked about is reported with `lookup_failed = TRUE`, is never written to
+the checkpoint, and contributes nothing to `unreferenced`, so the
+returned set is an incomplete census rather than a census; a failure is
+named in a warning by default, and `on_lookup_failure = "error"` stops
+instead, which suits an unattended run whose later steps would otherwise
+cache the gap as an answer -
 `infer_exclude_predicted()`: infer from accession numbers whether a
 BLAST reference database excluded computationally predicted NCBI
 sequences, the value `audit_barcode_coverage()`'s `exclude_predicted`
@@ -441,7 +454,11 @@ from Xeno-canto for one or more species -
 enough iNaturalist observations to be represented in its computer
 vision training data - `audit_reference_coverage()`:
 taxonomic completeness check - `apply_coverage_constraints()`:
-suppress H2 for fully-sampled genera. Mislabel screening and
+constrain the unsequenced-congener hypothesis for a genus whose species
+are all referenced.
+<!-- TODO: describe the closed-genus rule here once the fix that moves
+the placeholder's mass to the referenced member has landed; the current
+behaviour is being changed, so no description is given yet. --> Mislabel screening and
 match-object cleaning for flagged accessions live in TaxaMatch, not here.
 See "Detecting Mislabeled References" below.
 
@@ -586,8 +603,8 @@ hypothesis type:
     realistic eDNA query scores
 
 -   Score-only outlier filter (`alpha = 0.001`): Before computing H1
-    density, `.evaluate_one_query()` tests whether the query score is
-    consistent with the H1 species distribution using a univariate
+    density, the query score is tested for consistency with the H1
+    species distribution using a univariate
     chi-squared test (df = 1, score only). If the p-value is below
     `alpha`, the candidate is treated as a score outlier and receives
     likelihood 0. The gap feature is deliberately excluded from this

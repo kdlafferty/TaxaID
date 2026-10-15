@@ -216,7 +216,14 @@ Prior estimation:
     site needs its own count fetch and fit; the records path downloads a
     polygon once and serves every site inside it
     (`estimate_kernel_priors()` per site,
-    `TaxaAssign::combine_multisite_priors()` across them)
+    `TaxaAssign::combine_multisite_priors()` across them). Under the
+    default habitat mode a taxon of any habitat enters a site's
+    composition if the records put it within the bands, so a freshwater
+    species can carry a small prior at a marine site: the prior is not a
+    habitat filter and should not be read as one. Pass
+    `"taxon_threshold"` with a `habitat_lookup` when habitat should
+    constrain it. `main_habitat` on the returned rows records the site's
+    habitat, not the taxon's, in both modes
 -   `generate_undetected_diversity()`: singleton-mirror and global-floor
     `resident_undetected` priors from a kernel fit
 -   `generate_presence_curve_evidence()` /

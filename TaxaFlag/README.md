@@ -185,13 +185,29 @@ LLM review:
 -   `review_assignments()`: send each unique taxon from a consensus
     table to an LLM for structured expert review of habitat fit,
     geographic plausibility, taxonomic scope, and contamination risk,
-    with suggested plausible alternatives
+    with suggested plausible alternatives. The site context combines the
+    analyst's own wording with an ecoregion synthesised from the site
+    table, so the reviewer is told where the samples came from rather
+    than inferring it from the taxon names. A call whose name came from
+    the local records rather than from the sequence is marked as such,
+    since judging it as a sequence match would ask the reviewer the
+    wrong question
+
+-   `flag_backbone_conflicts()`: report names whose own backbone
+    placement disagrees with itself -- one name carried at more than one
+    rank, or under more than one parent at the same rank -- learned from
+    the backbone present in the data rather than from any list of taxa.
+    The inverse, many names for one organism, is invisible to it by
+    construction, so zero conflicts says nothing about synonymy
 
 Spatial and watch-list checks:
 
 -   `check_gbif_tile_range()`: download GBIF's occurrence-density map
     tiles around a query point and report how isolated that point is
-    from the taxon's known range
+    from the taxon's known range. `cache_dir` keeps one entry per key so
+    a re-run asks GBIF nothing twice; a verdict built on a tile that
+    could not be fetched carries `attr(x, "tile_fetch_failed") = TRUE`
+    and is never cached, so a failure is not served later as a range
 -   `compute_local_occurrence_distance()`: for each taxon, find the
     nearest already-fetched occurrence record and report its distance
     from the query point, at no cost of a new GBIF call
