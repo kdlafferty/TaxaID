@@ -68,3 +68,76 @@
 #' use.
 #' @noRd
 .dark_diversity_rank_cols <- c("genus", "family", "order", "class", "phylum")
+
+#' Record weights for the habitat stratum, counting unplaceable records
+#'
+#' The stratum filter every kernel-path function shares. With
+#' `habitat_levels = NULL` (and `habitat_weights = NULL`) a record is kept
+#' only when its habitat label equals `site_habitat`, at weight 1. With both
+#' supplied, a record whose label is not one of the scheme's declared
+#' habitats (`NA`, `""`, `"Uncertain"`, any sentinel) is UNPLACEABLE and is
+#' kept at its taxon's own probability of occupying `site_habitat`, read
+#' from `habitat_weights[[site_habitat]]`; a record in a different declared
+#' habitat is excluded as before. A taxon with no weight contributes nothing
+#' and is counted in `$n_no_weight`. The closed-world test is the one
+#' `generate_uncertain_habitat_evidence()` uses, for the same reason: this
+#' package must not track a habitat producer's sentinel vocabulary.
+#'
+#' @param hab Character vector of habitat labels, one per record.
+#' @param taxa Character vector of taxon names, one per record.
+#' @param site_habitat,habitat_levels,habitat_weights As documented on
+#'   [estimate_kernel_priors()].
+#' @param caller Character. Function name for messages.
+#' @return A list: `keep` (logical, per record), `weight` (numeric, per
+#'   record; 1 for stratum records, the taxon weight for unplaceable ones,
+#'   0 otherwise), `lookup` (the two-column weight table actually used, or
+#'   `NULL`), `n_unplaceable` (records counted), `n_no_weight` (unplaceable
+#'   records left out for want of a weight), `n_taxa_no_weight`.
+#' @noRd
+.habitat_record_weights <- function(hab, taxa, site_habitat, habitat_levels,
+                                    habitat_weights, caller) {
+  hab <- as.character(hab)
+  in_stratum <- !is.na(hab) & hab == site_habitat
+  if (is.null(habitat_levels) && is.null(habitat_weights)) {
+    return(list(keep = in_stratum, weight = as.numeric(in_stratum), lookup = NULL,
+                n_unplaceable = 0L, n_no_weight = 0L, n_taxa_no_weight = 0L))
+  }
+  if (is.null(habitat_levels) || is.null(habitat_weights)) {
+    stop(sprintf(
+      "%s: supply `habitat_levels` and `habitat_weights` together, or neither. Unplaceable-habitat records are counted only at their taxon's habitat weight, never at full weight.",
+      caller), call. = FALSE)
+  }
+  if (!is.character(habitat_levels) || length(habitat_levels) == 0L ||
+      anyNA(habitat_levels) || !all(nzchar(trimws(habitat_levels)))) {
+    stop(sprintf("%s: `habitat_levels` must be a non-empty character vector of the scheme's habitat names.", caller), call. = FALSE)
+  }
+  if (!site_habitat %in% habitat_levels) {
+    stop(sprintf("%s: site_habitat '%s' is not one of `habitat_levels` (%s).",
+                 caller, site_habitat, paste(habitat_levels, collapse = ", ")), call. = FALSE)
+  }
+  if (!is.data.frame(habitat_weights) || !"taxon_name" %in% names(habitat_weights) ||
+      !site_habitat %in% names(habitat_weights)) {
+    stop(sprintf(
+      "%s: `habitat_weights` must be a data frame with a `taxon_name` column and a '%s' column (TaxaHabitat::build_habitat_lookup() output).",
+      caller, site_habitat), call. = FALSE)
+  }
+  lk <- habitat_weights[!duplicated(habitat_weights$taxon_name), c("taxon_name", site_habitat), drop = FALSE]
+  hv <- as.numeric(lk[[site_habitat]])
+  if (any(!is.na(hv) & (hv < 0 | hv > 1))) {
+    stop(sprintf("%s: `habitat_weights[['%s']]` has value(s) outside [0, 1].", caller, site_habitat), call. = FALSE)
+  }
+  unplaceable <- is.na(hab) | !nzchar(trimws(hab)) | !(hab %in% habitat_levels)
+  odd <- unique(hab[unplaceable & !is.na(hab) & nzchar(trimws(hab)) &
+                      !tolower(trimws(hab)) %in% c("uncertain", "unknown", "unassigned", "na")])
+  if (length(odd)) {
+    warning(sprintf(
+      "%s: %d habitat label(s) are not in `habitat_levels` and are being counted as UNPLACEABLE: %s. If any is a real habitat, add it to `habitat_levels`.",
+      caller, length(odd), paste(utils::head(odd, 10), collapse = ", ")), call. = FALSE)
+  }
+  h <- hv[match(as.character(taxa), lk$taxon_name)]
+  w <- ifelse(in_stratum, 1, ifelse(unplaceable & !is.na(h), h, 0))
+  no_w <- unplaceable & is.na(h)
+  list(keep = w > 0, weight = w, lookup = lk,
+       n_unplaceable = sum(unplaceable & !is.na(h) & h > 0),
+       n_no_weight = sum(no_w), n_taxa_no_weight = length(unique(taxa[no_w])))
+}

@@ -20,7 +20,9 @@ calibrate_kernel_bandwidth(
   taxon_col = "taxon_name",
   lat_col = "decimalLatitude",
   lon_col = "decimalLongitude",
-  habitat_col = "main_habitat"
+  habitat_col = "main_habitat",
+  habitat_levels = NULL,
+  habitat_weights = NULL
 )
 }
 \arguments{
@@ -69,6 +71,14 @@ without \code{sampling_group_col}.}
 \item{smoothing}{Laplace pseudo-count added to every species when forming
 a predicted composition, so held-out species never score \code{-Inf}
 (default \code{0.5}).}
+
+\item{habitat_levels, habitat_weights}{Optional, supplied together, as on
+\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}: with both, a record whose habitat could not
+be placed joins the cross-validation at its taxon's \code{site_habitat}
+weight -- as that fraction of a record when it is a prediction target
+and as that fraction of its kernel weight when it is held out -- so the
+bandwidth is chosen on the pool the estimator will see. Pass the same
+two arguments to both functions.}
 }
 \value{
 A list with \describe{

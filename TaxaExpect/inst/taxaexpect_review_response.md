@@ -727,3 +727,33 @@ on functions this document already covers above.
 - `generate_regional_proximity_evidence()` passes a tile-cache directory
   through to the underlying GBIF tile-range check, so repeated runs reuse
   verdicts instead of re-querying.
+
+### 2026-10-15: unplaceable-habitat records count in the kernel at the taxon's own habitat weight
+
+The kernel stratum kept only records whose point the habitat consensus placed in the site's
+habitat, so a point it could not place (`"Uncertain"`, `NA`, `""`) was left out whatever lives
+there. At Great Lakes 1,268 of 11,154 records were such points, and at Mugu 143. The
+maintainer's decision (option C): count them at a reduced weight, the taxon's own probability
+of occupying the site habitat, which `condition_evidence_on_habitat()` already reads from the
+same `TaxaHabitat::build_habitat_lookup()` table; a record placed in a DIFFERENT declared
+habitat stays excluded.
+
+`estimate_kernel_priors()`, `calibrate_kernel_bandwidth()` and `estimate_kernel_priors_from_counts()`
+(for its extra records) gain `habitat_levels` (the scheme's declared habitats) and
+`habitat_weights` (the lookup), supplied together or not at all; `plot_theta_surface()` reads
+them from the fit. Unplaceable is read closed-world, as `generate_uncertain_habitat_evidence()`
+reads it, so no sentinel vocabulary lives here; an unfamiliar label is counted and named in a
+warning. The weight is record MULTIPLICITY: a 0.3-weight record is 0.3 of a record in W, in
+Kish's n_eff and in the regional composition, is held out and targeted at that fraction in the
+bandwidth cross-validation, and enters the surface's squared-weight mass once (not squared) so
+the site-identity invariant holds. It is not a whole detection and never makes its taxon a
+singleton. A taxon with no weight contributes nothing and is counted in the message. NA and
+`""` are read exactly as `"Uncertain"`: all three mean "could not be placed", not "placed
+elsewhere". The counts path drops its own below-threshold NA rows before the rule can read
+them, since there NA means "excluded". `generate_uncertain_habitat_evidence()` now says it
+double-counts if combined with this. Measured read-only (the calibrated bandwidth held
+fixed): see the ecosystem record for the Great Lakes, Mugu and CalIntertidal numbers.
+Tests: fractions of a record in theta, W and n_eff; a different declared habitat excluded; a
+no-weight taxon left out; validation; the arguments change nothing on a pool with no
+unplaceable records; the bandwidth sees them; the surface reproduces the fit; the counts path
+forwards them.

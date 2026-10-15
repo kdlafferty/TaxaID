@@ -170,3 +170,22 @@ test_that("extra_occurrences are validated", {
     "real site coordinates"
   )
 })
+
+test_that("extra_occurrences at unplaceable-habitat points join at their taxon's weight when habitat_levels is given", {
+  b <- .mk_bands()
+  ex <- data.frame(
+    taxon_name = c("E", "E"), decimalLatitude = c(34, 34), decimalLongitude = c(-120, -120),
+    main_habitat = c("Uncertain", NA), stringsAsFactors = FALSE
+  )
+  hw <- data.frame(taxon_name = "E", Marine = 0.5)
+  f0 <- suppressMessages(suppressWarnings(
+    estimate_kernel_priors_from_counts(b, "Marine", lambda_km = 25, extra_occurrences = ex)))
+  expect_false("E" %in% f0$priors$taxon_name)
+  f1 <- suppressMessages(suppressWarnings(
+    estimate_kernel_priors_from_counts(b, "Marine", lambda_km = 25, extra_occurrences = ex,
+                                       habitat_levels = "Marine", habitat_weights = hw)))
+  expect_true("E" %in% f1$priors$taxon_name)
+  expect_equal(f1$params$n_extra_records, 2L)
+  expect_equal(f1$params$n_records_unplaceable, 2L)
+  expect_equal(f1$W - f0$W, 2 * 0.5, tolerance = 1e-6)   # two records at weight 0.5, at the site
+})

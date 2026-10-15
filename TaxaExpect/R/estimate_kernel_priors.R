@@ -156,6 +156,27 @@
 #'   `support_weight` (default `exp(-3)`, i.e. within ~3 bandwidths).
 #'   Continuous quantities (`theta`, `n_eff`) always use all records.
 #'
+#' @param habitat_levels,habitat_weights Optional, supplied together. By
+#'   default a record enters the stratum only when its `habitat_col` label
+#'   equals `site_habitat`, so a point the habitat consensus could not place
+#'   (`"Uncertain"`, `NA`, `""`) is left out whatever lives there. With
+#'   `habitat_levels` (the scheme's declared habitat names, e.g.
+#'   `simple_scheme$l1_name`) and `habitat_weights` (the per-taxon table
+#'   `TaxaHabitat::build_habitat_lookup()` returns: `taxon_name` plus one
+#'   column per habitat holding the taxon's probability of occupying it),
+#'   such an UNPLACEABLE record counts toward the stratum at its taxon's own
+#'   `site_habitat` weight, as that fraction of a record; a record in a
+#'   DIFFERENT declared habitat stays excluded, and a taxon with no weight
+#'   contributes nothing (counted in the message). Unplaceable is read
+#'   closed-world, as [generate_uncertain_habitat_evidence()] reads it: any
+#'   label not in `habitat_levels`, so a sentinel this package never heard
+#'   of is caught, and an unfamiliar label is warned about by name. The
+#'   fraction enters `W`, `n_eff` and the regional composition; it is not a
+#'   whole detection and does not count toward `f1`/`f2`. Pass the same two
+#'   arguments to [calibrate_kernel_bandwidth()], so the bandwidth is chosen
+#'   on the pool the estimator sees; [plot_theta_surface()] reads them from
+#'   the fit. Do not also price these records through
+#'   [generate_uncertain_habitat_evidence()], which would count them twice.
 #' @return An object of class `"taxaexpect_kernel_priors"`: a list with
 #'   \describe{
 #'     \item{priors}{Data frame: `taxon_name`, `grid_id`, `main_habitat`,
@@ -224,7 +245,9 @@ estimate_kernel_priors <- function(occurrence_data,
                                    habitat_col = "main_habitat",
                                    sampling_group_col = NULL,
                                    count_col = NULL,
-                                   support_weight = exp(-3)) {
+                                   support_weight = exp(-3),
+                                   habitat_levels = NULL,
+                                   habitat_weights = NULL) {
   # ---- validation -----------------------------------------------------------
   if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L) {
     stop("occurrence_data must be a non-empty data frame.")
@@ -300,8 +323,14 @@ estimate_kernel_priors <- function(occurrence_data,
   }
 
   # ---- habitat stratum ------------------------------------------------------
+  # A record in the site's habitat counts once. With habitat_levels and
+  # habitat_weights, a record whose habitat could not be placed counts at its
+  # taxon's own probability of occupying the site habitat (a fraction of a
+  # record); a record placed in a different declared habitat is excluded.
   hab <- occurrence_data[[habitat_col]]
-  keep <- !is.na(hab) & hab == site_habitat & !is.na(occurrence_data[[taxon_col]]) &
+  hw <- .habitat_record_weights(hab, occurrence_data[[taxon_col]], site_habitat,
+                                habitat_levels, habitat_weights, "estimate_kernel_priors")
+  keep <- hw$keep & !is.na(occurrence_data[[taxon_col]]) &
     !is.na(occurrence_data[[lat_col]]) & !is.na(occurrence_data[[lon_col]])
   if (!any(keep)) {
     stop(sprintf("No usable records with %s == '%s'.", habitat_col, site_habitat))
@@ -309,8 +338,25 @@ estimate_kernel_priors <- function(occurrence_data,
   if (!is.null(count_col)) keep <- keep & occurrence_data[[count_col]] > 0
   rec <- occurrence_data[keep, , drop = FALSE]
   taxa <- as.character(rec[[taxon_col]])
-  # Record multiplicity: 1 per row unless count_col says otherwise.
+  # Record multiplicity: 1 per row unless count_col says otherwise, times the
+  # habitat weight (1 in the stratum; the taxon's weight for an unplaceable
+  # record). A fraction of a record enters W and n_eff as that fraction, and
+  # the regional composition the same way; it is not a whole detection, so it
+  # does not count toward the singleton/doubleton tallies (f1, f2).
   n_rec <- if (is.null(count_col)) rep(1, nrow(rec)) else as.numeric(rec[[count_col]])
+  # Whole detections, for the singleton/doubleton tallies: stratum records
+  # only. An unplaceable record is a fraction of a record for composition and
+  # n_eff, never a detection that makes its taxon a singleton.
+  n_whole <- n_rec * as.numeric(hw$weight[keep] >= 1)
+  n_rec <- n_rec * hw$weight[keep]
+  if (!is.null(habitat_levels)) {
+    message(sprintf(
+      "estimate_kernel_priors: %s unplaceable-habitat record(s) count at their taxon's '%s' weight (%.1f records in all); %s record(s) of %d taxa with no weight left out.",
+      format(hw$n_unplaceable, big.mark = ","), site_habitat,
+      sum(n_rec[!(as.character(rec[[habitat_col]]) %in% site_habitat)]),
+      format(hw$n_no_weight, big.mark = ","), hw$n_taxa_no_weight
+    ))
+  }
 
   # ---- kernel weights -------------------------------------------------------
   d_km <- .approx_distance_km(rec[[lat_col]], rec[[lon_col]], site_lat, site_lon, site_lat)
@@ -377,6 +423,7 @@ estimate_kernel_priors <- function(occurrence_data,
   .kernel_block <- function(idx) {
     w_g <- w[idx]
     n_g <- n_rec[idx]
+    n_whole_g <- n_whole[idx]
     taxa_g <- taxa[idx]
     W_g <- sum(n_g * w_g)
     if (W_g <= 0) {
@@ -399,7 +446,7 @@ estimate_kernel_priors <- function(occurrence_data,
 
     # ---- neighborhood support + singletons ----------------------------------
     supported <- w_g >= support_weight
-    n_support <- tapply(n_g * supported, taxa_g, sum)[sp]
+    n_support <- tapply(n_whole_g * supported, taxa_g, sum)[sp]
     n_support[is.na(n_support)] <- 0L
     is_singleton <- n_support == 1L
     singles <- character(0)
@@ -620,6 +667,9 @@ estimate_kernel_priors <- function(occurrence_data,
       taxon_col = taxon_col, lat_col = lat_col,
       lon_col = lon_col, habitat_col = habitat_col,
       count_col = count_col,
+      habitat_levels = habitat_levels,
+      habitat_weights = hw$lookup,
+      n_records_unplaceable = hw$n_unplaceable,
       n_records_stratum = sum(n_rec)
     )
   ), class = "taxaexpect_kernel_priors")

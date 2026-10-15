@@ -95,6 +95,16 @@ utils::globalVariables(c("taxon_name"))
 #' never have been fetched. Expect a small residual, and treat a large one as
 #' a scope-filter problem first.
 #'
+#' \strong{Not alongside the kernel's own unplaceable-record rule.}
+#' [estimate_kernel_priors()] can count the same records itself, at their
+#' taxon's habitat weight, when given `habitat_levels` and
+#' `habitat_weights`. A taxon then has a resident row AND would be priced
+#' here as evidence from the same points: counted twice. Use one of the two.
+#' With the kernel rule in place this function finds no qualifying taxa only
+#' for taxa whose weight is positive; a taxon with no habitat weight still
+#' has no resident row and would be recovered here, which is the one case
+#' where the two are complementary.
+#'
 #' @param occurrence_data Data frame of cleaned, habitat-labelled occurrence
 #'   records (one row per record) -- the same table given to
 #'   \code{\link{estimate_kernel_priors}}.

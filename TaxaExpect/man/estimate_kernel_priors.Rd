@@ -22,7 +22,9 @@ estimate_kernel_priors(
   habitat_col = "main_habitat",
   sampling_group_col = NULL,
   count_col = NULL,
-  support_weight = exp(-3)
+  support_weight = exp(-3),
+  habitat_levels = NULL,
+  habitat_weights = NULL
 )
 }
 \arguments{
@@ -130,6 +132,28 @@ discrete neighborhood-support statistics (singleton detection, record
 counts) when its total kernel weight is at least
 \code{support_weight} (default \code{exp(-3)}, i.e. within ~3 bandwidths).
 Continuous quantities (\code{theta}, \code{n_eff}) always use all records.}
+
+\item{habitat_levels, habitat_weights}{Optional, supplied together. By
+default a record enters the stratum only when its \code{habitat_col} label
+equals \code{site_habitat}, so a point the habitat consensus could not place
+(\code{"Uncertain"}, \code{NA}, \code{""}) is left out whatever lives there. With
+\code{habitat_levels} (the scheme's declared habitat names, e.g.
+\code{simple_scheme$l1_name}) and \code{habitat_weights} (the per-taxon table
+\code{TaxaHabitat::build_habitat_lookup()} returns: \code{taxon_name} plus one
+column per habitat holding the taxon's probability of occupying it),
+such an UNPLACEABLE record counts toward the stratum at its taxon's own
+\code{site_habitat} weight, as that fraction of a record; a record in a
+DIFFERENT declared habitat stays excluded, and a taxon with no weight
+contributes nothing (counted in the message). Unplaceable is read
+closed-world, as \code{\link[=generate_uncertain_habitat_evidence]{generate_uncertain_habitat_evidence()}} reads it: any
+label not in \code{habitat_levels}, so a sentinel this package never heard
+of is caught, and an unfamiliar label is warned about by name. The
+fraction enters \code{W}, \code{n_eff} and the regional composition; it is not a
+whole detection and does not count toward \code{f1}/\code{f2}. Pass the same two
+arguments to \code{\link[=calibrate_kernel_bandwidth]{calibrate_kernel_bandwidth()}}, so the bandwidth is chosen
+on the pool the estimator sees; \code{\link[=plot_theta_surface]{plot_theta_surface()}} reads them from
+the fit. Do not also price these records through
+\code{\link[=generate_uncertain_habitat_evidence]{generate_uncertain_habitat_evidence()}}, which would count them twice.}
 }
 \value{
 An object of class \code{"taxaexpect_kernel_priors"}: a list with

@@ -132,6 +132,10 @@
 #'   the band edges (the default edges include `3 * lambda_km`); otherwise the
 #'   singleton/doubleton counts are only approximate and a warning says so.
 #'
+#' @param habitat_levels,habitat_weights Optional, supplied together, as on
+#'   [estimate_kernel_priors()]. They apply to `extra_occurrences` only (the
+#'   counts carry no points to place): an extra record whose habitat could
+#'   not be placed joins the fit at its taxon's `site_habitat` weight.
 #' @return An object of class `"taxaexpect_kernel_priors"`, as from
 #'   [estimate_kernel_priors()], with `params$source = "gbif_counts"`,
 #'   `params$breaks_km`, `params$habitat_mode`, `params$habitat_threshold`
@@ -161,7 +165,9 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
                                   extra_occurrences = NULL,
                                   sampling_group_col = NULL,
                                   site_id = NULL,
-                                  support_weight = exp(-3)) {
+                                  support_weight = exp(-3),
+                                  habitat_levels = NULL,
+                                  habitat_weights = NULL) {
   if (!is.data.frame(occurrence_counts) || nrow(occurrence_counts) == 0L) {
     stop("occurrence_counts must be a non-empty data frame from TaxaFetch::fetch_gbif_occurrence_counts().")
   }
@@ -243,6 +249,12 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
   x$decimalLatitude <- site_lat
   x$decimalLongitude <- site_lon + off
 
+  # A counted taxon below the habitat threshold carries main_habitat = NA to
+  # mean "excluded", not "could not be placed": drop it here, before any extra
+  # records join, so the record estimator's unplaceable-habitat rule
+  # (habitat_levels) never reads it.
+  x <- x[!is.na(x$main_habitat), , drop = FALSE]
+
   # ---- extra point records (non-GBIF sources) ---------------------------
   n_extra <- 0L
   ex <- NULL
@@ -257,7 +269,9 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
     }
     ex <- as.data.frame(extra_occurrences)[, need, drop = FALSE]
     ex$n <- 1
-    n_extra <- sum(!is.na(ex$main_habitat) & ex$main_habitat == site_habitat)
+    hw_ex <- .habitat_record_weights(ex$main_habitat, ex$taxon_name, site_habitat,
+                                     habitat_levels, habitat_weights, "estimate_kernel_priors_from_counts")
+    n_extra <- sum(hw_ex$keep)
     message(sprintf(
       "estimate_kernel_priors_from_counts: %s extra record(s) in '%s' join the fit at their own coordinates.",
       format(n_extra, big.mark = ","), site_habitat
@@ -270,7 +284,8 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
     x, site_lat, site_lon, site_habitat,
     lambda_km = lambda_km, m = m, site_id = site_id,
     sampling_group_col = sampling_group_col, count_col = "n",
-    support_weight = support_weight
+    support_weight = support_weight,
+    habitat_levels = habitat_levels, habitat_weights = habitat_weights
   )
   # Pseudo-record positions are not places; do not let them look like ones.
   # A singleton whose one supporting record is a real extra record keeps
@@ -280,7 +295,7 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
     fit$singletons$lon <- NA_real_
     if (!is.null(ex)) {
       d_ex <- .approx_distance_km(ex$decimalLatitude, ex$decimalLongitude, site_lat, site_lon, site_lat)
-      sup_ex <- ex[!is.na(ex$main_habitat) & ex$main_habitat == site_habitat & d_ex <= sup_r, , drop = FALSE]
+      sup_ex <- ex[hw_ex$keep & d_ex <= sup_r, , drop = FALSE]
       j <- match(fit$singletons$taxon_name, sup_ex$taxon_name)
       fit$singletons$lat <- sup_ex$decimalLatitude[j]
       fit$singletons$lon <- sup_ex$decimalLongitude[j]

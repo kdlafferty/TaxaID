@@ -15,7 +15,9 @@ estimate_kernel_priors_from_counts(
   extra_occurrences = NULL,
   sampling_group_col = NULL,
   site_id = NULL,
-  support_weight = exp(-3)
+  support_weight = exp(-3),
+  habitat_levels = NULL,
+  habitat_weights = NULL
 )
 }
 \arguments{
@@ -81,6 +83,11 @@ to \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}.}
 The support radius \code{-lambda_km * log(support_weight)} should be one of
 the band edges (the default edges include \code{3 * lambda_km}); otherwise the
 singleton/doubleton counts are only approximate and a warning says so.}
+
+\item{habitat_levels, habitat_weights}{Optional, supplied together, as on
+\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}. They apply to \code{extra_occurrences} only (the
+counts carry no points to place): an extra record whose habitat could
+not be placed joins the fit at its taxon's \code{site_habitat} weight.}
 }
 \value{
 An object of class \code{"taxaexpect_kernel_priors"}, as from

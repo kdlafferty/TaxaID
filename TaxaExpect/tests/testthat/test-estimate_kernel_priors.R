@@ -648,3 +648,100 @@ test_that("count_col rejects negative or missing counts", {
   occ$n <- c(1, NA)
   expect_error(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1, count_col = "n"), "non-NA")
 })
+
+# ------------------------------------------------------------------------------
+# Unplaceable-habitat records counted at the taxon's habitat weight
+# ------------------------------------------------------------------------------
+
+.hab_fix <- function() {
+  # A x3 in the stratum at the site; B x2 at unplaceable points ("Uncertain", NA);
+  # C x1 in a different declared habitat ("Freshwater"); D x1 unplaceable, no weight
+  occ <- .mk_occ(c("A", "A", "A", "B", "B", "C", "D"),
+    lat = 34 + (1:7) * 1e-6, lon = -120 + (1:7) * 1e-6,
+    habitat = c("Marine", "Marine", "Marine", "Uncertain", NA, "Freshwater", "Uncertain")
+  )
+  hw <- data.frame(taxon_name = c("A", "B", "C"), Marine = c(1, 0.5, 0.2), Freshwater = c(0, 0.5, 0.8))
+  list(occ = occ, hw = hw, levels = c("Marine", "Freshwater"))
+}
+
+test_that("unplaceable-habitat records count at the taxon's site-habitat weight, as fractions of a record", {
+  f <- .hab_fix()
+  base <- estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 1e9, m = 0)
+  expect_false("B" %in% base$priors$taxon_name)            # default: unplaceable records are out
+  expect_equal(base$n_eff, 3, tolerance = 1e-6)
+  expect_message(
+    kp <- estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                 habitat_levels = f$levels, habitat_weights = f$hw),
+    "unplaceable-habitat record"
+  )
+  th <- kp$priors$theta_mean[match(c("A", "B"), kp$priors$taxon_name)]
+  expect_equal(th, c(3, 1) / 4, tolerance = 1e-6)          # B: 2 records x 0.5 = 1 record
+  expect_equal(kp$W, 4, tolerance = 1e-6)
+  expect_equal(kp$n_eff, 4, tolerance = 1e-6)              # W^2 / sum(n w^2) with n = 1,1,1,.5,.5
+  expect_false("C" %in% kp$priors$taxon_name)              # a different declared habitat stays out
+  expect_false("D" %in% kp$priors$taxon_name)              # no weight: contributes nothing
+  expect_equal(kp$params$habitat_levels, f$levels)
+  expect_equal(kp$params$n_records_unplaceable, 2L)
+  expect_identical(names(kp$params$habitat_weights), c("taxon_name", "Marine"))
+})
+
+test_that("a fractional record is not a singleton: f1 counts whole detections", {
+  f <- .hab_fix()
+  kp <- suppressMessages(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                                habitat_levels = f$levels, habitat_weights = f$hw))
+  expect_false("B" %in% kp$singletons$taxon_name)
+})
+
+test_that("habitat_levels and habitat_weights must come together, and are validated", {
+  f <- .hab_fix()
+  expect_error(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 10, habitat_levels = f$levels), "together")
+  expect_error(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 10, habitat_weights = f$hw), "together")
+  expect_error(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 10,
+                                      habitat_levels = "Freshwater", habitat_weights = f$hw), "not one of")
+  bad <- f$hw; bad$Marine[2] <- 1.5
+  expect_error(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 10,
+                                      habitat_levels = f$levels, habitat_weights = bad), "outside")
+  expect_error(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 10,
+                                      habitat_levels = f$levels, habitat_weights = f$hw[, "taxon_name", drop = FALSE]), "column")
+})
+
+test_that("an unfamiliar label is counted as unplaceable and named in a warning", {
+  f <- .hab_fix()
+  occ <- f$occ; occ$main_habitat[4] <- "Brackish?"
+  expect_warning(
+    kp <- suppressMessages(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                                  habitat_levels = f$levels, habitat_weights = f$hw)),
+    "Brackish\\?"
+  )
+  expect_equal(kp$W, 4, tolerance = 1e-6)
+})
+
+test_that("with no unplaceable records the arguments change nothing", {
+  occ <- .mk_occ(c("A", "A", "B"), lat = 34 + (1:3) * 1e-6, lon = -120 + (1:3) * 1e-6)
+  hw <- data.frame(taxon_name = c("A", "B"), Marine = c(0.3, 0.9))
+  a <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 1)
+  b <- suppressMessages(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 1,
+                                               habitat_levels = "Marine", habitat_weights = hw))
+  expect_equal(a$priors$theta_mean, b$priors$theta_mean)
+  expect_equal(a$n_eff, b$n_eff)
+})
+
+test_that("calibrate_kernel_bandwidth() sees unplaceable records at the same weight", {
+  set.seed(11)
+  n <- 1200
+  occ <- .mk_occ(sample(c("A", "B", "C"), n, TRUE, prob = c(0.5, 0.3, 0.2)),
+    lat = 34 + stats::runif(n, 0, 2), lon = -120 + stats::runif(n, 0, 2)
+  )
+  hw <- data.frame(taxon_name = c("A", "B", "C"), Marine = c(1, 0.5, 0.1))
+  args <- list(lambda_grid = c(10, 50, 200), block_size_deg = 0.5, min_block_records = 20L)
+  a <- suppressMessages(do.call(calibrate_kernel_bandwidth, c(list(occ, "Marine"), args)))
+  b <- suppressMessages(do.call(calibrate_kernel_bandwidth,
+    c(list(occ, "Marine"), args, list(habitat_levels = "Marine", habitat_weights = hw))))
+  expect_equal(a$results$weighted_logloss, b$results$weighted_logloss)   # nothing unplaceable: identical
+  occ2 <- occ; occ2$main_habitat[seq(1, n, by = 3)] <- "Uncertain"       # a third of the records unplaceable
+  d <- suppressMessages(do.call(calibrate_kernel_bandwidth, c(list(occ2, "Marine"), args)))
+  e <- suppressMessages(do.call(calibrate_kernel_bandwidth,
+    c(list(occ2, "Marine"), args, list(habitat_levels = "Marine", habitat_weights = hw))))
+  expect_false(isTRUE(all.equal(d$results$weighted_logloss, e$results$weighted_logloss)))
+  expect_error(do.call(calibrate_kernel_bandwidth, c(list(occ2, "Marine"), args, list(habitat_levels = "Marine"))), "together")
+})

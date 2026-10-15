@@ -636,3 +636,30 @@ test_that("as.data.frame() also works for a single-taxon surface (theta is a bar
   expect_equal(nrow(df), sum(!is.na(as.vector(r$surface$theta))))
 })
 
+
+test_that("site-identity holds when the fit counted unplaceable-habitat records at their taxon's weight", {
+  set.seed(44)
+  n <- 400
+  occ <- .mk_occ(sample(c("A", "B", "C"), n, TRUE, prob = c(0.5, 0.3, 0.2)),
+    lat = 34 + stats::rnorm(n, 0, 0.5), lon = -120 + stats::rnorm(n, 0, 0.5)
+  )
+  occ$main_habitat[seq(1, n, by = 4)] <- "Uncertain"
+  hw <- data.frame(taxon_name = c("A", "B", "C"), Marine = c(0.9, 0.5, 0.1))
+  kp <- suppressMessages(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 30, m = 2,
+                                                habitat_levels = "Marine", habitat_weights = hw))
+  surf <- TaxaExpect:::.theta_surface_engine(
+    occ, 34, -120, "Marine", lambda_km = 30, m = 2,
+    covariate_col = NULL, covariate_at = NULL, lambda_covariate = NULL, lambda_latitude = NULL,
+    taxon = c("A", "B", "C"), n_grid = 200L, bbox = NULL,
+    taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude",
+    habitat_col = "main_habitat",
+    habitat_levels = kp$params$habitat_levels, habitat_weights = kp$params$habitat_weights
+  )
+  i0 <- .nearest_idx(surf$lat_grid, 34)
+  j0 <- .nearest_idx(surf$lon_grid, -120)
+  expect_equal(surf$n_eff[i0, j0], kp$n_eff, tolerance = 1e-2)
+  for (tx in c("A", "B", "C")) {
+    est <- kp$priors$theta_mean[kp$priors$taxon_name == tx]
+    expect_equal(surf$theta[[tx]][i0, j0], est, tolerance = 1e-2)
+  }
+})
