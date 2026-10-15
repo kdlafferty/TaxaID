@@ -451,3 +451,38 @@ cache-marker cases (an unmarked nameless entry is re-asked and rewritten; an unm
 entry is served), two harmonise cases (a failed row is warned about and never cached; an
 unmarked cache's lineage-less row is re-resolved while its lineage-bearing row is kept), and
 the empty `fill_higher_ranks()` input.
+
+### 2026-10-15: `verify_taxon_names(ranks =)` -- a homonym is resolved by the caller's rank, and an undecidable one no longer aborts the batch
+
+A Great Lakes run sent all 75 unreferenced taxa of a consensus table to the NCBI path in
+one batch. One name, *Etheostoma*, is both a genus (54318) and a subgenus (909693); the
+2026-10-22 rule stopped the call with the candidate table, the caller's `tryCatch()`
+turned that into "no answer", and 75 of 75 came back `lookup_failed` -- every
+unreferenced lineage label lost over one name no workflow could decide, because
+`posterior_consensus()` has no `decisions` argument to pass. The candidate table already
+held each node's rank (from the same ESummary that found it) and the consensus table
+already knew the rank it meant the name at.
+
+New argument `ranks` (one rank per element of `name_list`, `NA` where unknown). On the
+NCBI path, a homonym whose candidates include exactly one node at the caller's rank is
+resolved to that node before `decisions` is consulted and with no further request --
+`resolve_ncbi_taxid()`'s `resolved_by_rank`, applied to the batch. The Global Names path
+ignores it. A rank that is given enters the NCBI cache key (the genus and the subgenus
+are different answers); Global Names entries and rank-less calls keep their keys, so only
+NCBI entries now asked with a rank re-ask, once.
+
+The residue narrows the 2026-09-22 stop rule, by the maintainer's decision today: the
+stop stays for a caller that SUPPLIED `decisions` that do not cover a name (it can act on
+the table); a non-interactive call with `decisions = NULL` -- the shape of a batch issued
+from inside another function -- instead reports the still-ambiguous name alone as
+`verified = FALSE`, never cached and asked again next call, with the candidate table in a
+warning, and the rest of the batch proceeds. Such a name is also kept out of the synonym
+and fuzzy fallbacks, which would otherwise re-attempt resolution by another route (the
+same exclusion an explicit skip already had).
+
+`posterior_consensus()`, its phylum-lineage lookup and `join_priors()`'s taxonomy
+fallback (TaxaAssign) pass their rank columns, guarded on the installed TaxaTools taking
+the argument. Tests: the genus/subgenus shape resolves by rank; without a rank the
+ambiguous name alone is unverified, its sibling is matched and cached, it is not; a rank
+that singles out nothing falls through; supplied-but-non-covering decisions still stop;
+the cache key takes the rank only on the NCBI path.

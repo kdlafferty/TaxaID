@@ -1536,9 +1536,15 @@ join_priors <- function(likelihoods,
       names_to_query <- unique(result$taxon_name[still_missing])
       backbone_fill <- tryCatch(
         {
-          verified <- TaxaTools::verify_taxon_names(names_to_query,
-            backbone_id = backbone_id
-          )
+          vargs <- list(names_to_query, backbone_id = backbone_id)
+          # The row's own rank resolves an NCBI homonym without a decision
+          # (see posterior_consensus()); only when the installed TaxaTools
+          # takes it.
+          if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names)) &&
+            "taxon_name_rank" %in% names(result)) {
+            vargs$ranks <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]
+          }
+          verified <- do.call(TaxaTools::verify_taxon_names, vargs)
           TaxaTools::change_backbone(verified,
             input_col = "user_supplied_name"
           )

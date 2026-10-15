@@ -52,8 +52,24 @@
 #'   and a short lineage string; in a non-interactive session (the ordinary
 #'   \code{Rscript} workflow case), the call stops, printing that same table
 #'   plus a ready-to-paste \code{decisions = data.frame(...)} skeleton. No
-#'   file is ever written unless \code{decisions} itself named one.
+#'   file is ever written unless \code{decisions} itself named one. That stop
+#'   applies only when \code{decisions} was supplied and does not cover the
+#'   name: a non-interactive call with \code{decisions = NULL} (the shape of a
+#'   batch issued from inside another function, which has no way to pass a
+#'   decision) instead reports the still-ambiguous name alone as
+#'   \code{verified = FALSE} -- never cached, asked again next call, with the
+#'   candidate table in a warning -- and the rest of the batch proceeds.
 #'
+#' @param ranks Character vector or \code{NULL} (default). One rank per
+#'   element of \code{name_list} (\code{"genus"}, \code{"species"}, ...; \code{NA}
+#'   where unknown): the rank the CALLER means each name at. Only used by the
+#'   NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
+#'   more than one NCBI node: when exactly one candidate carries the given
+#'   rank, that node is taken, with no further request and before
+#'   \code{decisions} is consulted. "Etheostoma" is both a genus and a
+#'   subgenus; a consensus table knows which it means. Silently unused by the
+#'   Global Names path. On the NCBI path a rank that is given enters the
+#'   cache key (see \code{cache_dir}); elsewhere the key is unchanged.
 #' @param cache_dir Character or \code{NULL} (default). A directory for a
 #'   per-name on-disk cache, so a re-run on the same names reproduces instead
 #'   of depending on whether the service answered this time. Only names the
@@ -66,8 +82,9 @@
 #'   lookup never produces one) and is otherwise asked once more and
 #'   rewritten. The key is the
 #'   name plus everything that can change what it resolves to:
-#'   \code{backbone_id}, \code{fallback_backbone_id}, and \code{decisions}
-#'   (by content, including a decisions file's contents). \code{batch_size}
+#'   \code{backbone_id}, \code{fallback_backbone_id}, \code{decisions}
+#'   (by content, including a decisions file's contents) and, on the NCBI
+#'   path when one is given, the name's \code{rank}. \code{batch_size}
 #'   and \code{timeout_sec} are not in the key; they cannot change a correct
 #'   answer. Managed by \code{\link{taxatools_clear_cache}}. \code{NULL} keeps
 #'   the uncached behaviour exactly.
@@ -192,11 +209,13 @@ verify_taxon_names <- function(name_list,
                                fallback_backbone_id = 11L,
                                decisions = NULL,
                                cache_dir = NULL,
-                               cache_ttl_days = 365) {
+                               cache_ttl_days = 365,
+                               ranks = NULL) {
+  ranks <- .check_verify_ranks(ranks, name_list)
   if (!is.null(cache_dir)) {
     return(.verify_taxon_names_cached(
       name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id,
-      decisions, cache_dir, cache_ttl_days
+      decisions, cache_dir, cache_ttl_days, ranks = ranks
     ))
   }
   # --- Input validation ---
@@ -234,7 +253,8 @@ verify_taxon_names <- function(name_list,
   if (identical(as.integer(backbone_id), 4L)) {
     unique_df <- .verify_via_ncbi(
       clean_names, fallback_backbone_id = fallback_backbone_id,
-      decisions = decisions
+      decisions = decisions,
+      ranks = .ranks_for_names(ranks, trimmed_names, clean_names)
     )
     idx <- match(trimmed_names, unique_df$user_supplied_name)
     final_df <- unique_df[idx, , drop = FALSE]
@@ -451,12 +471,46 @@ verify_taxon_names <- function(name_list,
 }
 
 #' @noRd
-.verify_cache_key <- function(name, backbone_id, fallback_backbone_id, decisions_fp) {
-  list(
+.verify_cache_key <- function(name, backbone_id, fallback_backbone_id, decisions_fp,
+                              rank = NA_character_) {
+  key <- list(
     name = name, backbone_id = as.integer(backbone_id),
     fallback_backbone_id = if (is.null(fallback_backbone_id)) NA_integer_ else as.integer(fallback_backbone_id),
     decisions = decisions_fp, version = .VERIFY_CACHE_VERSION
   )
+  # A rank is part of the question only where it can change the answer: the
+  # NCBI path's homonym resolution (Etheostoma the genus and Etheostoma the
+  # subgenus are different answers). The Global Names path never reads it,
+  # so its entries keep the key they always had; so does any call that gives
+  # no rank. Existing entries therefore still hit except NCBI ones now asked
+  # with a rank, which re-ask once.
+  if (!is.na(rank) && identical(as.integer(backbone_id), 4L)) key$rank <- rank
+  key
+}
+
+#' Validate `ranks`: NULL, or one rank per name_list element (NA allowed)
+#' @noRd
+.check_verify_ranks <- function(ranks, name_list) {
+  if (is.null(ranks)) return(NULL)
+  if (!is.character(ranks) || length(ranks) != length(name_list)) {
+    stop("`ranks` must be NULL or a character vector with one rank per element of `name_list`.")
+  }
+  r <- tolower(trimws(ranks))
+  r[!is.na(r) & !nzchar(r)] <- NA_character_
+  r
+}
+
+#' One rank per unique cleaned name (the first non-NA given for it), named
+#' @noRd
+.ranks_for_names <- function(ranks, trimmed_names, uniq) {
+  if (is.null(ranks)) return(NULL)
+  out <- vapply(uniq, function(nm) {
+    r <- ranks[!is.na(trimmed_names) & trimmed_names == nm]
+    r <- r[!is.na(r)]
+    if (length(r)) r[[1L]] else NA_character_
+  }, character(1L))
+  names(out) <- uniq
+  out
 }
 
 #' @noRd
@@ -471,7 +525,7 @@ verify_taxon_names <- function(name_list,
 #' @noRd
 .verify_taxon_names_cached <- function(name_list, backbone_id, batch_size, timeout_sec,
                                        fallback_backbone_id, decisions, cache_dir,
-                                       cache_ttl_days) {
+                                       cache_ttl_days, ranks = NULL) {
   if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
     stop("`cache_dir` must be NULL or a single directory path.")
   }
@@ -489,7 +543,11 @@ verify_taxon_names <- function(name_list,
     stop("verify_taxon_names: no valid (non-NA, non-empty) names in `name_list`.")
   }
   fp <- .verify_decisions_fingerprint(decisions)
-  keys <- lapply(uniq, .verify_cache_key, backbone_id, fallback_backbone_id, fp)
+  rank_of <- .ranks_for_names(ranks, trimmed, uniq)
+  keys <- lapply(uniq, function(nm) .verify_cache_key(
+    nm, backbone_id, fallback_backbone_id, fp,
+    rank = if (is.null(rank_of)) NA_character_ else rank_of[[nm]]
+  ))
   now <- Sys.time()
   cached <- lapply(keys, function(k) {
     path <- .verify_cache_path(cache_dir, k)
@@ -513,7 +571,8 @@ verify_taxon_names <- function(name_list,
   if (length(miss) > 0L) {
     fresh <- .verify_taxon_names_uncached(miss, backbone_id,
       batch_size = batch_size, timeout_sec = timeout_sec,
-      fallback_backbone_id = fallback_backbone_id, decisions = decisions
+      fallback_backbone_id = fallback_backbone_id, decisions = decisions,
+      ranks = if (is.null(rank_of)) NULL else unname(rank_of[miss])
     )
     fresh <- fresh[!duplicated(fresh$user_supplied_name), , drop = FALSE]
     # Write only names the service answered. A failed lookup (verified FALSE)
@@ -587,6 +646,9 @@ verify_taxon_names <- function(name_list,
 #'   NCBI's own exact search cannot find, purely to suggest a corrected
 #'   spelling (see that function's own docs for the full rationale). Must not
 #'   be \code{4}.
+#' @param ranks Named character vector (names = \code{clean_names}) or NULL:
+#'   the caller's rank for each name, used to resolve a homonym by rank before
+#'   \code{decisions} is consulted. See \code{verify_taxon_names(ranks =)}.
 #' @param decisions See \code{\link{verify_taxon_names}}'s own \code{@param
 #'   decisions} -- NULL, a \code{data.frame(name, taxid)}, or a path to an
 #'   \code{.rds} file holding one.
@@ -598,7 +660,8 @@ verify_taxon_names <- function(name_list,
                              search_batch_size = 40L,
                              fetch_batch_size = 100L,
                              fallback_backbone_id = 11L,
-                             decisions = NULL) {
+                             decisions = NULL,
+                             ranks = NULL) {
   if (!requireNamespace("rentrez", quietly = TRUE) ||
     !requireNamespace("xml2", quietly = TRUE)) {
     stop(
@@ -735,6 +798,35 @@ verify_taxon_names <- function(name_list,
     dec_path <- if (is.character(decisions) && length(decisions) == 1L && !is.na(decisions)) decisions else NULL
 
     pending_names <- names(ambiguous_summaries)
+
+    # Rank first. The caller often knows the rank it means a name at (a
+    # consensus table does), and every candidate's own rank is already in
+    # hand from the ESummary that found it, so a homonym whose candidates
+    # include exactly one node at that rank is resolved here with no further
+    # request and before any decision is consulted -- resolve_ncbi_taxid()'s
+    # resolved_by_rank, applied to the batch.
+    if (!is.null(ranks) && length(pending_names) > 0L) {
+      by_rank <- character(0L)
+      for (nm in pending_names) {
+        want <- if (nm %in% names(ranks)) ranks[[nm]] else NA_character_
+        if (is.na(want)) next
+        cands <- ambiguous_summaries[[nm]]
+        cand_rank <- tolower(vapply(cands, function(s) as.character(s$rank %||% NA_character_), character(1L)))
+        hit <- which(!is.na(cand_rank) & cand_rank == want)
+        if (length(hit) == 1L) {
+          name_to_taxid[[nm]] <- as.character(cands[[hit]]$uid %||% cands[[hit]]$TaxId)
+          by_rank <- c(by_rank, nm)
+        }
+      }
+      if (length(by_rank) > 0L) {
+        message(sprintf(
+          "verify_taxon_names: %d homonym(s) resolved by the caller's rank: %s.",
+          length(by_rank), paste(by_rank, collapse = ", ")
+        ))
+        pending_names <- setdiff(pending_names, by_rank)
+      }
+    }
+
     applied <- .apply_ncbi_homonym_decisions(pending_names, path = dec_path, decisions = dec_df)
     for (nm in pending_names[attr(applied, "decided")]) {
       if (!is.na(applied[[nm]])) {
@@ -776,6 +868,24 @@ verify_taxon_names <- function(name_list,
             ")\n)"
           )
         }
+      } else if (is.null(decisions)) {
+        # No decision can reach this call (a batch issued from inside another
+        # function has no `decisions` to pass), so the stop below would cost
+        # the whole batch for one undecidable name: 75 of 75 unreferenced
+        # taxa lost their lineage over "Etheostoma" alone. These names are
+        # reported alone as verified = FALSE (never cached, asked again next
+        # call) with the candidate table, and the rest of the batch proceeds.
+        # They are also excluded from the synonym and fuzzy fallbacks below,
+        # which would otherwise re-attempt resolution by another route.
+        failed_names <- c(failed_names, still_pending)
+        skipped_names <- c(skipped_names, still_pending)
+        warning(
+          "verify_taxon_names: ", length(still_pending), " name(s) resolved to more than one ",
+          "NCBI taxonomy node and could not be told apart by rank; reported as unverified ",
+          "(verified = FALSE), not cached. Supply `ranks =` or `decisions =` to resolve them:\n\n",
+          .format_ncbi_ambiguous_report(ambiguous_df),
+          call. = FALSE
+        )
       } else {
         stop(
           "verify_taxon_names: ", length(still_pending), " name(s) resolved to more than one ",

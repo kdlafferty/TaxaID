@@ -12,7 +12,8 @@ verify_taxon_names(
   fallback_backbone_id = 11L,
   decisions = NULL,
   cache_dir = NULL,
-  cache_ttl_days = 365
+  cache_ttl_days = 365,
+  ranks = NULL
 )
 }
 \arguments{
@@ -63,7 +64,13 @@ interactive session, one prompt covers every such name in this call
 and a short lineage string; in a non-interactive session (the ordinary
 \code{Rscript} workflow case), the call stops, printing that same table
 plus a ready-to-paste \code{decisions = data.frame(...)} skeleton. No
-file is ever written unless \code{decisions} itself named one.}
+file is ever written unless \code{decisions} itself named one. That stop
+applies only when \code{decisions} was supplied and does not cover the
+name: a non-interactive call with \code{decisions = NULL} (the shape of a
+batch issued from inside another function, which has no way to pass a
+decision) instead reports the still-ambiguous name alone as
+\code{verified = FALSE} -- never cached, asked again next call, with the
+candidate table in a warning -- and the rest of the batch proceeds.}
 
 \item{cache_dir}{Character or \code{NULL} (default). A directory for a
 per-name on-disk cache, so a re-run on the same names reproduces instead
@@ -77,8 +84,9 @@ marker existed is served only if it holds a matched name (a failed
 lookup never produces one) and is otherwise asked once more and
 rewritten. The key is the
 name plus everything that can change what it resolves to:
-\code{backbone_id}, \code{fallback_backbone_id}, and \code{decisions}
-(by content, including a decisions file's contents). \code{batch_size}
+\code{backbone_id}, \code{fallback_backbone_id}, \code{decisions}
+(by content, including a decisions file's contents) and, on the NCBI
+path when one is given, the name's \code{rank}. \code{batch_size}
 and \code{timeout_sec} are not in the key; they cannot change a correct
 answer. Managed by \code{\link{taxatools_clear_cache}}. \code{NULL} keeps
 the uncached behaviour exactly.}
@@ -86,6 +94,17 @@ the uncached behaviour exactly.}
 \item{cache_ttl_days}{Numeric (default \code{365}). A cached answer older
 than this is asked again, so backbone updates (renames, new synonymy)
 eventually reach a long-lived cache. \code{Inf} never expires.}
+
+\item{ranks}{Character vector or \code{NULL} (default). One rank per
+element of \code{name_list} (\code{"genus"}, \code{"species"}, ...; \code{NA}
+where unknown): the rank the CALLER means each name at. Only used by the
+NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
+more than one NCBI node: when exactly one candidate carries the given
+rank, that node is taken, with no further request and before
+\code{decisions} is consulted. "Etheostoma" is both a genus and a
+subgenus; a consensus table knows which it means. Silently unused by the
+Global Names path. On the NCBI path a rank that is given enters the
+cache key (see \code{cache_dir}); elsewhere the key is unchanged.}
 }
 \value{
 A tibble with one row per input name and the following columns:

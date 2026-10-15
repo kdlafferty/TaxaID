@@ -247,16 +247,26 @@ test_that(".prompt_ncbi_homonym_decisions: an invalid choice re-prompts instead 
   )
 }
 
-test_that("verify_taxon_names: non-interactive + no decisions stops with the candidate table", {
+test_that("verify_taxon_names: non-interactive + no decisions isolates the ambiguous name (verified = FALSE) with the candidate table in a warning", {
+  # Narrowed 2026-10-15 by the maintainer: the stop applies only to a caller
+  # that SUPPLIED decisions which do not cover the name (see the next tests);
+  # a decisions-less batch loses one name, not the whole batch.
   fx <- .mk_ambiguous_search_fixture()
   testthat::local_mocked_bindings(
     entrez_search = fx$entrez_search, entrez_summary = fx$entrez_summary,
     entrez_fetch = fx$entrez_fetch, .package = "rentrez"
   )
   testthat::local_mocked_bindings(.is_interactive_session = function() FALSE, .package = "TaxaTools")
+  expect_warning(
+    out <- suppressMessages(verify_taxon_names("Vertebrata", backbone_id = 4L)),
+    "more than one.*NCBI taxonomy node.*could not be told apart by rank"
+  )
+  expect_false(out$verified)
+  expect_true(is.na(out$matched_name))
   expect_error(
-    suppressMessages(verify_taxon_names("Vertebrata", backbone_id = 4L)),
-    "more than one.*NCBI taxonomy node"
+    suppressMessages(verify_taxon_names("Vertebrata", backbone_id = 4L,
+      decisions = data.frame(name = "Other", taxid = "1", stringsAsFactors = FALSE))),
+    "more than one.*NCBI taxonomy node.*`decisions` does not cover them"
   )
 })
 
