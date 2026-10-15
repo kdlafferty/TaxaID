@@ -47,14 +47,13 @@ backbones disagreeing about one fish, not a homonym -- which no lineage
 can arbitrate and which the precedence therefore still settles.}
 
 \item{ranks}{Character vector of higher ranks to resolve.  Default
-\code{"family"}, which reproduces this function's original behaviour
-exactly.  Any rank label the backbone reports is accepted, e.g.
+\code{"family"}.  Any rank label the backbone reports is accepted, e.g.
 \code{c("family", "class")}.  \code{"genus"} is rejected (it is derived
 from \code{taxon_names}, not looked up) and so is \code{"species"}.
 Each rank is resolved down the same chain and recorded in its own column.}
 
-\item{record_source}{Logical.  \code{FALSE} (default) returns only the rank
-columns, so the default output is byte-identical to earlier versions.
+\item{record_source}{Logical.  \code{FALSE} (default) returns only the
+\code{taxon_name}, \code{genus} and rank columns.
 \code{TRUE} adds one \code{<rank>_source} column per entry in
 \code{ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
 \code{NA} where the rank was never resolved.  It is off by default

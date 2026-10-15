@@ -31,9 +31,11 @@ census_result <- dplyr::mutate(
 }\if{html}{\out{</div>}}}
 
 \item{penalty_factor}{Numeric in [0, 1] (default \code{0.0}).  Multiplier
-applied to \code{score_likelihood} and \code{score_likelihood_mean} for constrained
-hypotheses when \code{constraint_behavior = "zero"}.  Ignored when
-\code{constraint_behavior = "relabel"} (the default).}
+applied to \code{score_likelihood}, \code{score_likelihood_mean} and
+\code{score_likelihood_sd} for constrained hypotheses when
+\code{constraint_behavior = "zero"}.  Ignored when
+\code{constraint_behavior = "relabel"} (the default), whose weight is moved
+at posterior time instead.}
 
 \item{constraint_behavior}{Character scalar: \code{"relabel"} (default) or
 \code{"zero"}.  See Details above and "Census confidence" below.}
@@ -42,15 +44,14 @@ hypotheses when \code{constraint_behavior = "zero"}.  Ignored when
 \code{likelihood_df} with an added \code{constraint_applied} column and
 updated likelihood and/or \code{hypothesis_type} columns:
 \describe{
-\item{\code{"zero"} mode}{\code{score_likelihood} and \code{score_likelihood_mean}
-multiplied by \code{penalty_factor}; \code{constraint_applied} set to
-\code{"census_closed_genus"}.}
+\item{\code{"zero"} mode}{\code{score_likelihood}, \code{score_likelihood_mean} and
+\code{score_likelihood_sd} multiplied by \code{penalty_factor};
+\code{constraint_applied} set to \code{"census_closed_genus"}.}
 \item{\code{"relabel"} mode}{\code{hypothesis_type} changed to
-\code{"unresolved_species"} AND \code{score_likelihood}/\code{score_likelihood_mean}
-multiplied by \code{penalty_factor}, so the row stays visible but carries
-no weight (a genus with every species referenced has no unsequenced
-congener for the row to stand for); \code{constraint_applied} set to
-\code{"census_closed_genus_relabeled"}.}
+\code{"unresolved_species"}, likelihoods unchanged, \code{constraint_applied}
+set to \code{"census_closed_genus_relabeled"} -- the marker
+\code{TaxaAssign::compute_posterior()} reads to move the row's posterior
+onto the genus's referenced species.}
 }
 Rows not meeting the constraint have \code{constraint_applied = NA}.
 }
@@ -65,21 +66,36 @@ zeroed (hard constraint) or relabeled to capture the alternative biology.
 \strong{Behaviour modes} (controlled by \code{constraint_behavior}):
 \itemize{
 \item \code{"relabel"} (default): \code{hypothesis_type} is changed from
-\code{"unreferenced_species"} to \code{"unresolved_species"} AND the row's
-likelihoods are multiplied by \code{penalty_factor} (default 0.0), so the
-constraint stays visible in the table, per observation, while the row
-carries no weight.  A genus every one of whose species is referenced has
-no unsequenced congener for this row to stand for; left at full
-likelihood it competed with the referenced species themselves, and in a
-monotypic genus could outscore the only species there is (grass carp,
-\emph{Ctenopharyngodon idella}, at Great Lakes: the placeholder held 0.51 of
-the posterior against the species' 0.41, and the consensus coarsened).
-Ambiguity AMONG the referenced species is carried by their own rows and
-by the consensus's rank walk, not by this placeholder.
-\item \code{"zero"}: likelihoods are multiplied by \code{penalty_factor} (default
-0.0 = hard zero) and the \code{hypothesis_type} is left as it was.  The two
-modes now remove the same weight; they differ only in whether the row is
-relabeled.  Either way, see the "Census confidence" section below: the
+\code{"unreferenced_species"} to \code{"unresolved_species"}; the likelihoods are
+left as they are.  The row's weight is not removed here but MOVED later:
+\code{TaxaAssign::compute_posterior()} passes a relabeled row's posterior to
+the genus's referenced species in the same observation, in proportion to
+their own posteriors, so the genus keeps exactly the mass it had and
+only its split among the referenced species changes.  That is the
+elimination the census licenses: a genus every one of whose species is
+referenced has no unsequenced congener for this row to stand for, so
+what the sequence attributes to "an unsequenced member of this genus"
+belongs to its sequenced members.  Moving the weight (rather than
+zeroing it here) keeps it inside the genus: zeroing the likelihood and
+renormalising over every hypothesis would hand the placeholder's share
+to the OTHER genera and families in the observation as well.  (Grass
+carp, \emph{Ctenopharyngodon idella}, at Great Lakes: the placeholder held
+0.51 of the posterior against the species' 0.41; moved, the species
+holds 0.93 and resolves; zeroed, it held 0.85 and the call fell to the
+family.)  The posterior step needs the \code{constraint_applied} column this
+function adds and a \code{genus} column (or a species binomial) on the rows;
+a consensus run on these likelihoods WITHOUT that step sees the
+placeholder at its full weight, as before the relabel.  Ambiguity AMONG
+the referenced species is carried by their own rows and by the
+consensus's rank walk, not by this placeholder.
+\item \code{"zero"}: \code{score_likelihood}, \code{score_likelihood_mean} and
+\code{score_likelihood_sd} are multiplied by \code{penalty_factor} (default
+0.0 = hard zero) and the \code{hypothesis_type} is left as it was.  The
+placeholder's share is then renormalised over every hypothesis in the
+observation, inside and outside the genus.  The SD is scaled too so the
+Monte Carlo path of \code{TaxaAssign::compute_posterior()} honours the zero
+(a zero mean with a positive SD still draws positive likelihoods).
+Either way, see the "Census confidence" section below: the
 census is an NCBI-query estimate, and a lookup that FAILED is reported
 as \code{lookup_failed}/incomplete (never complete), so a failure can only
 leave a placeholder in play, never remove a real one.
