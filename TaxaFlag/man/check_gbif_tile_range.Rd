@@ -223,7 +223,11 @@ before it can construct a result) -- an error always propagates to the
 caller with no cache read or write, so a transient failure is retried
 plainly on the next call rather than being frozen as "unknown."
 
-The returned data frame carries \code{attr(out, "cache_age_days")}: the age in
+A verdict built on a tile GBIF did not return (HTTP status other than 200
+or 204, e.g. a 5xx under load) is reported for the call with
+\code{attr(out, "tile_fetch_failed") = TRUE} and is never cached, because its
+"no occurrences" reading is what a server error looks like, not what it
+means. The returned data frame carries \code{attr(out, "cache_age_days")}: the age in
 days of the cached verdict on a hit, or \code{NA} on a miss/uncached call --
 lets a caller report how stale the tile checks behind a run were, rather
 than that staleness being silent.

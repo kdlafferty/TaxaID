@@ -71,7 +71,11 @@ of depending on whether the service answered this time. Only names the
 service actually answered are cached -- matched or genuinely unmatched
 (\code{verified = TRUE}); a name whose lookup FAILED (\code{verified =
 FALSE}) is never written and is asked again next call, because a cached
-non-answer would be served as an answer indefinitely. The key is the
+non-answer would be served as an answer indefinitely. Every entry
+written carries an \code{answered} marker; an entry from before the
+marker existed is served only if it holds a matched name (a failed
+lookup never produces one) and is otherwise asked once more and
+rewritten. The key is the
 name plus everything that can change what it resolves to:
 \code{backbone_id}, \code{fallback_backbone_id}, and \code{decisions}
 (by content, including a decisions file's contents). \code{batch_size}

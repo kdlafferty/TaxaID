@@ -148,10 +148,10 @@
 #'   taxon outside it. A call the sequence decides by a wide margin is
 #'   unaffected; a marginal call whose candidates carry priors worth only a
 #'   few records is coarsened even when the outside taxon fits somewhat
-#'   worse, because one record then moves the prior noticeably. The outside
-#'   taxon receives that record in proportion to its own evidence (its prior
-#'   mass grows by at most `s / alpha`, so a placeholder with no local record
-#'   cannot absorb a whole record), and only at a node the sequence alone
+#'   worse, because one record then moves the prior noticeably. An outside
+#'   taxon receives at most that one record, and less when its own evidence is
+#'   thinner than a record (its prior mass grows by at most `s / alpha`, so a
+#'   placeholder with no local record cannot absorb a whole record), and only at a node the sequence alone
 #'   reaches -- at or above the likelihood-only call and containing it --
 #'   that holds a locally recorded member; at every other node the full
 #'   record moves onto the best-fitting outside taxon. So a sequence good to
@@ -1323,15 +1323,21 @@ posterior_consensus <- function(posterior_df,
   # the best-fitting outside hypothesis whatever that hypothesis's own prior,
   # so a family whose only locally recorded member is the winner is penalised
   # exactly like a family with three. The default ("relative_gated") lets each
-  # outside hypothesis gain one record RELATIVE to its own evidence (its mass
-  # grows by min(1, s / alpha): a floor row can at most double a tiny mass, a
-  # 40-record competitor gains 2.5%), and only at a node the sequence alone
-  # reaches -- at or above the likelihood-only call and containing it -- that
-  # holds a locally recorded member. Everywhere else the strict bound applies.
-  # Measured on the CalIntertidal deposit and the Mugu run, this form adds no
-  # leave-species-out false positive over the strict bound. The two other
-  # forms ("relative", "exempt" and their gated pairs) are kept for testing
-  # under the internal option "TaxaAssign.robust_variant".
+  # outside hypothesis gain at most ONE SITE RECORD (e), and less when its own
+  # evidence is thinner than that: its mass grows by min(pi * min(1, s / alpha),
+  # e), so a floor row receives only its own tiny mass while a recorded
+  # competitor receives a full record. The cap keeps the perturbation in site-
+  # record units: a row whose Beta concentration is far below the site's N
+  # (named or undetected rows carry pseudo-counts) would otherwise be charged
+  # its own mass, worth several site records, and the bound would refuse a node
+  # the strict form holds. With the cap the term never exceeds the strict
+  # term, so this form is never stricter than "strict". It applies only at a
+  # node the sequence alone reaches -- at or above the likelihood-only call and
+  # containing it -- that holds a locally recorded member; everywhere else the
+  # strict bound applies. Measured on the CalIntertidal deposit and the Mugu
+  # run, it adds no leave-species-out false positive over the strict bound. The
+  # other forms ("relative", "exempt" and their gated pairs) are kept for
+  # testing under the internal option "TaxaAssign.robust_variant".
   base_variant <- sub("_gated$", "", robust_variant)
   gated <- grepl("_gated$", robust_variant)
   share <- function(inn, e, relax = TRUE) {
@@ -1339,6 +1345,7 @@ posterior_consensus <- function(posterior_df,
     variant <- if (relax) base_variant else "strict"
     if (identical(variant, "relative") && !is.null(alpha)) {
       gain <- w * pmin(1, s_records / pmax(alpha, 1e-12))
+      gain <- pmin(gain, L * e)   # at most one site record per outside row
       gain[is.na(gain)] <- 0
       term <- if (any(!inn)) max(gain[!inn]) else 0
       return(sum(w[inn]) / (tot + term))

@@ -385,7 +385,10 @@ audit_reference_coverage <- function(reference_df,
 #'     `NA` when classification was not performed),
 #'     `unreferenced` (no barcode sequences found; when `exclude_predicted
 #'     = TRUE` (default), predicted-only species are included here),
-#'     `is_complete` (TRUE when both gaps are zero).}
+#'     `is_complete` (TRUE when both gaps are zero), and `lookup_failed`
+#'     (TRUE when NCBI could not be asked about this group; its species are
+#'     then absent from `unreferenced`, `is_complete` is FALSE, and the group
+#'     is named in `attr(x, "lookup_failures")` -- see `on_lookup_failure`).}
 #'   \item{`unreferenced`}{Character vector of unreferenced species names, suitable for
 #'     `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`.}
 #' }
@@ -406,6 +409,17 @@ audit_reference_coverage <- function(reference_df,
 #'   Set \code{FALSE} only if you explicitly need to count predicted sequences.
 #'   Mirrors the \code{blacklist_regex = "predicted"} default in
 #'   [fetch_ncbi_reference_sequences()].
+#' @param on_lookup_failure \code{"warn"} (default) or \code{"error"}. What to
+#'   do when NCBI could not be asked about one or more groups (a failed
+#'   search, a failed summary batch, or a failed taxid resolution). Such a
+#'   group is reported with \code{lookup_failed = TRUE} in the census, is
+#'   never checkpointed, and contributes nothing to \code{unreferenced} --
+#'   so the returned set is INCOMPLETE, not a census. \code{"warn"} names the
+#'   groups in one consolidated warning and message and attaches them as
+#'   \code{attr(x, "lookup_failures")}; \code{"error"} stops instead, which
+#'   suits an unattended run whose downstream steps would otherwise cache a
+#'   truncated set as if it were complete. Same shape as
+#'   [fetch_ncbi_reference_sequences()]'s \code{on_count_failure}.
 #'
 #' @seealso [audit_reference_coverage()], [apply_coverage_constraints()]
 #'
@@ -440,13 +454,15 @@ audit_barcode_coverage <- function(match_df,
                                    cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
                                    ncbi_api_key = NULL,
                                    max_nuccore = 5000L,
-                                   exclude_predicted = TRUE) {
+                                   exclude_predicted = TRUE,
+                                   on_lookup_failure = c("warn", "error")) {
   .audit_barcode_coverage_impl(
     match_df = match_df, barcode_term = barcode_term, species_list = species_list,
     min_len = min_len, max_len = max_len, max_date = max_date,
     target_rank = target_rank, cache_dir = cache_dir,
     ncbi_api_key = ncbi_api_key, max_nuccore = max_nuccore,
-    exclude_predicted = exclude_predicted
+    exclude_predicted = exclude_predicted,
+    on_lookup_failure = on_lookup_failure
   )
 }
 
@@ -469,11 +485,19 @@ audit_barcode_coverage <- function(match_df,
 #' @noRd
 .genus_taxid <- function(grp, rank = NULL, lineage_terms = NULL) {
   search_grp <- gsub("-", " ", grp) # handle hyphenated genera (e.g. Pseudo-nitzschia)
+  failed <- FALSE
   res <- tryCatch(
     TaxaTools::resolve_ncbi_taxid(search_grp, rank = rank, lineage_terms = lineage_terms),
-    error = function(e) list(taxid = NA_character_)
+    error = function(e) {
+      failed <<- TRUE
+      list(taxid = NA_character_)
+    }
   )
-  res$taxid
+  # A request that could not be made is not a genus NCBI does not hold. The
+  # flag rides on the NA value only when the request failed, so every caller
+  # keeps its `is.na()` contract (and a resolved taxid stays a bare string)
+  # while audit_barcode_coverage() can tell the two apart.
+  if (failed) structure(NA_character_, lookup_failed = TRUE) else res$taxid
 }
 
 # Extract the caller's own known higher-rank lineage terms for one group --
@@ -530,8 +554,14 @@ audit_barcode_coverage <- function(match_df,
     sp_unreferenced = candidates
   )
   if (is.na(genus_uid) || length(candidates) == 0L) {
-    return(empty)
+    return(.flag_failed(empty, isTRUE(attr(genus_uid, "lookup_failed"))))
   }
+
+  # `empty` reads as "every candidate is unreferenced". That is the right
+  # answer when NCBI holds no sequences for the genus and the WRONG answer
+  # when NCBI could not be asked, so a failed search or a failed summary
+  # batch (a silently partial sequence list) is flagged on the result.
+  batch_failed <- FALSE
 
   # Step 1: one nuccore search for the entire genus -- no predicted filter.
   # We classify experimental vs. predicted from the Title field in Step 2,
@@ -548,7 +578,10 @@ audit_barcode_coverage <- function(match_df,
     ),
     error = function(e) NULL
   )
-  if (is.null(nuc_res) || length(nuc_res$ids) == 0L) {
+  if (is.null(nuc_res)) {
+    return(.flag_failed(empty, TRUE))
+  }
+  if (length(nuc_res$ids) == 0L) {
     return(empty)
   }
   Sys.sleep(.ncbi_delay())
@@ -561,7 +594,10 @@ audit_barcode_coverage <- function(match_df,
   nuc_summ_flat <- unlist(lapply(nuc_batches, function(batch) {
     Sys.sleep(.ncbi_delay())
     s <- tryCatch(rentrez::entrez_summary(config = .net_config(), db = "nuccore", id = batch),
-      error = function(e) NULL
+      error = function(e) {
+        batch_failed <<- TRUE
+        NULL
+      }
     )
     if (is.null(s)) {
       return(list())
@@ -569,7 +605,7 @@ audit_barcode_coverage <- function(match_df,
     if (inherits(s, "esummary")) list(s) else as.list(s)
   }), recursive = FALSE)
   if (length(nuc_summ_flat) == 0L) {
-    return(empty)
+    return(.flag_failed(empty, batch_failed))
   }
 
   titles <- vapply(
@@ -596,7 +632,7 @@ audit_barcode_coverage <- function(match_df,
 
   all_taxids <- unique(c(taxids_exp, taxids_pred_only))
   if (length(all_taxids) == 0L) {
-    return(empty)
+    return(.flag_failed(empty, batch_failed))
   }
   Sys.sleep(.ncbi_delay())
 
@@ -605,7 +641,10 @@ audit_barcode_coverage <- function(match_df,
   tax_summ_flat <- unlist(lapply(tax_batches, function(batch) {
     Sys.sleep(.ncbi_delay())
     s <- tryCatch(rentrez::entrez_summary(config = .net_config(), db = "taxonomy", id = batch),
-      error = function(e) NULL
+      error = function(e) {
+        batch_failed <<- TRUE
+        NULL
+      }
     )
     if (is.null(s)) {
       return(list())
@@ -633,20 +672,24 @@ audit_barcode_coverage <- function(match_df,
   sp_exp <- .sp_names(taxids_exp, tax_summ_flat)
   sp_pred_only <- setdiff(.sp_names(taxids_pred_only, tax_summ_flat), sp_exp)
 
-  list(
+  .flag_failed(list(
     sp_with_seqs      = intersect(candidates, sp_exp),
     sp_predicted_only = intersect(candidates, sp_pred_only),
     sp_unreferenced   = setdiff(candidates, union(sp_exp, sp_pred_only))
-  )
+  ), batch_failed)
 }
 
 # Enumerate species under a genus via NCBI taxonomy subtree.
 #' @noRd
 .ncbi_species_enumerate <- function(genus_uid, grp = NA_character_, warn_on_error = TRUE) {
   if (is.na(genus_uid)) {
-    return(character(0L))
+    return(.flag_failed(character(0L), isTRUE(attr(genus_uid, "lookup_failed"))))
   }
-  tryCatch(
+  # A failed search, or a failed summary batch (which would otherwise leave a
+  # silently TRUNCATED species list), is reported on the value as
+  # attr "lookup_failed" so the census can refuse to treat it as an answer.
+  batch_failed <- FALSE
+  out <- tryCatch(
     {
       sp_res <- rentrez::entrez_search(config = .net_config(), 
         db     = "taxonomy",
@@ -661,7 +704,10 @@ audit_barcode_coverage <- function(match_df,
         sp_flat <- unlist(lapply(batches, function(b) {
           Sys.sleep(.ncbi_delay())
           s <- tryCatch(rentrez::entrez_summary(config = .net_config(), db = "taxonomy", id = b),
-            error = function(e) NULL
+            error = function(e) {
+              batch_failed <<- TRUE
+              NULL
+            }
           )
           if (is.null(s)) {
             return(list())
@@ -674,6 +720,7 @@ audit_barcode_coverage <- function(match_df,
       }
     },
     error = function(e) {
+      batch_failed <<- TRUE
       if (warn_on_error) {
         warning(sprintf(
           "NCBI taxonomy query failed for '%s': %s",
@@ -683,6 +730,15 @@ audit_barcode_coverage <- function(match_df,
       character(0L)
     }
   )
+  .flag_failed(out, batch_failed)
+}
+
+# Attach attr "lookup_failed" only when a request failed, so an answered value
+# stays a plain vector/list and `isTRUE(attr(x, "lookup_failed"))` reads both.
+#' @noRd
+.flag_failed <- function(x, failed) {
+  if (isTRUE(failed)) attr(x, "lookup_failed") <- TRUE
+  x
 }
 
 # Per-genus inner loop body for audit_barcode_coverage(): species enumeration
@@ -696,7 +752,7 @@ audit_barcode_coverage <- function(match_df,
   rec <- list(
     group = grp, total = NA_integer_, in_reference = NA_integer_,
     has_seqs_not_in_ref = NA_integer_, unreferenced_count = NA_integer_,
-    unreferenced_names = character(0L)
+    unreferenced_names = character(0L), lookup_failed = FALSE
   )
 
   # Reference skip-list
@@ -736,8 +792,12 @@ audit_barcode_coverage <- function(match_df,
   }
 
   if (length(all_sp) == 0L) {
+    # NA record; the caller will not checkpoint it. Distinguish "NCBI holds
+    # no species for this genus" from "NCBI could not be asked".
+    rec$lookup_failed <- isTRUE(attr(genus_uid, "lookup_failed")) ||
+      isTRUE(attr(all_sp, "lookup_failed"))
     return(rec)
-  } # NA record; caller will not checkpoint
+  }
 
   candidates <- setdiff(all_sp, ref_sp)
   message(sprintf(
@@ -771,7 +831,9 @@ audit_barcode_coverage <- function(match_df,
     has_predicted_only = length(bc$sp_predicted_only),
     predicted_only_names = bc$sp_predicted_only,
     unreferenced_count = length(unreferenced_names),
-    unreferenced_names = unreferenced_names
+    unreferenced_names = unreferenced_names,
+    lookup_failed = isTRUE(attr(genus_uid, "lookup_failed")) ||
+      isTRUE(attr(all_sp, "lookup_failed")) || isTRUE(attr(bc, "lookup_failed"))
   )
 }
 
@@ -785,7 +847,9 @@ audit_barcode_coverage <- function(match_df,
                                          min_len, max_len, max_date,
                                          target_rank, cache_dir, ncbi_api_key,
                                          max_nuccore,
-                                         exclude_predicted = TRUE) {
+                                         exclude_predicted = TRUE,
+                                         on_lookup_failure = c("warn", "error")) {
+  on_lookup_failure <- match.arg(on_lookup_failure)
   # ---- Input validation ------------------------------------------------------
   if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame")
@@ -921,8 +985,10 @@ audit_barcode_coverage <- function(match_df,
 
     full_census[[i]] <- rec
 
-    # Only checkpoint complete (non-NA) records
-    if (!is.na(rec$total) && !is.null(checkpoint_path)) {
+    # Only checkpoint complete (non-NA) records the service actually answered
+    # -- a record built on a failed request would otherwise be served as an
+    # answer on every resumed run.
+    if (!is.na(rec$total) && !isTRUE(rec$lookup_failed) && !is.null(checkpoint_path)) {
       prior_census[[grp]] <- rec
       saveRDS(prior_census, checkpoint_path)
     }
@@ -947,19 +1013,40 @@ audit_barcode_coverage <- function(match_df,
       has_seqs_not_in_ref = x$has_seqs_not_in_ref,
       has_predicted_only = x$has_predicted_only %||% NA_integer_,
       unreferenced = x$unreferenced_count,
-      is_complete = !is.na(x$has_seqs_not_in_ref) &&
+      is_complete = !isTRUE(x$lookup_failed) &&
+        !is.na(x$has_seqs_not_in_ref) &&
         !is.na(x$unreferenced_count) &&
         x$has_seqs_not_in_ref == 0L &&
         x$unreferenced_count == 0L,
+      lookup_failed = isTRUE(x$lookup_failed),
       stringsAsFactors = FALSE
     )
   }))
 
-  all_unreferenced <- unlist(lapply(full_census, `[[`, "unreferenced_names"))
+  # A genus whose NCBI lookup failed contributes nothing to `unreferenced`
+  # (or, had the reverse barcode check failed silently, every candidate):
+  # either way the set is not an answer. Name them, every time, so a caller
+  # never caches a partial result as a complete one.
+  failed_groups <- census_df$group[census_df$lookup_failed]
+  answered <- full_census[!vapply(full_census, function(x) isTRUE(x$lookup_failed), logical(1L))]
+  all_unreferenced <- unlist(lapply(answered, `[[`, "unreferenced_names"))
   all_unreferenced <- all_unreferenced[!is.na(all_unreferenced) &
     nchar(all_unreferenced) > 0L]
   names(all_unreferenced) <- NULL
-  list(census = census_df, unreferenced = all_unreferenced)
+  out <- list(census = census_df, unreferenced = all_unreferenced)
+  attr(out, "lookup_failures") <- failed_groups
+  if (length(failed_groups) > 0L) {
+    msg <- sprintf(
+      "audit_barcode_coverage: NCBI lookup FAILED for %d of %d %s(s) (%s%s). Their species are absent from $unreferenced, so this result is INCOMPLETE and must not be cached or treated as a census; re-run once NCBI answers (failed groups are not checkpointed). attr(x, \"lookup_failures\") names them.",
+      length(failed_groups), nrow(census_df), target_rank,
+      paste(utils::head(failed_groups, 8L), collapse = ", "),
+      if (length(failed_groups) > 8L) ", ..." else ""
+    )
+    message(msg)
+    if (identical(on_lookup_failure, "error")) stop(msg, call. = FALSE)
+    warning(msg, call. = FALSE)
+  }
+  out
 }
 
 

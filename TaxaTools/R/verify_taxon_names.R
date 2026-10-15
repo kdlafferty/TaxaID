@@ -60,7 +60,11 @@
 #'   service actually answered are cached -- matched or genuinely unmatched
 #'   (\code{verified = TRUE}); a name whose lookup FAILED (\code{verified =
 #'   FALSE}) is never written and is asked again next call, because a cached
-#'   non-answer would be served as an answer indefinitely. The key is the
+#'   non-answer would be served as an answer indefinitely. Every entry
+#'   written carries an \code{answered} marker; an entry from before the
+#'   marker existed is served only if it holds a matched name (a failed
+#'   lookup never produces one) and is otherwise asked once more and
+#'   rewritten. The key is the
 #'   name plus everything that can change what it resolves to:
 #'   \code{backbone_id}, \code{fallback_backbone_id}, and \code{decisions}
 #'   (by content, including a decisions file's contents). \code{batch_size}
@@ -492,6 +496,14 @@ verify_taxon_names <- function(name_list,
     if (!file.exists(path)) return(NULL)
     hit <- tryCatch(readRDS(path), error = function(e) NULL)
     if (is.null(hit) || !identical(hit$key, k) || !is.data.frame(hit$row)) return(NULL)
+    # Entries written before the `answered` marker existed cannot prove the
+    # service answered: the NCBI path once reported a failed lookup as
+    # verified = TRUE / matched_name = NA, byte-identical to a genuine
+    # non-match. An unmarked entry that carries a NAME is a real answer (a
+    # failure never produces one) and is kept; an unmarked entry with no
+    # name is treated as a miss, asked once more, and rewritten with the
+    # marker. Same pattern as assign_sampling_group()'s matched_rank check.
+    if (!isTRUE(hit$answered) && all(is.na(hit$row$matched_name))) return(NULL)
     age <- as.numeric(difftime(now, hit$written_at, units = "days"))
     if (!is.finite(cache_ttl_days) || age <= cache_ttl_days) hit$row else NULL
   })
@@ -509,7 +521,7 @@ verify_taxon_names <- function(name_list,
     for (i in seq_len(nrow(fresh))) {
       if (!isTRUE(fresh$verified[i])) next
       k <- keys[[match(fresh$user_supplied_name[i], uniq)]]
-      saveRDS(list(key = k, row = fresh[i, , drop = FALSE], written_at = now),
+      saveRDS(list(key = k, row = fresh[i, , drop = FALSE], written_at = now, answered = TRUE),
         .verify_cache_path(cache_dir, k))
     }
   }
@@ -632,6 +644,17 @@ verify_taxon_names <- function(name_list,
   # not written into name_to_taxid directly.
   ambiguous_summaries <- list()
 
+  # Names the service could not be ASKED about, as opposed to names it
+  # answered "no match" for. A failed search batch, a failed lineage fetch or
+  # a failed synonym fallback lands its names here, and Step 3 reports them
+  # with verified = FALSE, which the cache writer never stores and every
+  # consumer already treats as "ask again". Before this set existed such a
+  # name left Step 3 as verified = TRUE / matched_name = NA -- the same shape
+  # as a genuine non-match -- and a cache_dir then served a network outage as
+  # a definitive answer on every later run.
+  failed_names <- character(0)
+  failed_taxids <- character(0)
+
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
     or_terms <- paste0('"', batch, '"[Scientific Name]')
@@ -683,10 +706,12 @@ verify_taxon_names <- function(name_list,
         }
       },
       error = function(e) {
+        failed_names <<- c(failed_names, batch)
         warning(
           "verify_taxon_names: NCBI search batch ", i, " failed after 3 attempts: ",
           conditionMessage(e),
-          "; its ", length(batch), " name(s) are reported as unmatched, not absent.",
+          "; its ", length(batch), " name(s) are reported as unverified ",
+          "(verified = FALSE), not as absent, and are never cached.",
           call. = FALSE
         )
       }
@@ -784,7 +809,8 @@ verify_taxon_names <- function(name_list,
             name_to_taxid[[nm]] <- as.character(res$ids[1L])
           }
         },
-        error = function(e) NULL
+        # The synonym check could not be run, so "no match" is not known yet.
+        error = function(e) failed_names <<- c(failed_names, nm)
       )
       Sys.sleep(delay)
     }
@@ -892,6 +918,15 @@ verify_taxon_names <- function(name_list,
           }
         )
       }
+      if (!success) {
+        failed_taxids <- c(failed_taxids, fetch_batches[[i]])
+        warning(
+          "verify_taxon_names: NCBI lineage fetch batch ", i, " failed after 3 ",
+          "attempts; its ", length(fetch_batches[[i]]), " taxid(s) are reported ",
+          "as unverified (verified = FALSE), not as absent, and are never cached.",
+          call. = FALSE
+        )
+      }
       if (i < length(fetch_batches)) Sys.sleep(delay)
     }
   }
@@ -900,6 +935,9 @@ verify_taxon_names <- function(name_list,
   rows <- lapply(clean_names, function(nm) {
     tid <- name_to_taxid[[nm]]
     if (is.na(tid) || is.null(lineage_map[[tid]])) {
+      # verified says the service ANSWERED. It did not when the name's search
+      # batch, synonym fallback or (for a resolved taxid) lineage fetch failed.
+      lookup_failed <- nm %in% failed_names || (!is.na(tid) && tid %in% failed_taxids)
       return(dplyr::tibble(
         user_supplied_name   = nm,
         matched_name         = NA_character_,
@@ -908,7 +946,7 @@ verify_taxon_names <- function(name_list,
         classification_path  = NA_character_,
         classification_ranks = NA_character_,
         score                = NA_real_,
-        verified             = TRUE,
+        verified             = !lookup_failed,
         fuzzy_corrected      = fuzzy_corrected[[nm]]
       ))
     }
@@ -935,11 +973,13 @@ verify_taxon_names <- function(name_list,
   result <- dplyr::bind_rows(rows)
 
   n_matched <- sum(!is.na(result$matched_name))
-  n_no_match <- sum(is.na(result$matched_name))
+  n_failed <- sum(!result$verified)
+  n_no_match <- sum(is.na(result$matched_name) & result$verified)
   n_fuzzy <- sum(result$fuzzy_corrected)
   msg_ncbi <- sprintf("Done. %d name(s) matched.", n_matched)
   if (n_fuzzy > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d matched only after fuzzy correction.", n_fuzzy))
   if (n_no_match > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d had no match.", n_no_match))
+  if (n_failed > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d could not be looked up (verified = FALSE; not cached).", n_failed))
   message(msg_ncbi)
 
   result

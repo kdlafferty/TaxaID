@@ -75,3 +75,37 @@ test_that("taxatools_clear_cache() recognises the verified-name cache", {
   verify_taxon_names("Aa", backbone_id = 11L, cache_dir = dir)
   expect_no_error(taxatools_clear_cache(dir, dry_run = TRUE))
 })
+
+# ---- the `answered` marker: entries written before it cannot prove the ----
+# ---- service answered; one without a matched name is re-asked once ----------
+
+.unmarked_entry <- function(dir, name, matched_name, backbone_id = 11L) {
+  k <- TaxaTools:::.verify_cache_key(name, backbone_id, 11L, TaxaTools:::.verify_decisions_fingerprint(NULL))
+  row <- data.frame(user_supplied_name = name, matched_name = matched_name,
+                    verified = TRUE, matched = !is.na(matched_name), stringsAsFactors = FALSE)
+  saveRDS(list(key = k, row = row, written_at = Sys.time()), TaxaTools:::.verify_cache_path(dir, k))
+}
+
+test_that("an unmarked cached entry with no matched name is a miss: re-asked once, rewritten with the marker", {
+  dir <- withr::local_tempdir()
+  .unmarked_entry(dir, "Notropis", NA_character_)   # exactly the poisoned Mugu shape
+  f <- .fake_verify(c(Notropis = "Notropis"))
+  local_mocked_bindings(.verify_taxon_names_uncached = f$fn)
+  out <- verify_taxon_names("Notropis", backbone_id = 11L, cache_dir = dir)
+  expect_identical(f$calls$names[[1]], "Notropis")          # asked, not served
+  expect_identical(out$matched_name, "Notropis")
+  ent <- readRDS(list.files(dir, "_verified_name\\.rds$", full.names = TRUE))
+  expect_true(isTRUE(ent$answered))                         # rewritten with the marker
+  out2 <- verify_taxon_names("Notropis", backbone_id = 11L, cache_dir = dir)
+  expect_length(f$calls$names, 1L)                          # now served from cache
+})
+
+test_that("an unmarked cached entry WITH a matched name is served: a failure never produces one", {
+  dir <- withr::local_tempdir()
+  .unmarked_entry(dir, "Aa", "Aa")
+  f <- .fake_verify(c(Aa = "Aa"))
+  local_mocked_bindings(.verify_taxon_names_uncached = f$fn)
+  expect_message(out <- verify_taxon_names("Aa", backbone_id = 11L, cache_dir = dir), "served from cache")
+  expect_length(f$calls$names, 0L)
+  expect_identical(out$matched_name, "Aa")
+})

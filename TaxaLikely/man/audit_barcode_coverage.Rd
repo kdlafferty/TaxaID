@@ -15,7 +15,8 @@ audit_barcode_coverage(
   cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
   ncbi_api_key = NULL,
   max_nuccore = 5000L,
-  exclude_predicted = TRUE
+  exclude_predicted = TRUE,
+  on_lookup_failure = c("warn", "error")
 )
 }
 \arguments{
@@ -81,6 +82,18 @@ incorrectly suppresses unreferenced-species hypotheses for those taxa.
 Set \code{FALSE} only if you explicitly need to count predicted sequences.
 Mirrors the \code{blacklist_regex = "predicted"} default in
 \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}.}
+
+\item{on_lookup_failure}{\code{"warn"} (default) or \code{"error"}. What to
+do when NCBI could not be asked about one or more groups (a failed
+search, a failed summary batch, or a failed taxid resolution). Such a
+group is reported with \code{lookup_failed = TRUE} in the census, is
+never checkpointed, and contributes nothing to \code{unreferenced} --
+so the returned set is INCOMPLETE, not a census. \code{"warn"} names the
+groups in one consolidated warning and message and attaches them as
+\code{attr(x, "lookup_failures")}; \code{"error"} stops instead, which
+suits an unattended run whose downstream steps would otherwise cache a
+truncated set as if it were complete. Same shape as
+\code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}}'s \code{on_count_failure}.}
 }
 \value{
 A named list:
@@ -92,7 +105,10 @@ but not in the reference -- a completeness gap),
 \code{has_predicted_only} (only computationally predicted sequences found;
 \code{NA} when classification was not performed),
 \code{unreferenced} (no barcode sequences found; when \code{exclude_predicted = TRUE} (default), predicted-only species are included here),
-\code{is_complete} (TRUE when both gaps are zero).}
+\code{is_complete} (TRUE when both gaps are zero), and \code{lookup_failed}
+(TRUE when NCBI could not be asked about this group; its species are
+then absent from \code{unreferenced}, \code{is_complete} is FALSE, and the group
+is named in \code{attr(x, "lookup_failures")} -- see \code{on_lookup_failure}).}
 \item{\code{unreferenced}}{Character vector of unreferenced species names, suitable for
 \code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)}.}
 }

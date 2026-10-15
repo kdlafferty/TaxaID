@@ -16,7 +16,8 @@ fill_higher_ranks(
 )
 }
 \arguments{
-\item{taxon_names}{Character vector of taxon names.  Binomial species names
+\item{taxon_names}{Character vector of taxon names (an empty vector returns
+a zero-row table with the usual columns).  Binomial species names
 are expected; genus is extracted as the first word.  Single-word names
 (genus only) are accepted and returned as-is in the \code{genus} column.}
 

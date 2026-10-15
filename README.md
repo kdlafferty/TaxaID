@@ -899,11 +899,11 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 57                 | 30         | Yes      |
+| TaxaTools   | 57                 | 31         | Yes      |
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
 | TaxaMatch   | 30                 | 22         | Yes      |
-| TaxaLikely  | 33                 | 35         | Yes      |
+| TaxaLikely  | 33                 | 36         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
 | TaxaAssign  | 14                 | 19         | Yes      |
 | TaxaFlag    | 16                 | 18         | Yes      |
