@@ -757,3 +757,22 @@ Tests: fractions of a record in theta, W and n_eff; a different declared habitat
 no-weight taxon left out; validation; the arguments change nothing on a pool with no
 unplaceable records; the bandwidth sees them; the surface reproduces the fit; the counts path
 forwards them.
+
+### 2026-10-15: weighted stratum counts print; "Other" is a placed verdict
+
+Two follow-ups from the Great Lakes run under the entry above. (1) `print.taxaexpect_kernel_priors()`
+formatted the stratum count with `%d`; with habitat weights the count is a sum of weights (300.9 at
+Great Lakes) and the print errored. It now prints the weighted count (whole numbers without decimals,
+fractions with one), and the two consumers that read it as Good-Turing's sample size
+(`generate_undetected_diversity()`'s global floor and `generate_domestic_food_priors()`'s
+`N_total`) read the new `params$n_records_whole` instead: the whole-detection count f1/f2 are
+tallied over, since a fraction of a record is not a detection. The surface records both as the fit
+does. (2) The scheme's `habitat_levels` at Great Lakes is
+`c("Lentic", "Lotic")`, but `TaxaHabitat::assign_habitat_biological()` also emits `"Other"`, a PLACED
+verdict (none of the scheme's habitats), which the closed-world reading would have counted as
+unplaceable at the taxon's weight. The rule is now: a no-verdict label (`NA`, `""`, `"Uncertain"`,
+`"Unknown"`, `"Unassigned"`) is unplaceable; `"Other"` and any declared habitat are placed and stay
+excluded; any other label is excluded as well and named in a warning, because exclusion is the
+direction that cannot add weight by mistake. `generate_uncertain_habitat_evidence()` keeps its
+closed-world reading and the two are documented as different. Tests: `"Other"` stays out silently; an
+unfamiliar label is excluded and warned; a weighted fit prints and its consumers run.

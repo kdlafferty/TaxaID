@@ -167,10 +167,17 @@
 #'   such an UNPLACEABLE record counts toward the stratum at its taxon's own
 #'   `site_habitat` weight, as that fraction of a record; a record in a
 #'   DIFFERENT declared habitat stays excluded, and a taxon with no weight
-#'   contributes nothing (counted in the message). Unplaceable is read
-#'   closed-world, as [generate_uncertain_habitat_evidence()] reads it: any
-#'   label not in `habitat_levels`, so a sentinel this package never heard
-#'   of is caught, and an unfamiliar label is warned about by name. The
+#'   contributes nothing (counted in the message). Unplaceable means a
+#'   no-verdict label: `NA`, `""`, `"Uncertain"`, `"Unknown"`,
+#'   `"Unassigned"`. `"Other"` is a PLACED verdict
+#'   (`TaxaHabitat::assign_habitat_biological()` emits it for a point that
+#'   is none of the scheme's habitats) and stays excluded like any other
+#'   habitat. Any other label not in `habitat_levels` is excluded too and
+#'   named in a warning: a scheme that does not list a label its classifier
+#'   emits is an easy trap, and exclusion is the direction that cannot add
+#'   weight by mistake. (This differs from
+#'   [generate_uncertain_habitat_evidence()], which recovers every
+#'   undeclared label as evidence.) The
 #'   fraction enters `W`, `n_eff` and the regional composition; it is not a
 #'   whole detection and does not count toward `f1`/`f2`. Pass the same two
 #'   arguments to [calibrate_kernel_bandwidth()], so the bandwidth is chosen
@@ -670,17 +677,27 @@ estimate_kernel_priors <- function(occurrence_data,
       habitat_levels = habitat_levels,
       habitat_weights = hw$lookup,
       n_records_unplaceable = hw$n_unplaceable,
-      n_records_stratum = sum(n_rec)
+      # Weighted record total (fractional once unplaceable records count at
+      # their taxon's weight) and the whole-detection count that f1/f2 are
+      # tallied over: Good-Turing's sample size downstream reads the latter.
+      n_records_stratum = sum(n_rec),
+      n_records_whole = sum(n_whole)
     )
   ), class = "taxaexpect_kernel_priors")
 }
 
+# A record count that may be fractional: whole numbers print without
+# decimals, fractions with one.
+.fmt_count <- function(v) if (isTRUE(abs(v - round(v)) < 1e-9)) sprintf("%d", as.integer(round(v))) else sprintf("%.1f", v)
+
 #' @export
 print.taxaexpect_kernel_priors <- function(x, ...) {
   cat(sprintf(
-    "taxaexpect_kernel_priors: %d taxa at %s (%s)\n  n_eff = %.0f effective records (of %d in stratum), lambda = %g km%s, m = %g\n  singletons: %d, Good-Turing missing mass: %.3g\n",
+    "taxaexpect_kernel_priors: %d taxa at %s (%s)\n  n_eff = %.0f effective records (of %s in stratum), lambda = %g km%s, m = %g\n  singletons: %d, Good-Turing missing mass: %.3g\n",
     nrow(x$priors), x$params$site_id, x$params$site_habitat,
-    x$n_eff, x$params$n_records_stratum, x$params$lambda_km,
+    # The stratum count is a sum of record weights, fractional once
+    # unplaceable records count at their taxon's habitat weight.
+    x$n_eff, .fmt_count(x$params$n_records_stratum), x$params$lambda_km,
     paste0(
       if (!is.null(x$params$covariate_col)) {
         sprintf(

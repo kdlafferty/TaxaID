@@ -144,10 +144,17 @@ column per habitat holding the taxon's probability of occupying it),
 such an UNPLACEABLE record counts toward the stratum at its taxon's own
 \code{site_habitat} weight, as that fraction of a record; a record in a
 DIFFERENT declared habitat stays excluded, and a taxon with no weight
-contributes nothing (counted in the message). Unplaceable is read
-closed-world, as \code{\link[=generate_uncertain_habitat_evidence]{generate_uncertain_habitat_evidence()}} reads it: any
-label not in \code{habitat_levels}, so a sentinel this package never heard
-of is caught, and an unfamiliar label is warned about by name. The
+contributes nothing (counted in the message). Unplaceable means a
+no-verdict label: \code{NA}, \code{""}, \code{"Uncertain"}, \code{"Unknown"},
+\code{"Unassigned"}. \code{"Other"} is a PLACED verdict
+(\code{TaxaHabitat::assign_habitat_biological()} emits it for a point that
+is none of the scheme's habitats) and stays excluded like any other
+habitat. Any other label not in \code{habitat_levels} is excluded too and
+named in a warning: a scheme that does not list a label its classifier
+emits is an easy trap, and exclusion is the direction that cannot add
+weight by mistake. (This differs from
+\code{\link[=generate_uncertain_habitat_evidence]{generate_uncertain_habitat_evidence()}}, which recovers every
+undeclared label as evidence.) The
 fraction enters \code{W}, \code{n_eff} and the regional composition; it is not a
 whole detection and does not count toward \code{f1}/\code{f2}. Pass the same two
 arguments to \code{\link[=calibrate_kernel_bandwidth]{calibrate_kernel_bandwidth()}}, so the bandwidth is chosen

@@ -175,7 +175,11 @@ generate_undetected_diversity <- function(model_obj,
     # the floor/ceiling interval, because distance-discounted singleton
     # shares can sit below 1/n_eff. In the top-hat limit the two scales
     # coincide and everything reduces to the classical grid quantities.
-    N_total <- as.integer(kp$params$n_records_stratum)
+    # Good-Turing's sample size is the WHOLE-detection count f1/f2 are tallied
+    # over (estimate_kernel_priors()'s n_whole): a fraction of a record is not a
+    # detection. Fits made before that field existed carry only the stratum
+    # count, which is then whole by construction.
+    N_total <- as.integer(kp$params$n_records_whole %||% kp$params$n_records_stratum)
     habitat_col <- "main_habitat"
     sing <- kp$singletons
     # theta_obs is a SHARE, so its denominator must be the denominator that

@@ -705,15 +705,39 @@ test_that("habitat_levels and habitat_weights must come together, and are valida
                                       habitat_levels = f$levels, habitat_weights = f$hw[, "taxon_name", drop = FALSE]), "column")
 })
 
-test_that("an unfamiliar label is counted as unplaceable and named in a warning", {
+test_that("'Other' is a placed verdict and stays out; an unfamiliar label is excluded and named in a warning", {
   f <- .hab_fix()
-  occ <- f$occ; occ$main_habitat[4] <- "Brackish?"
+  occ <- f$occ; occ$main_habitat[4] <- "Other"
+  w <- NULL
+  kp <- withCallingHandlers(
+    suppressMessages(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                            habitat_levels = f$levels, habitat_weights = f$hw)),
+    warning = function(cnd) { w <<- c(w, conditionMessage(cnd)); invokeRestart("muffleWarning") })
+  expect_false(any(grepl("habitat label", w)))               # Other draws no label warning (the radius warning is unrelated)
+  expect_equal(kp$W, 3.5, tolerance = 1e-6)                # only B's NA record (0.5) joins; Other does not
+  occ$main_habitat[4] <- "Brackish?"
   expect_warning(
-    kp <- suppressMessages(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
-                                                  habitat_levels = f$levels, habitat_weights = f$hw)),
+    kp2 <- suppressMessages(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                                   habitat_levels = f$levels, habitat_weights = f$hw)),
     "Brackish\\?"
   )
-  expect_equal(kp$W, 4, tolerance = 1e-6)
+  expect_equal(kp2$W, 3.5, tolerance = 1e-6)               # excluded, not counted
+  expect_equal(kp2$params$n_records_stratum, 3.5, tolerance = 1e-6)
+})
+
+test_that("a weighted fit prints, and its downstream consumers take the fractional stratum count", {
+  f <- .hab_fix()
+  kp <- suppressMessages(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                                habitat_levels = f$levels, habitat_weights = f$hw))
+  expect_false(kp$params$n_records_stratum == round(kp$params$n_records_stratum) &&
+               kp$params$n_records_stratum %% 1 == 0 && FALSE)
+  expect_equal(kp$params$n_records_stratum, 4, tolerance = 1e-6)
+  expect_equal(kp$params$n_records_whole, 3)               # A x3; B's two half-records are not detections
+  expect_output(print(kp), "of 4 in stratum")              # a whole count prints without decimals
+  kp$params$n_records_stratum <- 300.9                     # the Great Lakes shape
+  expect_output(print(kp), "of 300.9 in stratum")
+  und <- suppressMessages(generate_undetected_diversity(model_obj = kp))
+  expect_s3_class(und, "data.frame")
 })
 
 test_that("with no unplaceable records the arguments change nothing", {

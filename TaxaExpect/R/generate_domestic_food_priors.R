@@ -1073,7 +1073,7 @@ generate_domestic_food_priors <- function(
   # Kernel-priors adapter: N = Kish effective sample
   # size; habitat concept always present on kernel estimates.
   model_obj <- list(
-    N_total = as.integer(model_obj$params$n_records_stratum),
+    N_total = as.integer(model_obj$params$n_records_whole %||% model_obj$params$n_records_stratum), # whole detections, as f1/f2 (see generate_undetected_diversity)
     meta = list(habitat_col = "main_habitat")
   )
   if (!is.numeric(lat) || length(lat) != 1L || is.na(lat)) {

@@ -74,14 +74,16 @@
 #' The stratum filter every kernel-path function shares. With
 #' `habitat_levels = NULL` (and `habitat_weights = NULL`) a record is kept
 #' only when its habitat label equals `site_habitat`, at weight 1. With both
-#' supplied, a record whose label is not one of the scheme's declared
-#' habitats (`NA`, `""`, `"Uncertain"`, any sentinel) is UNPLACEABLE and is
-#' kept at its taxon's own probability of occupying `site_habitat`, read
-#' from `habitat_weights[[site_habitat]]`; a record in a different declared
-#' habitat is excluded as before. A taxon with no weight contributes nothing
-#' and is counted in `$n_no_weight`. The closed-world test is the one
-#' `generate_uncertain_habitat_evidence()` uses, for the same reason: this
-#' package must not track a habitat producer's sentinel vocabulary.
+#' supplied, a record whose label is a no-verdict marker (`NA`, `""`,
+#' `"Uncertain"`, `"Unknown"`, `"Unassigned"`, any case) is UNPLACEABLE and
+#' is kept at its taxon's own probability of occupying `site_habitat`, read
+#' from `habitat_weights[[site_habitat]]`. A record in a different declared
+#' habitat is excluded as before, and so is `"Other"`, which
+#' `TaxaHabitat::assign_habitat_biological()` emits as a PLACED verdict
+#' (none of the scheme's habitats). A label that is none of these is
+#' excluded too and named in a warning, because exclusion is the direction
+#' that cannot add weight by mistake. A taxon with no weight contributes
+#' nothing and is counted in `$n_no_weight`.
 #'
 #' @param hab Character vector of habitat labels, one per record.
 #' @param taxa Character vector of taxon names, one per record.
@@ -126,12 +128,17 @@
   if (any(!is.na(hv) & (hv < 0 | hv > 1))) {
     stop(sprintf("%s: `habitat_weights[['%s']]` has value(s) outside [0, 1].", caller, site_habitat), call. = FALSE)
   }
-  unplaceable <- is.na(hab) | !nzchar(trimws(hab)) | !(hab %in% habitat_levels)
-  odd <- unique(hab[unplaceable & !is.na(hab) & nzchar(trimws(hab)) &
-                      !tolower(trimws(hab)) %in% c("uncertain", "unknown", "unassigned", "na")])
+  hab_key <- tolower(trimws(hab))
+  no_verdict <- c("uncertain", "unknown", "unassigned", "na", "")
+  unplaceable <- (is.na(hab) | hab_key %in% no_verdict) & !(hab %in% habitat_levels)
+  # "Other" is assign_habitat_biological()'s placed verdict: excluded, no
+  # warning. Anything else that is neither declared nor a no-verdict marker
+  # is excluded as well, and named, so a scheme that forgot a label its
+  # classifier emits is told rather than silently fed or starved.
+  odd <- unique(hab[!is.na(hab) & !unplaceable & !(hab %in% habitat_levels) & hab_key != "other"])
   if (length(odd)) {
     warning(sprintf(
-      "%s: %d habitat label(s) are not in `habitat_levels` and are being counted as UNPLACEABLE: %s. If any is a real habitat, add it to `habitat_levels`.",
+      "%s: %d habitat label(s) are neither in `habitat_levels` nor a no-verdict marker and are EXCLUDED: %s. If any is a real habitat, add it to `habitat_levels`; if it means 'could not be placed', relabel it 'Uncertain'.",
       caller, length(odd), paste(utils::head(odd, 10), collapse = ", ")), call. = FALSE)
   }
   h <- hv[match(as.character(taxa), lk$taxon_name)]
