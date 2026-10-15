@@ -2623,3 +2623,29 @@ test_that("the tie order is byte order, so it cannot shift with the locale", {
   expect_identical(out$plausible_taxa[[1]],
                    c("Zebrasoma flavescens", "apogon maculatus"))
 })
+
+test_that("lookup_missing_taxonomy passes each unreferenced hypothesis's own rank to verify_taxon_names (homonym resolution)", {
+  skip_if_not_installed("TaxaTools")
+  skip_if_not("ranks" %in% names(formals(TaxaTools::verify_taxon_names)), "installed TaxaTools predates ranks=")
+  seen <- new.env()
+  testthat::local_mocked_bindings(
+    verify_taxon_names = function(name_list, backbone_id, ..., ranks = NULL) {
+      seen$names <- name_list; seen$ranks <- ranks
+      data.frame(user_supplied_name = name_list, matched_name = NA_character_, classification_path = NA_character_,
+                 classification_ranks = NA_character_, verified = TRUE, matched = FALSE, stringsAsFactors = FALSE)
+    },
+    .package = "TaxaTools"
+  )
+  df <- data.frame(
+    observation_id = "o1",
+    taxon_name = c("Etheostoma nigrum", "Etheostoma", "Percidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
+    family = c("Percidae", NA, NA), genus = c("Etheostoma", NA, NA), species = c("Etheostoma nigrum", NA, NA),
+    posterior_point_est = c(0.8, 0.15, 0.05), stringsAsFactors = FALSE
+  )
+  suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species"),
+    posterior_col = "posterior_point_est", lookup_missing_taxonomy = TRUE, backbone_id = 4L)))
+  expect_setequal(seen$names, c("Etheostoma", "Percidae"))
+  expect_identical(unname(seen$ranks[match(c("Etheostoma", "Percidae"), seen$names)]), c("genus", "family"))
+})

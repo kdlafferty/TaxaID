@@ -46,8 +46,11 @@ updated likelihood and/or \code{hypothesis_type} columns:
 multiplied by \code{penalty_factor}; \code{constraint_applied} set to
 \code{"census_closed_genus"}.}
 \item{\code{"relabel"} mode}{\code{hypothesis_type} changed to
-\code{"unresolved_species"}; likelihoods unchanged; \code{constraint_applied}
-set to \code{"census_closed_genus_relabeled"}.}
+\code{"unresolved_species"} AND \code{score_likelihood}/\code{score_likelihood_mean}
+multiplied by \code{penalty_factor}, so the row stays visible but carries
+no weight (a genus with every species referenced has no unsequenced
+congener for the row to stand for); \code{constraint_applied} set to
+\code{"census_closed_genus_relabeled"}.}
 }
 Rows not meeting the constraint have \code{constraint_applied = NA}.
 }
@@ -62,18 +65,24 @@ zeroed (hard constraint) or relabeled to capture the alternative biology.
 \strong{Behaviour modes} (controlled by \code{constraint_behavior}):
 \itemize{
 \item \code{"relabel"} (default): \code{hypothesis_type} is changed from
-\code{"unreferenced_species"} to \code{"unresolved_species"} and likelihoods are
-left unchanged.  Use when the census confirms all known species are in
-the reference but match scores cannot determine \emph{which} species the
-sample belongs to -- i.e. the sequence is real but ambiguous among the
-known members.  The relabeled row contributes as a named genus-level
-hypothesis in \code{TaxaAssign::consensus_taxonomy()}, preventing a
-prior-only fallback for these samples while correctly resolving to
-genus rank.
+\code{"unreferenced_species"} to \code{"unresolved_species"} AND the row's
+likelihoods are multiplied by \code{penalty_factor} (default 0.0), so the
+constraint stays visible in the table, per observation, while the row
+carries no weight.  A genus every one of whose species is referenced has
+no unsequenced congener for this row to stand for; left at full
+likelihood it competed with the referenced species themselves, and in a
+monotypic genus could outscore the only species there is (grass carp,
+\emph{Ctenopharyngodon idella}, at Great Lakes: the placeholder held 0.51 of
+the posterior against the species' 0.41, and the consensus coarsened).
+Ambiguity AMONG the referenced species is carried by their own rows and
+by the consensus's rank walk, not by this placeholder.
 \item \code{"zero"}: likelihoods are multiplied by \code{penalty_factor} (default
-0.0 = hard zero).  Use only when you are confident the genus census
-itself is ground truth, not just an estimate -- see the "Census
-confidence" section below before choosing this mode.
+0.0 = hard zero) and the \code{hypothesis_type} is left as it was.  The two
+modes now remove the same weight; they differ only in whether the row is
+relabeled.  Either way, see the "Census confidence" section below: the
+census is an NCBI-query estimate, and a lookup that FAILED is reported
+as \code{lookup_failed}/incomplete (never complete), so a failure can only
+leave a placeholder in play, never remove a real one.
 }
 }
 \note{

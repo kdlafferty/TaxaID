@@ -107,11 +107,11 @@ test_that("apply_coverage_constraints: soft penalty factor applied (zero mode)",
   expect_equal(h2_row$score_likelihood, 0.25)
 })
 
-test_that("apply_coverage_constraints: default is relabel, not zero -- non-destructive", {
+test_that("apply_coverage_constraints: default is relabel -- the row is kept and relabeled but carries no weight", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result())
   h2_row <- out[out$taxon_name == "Hybognathus", ]
   expect_equal(h2_row$hypothesis_type, "unresolved_species")
-  expect_equal(h2_row$score_likelihood, 0.5)
+  expect_equal(h2_row$score_likelihood, 0)          # 2026-10-15: a closed genus has no congener for the row to stand for
   expect_equal(h2_row$constraint_applied, "census_closed_genus_relabeled")
 })
 
@@ -482,4 +482,25 @@ test_that("audit_reference_coverage: passes each group's own lineage_terms to ge
   expect_identical(captured, "Rhodophyta")
   # Unresolved taxid -> that group's rec stays at its NA-filled default.
   expect_true(is.na(out$census$total[out$census$group == "Vertebrata"]))
+})
+
+test_that("apply_coverage_constraints(relabel) removes a closed genus's placeholder weight as well as relabeling it", {
+  lik <- data.frame(
+    observation_id = "o1",
+    taxon_name = c("Ctenopharyngodon idella", "Ctenopharyngodon", "Xenocyprididae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
+    score_likelihood = c(0.51, 0.43, 0.03), score_likelihood_mean = c(0.51, 0.43, 0.03),
+    stringsAsFactors = FALSE
+  )
+  census <- data.frame(taxon_name = "Ctenopharyngodon", rank = "genus", status = "complete", stringsAsFactors = FALSE)
+  out <- apply_coverage_constraints(lik, census, constraint_behavior = "relabel")
+  i <- out$taxon_name == "Ctenopharyngodon"
+  expect_identical(out$hypothesis_type[i], "unresolved_species")
+  expect_identical(out$constraint_applied[i], "census_closed_genus_relabeled")
+  expect_identical(out$score_likelihood[i], 0)                 # the placeholder no longer competes
+  expect_identical(out$score_likelihood_mean[i], 0)
+  expect_identical(out$score_likelihood[!i], c(0.51, 0.03))    # nothing else touched
+  z <- apply_coverage_constraints(lik, census, constraint_behavior = "zero")
+  expect_identical(z$score_likelihood, out$score_likelihood)   # the two modes now remove the same weight
 })

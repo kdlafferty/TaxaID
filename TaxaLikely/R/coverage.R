@@ -1237,19 +1237,25 @@ audit_acoustic_coverage <- function(plausible_species,
 #' **Behaviour modes** (controlled by `constraint_behavior`):
 #'
 #' - `"relabel"` (default): `hypothesis_type` is changed from
-#'   `"unreferenced_species"` to `"unresolved_species"` and likelihoods are
-#'   left unchanged.  Use when the census confirms all known species are in
-#'   the reference but match scores cannot determine *which* species the
-#'   sample belongs to -- i.e. the sequence is real but ambiguous among the
-#'   known members.  The relabeled row contributes as a named genus-level
-#'   hypothesis in `TaxaAssign::consensus_taxonomy()`, preventing a
-#'   prior-only fallback for these samples while correctly resolving to
-#'   genus rank.
+#'   `"unreferenced_species"` to `"unresolved_species"` AND the row's
+#'   likelihoods are multiplied by `penalty_factor` (default 0.0), so the
+#'   constraint stays visible in the table, per observation, while the row
+#'   carries no weight.  A genus every one of whose species is referenced has
+#'   no unsequenced congener for this row to stand for; left at full
+#'   likelihood it competed with the referenced species themselves, and in a
+#'   monotypic genus could outscore the only species there is (grass carp,
+#'   *Ctenopharyngodon idella*, at Great Lakes: the placeholder held 0.51 of
+#'   the posterior against the species' 0.41, and the consensus coarsened).
+#'   Ambiguity AMONG the referenced species is carried by their own rows and
+#'   by the consensus's rank walk, not by this placeholder.
 #'
 #' - `"zero"`: likelihoods are multiplied by `penalty_factor` (default
-#'   0.0 = hard zero).  Use only when you are confident the genus census
-#'   itself is ground truth, not just an estimate -- see the "Census
-#'   confidence" section below before choosing this mode.
+#'   0.0 = hard zero) and the `hypothesis_type` is left as it was.  The two
+#'   modes now remove the same weight; they differ only in whether the row is
+#'   relabeled.  Either way, see the "Census confidence" section below: the
+#'   census is an NCBI-query estimate, and a lookup that FAILED is reported
+#'   as `lookup_failed`/incomplete (never complete), so a failure can only
+#'   leave a placeholder in play, never remove a real one.
 #'
 #' @section Census confidence:
 #' `census_result$status` (built from `audit_barcode_coverage()`'s
@@ -1301,8 +1307,11 @@ audit_acoustic_coverage <- function(plausible_species,
 #'       multiplied by `penalty_factor`; `constraint_applied` set to
 #'       `"census_closed_genus"`.}
 #'     \item{`"relabel"` mode}{`hypothesis_type` changed to
-#'       `"unresolved_species"`; likelihoods unchanged; `constraint_applied`
-#'       set to `"census_closed_genus_relabeled"`.}
+#'       `"unresolved_species"` AND `score_likelihood`/`score_likelihood_mean`
+#'       multiplied by `penalty_factor`, so the row stays visible but carries
+#'       no weight (a genus with every species referenced has no unsequenced
+#'       congener for the row to stand for); `constraint_applied` set to
+#'       `"census_closed_genus_relabeled"`.}
 #'   }
 #'   Rows not meeting the constraint have `constraint_applied = NA`.
 #'
@@ -1380,11 +1389,27 @@ apply_coverage_constraints <- function(likelihood_df,
   )
 
   if (constraint_behavior == "relabel") {
+    # The relabeled row keeps its place in the table (so the constraint is
+    # visible per observation) but carries NO weight: a genus every one of
+    # whose species is referenced has no unsequenced congener for this row
+    # to stand for, and left at full likelihood it competed with -- and in a
+    # monotypic genus could outscore -- the referenced species itself
+    # (Ctenopharyngodon idella at Great Lakes: the placeholder won the
+    # posterior 0.51 to 0.41). Weight is removed the same way "zero" mode
+    # removes it, by `penalty_factor`.
     result <- merged |>
       dplyr::mutate(
         is_forbidden = hypothesis_type == "unreferenced_species" &
           !is.na(join_status) & join_status %in% c("complete", "closed"),
         hypothesis_type = ifelse(is_forbidden, "unresolved_species", hypothesis_type),
+        score_likelihood = ifelse(is_forbidden,
+          score_likelihood * penalty_factor,
+          score_likelihood
+        ),
+        score_likelihood_mean = ifelse(is_forbidden,
+          score_likelihood_mean * penalty_factor,
+          score_likelihood_mean
+        ),
         constraint_applied = ifelse(is_forbidden,
           "census_closed_genus_relabeled", NA_character_
         )
