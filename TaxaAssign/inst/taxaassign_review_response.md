@@ -1450,3 +1450,52 @@ strict holds the family), a 100% non-local match stopped at its genus, leave-spe
 landing where the strict bound lands, and a removed sole member inventing nothing. The
 existing 414 consensus tests pass unchanged under the new default. Suite at this tip:
 1,368 pass / 0 fail / 0 error; rcmdcheck --as-cran, warnings counted: 0 / 0 / 0.
+
+### 2026-10-14: an outside hypothesis gains at most one site record
+
+The relaxed robust bound above let an outside hypothesis gain one record relative to its
+own evidence: its mass grew by `min(1, s / alpha)`, so the term it added was
+`L * pi * s / alpha = L * s / (alpha + beta)`, one record in the units of the ROW'S OWN
+Beta concentration. That equals one site record, `L * s / (N + s)`, only when the row's
+concentration is the site's record count `N`. It is at Mugu (every row 96,851) and at
+Great Lakes (every row 2,562), which is why the measurement above showed no losses
+there. At CalIntertidal concentrations run from 2 to 156,748: a record-named row at a
+484-record site carries 89, an undetected row 2 to 23. Any row with a concentration
+below `N + s` was therefore charged MORE than one site record, and because the charge is
+a property of the row it did not shrink at coarser nodes the way the strict term does.
+The first full run on the rule (r3, 2026-10-14) lost eleven species calls the strict
+bound makes. *Anisotremus davidsonii* at Punta Abreojos (12S_ESV_019917, strict species
+call at 0.940): the deciding row is *Orthopristis reddingi*, a record-named row with
+alpha 1.03 and concentration 89, so its gain of 1.24e-3 was worth 5.4 site records;
+at the genus node the strict term is `e * 0.110 = 2.3e-4` and the genus holds at 0.931,
+the relaxed term is still 1.24e-3 and the genus is refused, and the call fell to
+Haemulidae. *Labrisomus* x5 at the same site (genus to family, deciding row *Exerpes
+asper*, alpha 1.03, concentration 89), *Stenobrachius*, *Ruscarius*,
+*Scorpaenichthys*, *Bossiella* x4, *Dactylosiphon* and *Stenogramma* are the same
+shape. The measurement above could not show this: its slice held only units the strict
+bound had limited, so a unit the strict bound passed could never appear as a loss, and
+its summaries counted finer calls only although seven coarsenings sat in the data.
+
+Fix: the gain is capped at one site record per outside row,
+`gain = L * min(pi * min(1, s / alpha), s / (N + s))`. A placeholder with no local record
+still receives only its own tiny mass (the release the rule exists for); a recorded
+competitor receives a full record and no more; the term never exceeds the strict term,
+so the default form is never stricter than `"strict"`. The gate, the recorded-member
+condition and the internal options are unchanged.
+
+Measured from saved posteriors, uncapped (the install above) against capped, identical
+arguments. CalIntertidal r2 exact slice, 2,646 units: finer than strict 291 (was 287),
+coarser than strict 0 (was 7); the seven losses return and the cap releases three
+*Hypsoblennius* species calls and one Bangiaceae the uncapped term had refused because
+it exceeded the strict term. The 754 strict species calls with a robust bound between
+0.90 and 0.95 on the per-ESV grain: uncapped coarsened 19 (*Rhynchozoon tumulosum* x11,
+*Scytosiphon lomentaria* x2, *Kellia suborbicularis* x2, *Clathria prolifera*,
+*Hildenbrandia rubra*), capped 0. Leave-species-out false positives, 500 units: strict
+27, uncapped 27, capped 27. Mugu robust run, Round 1 for all three markers (397, 185,
+34 units) and Round 2 (616), and the Great Lakes slice (375 units): capped and uncapped
+calls identical on every unit, so those validation runs stand.
+
+Tests: two blocks from the deposit rows, *Anisotremus* at Punta Abreojos (strict holds
+the genus at 0.931; the default is never coarser and never lower) and the *Labrisomus*
+case. Suite at this tip: 1,375 pass / 0 fail / 0 error; rcmdcheck --as-cran, warnings
+counted: 0 / 0 / 0.
