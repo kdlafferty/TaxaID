@@ -899,7 +899,7 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 57                 | 31         | Yes      |
+| TaxaTools   | 57                 | 32         | Yes      |
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
 | TaxaMatch   | 30                 | 22         | Yes      |
