@@ -103,6 +103,14 @@
 #'   `scope_rank`, `taxon_name`, `theta_mean`), so every mass can be traced to
 #'   the local species that make it up.
 #'
+#' @section Withheld species:
+#'   A local unreferenced species whose genus has a reference for this marker
+#'   (the genus of any name in `referenced_names`) is claimed only by its own
+#'   genus ring. Where the unit has no genus ring for it, the genus's
+#'   references were compared with the read and did not match, so no family,
+#'   order, class or phylum ring may name it; it is withheld and listed in
+#'   `attr(result, "unreferenced_withheld")` (`observation_id`, `taxon_name`,
+#'   `scope`, `scope_rank`, `reason`), present on every return.
 #' @seealso [join_priors()], [compute_posterior()]
 #'
 #' @examples
@@ -219,6 +227,10 @@ add_unreferenced_prior_mass <- function(joined,
   out$unreferenced_n_species[gen] <- 0L
   if (length(gen) == 0L) {
     attr(out, "unreferenced_mass_check") <- check
+    attr(out, "unreferenced_withheld") <- data.frame(
+      observation_id = character(0), taxon_name = character(0), scope = character(0),
+      scope_rank = character(0), reason = character(0), stringsAsFactors = FALSE
+    )
     cli::cli_inform("No generic unreferenced rows with a taxonomic scope; priors unchanged.")
     return(out)
   }
@@ -272,6 +284,15 @@ add_unreferenced_prior_mass <- function(joined,
 
   claimed <- character(0) # observation \r species already in a finer scope
   members_all <- list()
+  # Genera WITH a reference for this marker, from the referenced species
+  # themselves. A local unreferenced species of such a genus may be claimed
+  # only by its own GENUS ring: that ring is built from its congeners' actual
+  # fit to the read. Where no genus ring exists in the unit, the genus's
+  # references were compared with the read and did not match, and a family,
+  # order, class or phylum ring ("some unreferenced genus of ...") cannot be
+  # this species. It is then not claimed at all, and reported.
+  ref_genera <- unique(sub(" .*$", "", ref[!is.na(ref)]))
+  withheld <- list()
   for (r in intersect(rank_order, unique(gdf$rank))) {
     gr <- gdf[gdf$rank == r, , drop = FALSE]
     p_r <- pr[!is.na(pr[[r]]), c("taxon_name", "hab", "theta_mean", "var", r), drop = FALSE]
@@ -286,6 +307,20 @@ add_unreferenced_prior_mass <- function(joined,
     key <- paste(m$observation_id, m$taxon_name, sep = "\r")
     m <- m[!key %in% named_key & !key %in% claimed, , drop = FALSE]
     if (nrow(m) == 0L) next
+    if (r != "genus") {
+      ref_gen <- sub(" .*$", "", m$taxon_name) %in% ref_genera
+      if (any(ref_gen)) {
+        withheld[[length(withheld) + 1L]] <- data.frame(
+          observation_id = m$observation_id[ref_gen], taxon_name = m$taxon_name[ref_gen],
+          scope = m$scope[ref_gen], scope_rank = r, reason = "genus_referenced_unmatched",
+          stringsAsFactors = FALSE
+        )
+        # withheld, AND marked claimed so no coarser ring takes them either
+        claimed <- c(claimed, unique(paste(m$observation_id[ref_gen], m$taxon_name[ref_gen], sep = "\r")))
+        m <- m[!ref_gen, , drop = FALSE]
+        if (nrow(m) == 0L) next
+      }
+    }
     claimed <- c(claimed, unique(paste(m$observation_id, m$taxon_name, sep = "\r")))
     members_all[[r]] <- m
   }
@@ -379,6 +414,17 @@ add_unreferenced_prior_mass <- function(joined,
     not in {.arg referenced_names}; {check$n_referenced_not_in_priors} referenced name(s) \\
     absent from the prior table."
   ))
+  withheld_df <- if (length(withheld)) do.call(rbind, withheld) else data.frame(
+    observation_id = character(0), taxon_name = character(0), scope = character(0),
+    scope_rank = character(0), reason = character(0), stringsAsFactors = FALSE
+  )
+  if (nrow(withheld_df) > 0L) {
+    cli::cli_inform(sprintf(
+      "add_unreferenced_prior_mass: %d local unreferenced species row(s) withheld in %d observation(s): their genus has a reference for this marker that did not match the read, so no family or coarser ring may name them (attr 'unreferenced_withheld').",
+      nrow(withheld_df), length(unique(withheld_df$observation_id))
+    ))
+  }
+  attr(out, "unreferenced_withheld") <- withheld_df
   attr(out, "unreferenced_mass_check") <- check
   attr(out, "unreferenced_scope_members") <- if (!is.null(mem) && nrow(mem) > 0L) {
     data.frame(
