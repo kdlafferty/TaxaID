@@ -48,9 +48,7 @@
 #' occupied cell is found or `min_zoom` is exhausted. This is cheap in the
 #' common case: escalation only fires for calls that would otherwise return
 #' `NA`, each step costs the same handful of tiles as the original call, and
-#' it terminates as soon as anything is found -- confirmed on a real case
-#' (a European species queried from the Great Lakes) resolving after 3 extra
-#' steps at a real, plausible transatlantic distance, instead of `NA`. Set
+#' it terminates as soon as anything is found. Set
 #' `escalate = FALSE` to restore the original single-zoom, bounded-latency
 #' behaviour, where `beyond_buffer` means only "not within this one window."
 #' `resolution_km_per_px`/`dist_nearest_occupied_km`/`patch_size_px` etc. are
@@ -94,14 +92,10 @@
 #'
 #' **Cache key** (order shown; joined into one string and hashed for the
 #' filename): `taxon_key`, `query_lat`/`query_lon` each rounded to **4
-#' decimal places** (about 11m of ground resolution at the equator --
-#' comfortably finer than anything that could move which GBIF density tile
-#' pixel a query lands in, so rounding only ever collapses floating-point
-#' noise, never two genuinely different query points), `buffer_px`, `zoom`,
+#' decimal places** (about 11m of ground resolution at the equator, so
+#' rounding only collapses floating-point noise), `buffer_px`, `zoom`,
 #' `escalate`, `min_zoom`, `base_url`. The full, unhashed key is stored
-#' *inside* the cache file and re-checked on every read (the same pattern
-#' `TaxaHabitat::build_habitat_lookup()` and
-#' `TaxaTools::scientific_to_common()` use) -- a filename hash collision
+#' *inside* the cache file and re-checked on every read -- a filename hash collision
 #' therefore costs one extra re-fetch, and can never hand back a different
 #' taxon/location's verdict. Each file also stores `fetched_at` (a
 #' `POSIXct`), which is how staleness is surfaced (see below) without a TTL.
@@ -112,14 +106,10 @@
 #' deliberately clear the cache with [taxaflag_clear_cache()]; this function
 #' will never do it for you.
 #'
-#' **Why no year dimension in the key.** Unlike
-#' `TaxaFetch::get_gbif_occurrences()` (Stage 2 of the regional-proximity
-#' evidence generator, which IS cached per-year-range via its own
-#' `cache_dir`), GBIF's density tile API has no year filter at all -- a tile
-#' request always reflects GBIF's current full-history density map for that
-#' taxon. There is therefore no year-scoped cache key to add here; Stage 2's
-#' separate, year-aware fetch exists precisely because Stage 1's tiles
-#' cannot answer a time-scoped question.
+#' **No year dimension in the key.** GBIF's density tile API has no year
+#' filter at all -- a tile request always reflects GBIF's current full-history
+#' density map for that taxon, so the tiles cannot answer a time-scoped
+#' question.
 #'
 #' **What is and isn't cached.** Every value this function can return once
 #' the fetch itself succeeds -- including `beyond_buffer = TRUE` -- is a

@@ -205,13 +205,12 @@ Output column NAMES are fixed (\code{observation_validity}/
 \code{validity_flag}/\code{validity_reason}) rather than parameterized by
 \code{contaminant_type} -- every TaxaFlag flag_*() mechanism (see also
 \code{\link{flag_handler}}) shares this one schema, matching the "one
-column, type-qualified values" pattern \code{\link{add_posthoc_assessment}}
-uses. The \code{contaminant_type} string appears in \code{validity_flag}'s
+column, type-qualified values" pattern. The \code{contaminant_type} string appears in \code{validity_flag}'s
 VALUES (\code{"invalid_{contaminant_type}"}/\code{"questionable_
 {contaminant_type}"}) instead of in a column name.
 \code{report_flags()} auto-detects this schema by inspecting
-\code{validity_flag}'s values, not just the column's presence, since the
-column name alone does not identify which check produced it.
+\code{validity_flag}'s values, since the column name alone does not
+identify which check produced it.
 }
 
 \section{DO NOT FILTER ON validity_flag != "valid"}{
@@ -219,11 +218,9 @@ column name alone does not identify which check produced it.
 This was always a fragile idiom and \code{require_control_evidence = TRUE}
 makes it catastrophic. Under the gate the honest-unknown state
 \code{"no_control_evidence"} is not \code{"valid"}, and it is normally the
-overwhelming majority: on a real 12S run it covered 16,695 of 16,826 ESVs
-(99.2\%) and on COI 32,162 of 34,899 (92.2\%). A downstream
+overwhelming majority (often more than nine in ten taxa). A downstream
 \code{validity_flag != "valid"} filter would therefore delete nearly the whole
-dataset, where the same filter without the gate deletes a merely
-implausible 73\%.
+dataset.
 
 \code{"not_control_enriched"} and \code{"single_site_enriched"} are also not
 \code{"valid"}, and they are the states that exist precisely to say DO NOT
@@ -241,7 +238,7 @@ The removal predicate is the \code{invalid_} prefix, never the negation of
   to_remove <- flagged$validity_flag != "valid"
 }
 Anything filtering on the negation of \code{"valid"} sweeps the whole middle
-tier in whether or not that tier is ever printed.
+tier in.
 }
 
 \section{Evidence-gated states (require_control_evidence = TRUE)}{
@@ -250,7 +247,7 @@ tier in whether or not that tier is ever printed.
 \itemize{
 \item \code{"no_control_evidence"} -- never detected in any control, so no
 assessment is possible. An honest unknown, and expected to be the large
-majority: on a real 12S run 13,554 of 13,597 taxa were in this state.
+majority.
 \item \code{"invalid_{contaminant_type}"} -- control rate above sample rate.
 The name is kept so existing downstream filters on \code{invalid_*} keep
 working.

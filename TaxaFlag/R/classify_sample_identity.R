@@ -66,11 +66,10 @@
 #' }
 #'
 #' @section What "looks like a valid blank" means:
-#' No single scalar works across markers. On one real three-marker study,
-#' the share of reads from target-ecosystem taxa called a plankton-filled
-#' blank clean in two markers, because plankton was out of analytical scope
-#' but not out of the ENVIRONMENT. The axis that matters is environmental
-#' versus laboratory, so this function uses two scope-free signals:
+#' No single scalar works across markers (a plankton-filled blank can be out of
+#' analytical scope but not out of the ENVIRONMENT). The axis that matters is
+#' environmental versus laboratory, so this function uses two scope-free
+#' signals:
 #' \itemize{
 #'   \item \strong{Composition} (\code{\link{validate_controls}}, run on each
 #'     run's libraries): does the blank look like the field samples it was
@@ -84,17 +83,13 @@
 #'     unit. The reference comes from outside the run, so a run whose samples
 #'     all failed cannot make its blanks look rich by comparison. A blank at
 #'     or above \code{diversity_blank_max} of the reference carries an
-#'     environmental community. Hill N1 is used rather than richness because
-#'     it is barely moved by the many one- and two-read features that index
-#'     hopping spreads into blanks.
+#'     environmental community. Hill N1 is barely moved by the many one- and
+#'     two-read features that index hopping spreads into blanks.
 #' }
 #' The second signal is what the first cannot see. A blank holding a
 #' DIFFERENT environmental community -- seawater plankton in a benthic
 #' study -- is compositionally disjoint from the samples, and
-#' \code{validate_controls()} reads disjoint as clean. On the study above, 24
-#' of 29 blanks on one run held 50 to 218 effective species of marine
-#' protists that were mostly absent from that run's field samples. Every
-#' one of them was \code{"consistent_with_control"} at full power.
+#' \code{validate_controls()} reads disjoint as clean.
 #'
 #' A blank is \code{"valid_sample"} when it is sample-like in composition,
 #' \code{"neither"} when it has sample-level diversity without resembling the
@@ -166,10 +161,7 @@
 #'     \code{"own_evidence"}, \code{"tube"}, \code{"untested"} or
 #'     \code{"inconclusive"}. An untested unit holds only itself: a failed
 #'     library says nothing about the tube's other markers.
-#'   \item \strong{Identity is per tube; usability is per marker.} Whether a
-#'     tube IS a blank is one question for all its markers. Whether a marker's
-#'     result is USABLE is asked per marker, because different markers can
-#'     return usable and unusable results for the same tube. A blank whose own
+#'   \item \strong{Identity is per tube; usability is per marker.} A blank whose own
 #'     evidence in one marker looks contaminated (discordant or suspect in that
 #'     marker) is not admitted as a control IN THAT MARKER, even after the tube
 #'     is confirmed as a blank: \code{control_usability} reads
@@ -177,8 +169,7 @@
 #'     overrides it. Its other markers are judged on their own evidence:
 #'     contamination a marker cannot amplify cannot bias that marker. The
 #'     inference runs one way only. A clean result in an insensitive marker
-#'     (12S cannot amplify protists or algae) never clears a sensitive one,
-#'     because each marker is judged only on its own evidence.
+#'     (12S cannot amplify protists or algae) never clears a sensitive one.
 #'   \item \strong{Sample viability is per marker.} \code{sample_viability}
 #'     combines yield with appearance: \code{"viable"} (libraries passed),
 #'     \code{"thin"} (low yield but a normal-looking composition: a genuinely
@@ -215,11 +206,9 @@
 #' (\code{"user"} or \code{"llm"}). A person's disposition always wins.
 #'
 #' @section Cross-marker agreement:
-#' The same tube assayed with independent markers is the strongest evidence
-#' available. Each unit reports \code{n_markers_flagged} and
-#' \code{n_markers_assessable} for its sample, counting identity flags only,
-#' so a blank flagged in two markers is visibly better supported than one
-#' flagged in one.
+#' Each unit reports \code{n_markers_flagged} and \code{n_markers_assessable}
+#' for its sample, counting identity flags only: a blank flagged in two
+#' independent markers is better supported than one flagged in one.
 #'
 #' @param input_df Long-format data frame, one row per feature x library,
 #'   with every marker of the study and every control. Pass the same table
@@ -296,8 +285,8 @@
 #' \code{top_taxon_share}: the single most abundant feature and its share of
 #' the unit's reads, with run-wide artifacts and declared spikes set aside.
 #' Dominance is reported as evidence for a reviewer and never acted on: a
-#' blank that is 96\% one field fish is worth a look in any marker, and the
-#' number needs no taxonomy, habitat or scope), the verdict columns,
+#' blank that is 96\% one field fish is worth a look in any marker), the
+#' verdict columns,
 #' \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 #' \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 #' \code{pending_review}, \code{excluded_library_issue},

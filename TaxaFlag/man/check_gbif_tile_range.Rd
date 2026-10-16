@@ -165,9 +165,7 @@ real-world ground the same pixel buffer covers), continuing down to
 occupied cell is found or \code{min_zoom} is exhausted. This is cheap in the
 common case: escalation only fires for calls that would otherwise return
 \code{NA}, each step costs the same handful of tiles as the original call, and
-it terminates as soon as anything is found -- confirmed on a real case
-(a European species queried from the Great Lakes) resolving after 3 extra
-steps at a real, plausible transatlantic distance, instead of \code{NA}. Set
+it terminates as soon as anything is found. Set
 \code{escalate = FALSE} to restore the original single-zoom, bounded-latency
 behaviour, where \code{beyond_buffer} means only "not within this one window."
 \code{resolution_km_per_px}/\code{dist_nearest_occupied_km}/\code{patch_size_px} etc. are
@@ -187,14 +185,10 @@ and then written.
 
 \strong{Cache key} (order shown; joined into one string and hashed for the
 filename): \code{taxon_key}, \code{query_lat}/\code{query_lon} each rounded to \strong{4
-decimal places} (about 11m of ground resolution at the equator --
-comfortably finer than anything that could move which GBIF density tile
-pixel a query lands in, so rounding only ever collapses floating-point
-noise, never two genuinely different query points), \code{buffer_px}, \code{zoom},
+decimal places} (about 11m of ground resolution at the equator, so
+rounding only collapses floating-point noise), \code{buffer_px}, \code{zoom},
 \code{escalate}, \code{min_zoom}, \code{base_url}. The full, unhashed key is stored
-\emph{inside} the cache file and re-checked on every read (the same pattern
-\code{TaxaHabitat::build_habitat_lookup()} and
-\code{TaxaTools::scientific_to_common()} use) -- a filename hash collision
+\emph{inside} the cache file and re-checked on every read -- a filename hash collision
 therefore costs one extra re-fetch, and can never hand back a different
 taxon/location's verdict. Each file also stores \code{fetched_at} (a
 \code{POSIXct}), which is how staleness is surfaced (see below) without a TTL.
@@ -205,14 +199,10 @@ is refreshed with new occurrence submissions over time), you must
 deliberately clear the cache with \code{\link[=taxaflag_clear_cache]{taxaflag_clear_cache()}}; this function
 will never do it for you.
 
-\strong{Why no year dimension in the key.} Unlike
-\code{TaxaFetch::get_gbif_occurrences()} (Stage 2 of the regional-proximity
-evidence generator, which IS cached per-year-range via its own
-\code{cache_dir}), GBIF's density tile API has no year filter at all -- a tile
-request always reflects GBIF's current full-history density map for that
-taxon. There is therefore no year-scoped cache key to add here; Stage 2's
-separate, year-aware fetch exists precisely because Stage 1's tiles
-cannot answer a time-scoped question.
+\strong{No year dimension in the key.} GBIF's density tile API has no year
+filter at all -- a tile request always reflects GBIF's current full-history
+density map for that taxon, so the tiles cannot answer a time-scoped
+question.
 
 \strong{What is and isn't cached.} Every value this function can return once
 the fetch itself succeeds -- including \code{beyond_buffer = TRUE} -- is a
