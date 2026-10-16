@@ -15,9 +15,7 @@
 #' with a constant. A floor of, say, 100 reads is simultaneously too lax for a
 #' feature carrying millions of reads on the run (it can spill hundreds into
 #' every sample) and too strict for a genuinely rare feature (which spills
-#' essentially nothing, so its 30-read detection is real). On one real
-#' three-marker study a flat 100-read floor removed 57-85% of all detections.
-#' This function therefore compares each detection with its OWN expected
+#' essentially nothing, so its 30-read detection is real). This function therefore compares each detection with its OWN expected
 #' spillover.
 #'
 #' @section The model:
@@ -201,11 +199,8 @@
 #' see: well-to-well or reagent carry-over, which does not scale with a
 #' feature's run-wide abundance; a mislabelled reference sequence; a
 #' genuinely sequenced but non-local organism, such as food, bait or
-#' wastewater DNA. One real case: a feature appearing at two sites 1,500 km
-#' apart in one run, the more distant site holding the larger count, against
-#' a \code{rate_upper} four orders of magnitude too small to explain it. The
-#' verdict "not spillover" was right, and the detection was still not
-#' plausible biology.
+#' wastewater DNA. A feature can be correctly judged "not spillover" and still
+#' not be plausible biology.
 #'
 #' So read a clean verdict as narrowing the explanations, not as clearing the
 #' detection, and pair it with \code{\link{flag_contaminant}} for
