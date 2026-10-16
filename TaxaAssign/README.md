@@ -195,35 +195,39 @@ LLM-estimated biogeographic prior).
     cannot rest on mass the named candidates do not hold; `pool_tail`
     optionally lets a flat tail of small hypotheses coarsen a call
     instead of being renormalised away.
--   Credible node, an option (`consensus_method = "credible_node"`):
-    instead of taking the top set and finding its ancestor, the posterior
-    of every hypothesis is summed under each taxon, rank by rank from the
-    finest, and the call is the finest taxon that holds at least
-    `cumulative_threshold` of the total. No hypothesis is dropped, so a
-    rare tail of alternatives still counts against a species call, and a
-    hypothesis named at a coarser rank counts toward that taxon and its
-    ancestors. Why choose it: it is the more conservative rule, and it
-    reports why a call stopped where it did (`consensus_limit`). The
-    default stays LCA. What the evidence shows, on the Great Lakes
-    validation scored against an independent survey of the same water
-    body (a survey, not ground truth, so a call it does not list is
-    unconfirmed rather than wrong): the credible node is the more
-    precise rule and the more cautious one, and the choice between them
-    is a trade, not a ranking. Species-level precision was 0.887 for the
-    credible node (698 agreeing of 787 called) against 0.878 for LCA
-    (794 of 904); both exceed the 0.872 the survey's own comparison
-    reached. Neither rule missed a species outright. Relative to LCA,
-    the credible node avoided 21 calls the survey does not support and
-    withheld 96 it does, so about 4.6 supported detections are given up
-    for each unsupported call avoided; it also leaves 381 observations
-    at a rank coarser than species against LCA's 285. The withheld
-    species are mostly common ones with several congeners present
-    (*Carpiodes cyprinus* 38, *Moxostoma macrolepidotum* 24, *Notropis
-    hudsonius* 13, *Percina maculata* 11), and the credible node
-    coarsens a monotypic genus with one local record to family where LCA
-    keeps the species. Which rule to prefer therefore depends on whether
-    a false species call or a withheld one is the more costly error for
-    the study.
+-   Weighted LCA, node summing (`consensus_method = "credible_node"`):
+    report the most specific node whose descendants together hold at
+    least `cumulative_threshold` (default 90%) of the posterior. Instead
+    of picking a top set and climbing to its ancestor, the posterior of
+    every hypothesis is summed under each taxon, rank by rank from the
+    finest. No hypothesis is dropped, so a rare tail of alternatives
+    still counts against a species call, and a hypothesis named at a
+    coarser rank counts toward that taxon and its ancestors. This is the
+    analogue of MEGAN's weighted LCA. It contrasts with the default
+    `"lca"`, which keeps the candidates above `min_posterior` (default
+    5%), takes the smallest group of those holding 90% of the surviving
+    mass, and reports their lowest common ancestor — so the sub-5%
+    candidates are discarded rather than counted. The plain node-summing
+    setting is `consensus_method = "credible_node"` with `robust_prior_s
+    = 0` and `cross_phylum_eps = 0`; the function and argument names are
+    unchanged.
+
+    What the evidence shows, from an ablation over three datasets. Node
+    summing moves calls in both directions, not simply toward coarser
+    ones: on CalIntertidal it made 1,304 units finer (mostly 1,163
+    phylum to class) where the LCA top set spanned lineages, and 4,507
+    coarser. On Great Lakes, scored against an independent survey of the
+    same water body (a survey, not ground truth, so a call it does not
+    list is unconfirmed rather than wrong), species precision was 0.882
+    against 0.878 for LCA. Two refinements were measured and then
+    switched off for that setting, though both keep their own defaults
+    in the function. The robust prior bound (`robust_prior_s`) withheld
+    85 survey-supported species pairs to avoid 16 unsupported ones, a
+    poor exchange, so it is set to 0. The cross-phylum guard
+    (`cross_phylum_eps`) changed nothing either way on the two
+    single-phylum fish studies and, on CalIntertidal, moved 201 units
+    without touching a single known-correct or known-wrong call, so
+    there is no evidence to judge it on; it is set to 0 as well.
 -   Robust prior bound (`robust_prior_s`, default 1, active with the
     credible node): the occurrence prior is an estimate from finitely
     many records, so a node is reported only if its posterior stays at
