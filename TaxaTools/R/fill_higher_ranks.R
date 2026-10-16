@@ -761,7 +761,11 @@ parse_classification_path <- function(path, ranks, target_rank) {
     genus = as.character(verified$user_supplied_name),
     resolved_genus = .resolved_genus_at_rank(verified),
     path = as.character(verified$classification_path),
-    ranks = as.character(verified$classification_ranks)
+    ranks = as.character(verified$classification_ranks),
+    # Did the backbone ANSWER? FALSE for an undecidable homonym, a failed
+    # lookup or a lineage-gated rejection; TRUE with an NA path means the
+    # name is simply absent there.
+    answered = if ("verified" %in% names(verified)) as.logical(verified$verified) else TRUE
   )
   out[!duplicated(out$genus), , drop = FALSE]
 }
@@ -837,12 +841,13 @@ parse_classification_path <- function(path, ranks, target_rank) {
     # is refused and the rank stays NA. Same principle K. Lafferty chose for
     # cross_phylum_eps: unresolvable is not evidence of agreement.
     if (is.na(j)) return(FALSE)
-    # The same refusal when the primary HAS a row but no lineage: an
-    # unverified answer (an undecidable NCBI homonym, a failed lookup, a
-    # lineage-gated rejection) is "could not place", not "silent about one
-    # rank". Reading its empty path as "nothing to contradict" accepted a
-    # GBIF plant genus's class for the larvacean Appendicularia.
-    if (is.na(primary$path[j]) || !nzchar(primary$path[j])) return(FALSE)
+    # The same refusal when the primary has a row it could not ANSWER: an
+    # undecidable NCBI homonym, a failed lookup or a lineage-gated rejection
+    # is "could not place", not "silent about one rank". Reading such a row's
+    # empty path as "nothing to contradict" accepted a GBIF plant genus's
+    # class for the larvacean Appendicularia. A row the backbone answered
+    # with NO match (the name is absent there) keeps the allowance below.
+    if ("answered" %in% names(primary) && !isTRUE(primary$answered[j])) return(FALSE)
     a <- split_named(primary$path[j], primary$ranks[j])
     b <- split_named(fb$path[k], fb$ranks[k])
     shared <- intersect(intersect(names(a), names(b)), .LINEAGE_AGREEMENT_RANKS)
