@@ -212,6 +212,7 @@ fill_higher_ranks <- function(taxon_names,
     stop("taxon_names must be a character vector")
   }
   if (!is.null(lineage)) {
+    if (is.logical(lineage) && all(is.na(lineage))) lineage <- as.character(lineage)
     if (!is.character(lineage) || length(lineage) != length(taxon_names)) {
       stop("`lineage` must be NULL or a character vector with one lineage context per element of `taxon_names`.")
     }

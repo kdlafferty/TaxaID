@@ -515,6 +515,8 @@ verify_taxon_names <- function(name_list,
 #' @noRd
 .check_verify_lineage <- function(lineage, name_list) {
   if (is.null(lineage)) return(NULL)
+  # A logical all-NA vector is "no context for any name", not a type error.
+  if (is.logical(lineage) && all(is.na(lineage))) lineage <- as.character(lineage)
   if (!is.character(lineage) || length(lineage) != length(name_list)) {
     stop("`lineage` must be NULL or a character vector with one lineage context per element of `name_list`.")
   }
