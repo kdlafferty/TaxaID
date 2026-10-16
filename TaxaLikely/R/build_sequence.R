@@ -205,59 +205,48 @@ utils::globalVariables(c(
 #' when that accession is the query's best for its species, so restoration
 #' resolves more often at its species-pair and genus-model levels than at
 #' the direct-accession level, and its species-pair median is a median of
-#' per-query bests rather than of all pairs (under `"best_per_class"` the
-#' direct-accession and species-pair levels of restoration are reached only
-#' when a candidate happens to hold a query's best congeneric pair, so
+#' per-query bests rather than of all pairs (under `"best_per_class"`
 #' restoration mostly resolves from the genus model). An accession screen
 #' run on the thinned table works unchanged, because it reads within-species
 #' pairs, which are complete; removing its "remove" accessions from the
 #' table afterwards costs only the sequences whose best partner for a
 #' stratum was a removed accession, which then have no runner-up for that
-#' stratum. At the removal rates seen in practice, a few accessions per
-#' thousand, this touches a handful of sequences. [check_cross_genus_sampling_noise()]
-#' always builds with `"all"`.
+#' stratum. [check_cross_genus_sampling_noise()] always builds with `"all"`.
 #'
 #' @section Per-genus alignment (`by_genus = TRUE`):
 #' Whole-set alignment cost grows worse than linearly in sequence count, but
-#' `train_likelihood_model()` only ever consumes within-species pairs (H1),
+#' `train_likelihood_model()` only consumes within-species pairs (H1),
 #' same-genus cross-species pairs (H2), and a pooled cross-genus sample (H3,
-#' already coarse/pooled, never species-specific) -- none of which strictly
-#' need one shared whole-set alignment, only same-scale genomic coordinates
-#' *within* whatever comparison they're drawn from.
+#' coarse and never species-specific) -- none of which need one shared
+#' whole-set alignment, only same-scale genomic coordinates *within* whatever
+#' comparison they're drawn from.
 #'
 #' `by_genus = TRUE` does many smaller alignments instead of one huge one:
 #' each genus's own sequences are aligned together (giving every H1/H2 pair
 #' unchanged), but that alignment ALSO includes a copy of up to
 #' `max_foreign_reps_per_genus` OTHER genera's chosen representative
-#' sequences -- so every sequence, not just the genus's own representative,
+#' sequences, so every sequence, not just the genus's own representative,
 #' gets a real comparison against a real member of some (or, uncapped, every)
-#' other genus. A separate, small dedicated alignment of just the
-#' representatives (one per genus) supplies the representative-vs-
-#' representative pairs (excluded from the per-genus step to avoid computing
-#' them twice). Together these give H3 (and H2's pooled fallback for a genus
-#' with no real congener) a real cross-genus sample, at a fraction of the
-#' whole-set cost -- see `.align_pairs_by_genus()`'s own `@section Why every
-#' sequence, not just the representative` for the real-data finding that
-#' motivated this design (a representative-only version measurably inflated
-#' the `gap_logit` feature for every non-representative sequence), and its
-#' `@section Capping the foreign-representative count` for why the fix's
-#' first, uncapped version was itself found to cost more than whole-set
-#' alignment on real data. Both pieces are combined into one table with the
-#' identical column shape this function always returns --
-#' `train_likelihood_model()` needs no changes either way.
+#' other genus; a representative-only alignment would inflate the `gap_logit`
+#' feature for every non-representative sequence. A separate, small dedicated
+#' alignment of just the representatives (one per genus) supplies the
+#' representative-vs-representative pairs (excluded from the per-genus step
+#' to avoid computing them twice). Together these give H3 (and H2's pooled
+#' fallback for a genus with no real congener) a real cross-genus sample at a
+#' fraction of the whole-set cost; see `max_foreign_reps_per_genus` for why
+#' the cap matters. Both pieces are combined into one table with the same
+#' column shape this function always returns, so `train_likelihood_model()`
+#' needs no changes either way.
 #'
-#' Each genus's own representative is chosen at RANDOM, not "first" -- see
-#' `.align_pairs_by_genus()`'s own header for why (nothing guarantees
-#' `reference_df`'s row order is itself unbiased). Use
+#' Each genus's own representative is chosen at RANDOM, not "first", since
+#' nothing guarantees `reference_df`'s row order is unbiased. Use
 #' [check_cross_genus_sampling_noise()] to see how much that one random draw
-#' actually moves the cross-genus pair distribution before trusting a single
-#' run's H3 estimate on a new marker.
+#' moves the cross-genus pair distribution before trusting a single run's H3
+#' estimate on a new marker.
 #'
 #' A pair between two NON-representative sequences from two DIFFERENT genera
-#' is still never compared (recovering that would mean going back to
-#' whole-set cost) -- this design fixes "some sequences get zero cross-genus
-#' visibility at all," not the coarser representative-sampling approximation
-#' itself. Validate against a marker with an existing, already-trusted
+#' is never compared (recovering that would mean going back to whole-set
+#' cost). Validate against a marker with an existing, already-trusted
 #' whole-set-trained model before relying on this for a new one; do not
 #' assume the two approaches give numerically identical H1/H2/H3 parameters
 #' just because they consume conceptually the same pairs.
