@@ -116,13 +116,19 @@ resolved, after \code{input_rank} and before \code{decisions}, to the one
 candidate whose own lineage contains any of the context's names (the
 candidates' lineages are already fetched for the ambiguity report, so
 this adds no request); zero or several containing candidates leave it
-ambiguous. On EVERY backbone a returned classification that contradicts
-the context -- both carry comparable names (kingdoms are ignored, see
+ambiguous. Second, a returned classification that contradicts the
+context -- both carry comparable names (kingdoms are ignored, see
 \code{\link[=check_lineage_agreement]{check_lineage_agreement()}}) and share none -- is reported as
-unverified, never accepted: the Global Names path returns one best match
-per name with no way to prefer a lineage, and for a homonym that match can
-be the other taxon. A name is not a key; this is the caller's way of
-saying which one it means. Part of the cache key when given.}
+unverified, never accepted, but only where a CHOICE between taxa
+existed: on the NCBI path a name that had several candidates and was
+settled by \code{input_rank} or \code{decisions}; on the Global Names
+path (one best match, no candidate set) a match whose rank differs from
+\code{input_rank}, or any match when no rank was given. A unique node,
+or a match at the asked rank, is accepted however the backbones word
+its lineage: NCBI carries no phylum rank for many protist lineages, and
+GBIF and NCBI name the same clades differently, which is reclassification,
+not a homonym. A name is not a key; this is the caller's way of saying
+which one it means. Part of the cache key when given.}
 }
 \value{
 A tibble with one row per input name and the following columns:
