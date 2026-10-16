@@ -1012,11 +1012,11 @@ test_that("the second pass makes no extra call when no cleaning changed a name",
   expect_equal(calls, 1L) # first pass only; no hybrid label present
 })
 
-test_that("verify_fn declaring `ranks` receives taxon_name_rank aligned with the names", {
+test_that("verify_fn declaring `input_rank` receives taxon_name_rank aligned with the names", {
   got <- new.env()
-  mock <- function(name_list, backbone_id, ranks = NULL) {
+  mock <- function(name_list, backbone_id, input_rank = NULL) {
     got$names <- name_list
-    got$ranks <- ranks
+    got$input_rank <- input_rank
     .mock_verify_gbif(name_list, backbone_id)
   }
   df <- .ncbi_match_df
@@ -1025,10 +1025,10 @@ test_that("verify_fn declaring `ranks` receives taxon_name_rank aligned with the
     target_backbone_id = 11, verify_fn = mock
   ))
   expect_equal(got$names, unique(df$taxon_name))
-  expect_equal(got$ranks, c("species", "species", "genus", NA_character_))
+  expect_equal(got$input_rank, c("species", "species", "genus", NA_character_))
 })
 
-test_that("verify_fn WITHOUT a `ranks` argument is still called and works", {
+test_that("verify_fn WITHOUT an `input_rank` argument is still called and works", {
   mock <- function(name_list, backbone_id) {
     .mock_verify_gbif(name_list, backbone_id)
   }

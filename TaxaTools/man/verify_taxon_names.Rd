@@ -13,7 +13,7 @@ verify_taxon_names(
   decisions = NULL,
   cache_dir = NULL,
   cache_ttl_days = 365,
-  ranks = NULL,
+  input_rank = NULL,
   lineage = NULL
 )
 }
@@ -96,7 +96,7 @@ the uncached behaviour exactly.}
 than this is asked again, so backbone updates (renames, new synonymy)
 eventually reach a long-lived cache. \code{Inf} never expires.}
 
-\item{ranks}{Character vector or \code{NULL} (default). One rank per
+\item{input_rank}{Character vector or \code{NULL} (default). One rank per
 element of \code{name_list} (\code{"genus"}, \code{"species"}, ...; \code{NA}
 where unknown): the rank the CALLER means each name at. Only used by the
 NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
@@ -112,7 +112,7 @@ context per element of \code{name_list} (\code{NA} = none): a
 pipe-delimited string of ancestor names the caller already knows for that
 name, e.g. \code{"Chordata"} or \code{"Metazoa|Chordata|Actinopteri"}.
 Used twice. On the NCBI path (\code{backbone_id = 4}) a homonym is
-resolved, after \code{ranks} and before \code{decisions}, to the one
+resolved, after \code{input_rank} and before \code{decisions}, to the one
 candidate whose own lineage contains any of the context's names (the
 candidates' lineages are already fetched for the ambiguity report, so
 this adds no request); zero or several containing candidates leave it

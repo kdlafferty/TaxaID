@@ -64,8 +64,9 @@ auto-detects from columns in \code{likelihoods}.}
 \item{expansion_taxonomy}{Optional data frame mapping species names in
 \code{taxaexpect_priors} to their higher-rank taxonomy. Must contain
 \code{taxon_name} plus one or more coarser-rank columns (e.g. \code{genus},
-\code{family}). Typically produced by
-\code{TaxaTools::fill_higher_ranks(unique(taxaexpect_priors$taxon_name), local_sources = list(match_df))}. When \code{NULL} (default) and coarse-rank
+\code{family}). Typically produced from the priors' distinct
+(\code{taxon_name}, \code{taxon_name_rank}) pairs, passing each name's own rank:
+\code{TaxaTools::fill_higher_ranks(tx$taxon_name, input_rank = tx$taxon_name_rank, local_sources = list(match_df))}. When \code{NULL} (default) and coarse-rank
 likelihood rows are present, a warning is emitted and those rows fall
 back to the dark diversity floor prior. See Details.}
 

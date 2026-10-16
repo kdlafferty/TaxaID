@@ -100,11 +100,11 @@ test_that("escalates genus to family when family is present in the classificatio
   expect_equal(out$rank, "family")
 })
 
-test_that("the lookup passes current_rank as ranks= (primary and fallback)", {
+test_that("the lookup passes current_rank as input_rank= (primary and fallback)", {
   got <- list()
   local_mocked_bindings(
-    verify_taxon_names = function(names, backbone_id, ranks = NULL, ...) {
-      got[[length(got) + 1L]] <<- list(backbone_id = backbone_id, ranks = ranks)
+    verify_taxon_names = function(names, backbone_id, input_rank = NULL, ...) {
+      got[[length(got) + 1L]] <<- list(backbone_id = backbone_id, input_rank = input_rank)
       if (backbone_id == 4L) {
         return(.make_verified(names[1L], NA_character_, NA_character_))
       }
@@ -116,8 +116,8 @@ test_that("the lookup passes current_rank as ranks= (primary and fallback)", {
                           backbone_id = 4L, fallback_backbone_id = 11L,
                           verbose = FALSE)
   expect_length(got, 2L)
-  expect_equal(got[[1L]]$ranks, "genus")
-  expect_equal(got[[2L]]$ranks, "genus")
+  expect_equal(got[[1L]]$input_rank, "genus")
+  expect_equal(got[[2L]]$input_rank, "genus")
 })
 
 # =============================================================================

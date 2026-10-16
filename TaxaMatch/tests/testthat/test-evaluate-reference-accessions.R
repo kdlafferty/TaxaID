@@ -782,8 +782,8 @@ test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession v
   # name -- shape matches the real live response (classification_path/
   # classification_ranks pipe-delimited, verified 2026-08-10).
   proxy_ranks_seen <- NULL
-  mock_verify_ncbi <- function(name_list, backbone_id, ranks = NULL, ...) {
-    proxy_ranks_seen <<- ranks
+  mock_verify_ncbi <- function(name_list, backbone_id, input_rank = NULL, ...) {
+    proxy_ranks_seen <<- input_rank
     tibble::tibble(
       user_supplied_name = "Ctenopharyngodon idella",
       matched_name = "Ctenopharyngodon idella",
@@ -807,7 +807,7 @@ test_that("evaluate_reference_accessions() resolves a hybrid-labeled accession v
   out <- evaluate_reference_accessions("ACC_HYBRID", cache_dir = NULL, verbose = FALSE, barcode_term = "12S")
 
   expect_equal(out$taxonomy_resolution_source, "hybrid_maternal_proxy")
-  # maternal-parent proxies are binomials: verify_taxon_names() gets ranks=species
+  # maternal-parent proxies are binomials: verify_taxon_names() gets input_rank=species
   expect_equal(proxy_ranks_seen, "species")
   # Without the proxy, this would read "incongruent" (no family/genus on the
   # query side to ever agree with) -- the real, confirmed false-positive
