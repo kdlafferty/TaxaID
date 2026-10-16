@@ -163,7 +163,7 @@ test_that("no ranks, no lineage: all homonyms unverified with ONE warning", {
 
 test_that("ranks = 'genus' resolves exactly the genus-vs-subgenus names", {
   .lh_setup()
-  r <- .lh_run(.lh_ambiguous_names, ranks = rep("genus", 22L))
+  r <- .lh_run(.lh_ambiguous_names, input_rank = rep("genus", 22L))
   by_rank <- c("Apogon", "Callionymus", "Etheostoma", "Hirundichthys")
   expect_match(r$msgs, "resolved by the caller's rank")
   expect_true(all(vapply(by_rank, grepl, logical(1L), x = r$msgs, fixed = TRUE)))
@@ -184,7 +184,7 @@ test_that("ranks = 'genus' resolves exactly the genus-vs-subgenus names", {
 
 test_that("ranks = 'genus' + lineage = 'Chordata': every fish homonym resolves to its fish", {
   .lh_setup()
-  r <- .lh_run(.lh_ambiguous_names, ranks = rep("genus", 22L),
+  r <- .lh_run(.lh_ambiguous_names, input_rank = rep("genus", 22L),
                lineage = rep("Chordata", 22L))
   fish <- c("Argentina", "Ariopsis", "Calamus", "Coris", "Heterotis", "Jordania",
             "Liparis", "Ophidion", "Schindleria", "Trichodon", "Woodsia", "Ranzania",
@@ -215,12 +215,12 @@ test_that("ranks = 'genus' + lineage = 'Chordata': every fish homonym resolves t
 
 test_that("Ulvaria with lineage 'Chordata|Chlorophyta' stays unverified (both candidates match a term)", {
   .lh_setup()
-  r <- .lh_run("Ulvaria", ranks = "genus", lineage = "Chordata|Chlorophyta")
+  r <- .lh_run("Ulvaria", input_rank = "genus", lineage = "Chordata|Chlorophyta")
   expect_false(r$out$verified)
   expect_true(is.na(r$out$matched_name))
   expect_match(r$warns, "could not be told apart")
   # ...and a single-term context does separate them.
-  r2 <- .lh_run("Ulvaria", ranks = "genus", lineage = "Chlorophyta")
+  r2 <- .lh_run("Ulvaria", input_rank = "genus", lineage = "Chlorophyta")
   expect_true(r2$out$verified)
   expect_match(r2$out$classification_path, "Chlorophyta")
 })
@@ -230,7 +230,7 @@ test_that("Ulvaria with lineage 'Chordata|Chlorophyta' stays unverified (both ca
 test_that("decisions still resolve a name that rank and lineage left unverified", {
   .lh_setup()
   dec <- data.frame(name = "Dugesia", taxid = "6160", stringsAsFactors = FALSE)
-  r <- .lh_run(c("Argentina", "Dugesia"), ranks = c("genus", "genus"),
+  r <- .lh_run(c("Argentina", "Dugesia"), input_rank = c("genus", "genus"),
                lineage = c("Chordata", NA), decisions = dec)
   expect_true(all(r$out$verified))
   expect_match(.lh_row(r$out, "Dugesia")$classification_path, "Platyhelminthes")

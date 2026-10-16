@@ -115,11 +115,11 @@ test_that("a rank enters the cache key only on the NCBI path: GlobalNames entrie
   f <- .fake_verify(c(Aa = "Aa"))
   local_mocked_bindings(.verify_taxon_names_uncached = f$fn)
   verify_taxon_names("Aa", backbone_id = 11L, cache_dir = dir)
-  expect_message(verify_taxon_names("Aa", backbone_id = 11L, cache_dir = dir, ranks = "genus"), "served from cache")
+  expect_message(verify_taxon_names("Aa", backbone_id = 11L, cache_dir = dir, input_rank = "genus"), "served from cache")
   expect_length(f$calls$names, 1L)                            # GlobalNames: rank ignored, still a hit
   verify_taxon_names("Aa", backbone_id = 4L, cache_dir = dir)
   n <- length(f$calls$names)
-  verify_taxon_names("Aa", backbone_id = 4L, cache_dir = dir, ranks = "genus")
+  verify_taxon_names("Aa", backbone_id = 4L, cache_dir = dir, input_rank = "genus")
   expect_identical(length(f$calls$names), n + 1L)             # NCBI: a rank is a different question
-  expect_message(verify_taxon_names("Aa", backbone_id = 4L, cache_dir = dir, ranks = "genus"), "served from cache")
+  expect_message(verify_taxon_names("Aa", backbone_id = 4L, cache_dir = dir, input_rank = "genus"), "served from cache")
 })

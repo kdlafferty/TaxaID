@@ -679,7 +679,7 @@ verify_taxon_names <- function(name_list,
     fresh <- .verify_taxon_names_uncached(miss, backbone_id,
       batch_size = batch_size, timeout_sec = timeout_sec,
       fallback_backbone_id = fallback_backbone_id, decisions = decisions,
-      ranks = if (is.null(rank_of)) NULL else unname(rank_of[miss]),
+      input_rank = if (is.null(rank_of)) NULL else unname(rank_of[miss]),
       lineage = if (is.null(lin_of)) NULL else unname(lin_of[miss])
     )
     fresh <- fresh[!duplicated(fresh$user_supplied_name), , drop = FALSE]
@@ -756,7 +756,7 @@ verify_taxon_names <- function(name_list,
 #'   be \code{4}.
 #' @param ranks Named character vector (names = \code{clean_names}) or NULL:
 #'   the caller's rank for each name, used to resolve a homonym by rank before
-#'   \code{decisions} is consulted. See \code{verify_taxon_names(ranks =)}.
+#'   \code{decisions} is consulted. See \code{verify_taxon_names(input_rank =)}.
 #' @param decisions See \code{\link{verify_taxon_names}}'s own \code{@param
 #'   decisions} -- NULL, a \code{data.frame(name, taxid)}, or a path to an
 #'   \code{.rds} file holding one.

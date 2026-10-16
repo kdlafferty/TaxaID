@@ -105,7 +105,7 @@ escalate_taxonomic_rank <- function(taxon_name,
   if (!is.null(backbone_id)) {
     verified <- tryCatch(
       verify_taxon_names(
-        taxon_name, backbone_id = backbone_id, ranks = current_rank,
+        taxon_name, backbone_id = backbone_id, input_rank = current_rank,
         # decisions only means anything for backbone_id = 4 -- forwarding it
         # unconditionally would trip verify_taxon_names()'s own "unused"
         # warning whenever this is a non-NCBI primary backbone.
@@ -134,7 +134,7 @@ escalate_taxonomic_rank <- function(taxon_name,
     }
     verified <- tryCatch(
       verify_taxon_names(
-        taxon_name, backbone_id = fallback_backbone_id, ranks = current_rank,
+        taxon_name, backbone_id = fallback_backbone_id, input_rank = current_rank,
         decisions = if (identical(as.integer(fallback_backbone_id), 4L)) decisions else NULL
       ),
       error = function(e) {

@@ -766,7 +766,7 @@ parse_classification_path <- function(path, ranks, target_rank) {
         # unless the caller said (`input_rank`) the whole name sits at a
         # coarser rank. The rank is known and free: it separates Etheostoma
         # the genus from Etheostoma the subgenus with no decision from anyone.
-        ranks = if (is.null(rank_of)) rep("genus", length(nm)) else {
+        input_rank = if (is.null(rank_of)) rep("genus", length(nm)) else {
           r <- unname(rank_of[nm]); r[is.na(r)] <- "genus"; r
         },
         # The caller's own lineage for the taxon (phylum/class it already
