@@ -1540,11 +1540,11 @@ join_priors <- function(likelihoods,
         {
           vargs <- list(names_to_query, backbone_id = backbone_id)
           # The row's own rank resolves an NCBI homonym without a decision
-          # (see posterior_consensus()); only when the installed TaxaTools
-          # takes it.
-          if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names)) &&
-            "taxon_name_rank" %in% names(result)) {
-            vargs$ranks <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]
+          # (see posterior_consensus()). The nine packages version-lock and
+          # install as a set, so the argument is passed outright: a rename
+          # must fail loudly here, not silently stop passing the rank.
+          if ("taxon_name_rank" %in% names(result)) {
+            vargs$input_rank <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]
           }
           verified <- do.call(TaxaTools::verify_taxon_names, vargs)
           TaxaTools::change_backbone(verified,

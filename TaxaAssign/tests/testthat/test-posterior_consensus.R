@@ -2626,11 +2626,13 @@ test_that("the tie order is byte order, so it cannot shift with the locale", {
 
 test_that("lookup_missing_taxonomy passes each unreferenced hypothesis's own rank to verify_taxon_names (homonym resolution)", {
   skip_if_not_installed("TaxaTools")
-  skip_if_not("ranks" %in% names(formals(TaxaTools::verify_taxon_names)), "installed TaxaTools predates ranks=")
+  # A hard expectation: the rank must ARRIVE at verify_taxon_names(input_rank =).
+  # No formals check, so a rename of that argument fails this test instead of
+  # silently switching the pass-through off.
   seen <- new.env()
   testthat::local_mocked_bindings(
-    verify_taxon_names = function(name_list, backbone_id, ..., ranks = NULL) {
-      seen$names <- name_list; seen$ranks <- ranks
+    verify_taxon_names = function(name_list, backbone_id, ..., input_rank = NULL) {
+      seen$names <- name_list; seen$ranks <- input_rank
       data.frame(user_supplied_name = name_list, matched_name = NA_character_, classification_path = NA_character_,
                  classification_ranks = NA_character_, verified = TRUE, matched = FALSE, stringsAsFactors = FALSE)
     },
@@ -2647,5 +2649,6 @@ test_that("lookup_missing_taxonomy passes each unreferenced hypothesis's own ran
   suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species"),
     posterior_col = "posterior_point_est", lookup_missing_taxonomy = TRUE, backbone_id = 4L)))
   expect_setequal(seen$names, c("Etheostoma", "Percidae"))
+  expect_false(is.null(seen$ranks))
   expect_identical(unname(seen$ranks[match(c("Etheostoma", "Percidae"), seen$names)]), c("genus", "family"))
 })

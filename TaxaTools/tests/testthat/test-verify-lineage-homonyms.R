@@ -244,12 +244,18 @@ test_that("decisions still resolve a name that rank and lineage left unverified"
 
 # ---- 5 ------------------------------------------------------------------------
 
-test_that("the agreement gate turns a contradicting UNIQUE match into an unverified row", {
+test_that("reclassification is not a homonym: a UNIQUE match with a contradicting context is accepted", {
   .lh_setup()
+  # Lonelyplant has one NCBI node (a plant). Asked with a Chordata context the
+  # backbone's placement differs from the caller's, but no choice between taxa
+  # existed, so the match stands and nothing is reported as contradicting.
   bad <- .lh_run("Lonelyplant", lineage = "Chordata")
-  expect_false(bad$out$verified)
-  expect_true(is.na(bad$out$matched_name))
-  expect_match(bad$msgs, "contradicts")
+  expect_true(bad$out$verified)
+  expect_false(is.na(bad$out$matched_name))
+  expect_false(is.na(bad$out$classification_path))
+  expect_match(bad$out$classification_path, "Streptophyta")
+  expect_false(grepl("contradicts", bad$msgs))
+  expect_length(bad$warns, 0L)
 
   ok <- .lh_run("Lonelyplant", lineage = "Streptophyta")
   expect_true(ok$out$verified)
@@ -259,6 +265,162 @@ test_that("the agreement gate turns a contradicting UNIQUE match into an unverif
   none <- .lh_run("Lonelyplant", lineage = NA_character_)
   expect_true(none$out$verified)
   expect_false(is.na(none$out$matched_name))
+})
+
+# ---- 5b: gate eligibility on the NCBI path -----------------------------------
+# A second small fixture with raw lineages: the Nuda-like pair (a genus node in
+# Preaxostyla vs a class node in Ctenophora) and a unique protist whose path
+# carries no phylum rank.
+
+.lh2_cands <- list(
+  list(name = "Nuda", taxid = "810001", rank = "genus", division = "excavates",
+       nodes = list(c("cellular organisms", "no rank"), c("Eukaryota", "superkingdom"),
+                    c("Metamonada", "clade"), c("Preaxostyla", "class"))),
+  list(name = "Nuda", taxid = "810002", rank = "class", division = "comb jellies",
+       nodes = list(c("cellular organisms", "no rank"), c("Eukaryota", "superkingdom"),
+                    c("Metazoa", "kingdom"))),  # the class node IS Ctenophora; its own name is not in its lineage
+  list(name = "Chlamydaster", taxid = "810003", rank = "genus", division = "protists",
+       nodes = list(c("cellular organisms", "no rank"), c("Eukaryota", "superkingdom"),
+                    c("Haptista", "clade"), c("Centroplasthelida", "class"),
+                    c("Pterocystida", "order"), c("Pterocystidae", "family")))
+)
+
+.lh2_taxon_xml <- function(cd) {
+  lin <- paste(vapply(seq_along(cd$nodes), function(j) sprintf(
+    "<Taxon><TaxId>%d</TaxId><ScientificName>%s</ScientificName><Rank>%s</Rank></Taxon>",
+    5000L + j, cd$nodes[[j]][1], cd$nodes[[j]][2]), character(1L)), collapse = "")
+  sprintf("<Taxon><TaxId>%s</TaxId><ScientificName>%s</ScientificName><Rank>%s</Rank><LineageEx>%s</LineageEx></Taxon>",
+          cd$taxid, cd$name, cd$rank, lin)
+}
+
+.lh2_setup <- function(env = parent.frame()) {
+  tid <- vapply(.lh2_cands, `[[`, "", "taxid")
+  nms <- vapply(.lh2_cands, `[[`, "", "name")
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, ...) {
+      ids <- tid[vapply(nms, function(n) grepl(sprintf('"%s"[Scientific Name]', n), term, fixed = TRUE), logical(1L))]
+      list(count = as.character(length(ids)), ids = ids)
+    },
+    entrez_summary = function(db, id, ...) {
+      out <- lapply(match(as.character(id), tid), function(i) .mk_lh_summary(
+        tid[i], .lh2_cands[[i]]$rank, .lh2_cands[[i]]$division, nms[i]))
+      if (length(out) == 1L) out[[1L]] else out
+    },
+    entrez_fetch = function(db, id, rettype, ...) {
+      sprintf("<TaxaSet>%s</TaxaSet>", paste(vapply(
+        .lh2_cands[match(as.character(id), tid)], .lh2_taxon_xml, character(1L)), collapse = ""))
+    },
+    .package = "rentrez", .env = env
+  )
+  testthat::local_mocked_bindings(
+    .is_interactive_session = function() FALSE, .package = "TaxaTools", .env = env
+  )
+  invisible(NULL)
+}
+
+test_that("the seven protists: a unique node with no phylum rank is accepted against a differing context", {
+  .lh2_setup()
+  r <- .lh_run("Chlamydaster", input_rank = "genus", lineage = "Heliozoa")
+  expect_true(r$out$verified)
+  expect_false(is.na(r$out$matched_name))
+  expect_match(r$out$classification_path, "Pterocystidae")
+  expect_false(grepl("contradicts", r$msgs))
+})
+
+test_that("a multi-candidate name settled by RANK whose node contradicts the context is refused", {
+  .lh2_setup()
+  r <- .lh_run("Nuda", input_rank = "genus", lineage = "Ctenophora")
+  expect_match(r$msgs, "resolved by the caller's rank")
+  expect_false(r$out$verified)
+  expect_true(is.na(r$out$matched_name))
+  expect_match(r$msgs, "contradicts")
+  expect_match(r$msgs, "deterministic")
+  # ...while a context the rank-chosen genus agrees with is accepted.
+  ok <- .lh_run("Nuda", input_rank = "genus", lineage = "Preaxostyla")
+  expect_true(ok$out$verified)
+  expect_match(ok$out$classification_path, "Preaxostyla")
+})
+
+test_that("a multi-candidate name settled by DECISIONS whose node contradicts the context is refused", {
+  .lh2_setup()
+  dec <- data.frame(name = "Nuda", taxid = "810001", stringsAsFactors = FALSE)
+  r <- .lh_run("Nuda", lineage = "Ctenophora", decisions = dec)
+  expect_false(r$out$verified)
+  expect_true(is.na(r$out$matched_name))
+  expect_match(r$msgs, "contradicts")
+  expect_match(r$msgs, "deterministic")
+})
+
+test_that("a multi-candidate name settled by LINEAGE is accepted", {
+  .lh_setup()
+  r <- .lh_run("Argentina", input_rank = "genus", lineage = "Chordata")
+  expect_true(r$out$verified)
+  expect_false(is.na(r$out$matched_name))
+  expect_match(r$out$classification_path, "Chordata")
+  expect_false(grepl("contradicts", r$msgs))
+})
+
+# ---- 5c: gate eligibility on the Global Names path ---------------------------
+
+.lh_gn_item <- function(name, canon, path, ranks) {
+  list(name = name, bestResult = list(
+    matchedCanonicalSimple = canon, currentCanonicalSimple = canon, isSynonym = FALSE,
+    classificationPath = path, classificationRanks = ranks, score = 1))
+}
+
+.lh_gn_setup <- function(items, env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    POST = function(url, body, ...) structure(list(names = unlist(body$nameStrings)), class = "response"),
+    status_code = function(resp) 200L,
+    content = function(resp, ...) list(names = unname(items[resp$names])),
+    .package = "httr", .env = env
+  )
+}
+
+test_that("Global Names: gated only when the match rank differs from input_rank, or no rank was given", {
+  items <- list(
+    Appendicularia = .lh_gn_item("Appendicularia", "Appendicularia",
+      "Plantae|Tracheophyta|Magnoliopsida|Myrtales|Melastomataceae|Appendicularia",
+      "kingdom|phylum|class|order|family|genus"),
+    Filoreta = .lh_gn_item("Filoreta", "Filoreta",
+      "Chromista|Cercozoa|Filoretidae|Filoreta", "kingdom|phylum|family|genus")
+  )
+  .lh_gn_setup(items)
+  vgn <- function(nm, ...) {
+    msgs <- character(0L)
+    out <- withCallingHandlers(
+      suppressWarnings(verify_taxon_names(nm, backbone_id = 11L, ...)),
+      message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
+    list(out = out, msgs = paste(msgs, collapse = "\n"))
+  }
+  # (a) asked a class, answered a disjoint genus: the other taxon -> refused
+  a <- vgn("Appendicularia", input_rank = "class", lineage = "Chordata")
+  expect_false(a$out$verified)
+  expect_true(is.na(a$out$matched_name))
+  expect_match(a$msgs, "contradicts")
+  # (b) same rank, lineage differs: reclassification -> accepted
+  b <- vgn("Filoreta", input_rank = "genus", lineage = "Endomyxa")
+  expect_true(b$out$verified)
+  expect_equal(b$out$matched_name, "Filoreta")
+  expect_match(b$out$classification_path, "Cercozoa")
+  expect_false(grepl("contradicts", b$msgs))
+  # (c) no rank given: the name test alone decides -> refused
+  c3 <- vgn("Filoreta", lineage = "Endomyxa")
+  expect_false(c3$out$verified)
+  expect_true(is.na(c3$out$matched_name))
+  expect_match(c3$msgs, "contradicts")
+})
+
+test_that(".apply_lineage_gate: only eligible rows are gated", {
+  df <- data.frame(
+    user_supplied_name = c("A", "B"), verified = TRUE, matched_name = c("A", "B"),
+    matched_rank = "genus", is_synonym = FALSE,
+    classification_path = "cellular organisms|Eukaryota|Viridiplantae|Streptophyta|X",
+    classification_ranks = "superkingdom|kingdom|phylum|genus",
+    score = 1, matched = TRUE, stringsAsFactors = FALSE)
+  out <- suppressMessages(TaxaTools:::.apply_lineage_gate(df, c("Chordata", "Chordata"), c(FALSE, TRUE)))
+  expect_true(out$verified[1])
+  expect_false(out$verified[2])
 })
 
 # ---- 6 ------------------------------------------------------------------------
@@ -341,4 +503,152 @@ test_that("a lineage of the wrong length errors", {
     TaxaTools:::.check_verify_lineage(c("a", "b", "c"), c("x", "y")),
     "one lineage context"
   )
+})
+
+# ---- 10: per-row alignment of the NCBI gate -----------------------------------
+# Nuda (lh2 fixture) and Argentina (lh fixture) in one mocked rentrez.
+
+.lh3_setup <- function(env = parent.frame()) {
+  fx <- .mk_lineage_homonym_fixture()
+  tid2 <- vapply(.lh2_cands, `[[`, "", "taxid")
+  nms2 <- vapply(.lh2_cands, `[[`, "", "name")
+  is2 <- function(id) as.character(id) %in% tid2
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, ...) {
+      ids2 <- tid2[vapply(nms2, function(n) grepl(sprintf('"%s"[Scientific Name]', n), term, fixed = TRUE), logical(1L))]
+      r1 <- fx$entrez_search(db, term, ...)
+      ids <- c(r1$ids, ids2)
+      list(count = as.character(length(ids)), ids = ids)
+    },
+    entrez_summary = function(db, id, ...) {
+      out <- lapply(as.character(id), function(i) {
+        if (is2(i)) {
+          k <- match(i, tid2)
+          .mk_lh_summary(i, .lh2_cands[[k]]$rank, .lh2_cands[[k]]$division, nms2[k])
+        } else fx$entrez_summary(db, i, ...)
+      })
+      if (length(out) == 1L) out[[1L]] else out
+    },
+    entrez_fetch = function(db, id, rettype, ...) {
+      parts <- vapply(as.character(id), function(i) {
+        if (is2(i)) .lh2_taxon_xml(.lh2_cands[[match(i, tid2)]])
+        else .lh_taxon_xml(match(i, .lh_cands$taxid))
+      }, character(1L))
+      sprintf("<TaxaSet>%s</TaxaSet>", paste(parts, collapse = ""))
+    },
+    .package = "rentrez", .env = env
+  )
+  testthat::local_mocked_bindings(
+    .is_interactive_session = function() FALSE, .package = "TaxaTools", .env = env
+  )
+  invisible(NULL)
+}
+
+test_that("NCBI gate is aligned per input row with duplicate, NA and empty names", {
+  .lh3_setup()
+  nm <- c("Nuda", NA, "Nuda", "", "Argentina", "Nuda")
+  r <- .lh_run(nm,
+               input_rank = c("genus", NA, "genus", NA, "genus", "genus"),
+               lineage = c("Ctenophora", NA, "Ctenophora", NA, "Chordata", "Preaxostyla"))
+  o <- r$out
+  expect_equal(nrow(o), 6L)
+  expect_false(o$verified[1]); expect_true(is.na(o$matched_name[1]))
+  expect_false(o$verified[3]); expect_true(is.na(o$matched_name[3]))
+  expect_true(o$verified[6])
+  expect_match(o$classification_path[6], "Preaxostyla")
+  expect_true(o$verified[5])
+  expect_match(o$classification_path[5], "Chordata")
+  expect_false(o$verified[2])
+  expect_false(o$verified[4])
+  expect_true(is.na(o$user_supplied_name[2]) || o$user_supplied_name[2] == "")
+  expect_true(is.na(o$user_supplied_name[4]) || o$user_supplied_name[4] == "")
+  expect_equal(o$user_supplied_name[c(1, 3, 5, 6)], c("Nuda", "Nuda", "Argentina", "Nuda"))
+})
+
+test_that("NCBI gate: a unique protist duplicated three times is accepted on every row", {
+  .lh2_setup()
+  r <- .lh_run(rep("Chlamydaster", 3L), input_rank = rep("genus", 3L),
+               lineage = rep("Heliozoa", 3L))
+  expect_equal(nrow(r$out), 3L)
+  expect_true(all(r$out$verified))
+  expect_false(any(is.na(r$out$matched_name)))
+  expect_false(grepl("contradicts", r$msgs))
+})
+
+# ---- 11: Global Names same-rank match gated on kingdom only -------------------
+
+test_that("Global Names: a same-rank match is gated only on a kingdom difference", {
+  ulv <- .lh_gn_item("Ulvaria", "Ulvaria",
+    "Plantae|Chlorophyta|Ulvophyceae|Ulvales|Ulvaceae|Ulvaria",
+    "kingdom|phylum|class|order|family|genus")
+  items <- list(
+    Ulvaria = ulv,
+    Filoreta = .lh_gn_item("Filoreta", "Filoreta",
+      "Chromista|Cercozoa|Filoretidae|Filoreta", "kingdom|phylum|family|genus"),
+    Appendicularia = .lh_gn_item("Appendicularia", "Appendicularia",
+      "Viridiplantae|Streptophyta|Magnoliopsida|Appendicularia",
+      "clade|phylum|class|genus")
+  )
+  .lh_gn_setup(items)
+  vgn <- function(nm, ...) {
+    msgs <- character(0L)
+    out <- withCallingHandlers(
+      suppressWarnings(verify_taxon_names(nm, backbone_id = 11L, ...)),
+      message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
+    list(out = out, msgs = paste(msgs, collapse = "\n"))
+  }
+  refused <- function(x, info) {
+    expect_false(x$out$verified, info = info)
+    expect_true(is.na(x$out$matched_name), info = info)
+    expect_match(x$msgs, "contradicts", info = info)
+  }
+  # (a) fish context, algal genus at the asked rank
+  refused(vgn("Ulvaria", input_rank = "genus", lineage = "Animalia|Chordata|Perciformes"), "a")
+  # (b) Metazoa normalises to Animalia
+  refused(vgn("Ulvaria", input_rank = "genus", lineage = "Metazoa|Chordata"), "b")
+  # (c) same kingdom: reclassification
+  cc <- vgn("Filoreta", input_rank = "genus", lineage = "Chromista|Endomyxa")
+  expect_true(cc$out$verified)
+  expect_equal(cc$out$matched_name, "Filoreta")
+  expect_false(grepl("contradicts", cc$msgs))
+  # (d) no kingdom in the context: the rule cannot fire
+  d <- vgn("Ulvaria", input_rank = "genus", lineage = "Chordata|Perciformes")
+  expect_true(d$out$verified)
+  expect_false(grepl("contradicts", d$msgs))
+  # (e) path without a kingdom rank but with a known kingdom name
+  refused(vgn("Appendicularia", input_rank = "genus", lineage = "Animalia|Chordata"), "e")
+  # (f) different rank still uses the plain lineage test
+  refused(vgn("Appendicularia", input_rank = "class", lineage = "Chordata"), "f")
+})
+
+# ---- 12: kingdom helpers ------------------------------------------------------
+
+test_that(".kingdoms_of_context returns the SET of kingdoms named, normalised, empty when none", {
+  f <- TaxaTools:::.kingdoms_of_context
+  expect_identical(f("Metazoa|Chordata"), "animalia")
+  expect_identical(f("Animalia|Chordata"), "animalia")
+  expect_identical(f("chordata|Viridiplantae"), "plantae")
+  expect_identical(f("Plantae > x"), character(0))  # only the pipe delimits
+  expect_identical(f("Fungi|Ascomycota"), "fungi")
+  expect_identical(f("Chordata|Perciformes"), character(0))
+  expect_identical(f(NA_character_), character(0))
+  # a union context names two kingdoms, in either order, once each
+  expect_setequal(f("Metazoa|Chordata|Plantae|Chlorophyta"), c("animalia", "plantae"))
+  expect_setequal(f("Plantae|Chlorophyta|Metazoa|Chordata|Animalia"), c("animalia", "plantae"))
+})
+
+test_that(".kingdom_of_path prefers the kingdom-rank node and handles NA", {
+  f <- TaxaTools:::.kingdom_of_path
+  expect_identical(f("Plantae|Chlorophyta|Ulvaria", "kingdom|phylum|genus"), "plantae")
+  expect_identical(f("Metazoa|Chordata|X", "kingdom|phylum|genus"), "animalia")
+  # kingdom-rank node wins over a later known name
+  expect_identical(f("Chromista|Fungi|X", "kingdom|phylum|genus"), "chromista")
+  # no kingdom rank: first known kingdom name among the nodes
+  expect_identical(f("Viridiplantae|Streptophyta|Appendicularia", "clade|phylum|genus"), "plantae")
+  expect_identical(f("Viridiplantae|Streptophyta|Fungi", NA_character_), "plantae")
+  # kingdom-rank node is not a known kingdom name: fall back to other nodes
+  expect_identical(f("Foo|Fungi|X", "kingdom|phylum|genus"), "fungi")
+  expect_identical(f("A|B|C", "kingdom|phylum|genus"), NA_character_)
+  expect_identical(f(NA_character_, "kingdom"), NA_character_)
+  expect_identical(f("", "kingdom"), NA_character_)
 })
