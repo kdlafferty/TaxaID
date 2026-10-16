@@ -512,11 +512,15 @@ verify_taxon_names <- function(name_list,
   # path carry a kingdom (Animalia/Metazoa, Plantae/Viridiplantae, Fungi,
   # Chromista, Protozoa, Bacteria, Archaea) and they differ. A context with
   # no kingdom name leaves a same-rank match accepted.
+  # Eligibility only matters when a lineage context exists at all; without
+  # one the gate is a no-op and `lineage` is NULL, so nothing below may index
+  # it (the fill's default fallback reaches here with input_rank and no
+  # lineage).
   gate_eligible <- rep(TRUE, nrow(final_df))
-  if (!is.null(ranks) && "matched_rank" %in% names(final_df)) {
+  if (!is.null(lineage) && !is.null(ranks) && "matched_rank" %in% names(final_df)) {
     mr <- tolower(final_df$matched_rank)
     known <- !is.na(ranks) & !is.na(mr)
-    same <- known & mr == ranks
+    same <- known & mr == ranks & !is.na(lineage)
     gate_eligible[known] <- mr[known] != ranks[known]
     if (any(same)) {
       kc <- vapply(lineage[same], .kingdom_of_context, character(1L))
