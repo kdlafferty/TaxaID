@@ -67,9 +67,13 @@
 #'   more than one NCBI node: when exactly one candidate carries the given
 #'   rank, that node is taken, with no further request and before
 #'   \code{decisions} is consulted. "Etheostoma" is both a genus and a
-#'   subgenus; a consensus table knows which it means. Silently unused by the
-#'   Global Names path. On the NCBI path a rank that is given enters the
-#'   cache key (see \code{cache_dir}); elsewhere the key is unchanged.
+#'   subgenus; a consensus table knows which it means. On the Global Names
+#'   path it does not change the query (one best match is returned) but it
+#'   decides, with \code{lineage}, whether that match can be gated: a match
+#'   at another rank is gated on its lineage, a match at the asked rank only
+#'   on a kingdom difference (see \code{lineage}). On the NCBI path a rank
+#'   that is given enters the cache key (see \code{cache_dir}); elsewhere
+#'   the key is unchanged.
 #' @param lineage Character vector or \code{NULL} (default). One lineage
 #'   context per element of \code{name_list} (\code{NA} = none): a
 #'   pipe-delimited string of ancestor names the caller already knows for that
@@ -86,9 +90,14 @@
 #'   existed: on the NCBI path a name that had several candidates and was
 #'   settled by \code{input_rank} or \code{decisions}; on the Global Names
 #'   path (one best match, no candidate set) a match whose rank differs from
-#'   \code{input_rank}, or any match when no rank was given. A unique node,
-#'   or a match at the asked rank, is accepted however the backbones word
-#'   its lineage: NCBI carries no phylum rank for many protist lineages, and
+#'   \code{input_rank}, or any match when no rank was given; a match AT the
+#'   asked rank is gated only when the context names a kingdom (Animalia or
+#'   Metazoa, Plantae or Viridiplantae, Fungi, Chromista, Protozoa, Bacteria,
+#'   Archaea) and the returned path's kingdom differs, since a same-rank
+#'   homonym such as Ulvaria (a fish genus and an alga genus) crosses
+#'   kingdoms while a reclassification never does. A unique node, or a
+#'   same-rank match within one kingdom, is accepted however the backbones
+#'   word its lineage: NCBI carries no phylum rank for many protist lineages, and
 #'   GBIF and NCBI name the same clades differently, which is reclassification,
 #'   not a homonym. A name is not a key; this is the caller's way of saying
 #'   which one it means. Part of the cache key when given.
@@ -306,7 +315,8 @@ verify_taxon_names <- function(name_list,
     # backbones disagree about placement (NCBI has no phylum rank for many
     # protist lineages), which is not a homonym. So only names settled by
     # rank or decisions among several candidates are gated.
-    gate_eligible <- clean_names %in% attr(unique_df, "lineage_gate_names")
+    # Per INPUT ROW (final_df, lineage): trimmed_names, not the unique list.
+    gate_eligible <- trimmed_names %in% attr(unique_df, "lineage_gate_names")
     return(.apply_lineage_gate(final_df, lineage, gate_eligible))
   }
 
@@ -495,13 +505,58 @@ verify_taxon_names <- function(name_list,
   # match at ANOTHER rank whose lineage shares nothing with the context is
   # the other taxon (the rank-agreement rule). Where the caller gave no rank,
   # or the backbone reports none, the name test alone decides as before.
+  # A match AT the asked rank can still be the other taxon when the name is
+  # a homonym at that rank (Ulvaria the fish genus and Ulvaria the alga): the
+  # one thing reclassification never does is move a taxon across KINGDOMS, so
+  # a same-rank match is gated only when both the context and the returned
+  # path carry a kingdom (Animalia/Metazoa, Plantae/Viridiplantae, Fungi,
+  # Chromista, Protozoa, Bacteria, Archaea) and they differ. A context with
+  # no kingdom name leaves a same-rank match accepted.
   gate_eligible <- rep(TRUE, nrow(final_df))
   if (!is.null(ranks) && "matched_rank" %in% names(final_df)) {
     mr <- tolower(final_df$matched_rank)
     known <- !is.na(ranks) & !is.na(mr)
+    same <- known & mr == ranks
     gate_eligible[known] <- mr[known] != ranks[known]
+    if (any(same)) {
+      kc <- vapply(lineage[same], .kingdom_of_context, character(1L))
+      kp <- mapply(.kingdom_of_path, final_df$classification_path[same],
+                   final_df$classification_ranks[same], USE.NAMES = FALSE)
+      gate_eligible[same] <- !is.na(kc) & !is.na(kp) & kc != kp
+    }
   }
   .apply_lineage_gate(final_df, lineage, gate_eligible)
+}
+
+# Kingdom vocabularies differ between backbones; one normalised label each.
+.KINGDOM_LABELS <- c(metazoa = "animalia", animalia = "animalia",
+                     viridiplantae = "plantae", plantae = "plantae",
+                     fungi = "fungi", chromista = "chromista", protozoa = "protozoa",
+                     bacteria = "bacteria", archaea = "archaea")
+
+#' The kingdom named in a pipe-delimited context, normalised; NA if none
+#' @noRd
+.kingdom_of_context <- function(ctx) {
+  if (is.na(ctx)) return(NA_character_)
+  terms <- tolower(trimws(strsplit(ctx, "|", fixed = TRUE)[[1L]]))
+  k <- unname(.KINGDOM_LABELS[terms]); k <- k[!is.na(k)]
+  if (length(k)) k[[1L]] else NA_character_
+}
+
+#' The kingdom of a classification path: its kingdom-rank node, else the
+#' first node that is a known kingdom name; NA if none
+#' @noRd
+.kingdom_of_path <- function(path, ranks) {
+  if (is.na(path) || !nzchar(path)) return(NA_character_)
+  nodes <- tolower(trimws(strsplit(path, "|", fixed = TRUE)[[1L]]))
+  rk <- if (is.na(ranks)) character(0L) else tolower(trimws(strsplit(ranks, "|", fixed = TRUE)[[1L]]))
+  i <- which(rk == "kingdom")
+  if (length(i) && i[[1L]] <= length(nodes)) {
+    k <- unname(.KINGDOM_LABELS[nodes[i[[1L]]]])
+    if (!is.na(k)) return(k)
+  }
+  k <- unname(.KINGDOM_LABELS[nodes]); k <- k[!is.na(k)]
+  if (length(k)) k[[1L]] else NA_character_
 }
 
 

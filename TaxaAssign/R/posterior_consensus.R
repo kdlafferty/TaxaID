@@ -1020,11 +1020,11 @@ posterior_consensus <- function(posterior_df,
               if (!is.null(taxonomy_cache_dir)) args$cache_dir <- taxonomy_cache_dir
               # The rank each hypothesis means its name at resolves an NCBI
               # homonym (Etheostoma: genus vs subgenus) without a decision
-              # the workflow has no way to pass; only when the installed
-              # TaxaTools takes it, for the same reason as cache_dir above.
-              if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names)) &&
-                "taxon_name_rank" %in% names(posterior_df)) {
-                args$ranks <- as.character(posterior_df$taxon_name_rank)[match(unref_names, posterior_df$taxon_name)]
+              # the workflow has no way to pass. Passed outright: the packages
+              # install as a version-locked set, and a rename must fail here
+              # loudly rather than silently drop the rank.
+              if ("taxon_name_rank" %in% names(posterior_df)) {
+                args$input_rank <- as.character(posterior_df$taxon_name_rank)[match(unref_names, posterior_df$taxon_name)]
               }
               do.call(TaxaTools::verify_taxon_names, args)
             },
@@ -1264,7 +1264,7 @@ posterior_consensus <- function(posterior_df,
   }
   args <- list(phyla, backbone_id = backbone_id)
   if (!is.null(taxonomy_cache_dir)) args$cache_dir <- taxonomy_cache_dir
-  if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names))) args$ranks <- rep("phylum", length(phyla))
+  args$input_rank <- rep("phylum", length(phyla))
   v <- tryCatch(
     suppressWarnings(suppressMessages(do.call(TaxaTools::verify_taxon_names, args))),
     error = function(e) NULL

@@ -103,9 +103,13 @@ NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
 more than one NCBI node: when exactly one candidate carries the given
 rank, that node is taken, with no further request and before
 \code{decisions} is consulted. "Etheostoma" is both a genus and a
-subgenus; a consensus table knows which it means. Silently unused by the
-Global Names path. On the NCBI path a rank that is given enters the
-cache key (see \code{cache_dir}); elsewhere the key is unchanged.}
+subgenus; a consensus table knows which it means. On the Global Names
+path it does not change the query (one best match is returned) but it
+decides, with \code{lineage}, whether that match can be gated: a match
+at another rank is gated on its lineage, a match at the asked rank only
+on a kingdom difference (see \code{lineage}). On the NCBI path a rank
+that is given enters the cache key (see \code{cache_dir}); elsewhere
+the key is unchanged.}
 
 \item{lineage}{Character vector or \code{NULL} (default). One lineage
 context per element of \code{name_list} (\code{NA} = none): a
@@ -123,9 +127,14 @@ unverified, never accepted, but only where a CHOICE between taxa
 existed: on the NCBI path a name that had several candidates and was
 settled by \code{input_rank} or \code{decisions}; on the Global Names
 path (one best match, no candidate set) a match whose rank differs from
-\code{input_rank}, or any match when no rank was given. A unique node,
-or a match at the asked rank, is accepted however the backbones word
-its lineage: NCBI carries no phylum rank for many protist lineages, and
+\code{input_rank}, or any match when no rank was given; a match AT the
+asked rank is gated only when the context names a kingdom (Animalia or
+Metazoa, Plantae or Viridiplantae, Fungi, Chromista, Protozoa, Bacteria,
+Archaea) and the returned path's kingdom differs, since a same-rank
+homonym such as Ulvaria (a fish genus and an alga genus) crosses
+kingdoms while a reclassification never does. A unique node, or a
+same-rank match within one kingdom, is accepted however the backbones
+word its lineage: NCBI carries no phylum rank for many protist lineages, and
 GBIF and NCBI name the same clades differently, which is reclassification,
 not a homonym. A name is not a key; this is the caller's way of saying
 which one it means. Part of the cache key when given.}
