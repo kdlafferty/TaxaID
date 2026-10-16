@@ -146,16 +146,12 @@ prior.
 \strong{Evidence is group-local.} Priors are spatially local, so the update is
 too: a hypothesis is confirmed only by observations that share one of its
 observation's evidence groups. The grouping is the caller's choice, given as
-a \code{detections} table and the \code{group_cols} that define a group. The default
-is the sample (tube), the most conservative choice: only the same tube's
-other detections, including its other markers' libraries, count as
-confirmation. A study that treats every tube at a site as one species pool
-passes \code{group_cols = "site"}; one that also separates seasons passes
-\code{group_cols = c("site", "season")}. The function attaches no meaning to the
-column names; it groups by whatever it is given. An observation whose every
-group is a singleton has nobody to borrow from and is returned unchanged,
-exactly like an already-resolved observation. See the \emph{Group-local
-evidence} section for how an observation in several groups is handled.
+a \code{detections} table and the \code{group_cols} that define a group (default: the
+sample/tube, the most conservative choice; \code{"site"} pools every tube at a
+site). The function attaches no meaning to the column names. An
+observation whose every group is a singleton has nobody to borrow from and
+is returned unchanged, exactly like an already-resolved observation. See
+the \emph{Group-local evidence} section.
 }
 \section{Group-local evidence}{
 
@@ -202,10 +198,9 @@ their priors can be raised. Rows whose \code{hypothesis_type} is an
 unreferenced-relative type (\code{unreferenced_species}, \code{unreferenced_genus},
 ..., i.e. ring rows and the named rows of recorded unreferenced species)
 carry a ring likelihood but no sequence match of their own; their support
-at one observation comes from the same rows at the others, so letting them
-confirm one another is circular. Without this, on CalIntertidal
-ring and named-row priors rose up to ~14,000-fold across a
-Site and turned honest no-calls into confident wrong-phylum calls.
+confirm one another is circular. Allowing it let ring and named-row priors
+rise by orders of magnitude and turned honest no-calls into confident
+wrong-phylum calls.
 }
 
 \section{Soft confirmation}{
@@ -214,11 +209,10 @@ A hard-gate donor definition -- counting an observation as a "donor" only
 when it resolves a species with \verb{consensus_posterior >=} a threshold
 (e.g. 0.8) -- is hard assignment in the sense of classification EM
 (Celeux & Govaert 1992, \emph{Computational Statistics & Data Analysis}
-14:315-332). That would make the
-dataset-level output discontinuous in per-observation inputs: one marginal
-competitor holding every observation of a species just below the bar means
-zero donors anywhere (a real case: 78 yellow-perch observations at ~0.69
-each -- no confirmation, dataset-wide). Instead, every observation's best
+14:315-332). It would make the dataset-level output discontinuous in
+per-observation inputs: one marginal competitor holding every observation
+of a species just below the bar means zero donors anywhere. Instead, every
+observation's best
 posterior for a species contributes fractionally (soft assignment, the
 one-iteration analog of a multi-scale occupancy update -- Dorazio &
 Erickson 2018, \emph{Molecular Ecology Resources} 18:368-380):
@@ -246,14 +240,12 @@ a pseudo-observation update weighted by \code{prior_mix_p_conc}, with the
 Beta summary re-moment-matched. Never demoted.
 }
 
-A formally correct alternative to this quantile-based design would be a
-Beta-Binomial hierarchical model over species x observation within a
-site; the current design does not by itself distinguish "confidence
-earned by genuinely strong evidence" from "confidence attained despite
-thin/low-quality input" (e.g. a short, low-coverage sequence read
-producing a spurious high-identity match) -- that would need a quality
-covariate on the underlying scores, a separate, larger design question
-flagged for later rather than solved here.
+The design does not by itself distinguish "confidence earned by genuinely
+strong evidence" from "confidence attained despite thin/low-quality input"
+(e.g. a short, low-coverage sequence read producing a spurious
+high-identity match); that would need a quality covariate on the
+underlying scores. A Beta-Binomial hierarchical model over species x
+observation within a site would be the formally correct alternative.
 }
 
 \section{Rescaling onto the occurrence scale}{
@@ -261,31 +253,25 @@ flagged for later rather than solved here.
 \code{consensus_posterior} is P(hypothesis | evidence) \emph{within one
 observation} -- a probability over competing hypotheses. \code{prior_mean},
 when sourced from \code{TaxaExpect}, is a \strong{compositional share of the local
-record pool} (\code{theta_mean}, confirmed by reading
-\code{TaxaExpect::prepare_model_dataframe()}'s binomial response directly:
-\code{n_species / n_total_at_site}, one record attributable to exactly one
-taxon). These are different sample spaces, and substituting one for the
-other only ever inflates (never-demote guarantees it). Measured on real
-Mugu data: 220 of 2540 rows were boosted, and all 220 landed in
-[0.951, 1.0] -- every one overshooting the real occurrence-scale
-ceiling (\code{max(theta_mean)} across every locally modelled taxon,
-0.0865 on that dataset) by 11x to 1000x.
+record pool} (\code{theta_mean}: \code{n_species / n_total_at_site}, one record
+attributable to exactly one taxon). These are different sample spaces, and
+substituting one for the other only ever inflates (never-demote guarantees
+it): raised priors can overshoot the real occurrence-scale ceiling,
+\code{max(theta_mean)} across every locally modelled taxon, by orders of
+magnitude.
 
 When a \code{theta_mean} column is present on \code{result}, the substitution is
-rescaled onto that ceiling instead of being used directly:
+therefore rescaled onto that ceiling instead of being used directly:
 \code{prior_new <- max(prior_old, q * max(theta_mean, na.rm = TRUE))},
 where \code{q} is the confirmation-quantile value described above and the
 maximum is taken over the rows of the group's own observations (the
-study-wide maximum when the group has none). This keeps
-the confirmation-quantile logic and the never-demote guard unchanged --
-only the target scale moves -- so a stronger/more numerous confirmation
-(higher \code{q}) still produces a stronger boost, bounded by the model's own
-observed maximum share rather than substituting a foreign-scale
-constant. When \code{result} has no \code{theta_mean} column (e.g. LLM-pathway
-priors from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, which are not occurrence-share-based to
-begin with), direct substitution (without rescaling) is used
-instead -- the units mismatch this section fixes is specific to
-occurrence-model-sourced priors.
+study-wide maximum when the group has none). The confirmation-quantile
+logic and the never-demote guard are unchanged -- only the target scale
+moves -- so a stronger/more numerous confirmation (higher \code{q}) still
+produces a stronger boost, bounded by the model's own observed maximum
+share. When \code{result} has no \code{theta_mean} column (e.g. LLM-pathway priors
+from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, which are not occurrence-share-based),
+direct substitution (without rescaling) is used instead.
 }
 
 \section{Receiver guards}{
@@ -300,10 +286,9 @@ likelihood-only credible node are raised: the node is
 \code{consensus} (from \code{\link[=posterior_consensus]{posterior_consensus()}} with
 \code{likelihood_consensus = TRUE}, its default), so it reflects the
 sequence evidence before any raise. An observation with no such node
-has no row raised. Measured on CalIntertidal: raising a
-row outside its node let a rare recorded brown alga (likelihood 0.016)
-overturn a red-alga match (likelihood 1.0) once its prior was raised
-about 300-fold.
+has no row raised. Raising a row outside its node would let a rare,
+poorly matching candidate overturn a well-matching one once its prior
+was raised hundreds-fold.
 \item \strong{Occurrence record.} A row with no occurrence record
 (\code{theta_mean} \code{NA}) is never raised.
 \item \strong{Likelihood ranking.} A prior boost must not overturn the
@@ -319,16 +304,13 @@ identified the species and a confirmation raise is not what should name
 it. This gives the unreferenced row nothing: it remains barred from the
 confirmation as both donor and receiver (see \emph{Referenced
 candidates only}), and a comparator is neither role, so the circularity
-that section guards against cannot arise from it. Measured on
-CalIntertidal: of 414 species calls resting on a raised row, 377 clear
-the widened bar; the other 37 fall back to their own genus (21), family
-(15) or order (1), never off-lineage and never to no call. A
-comparator with an \code{NA} likelihood is left out of the comparison; a row
-whose own likelihood is \code{NA} is never raised. Measured
-on CalIntertidal, with the two guards above in place: a recorded
-but rare red alga with 44-fold lower likelihood than its congener was
-raised about 160,000-fold inside a class-level likelihood node and
-called at posterior 0.98; this guard blocks such raises, and also lets
+that section guards against cannot arise from it. A species call that
+fails the widened bar falls back to its own genus, family or order,
+never off-lineage and never to no call. A comparator with an \code{NA}
+likelihood is left out of the comparison; a row whose own likelihood is
+\code{NA} is never raised. This guard also stops a recorded but rare species
+with a much lower likelihood than its congener from being raised
+inside a wide (e.g. class-level) likelihood node and called, and lets
 the better-scoring species keep a call that a co-raised, weaker
 congener had split.
 \item \strong{Likelihood margin.} Beyond the ranking guard, a row is raised
@@ -341,9 +323,9 @@ likelihood, the one with the larger \code{sd} is used. A missing \code{sd} on
 either side leaves the band undefined and the row is not raised. A row
 with no rival at all has no runner-up to beat and is not held back by
 this guard. The multiplier 1.96 (the 97.5\% normal quantile) is fixed,
-not an argument. Measured on CalIntertidal, a raise that broke a near-tie (for
-example \emph{Clupea harengus} over \emph{C. pallasii}, likelihoods 1 and 0.995)
-produced confident wrong-species calls; the margin blocks such raises.
+not an argument. The margin stops a raise from breaking a near-tie
+(for example \emph{Clupea harengus} over \emph{C. pallasii}, likelihoods 1 and
+0.995), which would produce a confident wrong-species call.
 }
 A message counts the supported rows each guard held back. The guards need
 their input columns and stop if one is missing; \code{require_support_columns = FALSE} is a transitional shim that turns them off, together with the species
@@ -363,9 +345,6 @@ the caller's final consensus sees the observation as if Round 2 had not
 touched it. Raises that leave the call coarser than species, and raises in
 observations whose likelihood-only call is already a species, are kept. The
 affected observations are listed in \verb{attr(<result>, "round2_species_guard")}.
-Measured on CalIntertidal, every Round 2 move from a coarser call to a
-species call had a likelihood-only call coarser than species, and several
-blocks of such calls rested on one reference per competing congener.
 
 Those settings come from \code{attr(consensus, "consensus_settings")}, which
 \code{\link[=posterior_consensus]{posterior_consensus()}} attaches; run the final consensus on the result with
@@ -386,14 +365,12 @@ attribute is needed only on the guarded path (\code{require_support_columns = TR
 A row with no occurrence record (\code{theta_mean} \code{NA}) is never raised (see
 \emph{Receiver guards}), and \code{confirmed_without_occurrence_record} is
 \code{FALSE} whenever \code{theta_mean} is present; the column is kept so that
-downstream code reading it keeps working. Raising such rows instead of
-suppressing them was measured on CalIntertidal to produce most of the
-confident new species calls whose Round 1 support was weak (131 of 176
-reviewed winners: sibling sequence variants of one organism, matching a
-reference at a mediocre identity, confirmed each other), which is why the
-error-first choice is to suppress them. A taxon missing from the
-occurrence priors through an upstream join gap is therefore not raised
-either; that gap must be fixed upstream.
+downstream code reading it keeps working. Suppressing such rows is the
+error-first choice: raising them produced confident new species calls whose
+support was weak (sibling sequence variants of one organism, matching a
+reference at a mediocre identity, confirming each other). A taxon missing
+from the occurrence priors through an upstream join gap is therefore not
+raised either; fix that gap upstream.
 }
 
 \examples{

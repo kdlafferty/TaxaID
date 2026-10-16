@@ -692,31 +692,25 @@ LCA of everything in it (\code{tail_pooled = TRUE}). A single noise-level
 hypothesis still cannot coarsen a call on its own, but a flat tail holding
 most of the mass is no longer renormalised away. This changes the meaning of
 the threshold (a call at 0.6 with 0.4 below the floor no longer resolves
-alone), so re-check a validation set before adopting it. Measured on
-CalIntertidal: species calls 544 to 475 on one subset, including 52 calls
-with posterior 0.5--0.9. \code{cumulative_threshold = 0.9} is analogous to a
+alone), so re-check a validation set before adopting it.
+\code{cumulative_threshold = 0.9} is analogous to a
 90\% credible interval; increase toward 0.95--0.99 for more conservative
 assignments (more upranking to genus/family); decrease to 0.8 for more
 aggressive species-level calls.
 
-\strong{Parameter sensitivity:} a grid sweep against a real posterior
-dataset (see the \code{posterior_threshold_sweep.R} diagnostic, TaxaID_dev
-repository) found the two
-defaults are not equally load-bearing: \code{min_posterior} has a real,
-roughly linear effect on how often the pipeline resolves to the finest
-rank, while \code{cumulative_threshold} does comparatively little
-independent work once a reasonable \code{min_posterior} floor is already
-in place. The two interact sharply only in the unrealistic combination of
-\code{min_posterior = 0} with a very high \code{cumulative_threshold}.
-This sweep measures resolution \emph{rate}, not \emph{accuracy} -- no
-ground-truth-validated observation set was available, so a higher
-resolved-\% is not itself evidence those calls are correct.
+\strong{Parameter sensitivity:} the two defaults are not equally
+load-bearing. \code{min_posterior} has a real, roughly linear effect on how
+often the pipeline resolves to the finest rank, while
+\code{cumulative_threshold} does comparatively little independent work once
+a reasonable \code{min_posterior} floor is in place. The two interact
+sharply only in the unrealistic combination of \code{min_posterior = 0}
+with a very high \code{cumulative_threshold}. This describes resolution
+\emph{rate}, not \emph{accuracy}: a higher resolved-\% is not itself
+evidence those calls are correct.
 
 \strong{LCA method:}
 Lowest Common Ancestor is the standard conservative consensus method in
-molecular systematics (Huson et al., 2007, MEGAN). The implementation
-walks from finest to coarsest rank and stops at the first rank where all
-plausible hypotheses agree.
+molecular systematics (Huson et al., 2007, MEGAN).
 
 \strong{Why a sole perfect-identity candidate can still be wrong:} H2/H3
 (\code{unreferenced_species}/\code{unreferenced_genus}) hypotheses exist for every
@@ -746,10 +740,7 @@ per sequence AND per site -- the grain at which an occurrence prior is
 sharpest -- the same sequence can be called at species at one site and at
 genus at another. That is not a defect: a per-site prior carries
 information a pooled one does not, and the rank it supports legitimately
-differs between sites. It is the common case, not an edge one. Measured on
-one multi-marker study, of 233 sequences with any species-level site only
-18 were species at ALL of their sites; 215 were species at some and coarser
-at the rest, at a median of half.
+differs between sites. It is the common case, not an edge one.
 
 So a per-site call must not be read as a statement about the sequence.
 Three different questions have three different answers, and a species list
@@ -759,10 +750,9 @@ should say which one it reports:
 at \code{likelihood_consensus_rank}, the prior-independent call;
 \item what a SITE resolves -- \code{consensus_taxon} at \code{consensus_rank} on
 that site's row, which is what this function returns;
-\item what holds across a sequence's sites -- the coarsest label
-consistent with every site's call. This is not computed here, because
-it depends on which sites a reader is pooling; it is the coarsest rank
-at which every one of a sequence's per-site calls agrees.
+\item what holds across a sequence's sites -- the coarsest rank at which
+every one of its per-site calls agrees. This is not computed here,
+because it depends on which sites a reader is pooling.
 }
 Quoting a per-site species call as the sequence's identification counts the
 site's prior as if it were sequence evidence, and summing species across
@@ -781,9 +771,9 @@ species is known to occur. With \code{likelihood_consensus = TRUE} the call is
 compared with a baseline in which the named candidates' priors are
 flattened (each gets their mean) while generic unsequenced-relative rows
 keep their own priors. \code{likelihood_support} is the share of that baseline
-in the reported taxon: 0.84 means the sequence nearly makes the call
-itself and the prior nudged it over \code{cumulative_threshold}; 0.10 means
-the prior chose it. \code{prior_role} records the direction (\code{"agrees"},
+in the reported taxon: how close the sequence alone comes to the call (high
+means the prior only nudged it over \code{cumulative_threshold}; low means the
+prior chose it). \code{prior_role} records the direction (\code{"agrees"},
 \code{"narrowed"}, \code{"broadened"}, \code{"changed"}). Neither changes the call: in a
 clade with one local species the prior legitimately concentrates the
 posterior on it, which is correct inference, so sequence support is
@@ -792,9 +782,8 @@ reported, not used to move calls.
 A support above 0.5 means the reported taxon is more probable on the
 sequence evidence than every alternative combined (named priors
 flattened); unnamed and generic mass that no named taxon contains counts
-against every taxon. The gap between the posterior (which clears
-\code{cumulative_threshold}) and \code{likelihood_support} is the part of the call
-that rests on the prior.
+against every taxon. The gap between the posterior and \code{likelihood_support}
+is the part of the call that rests on the prior.
 }
 
 \examples{
