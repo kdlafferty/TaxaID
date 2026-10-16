@@ -714,6 +714,7 @@ assign_sampling_group <- function(taxonomy,
     }
     verified <- verify_taxon_names(
       need, backbone_id = backbone_id,
+      ranks = probe_rank[match(need, probe_name)],
       # decisions only means anything for backbone_id = 4 -- forwarding it
       # unconditionally would trip verify_taxon_names()'s own "unused"
       # warning under this function's own default (GBIF, 11).

@@ -1,0 +1,25 @@
+units in consensus_final: 889 
+settings used: rank_system=order/family/genus/species; cumulative_threshold=0.9; min_posterior=0.05; posterior_col=posterior_point_est; lookup_missing_taxonomy=TRUE; backbone_id=4; downrank_requires_candidate=TRUE; min_effective_records=0; pool_tail=FALSE; unnamed_in_threshold=TRUE; consensus_method=credible_node; likelihood_consensus=TRUE; robust_prior_s=1; cross_phylum_eps=0.05 
+  plus species_reference (100x3) and group_priors (196x4) taken from attr(consensus_final,'consensus_settings'); lookup_missing_taxonomy overridden to FALSE; taxonomy_cache_dir NULL 
+touched by call (consensus_taxon Etheostoma*): 30 
+units whose plausible_taxa contains Etheostoma*: 39 ; of which call is not Etheostoma*: 9 ; plausible set ALL Etheostoma*: 30 
+rank of touched calls: genus=9, species=21 
+units rerun as 'touched set' (call OR plausible): 39 
+posterior_consensus: cross_phylum_eps is not applied: rank_system has no "phylum" carried by posterior_df.
+Computing consensus taxonomy for 39 observation(s)...
+TOUCHED reproduction: 39 / 39 match on consensus_taxon+rank 
+Etheostoma posterior rows in touched units: 382 ; NA class: 163 ; NA order: 0 ; NA family: 0 ; NA phylum: 163 ; distinct class values: NA/Actinopteri 
+Etheostoma posterior rows in whole file: 502 ; NA class: 283 
+units with plausible set all Etheostoma* but call coarser than genus: 0  
+units with Etheostoma* in plausible set, call not Etheostoma*, coarser than genus: 8 
+  P1_ASV_0314 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  P1_ASV_0575 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  P1_ASV_1180 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  P1_ASV_1293 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  P1_ASV_1639 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  P1_ASV_1687 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  SHARED_ASV_1330 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+  SHARED_ASV_1331 call=Percidae [family] plausible=Percina maculata | Percina | Etheostoma flabellare 
+posterior_consensus: cross_phylum_eps is not applied: rank_system has no "phylum" carried by posterior_df.
+Computing consensus taxonomy for 200 observation(s)...
+CONTROL reproduction: 200 / 200 identical on consensus_taxon+rank 

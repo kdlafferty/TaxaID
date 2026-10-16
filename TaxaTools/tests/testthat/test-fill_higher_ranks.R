@@ -253,14 +253,14 @@ test_that("fallback backbone is called when primary returns no match", {
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
       if (backbone_id == 4L) {
-        # Primary returns no result
+        # Primary ANSWERED and found nothing: the name is absent there
         return(tibble::tibble(
           user_supplied_name   = names,
           matched_name         = NA_character_,
           classification_path  = NA_character_,
           classification_ranks = NA_character_,
           score                = 0.0,
-          verified             = FALSE
+          verified             = TRUE
         ))
       }
       fb_called <<- TRUE
@@ -277,6 +277,74 @@ test_that("fallback backbone is called when primary returns no match", {
   )
   expect_true(fb_called)
   expect_equal(out$family, "Corvidae")
+})
+
+test_that("a fallback value is REFUSED when the primary could not answer (verified = FALSE): the Appendicularia regression", {
+  # NCBI holds three nodes named Appendicularia (a larvacean genus, a plant
+  # genus, the larvacean class); with no rank or lineage to decide, the
+  # primary returns an unverified row. GBIF's best match for the bare name is
+  # the plant genus. The fallback must not fill a plant class on a tunicate.
+  fb_called <- FALSE
+  testthat::local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      if (backbone_id == 4L) {
+        return(tibble::tibble(
+          user_supplied_name   = names,
+          matched_name         = NA_character_,
+          classification_path  = NA_character_,
+          classification_ranks = NA_character_,
+          score                = NA_real_,
+          verified             = FALSE
+        ))
+      }
+      fb_called <<- TRUE
+      tibble::tibble(
+        user_supplied_name   = names,
+        matched_name         = names,
+        matched_rank         = "genus",
+        classification_path  = "Plantae|Tracheophyta|Magnoliopsida|Myrtales|Melastomataceae|Appendicularia",
+        classification_ranks = "kingdom|phylum|class|order|family|genus",
+        score                = 1,
+        verified             = TRUE
+      )
+    },
+    .package = "TaxaTools"
+  )
+  out <- suppressWarnings(fill_higher_ranks(
+    "Appendicularia",
+    local_sources        = list(),
+    ranks                = c("phylum", "class"),
+    backbone_id          = 4L,
+    fallback_backbone_id = 11L,
+    verbose              = FALSE
+  ))
+  expect_true(fb_called)
+  expect_true(is.na(out$class))
+  expect_true(is.na(out$phylum))
+})
+
+test_that("the genus queries always carry ranks = 'genus', and a per-taxon lineage is forwarded per genus", {
+  seen <- list()
+  testthat::local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      dots <- list(...)
+      seen[[length(seen) + 1L]] <<- list(names = names, backbone_id = backbone_id,
+                                        ranks = dots$ranks, lineage = dots$lineage)
+      .make_verified(names, "Corvidae")
+    },
+    .package = "TaxaTools"
+  )
+  out <- fill_higher_ranks(
+    c("Corvus corax", "Corvus brachyrhynchos", "Pica pica"),
+    local_sources = list(), backbone_id = 4L, fallback_backbone_id = NULL, verbose = FALSE,
+    lineage = c("Chordata", "Aves", NA)
+  )
+  expect_equal(nrow(out), 3L)
+  expect_identical(seen[[1]]$names, c("Corvus", "Pica"))
+  expect_identical(seen[[1]]$ranks, c("genus", "genus"))
+  # Corvus: the union of its taxa's contexts; Pica: none given
+  expect_identical(seen[[1]]$lineage, c("Chordata|Aves", NA_character_))
+  expect_error(fill_higher_ranks("Corvus corax", lineage = c("a", "b")), "one lineage context")
 })
 
 test_that("fallback is skipped when backbone_id == fallback_backbone_id", {

@@ -1011,3 +1011,30 @@ test_that("the second pass makes no extra call when no cleaning changed a name",
   )
   expect_equal(calls, 1L) # first pass only; no hybrid label present
 })
+
+test_that("verify_fn declaring `ranks` receives taxon_name_rank aligned with the names", {
+  got <- new.env()
+  mock <- function(name_list, backbone_id, ranks = NULL) {
+    got$names <- name_list
+    got$ranks <- ranks
+    .mock_verify_gbif(name_list, backbone_id)
+  }
+  df <- .ncbi_match_df
+  df$taxon_name_rank <- c("species", "species", "genus", NA)
+  suppressWarnings(convert_taxonomy_backbone(df,
+    target_backbone_id = 11, verify_fn = mock
+  ))
+  expect_equal(got$names, unique(df$taxon_name))
+  expect_equal(got$ranks, c("species", "species", "genus", NA_character_))
+})
+
+test_that("verify_fn WITHOUT a `ranks` argument is still called and works", {
+  mock <- function(name_list, backbone_id) {
+    .mock_verify_gbif(name_list, backbone_id)
+  }
+  df <- .ncbi_match_df
+  df$taxon_name_rank <- "species"
+  expect_no_error(suppressWarnings(convert_taxonomy_backbone(df,
+    target_backbone_id = 11, verify_fn = mock
+  )))
+})

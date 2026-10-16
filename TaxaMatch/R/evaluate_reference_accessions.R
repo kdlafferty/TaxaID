@@ -1175,7 +1175,14 @@ utils::globalVariables(c(
 
         if (any(has_proxy)) {
           proxy_verified <- tryCatch(
-            TaxaTools::verify_taxon_names(unique(proxy_name[has_proxy]), backbone_id = 4L),
+            {
+              # maternal-parent binomials: always species rank
+              .proxy_names <- unique(proxy_name[has_proxy])
+              TaxaTools::verify_taxon_names(
+                .proxy_names, backbone_id = 4L,
+                ranks = rep("species", length(.proxy_names))
+              )
+            },
             error = function(e) NULL
           )
           if (!is.null(proxy_verified) && nrow(proxy_verified) > 0L) {

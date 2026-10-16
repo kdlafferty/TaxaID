@@ -12,7 +12,8 @@ fill_higher_ranks(
   backbone_id = 4L,
   fallback_backbone_id = 11L,
   verbose = TRUE,
-  decisions = NULL
+  decisions = NULL,
+  lineage = NULL
 )
 }
 \arguments{
@@ -78,6 +79,15 @@ Default \code{TRUE}.}
 (primary and fallback backbone alike, whichever is \code{4}) -- this
 function grows no prompt or resolution logic of its own for an NCBI
 name collision.}
+
+\item{lineage}{Character vector or \code{NULL} (default). One lineage
+context per element of \code{taxon_names} (\code{NA} = none), a
+pipe-delimited string of ancestor names the caller already knows for the
+taxon (its GBIF phylum, the study's class). Forwarded, per genus, to
+\code{\link{verify_taxon_names}(lineage =)} on both backbones: it
+resolves an NCBI homonym rank alone cannot (two genus-rank nodes in
+different kingdoms) and rejects a fallback-backbone answer that
+contradicts it. The genus queries always carry \code{ranks = "genus"}.}
 }
 \value{
 A tibble with one row per element of \code{taxon_names} (preserving

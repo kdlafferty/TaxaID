@@ -77,6 +77,14 @@ utils::globalVariables(c(
 #'   function grows no prompt or resolution logic of its own for an NCBI
 #'   name collision.
 #'
+#' @param lineage Character vector or \code{NULL} (default). One lineage
+#'   context per element of \code{taxon_names} (\code{NA} = none), a
+#'   pipe-delimited string of ancestor names the caller already knows for the
+#'   taxon (its GBIF phylum, the study's class). Forwarded, per genus, to
+#'   \code{\link{verify_taxon_names}(lineage =)} on both backbones: it
+#'   resolves an NCBI homonym rank alone cannot (two genus-rank nodes in
+#'   different kingdoms) and rejects a fallback-backbone answer that
+#'   contradicts it. The genus queries always carry \code{ranks = "genus"}.
 #' @return A tibble with one row per element of `taxon_names` (preserving
 #'   duplicates and order), with columns:
 #'   \describe{
@@ -197,10 +205,19 @@ fill_higher_ranks <- function(taxon_names,
                               backbone_id = 4L,
                               fallback_backbone_id = 11L,
                               verbose = TRUE,
-                              decisions = NULL) {
+                              decisions = NULL,
+                              lineage = NULL) {
   # ---- Input validation ------------------------------------------------------
   if (!is.character(taxon_names)) {
     stop("taxon_names must be a character vector")
+  }
+  if (!is.null(lineage)) {
+    if (is.logical(lineage) && all(is.na(lineage))) lineage <- as.character(lineage)
+    if (!is.character(lineage) || length(lineage) != length(taxon_names)) {
+      stop("`lineage` must be NULL or a character vector with one lineage context per element of `taxon_names`.")
+    }
+    lineage <- trimws(lineage)
+    lineage[!is.na(lineage) & !nzchar(lineage)] <- NA_character_
   }
   if (!is.list(local_sources)) {
     stop("local_sources must be a list of data frames")
@@ -320,6 +337,20 @@ fill_higher_ranks <- function(taxon_names,
   # One lineage query per BACKBONE, not per rank: a single classification path
   # answers every requested rank at once, so asking for three ranks costs one
   # API round per backbone rather than three.
+  # One lineage context per GENUS: the union of what the caller knows for the
+  # taxa carrying it (pipe-joined). Two taxa of one genus in different lineages
+  # (a fish Ulvaria and an alga Ulvaria in one table) yield a context that
+  # both candidates contain, so the name stays ambiguous -- which is right for
+  # a table keyed on the bare name.
+  lineage_by_genus <- NULL
+  if (!is.null(lineage)) {
+    lineage_by_genus <- tapply(lineage, work$genus, function(v) {
+      v <- unique(unlist(strsplit(v[!is.na(v)], "|", fixed = TRUE)))
+      v <- trimws(v[nzchar(trimws(v))])
+      if (length(v)) paste(unique(v), collapse = "|") else NA_character_
+    })
+    lineage_by_genus <- stats::setNames(as.character(lineage_by_genus), names(lineage_by_genus))
+  }
   need <- unique(work$genus[Reduce(`|`, lapply(ranks, function(r) is.na(work[[r]])))])
   lin_primary <- NULL
   if (length(need) > 0L && !is.null(backbone_id)) {
@@ -329,7 +360,8 @@ fill_higher_ranks <- function(taxon_names,
         length(need), as.integer(backbone_id), paste(ranks, collapse = "/")
       ))
     }
-    lin_primary <- .lookup_lineage_from_backbone(need, as.integer(backbone_id), decisions)
+    lin_primary <- .lookup_lineage_from_backbone(need, as.integer(backbone_id), decisions,
+                                                 lineage_of = lineage_by_genus)
     for (r in ranks) {
       na_idx <- which(is.na(work[[r]]))
       if (!length(na_idx) || is.null(lin_primary) || nrow(lin_primary) == 0L) next
@@ -366,7 +398,8 @@ fill_higher_ranks <- function(taxon_names,
         length(still), as.integer(fallback_backbone_id)
       ))
     }
-    lin_fb <- .lookup_lineage_from_backbone(still, as.integer(fallback_backbone_id), decisions)
+    lin_fb <- .lookup_lineage_from_backbone(still, as.integer(fallback_backbone_id), decisions,
+                                            lineage_of = lineage_by_genus)
     if (!is.null(lin_fb) && nrow(lin_fb) > 0L) {
       ok_genus <- .lineages_agree(lin_primary, lin_fb)
       rejected <- setdiff(lin_fb$genus, ok_genus)
@@ -671,7 +704,8 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # raw pipe-delimited path/ranks so every requested rank can be read off the
 # same lineage without a second round trip.
 #' @noRd
-.lookup_lineage_from_backbone <- function(genera, backbone_id, decisions = NULL) {
+.lookup_lineage_from_backbone <- function(genera, backbone_id, decisions = NULL,
+                                          lineage_of = NULL) {
   ask <- function(nm) {
     tryCatch(
       verify_taxon_names(
@@ -679,7 +713,15 @@ parse_classification_path <- function(path, ranks, target_rank) {
         # decisions only means anything for backbone_id = 4 -- forwarding it
         # unconditionally would trip verify_taxon_names()'s own "unused"
         # warning when this call targets a non-NCBI backbone.
-        decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
+        decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL,
+        # Every name asked here IS a genus (the first word of taxon_names), so
+        # the rank is known and free: it separates Etheostoma the genus from
+        # Etheostoma the subgenus with no decision from anyone.
+        ranks = rep("genus", length(nm)),
+        # The caller's own lineage for the taxon (phylum/class it already
+        # knows), per genus: resolves a two-kingdom homonym and gates a
+        # contradicting fallback answer. NULL when the caller gave none.
+        lineage = if (is.null(lineage_of)) NULL else unname(lineage_of[nm])
       ),
       error = function(e) NULL
     )
@@ -720,7 +762,11 @@ parse_classification_path <- function(path, ranks, target_rank) {
     genus = as.character(verified$user_supplied_name),
     resolved_genus = .resolved_genus_at_rank(verified),
     path = as.character(verified$classification_path),
-    ranks = as.character(verified$classification_ranks)
+    ranks = as.character(verified$classification_ranks),
+    # Did the backbone ANSWER? FALSE for an undecidable homonym, a failed
+    # lookup or a lineage-gated rejection; TRUE with an NA path means the
+    # name is simply absent there.
+    answered = if ("verified" %in% names(verified)) as.logical(verified$verified) else TRUE
   )
   out[!duplicated(out$genus), , drop = FALSE]
 }
@@ -796,6 +842,13 @@ parse_classification_path <- function(path, ranks, target_rank) {
     # is refused and the rank stays NA. Same principle K. Lafferty chose for
     # cross_phylum_eps: unresolvable is not evidence of agreement.
     if (is.na(j)) return(FALSE)
+    # The same refusal when the primary has a row it could not ANSWER: an
+    # undecidable NCBI homonym, a failed lookup or a lineage-gated rejection
+    # is "could not place", not "silent about one rank". Reading such a row's
+    # empty path as "nothing to contradict" accepted a GBIF plant genus's
+    # class for the larvacean Appendicularia. A row the backbone answered
+    # with NO match (the name is absent there) keeps the allowance below.
+    if ("answered" %in% names(primary) && !isTRUE(primary$answered[j])) return(FALSE)
     a <- split_named(primary$path[j], primary$ranks[j])
     b <- split_named(fb$path[k], fb$ranks[k])
     shared <- intersect(intersect(names(a), names(b)), .LINEAGE_AGREEMENT_RANKS)
