@@ -31,13 +31,17 @@ TAXAID_PACKAGES <- c(
 #' file serving stale text indefinitely (and a user who never clears
 #' the cache would never see the fix). Part of the cache file name.
 #'
-#' Current schema (5): \value is rendered in full. \arguments are parsed
-#' structurally (walking the parsed Rd tree rather than re-parsing rendered
-#' \code{Rd2txt()} output), and Rd text is rendered with useFancyQuotes
-#' pinned off so it does not vary with a global option.
+#' Current schema (6): \details and every titled \section (with its
+#' \subsection blocks) are carried in full, read structurally from the Rd
+#' tree with paragraph breaks and list items kept, so a CONTEXT file holds the
+#' same operative rules, defaults and caveats the help page does. \value is
+#' rendered in full. \arguments are parsed structurally (walking the parsed Rd
+#' tree rather than re-parsing rendered \code{Rd2txt()} output), and Rd text
+#' is rendered with useFancyQuotes pinned off so it does not vary with a
+#' global option.
 #'
 #' @noRd
-REGISTRY_SCHEMA <- 5L
+REGISTRY_SCHEMA <- 6L
 
 # Cut `x` to at most `n` characters at a word boundary and mark the cut with
 # " ...", so a registry field is never left ending mid-word. Anything of `n`
@@ -224,7 +228,10 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 #' @param rd_entry Parsed Rd object for this function (from
 #'   \code{.rd_alias_map()}), or \code{NULL} if no Rd documents it.
 #' @return A list with \code{name}, \code{title}, \code{description},
-#'   \code{params}, \code{value}.
+#'   \code{params}, \code{value}, \code{details} (the full \\details text,
+#'   paragraphs separated by a blank line, or \code{NULL}) and
+#'   \code{sections} (a list of \code{list(title, body)}, one per titled
+#'   \\section in Rd order; empty when the page has none).
 #' @noRd
 .build_function_entry <- function(fn_name, fn, rd_entry) {
   f <- formals(fn)
@@ -249,7 +256,9 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
     title       = if (!is.null(sections)) sections$title else NULL,
     description = if (!is.null(sections)) sections$description else NULL,
     params      = params,
-    value       = if (!is.null(sections)) sections$value else NULL
+    value       = if (!is.null(sections)) sections$value else NULL,
+    details     = if (!is.null(sections)) sections$details else NULL,
+    sections    = if (!is.null(sections)) sections$sections else list()
   )
 }
 
@@ -262,17 +271,21 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 #' structurally from the Rd tree by \code{.rd_arguments()}, because its
 #' item/term structure is exact in the tree and only inferable (badly) from
 #' the rendered text. Rendering only a
-#' synthetic sub-document (rather than the whole Rd file) keeps \\examples,
-#' \\details, and \\seealso -- often the largest sections -- out of the
-#' registry entirely; \code{\link[tools]{Rd2txt}} requires \\name and
-#' \\title to be present to render at all, so those two are always
-#' included even though only \\title's text is kept.
+#' synthetic sub-document (rather than the whole Rd file) keeps \\examples
+#' and \\seealso out of the registry; \code{\link[tools]{Rd2txt}} requires
+#' \\name and \\title to be present to render at all, so those two are
+#' always included even though only \\title's text is kept. \\details and
+#' the titled \\section blocks are read structurally by \code{.rd_body_md()},
+#' which keeps paragraph breaks, list items and \\subsection headings: those
+#' blocks hold the operative rules and caveats a help page states, and a
+#' prompt pack that omits them tells the model less than the help page does.
 #'
 #' @param rd_entry Parsed Rd object (one package's one \code{.Rd} file).
 #' @return A list with \code{title}, \code{description} (<= 600 chars,
-#'   first paragraph only), \code{value} (untruncated), and
-#'   \code{arguments} (named list: parameter name -> doc text), or
-#'   \code{NULL} if rendering failed.
+#'   first paragraph only), \code{value} (untruncated), \code{arguments}
+#'   (named list: parameter name -> doc text), \code{details} (full text or
+#'   \code{NULL}) and \code{sections} (list of \code{list(title, body)}),
+#'   or \code{NULL} if rendering failed.
 #' @noRd
 .rd_sections <- function(rd_entry) {
   tags <- vapply(rd_entry, function(x) attr(x, "Rd_tag") %||% "", character(1))
@@ -333,7 +346,86 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
   # \arguments is parsed STRUCTURALLY from the Rd tree, not from rendered
   # text -- see .rd_arguments().
   sections$arguments <- if (!is.null(args_tag)) .rd_arguments(args_tag) else list()
+
+  # \details and the titled \section blocks: structural, full, paragraph-aware.
+  details_tag <- get1("\\details")
+  det <- if (!is.null(details_tag)) .rd_body_md(details_tag) else NULL
+  sections$details <- if (!is.null(det) && nzchar(det)) det else NULL
+  sec_nodes <- rd_entry[tags == "\\section"]
+  secs <- lapply(sec_nodes, function(sn) {
+    if (!is.list(sn) || length(sn) != 2L) return(NULL)
+    title <- .rd_text(sn[[1L]])
+    body <- .rd_body_md(sn[[2L]])
+    if (!nzchar(title) || !nzchar(body)) return(NULL)
+    list(title = title, body = body)
+  })
+  sections$sections <- Filter(Negate(is.null), secs)
   sections
+}
+
+
+#' Render an Rd Body Block as Markdown-Ready Text
+#'
+#' Like \code{.rd_text()} but for a block that is read as prose: paragraph
+#' breaks (a blank line in the Rd source) are kept as a blank line, each
+#' \\item of an \\itemize/\\enumerate becomes a "- " line, a \\describe
+#' item becomes "- term: body", a \\preformatted block becomes a fenced
+#' code block with its line breaks intact, and a \\subsection becomes a
+#' "##### title" heading followed by its body. Headings are emitted at level
+#' five because a \\section's own title is written at level four by the
+#' pack, and a function's signature at level three.
+#'
+#' @param node A parsed Rd node (the body of \\details or \\section).
+#' @return One string: paragraphs separated by a blank line; "" if empty.
+#' @noRd
+.rd_body_md <- function(node) {
+  txt <- paste(.rd_body_parts(node), collapse = "")
+  paras <- strsplit(txt, "\n[ \t]*\n", perl = TRUE)[[1L]]
+  paras <- vapply(paras, function(pp) {
+    if (grepl("^\\s*```", pp)) return(sub("\\s+$", "", pp))
+    .clean_rd_text(pp)
+  }, character(1), USE.NAMES = FALSE)
+  paras <- paras[nzchar(paras)]
+  paste(paras, collapse = "\n\n")
+}
+
+
+.rd_body_parts <- function(node) {
+  if (is.null(node)) {
+    return(character(0))
+  }
+  tag <- attr(node, "Rd_tag") %||% ""
+  if (is.character(node)) {
+    if (tag %in% c("COMMENT", "\\out")) return(character(0))
+    return(as.character(node))
+  }
+  if (!is.list(node)) {
+    return(character(0))
+  }
+  switch(tag,
+    "COMMENT" = return(character(0)),
+    "\\out" = return(character(0)),
+    "\\eqn" = ,
+    "\\deqn" = return(.rd_text_parts(node[[length(node)]])),
+    "\\if" = if (length(node) >= 2L) return(.rd_body_parts(node[[2L]])) else return(character(0)),
+    "\\ifelse" = if (length(node) >= 2L) return(.rd_body_parts(node[[2L]])) else return(character(0)),
+    "\\cr" = return(" "),
+    "\\preformatted" = return(c("\n\n```\n", gsub("\n$", "", paste(unlist(node), collapse = "")), "\n```\n\n")),
+    "\\subsection" = if (length(node) == 2L) {
+      return(c("\n\n##### ", .rd_text(node[[1L]]), "\n\n", .rd_body_parts(node[[2L]]), "\n\n"))
+    } else return(character(0)),
+    "\\itemize" = ,
+    "\\enumerate" = ,
+    "\\describe" = return(c(unlist(lapply(node, .rd_body_parts), use.names = FALSE), "\n\n")),
+    NULL
+  )
+  if (identical(tag, "\\item")) {
+    if (length(node) == 2L) {
+      return(c("\n\n- ", .rd_text(node[[1L]]), ": ", .rd_body_parts(node[[2L]])))
+    }
+    return("\n\n- ")
+  }
+  unlist(lapply(node, .rd_body_parts), use.names = FALSE) %||% character(0)
 }
 
 

@@ -55,6 +55,34 @@ Classifies each row of a taxonomy table into a 'sampling_group' (the shared-effo
 
 **Value:** 'taxonomy' (or its harmonised copy, when 'harmonise = TRUE') with a new 'sampling_group' character column added. 'NA' where no rule matched AND the kingdom guard fired; otherwise always one of the group names in 'scheme$rules' or 'scheme$catch_all'.
 
+#### Empty-string normalisation
+
+"" is normalised to NA across every present rank_cols column BEFORE classification. Real GBIF-derived taxonomy stores "unclassified at this rank" as an empty string, not NA -- the same real-data quirk TaxaExpect::compute_adaptive_sampling_groups() and TaxaAssign::join_priors() already normalise this way. This is behaviour-neutral for every ==/%in% test in the scheme ("" and NA both fail them identically), but it is what lets the class-less-Chordata fish clause be written honestly as "class is missing" rather than as a fragile class != "" check.
+
+#### Backbone-mismatch detection (harmonise = FALSE)
+
+When harmonise = FALSE, this function does two cheap, static checks for signs the input taxonomy is NOT in the scheme's expected GBIF vocabulary, and emits ONE warning (naming what it saw) if either fires: (1) a taxonomy_backbone attribute on taxonomy that does not look like GBIF/backbone 11; (2) presence of a class value GBIF's backbone is confirmed NOT to carry -- "Thalassiosirophyceae"/"Bigyra"/"Phytomastigophora". "Copepoda" is deliberately NOT used as a mismatch signal, even though it is a genuinely NCBI-flavoured class name: it is also found live in real GBIF-backbone occurrence data, not only in NCBI match objects, so it is handled directly in the zooplankton rule (see default_sampling_scheme) rather than treated as a mismatch symptom, which would produce a false warning on perfectly correct GBIF input. Silent misclassification from an unnoticed backbone mismatch is the exact failure class this function exists to guard against, so this check errs toward naming what it saw rather than staying silent -- but it is a heuristic, not exhaustive, and passing harmonise = TRUE (or verifying the input's backbone directly) is the reliable fix, not a substitute for reading the warning.
+
+#### Rank agreement (harmonise = TRUE)
+
+The harmoniser resolves each row's finest available rank NAME and then overwrites kingdom/phylum/class/order from the lineage the backbone returns. That is only safe if the backbone's answer is about the SAME TAXON the probe column named, so a resolution is accepted only when one of two things holds:
+
+- verify_taxon_names's matched_rank equals the rank of the probe column. This is the ordinary case, and it is also what keeps SYNONYM resolution working -- an outdated spelling resolves to the backbone's accepted name, which is by definition not the name that was asked about, so only the rank can vouch for it.
+
+- The rank differs, but the returned lineage carries the probe name ITSELF at the probe's own rank. That is a same-clade duplication rather than a homonym: GBIF holds a genus Spionidae inside family Spionidae and a genus Arthropoda inside phylum Arthropoda, so the terminal match is a genus while every rank above it is exactly the lineage the row already had.
+
+A row failing both keeps its ORIGINAL taxonomy -- the same fallback an unresolved name gets -- and is named in a warning. Measured on a real 18S dataset: of 97 resolved names, 90 agree on rank outright and 6 have no GBIF match; the gate rejects the one remaining name (the fly genus below) and recovers 7 taxa (17 rows) as macroinvertebrates.
+
+The case that forced this: GBIF's backbone contains a tachinid fly genus named Polychaeta (Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta, verified live). Without the gate, a row whose class column reads "Polychaeta" -- the annelid class, correct in NCBI -- would be matched against that genus and have its whole lineage overwritten (Annelida -> Arthropoda, Polychaeta -> Insecta, and a fabricated order = "Diptera"), grouping it as terrestrial_arthropods and -- because a downstream marine filter reads the harmonised phylum/class -- silently dropping it from the species list entirely.
+
+And Polychaeta is not alone. Scanning real NCBI-side taxonomy against GBIF turns up other genuine cross-lineage homonyms that would each rewrite a whole lineage into an unrelated one: lll name column rank what GBIF matched Polychaeta class a tachinid fly genus (Insecta|Diptera) Ctenophora phylum a crane-fly genus (Insecta|Diptera) Ciliophora phylum a FUNGUS genus (Fungi|Ascomycota) Appendicularia class a flowering-plant genus (Plantae|Myrtales) Pilidiophora class a gregarine genus (Chromista|Myzozoa)
+
+A corrupted lineage that stays marine is silent -- only a dropped taxon tends to get noticed. Some rank disagreements are NOT homonyms: "Bacillariophyta" (NCBI phylum, GBIF class Bacillariophyceae) and "Bigyra" (NCBI class, GBIF phylum) are genuine NCBI-vs-GBIF rank-assignment differences for the same clade. Rejecting them is harmless: the row keeps its NCBI value, and the diatom rule in default_sampling_scheme is class-level by design.
+
+A looser third rule -- accept a rank-mismatched match whose lineage contains ANY of the row's original rank values -- was considered and rejected. It rescues nothing rule 2 does not (NCBI gives diatoms no kingdom at all, so a bare "Bacillariophyta" row has no other value to test), and letting a kingdom match carry the test would re-admit Polychaeta for any caller whose input already says "Animalia" rather than NCBI's "Metazoa".
+
+Because a cache written before this gate existed carries no matched_rank and so cannot be checked, such a cache is discarded and re-resolved rather than trusted -- reusing an old cache_dir is exactly when a silent re-admission would be least likely to be noticed.
+
 ### build_report_context(study_description = NULL, data_type = NULL, workflow = NULL, packages = NULL, parameters = NULL, statistics = NULL, citations = NULL, facts = NULL)
 
 Build a Report Context Object
@@ -74,6 +102,20 @@ Creates a structured context object containing grounded facts about an analysis.
 
 **Value:** An S3 object of class '"report_context"' (a named list).
 
+#### Details
+
+This function is domain-agnostic. It works for any analysis workflow -- ecological surveys, clinical trials, economic models, etc. Domain-specific details (e.g., molecular markers, study sites, model types) belong in the facts parameter as named key-value pairs.
+
+The context object is intentionally simple -- a named list with a class attribute and a print method. All fields are optional. The LLM prompt is built only from fields that are non-NULL, so a minimal context with just study_description is valid.
+
+Why use a context? Without a context, the LLM infers facts from code comments and data summaries, which may be incomplete or ambiguous. The context lets you provide verified numbers and details that the LLM must use as ground truth, reducing hallucination and ensuring consistency between the methods and results text.
+
+statistics vs. facts: Use statistics for numeric results (sample sizes, rates, counts) and facts for non-numeric domain knowledge (study location, equipment, species groups). statistics are presented to the LLM under a "Statistics" heading and are restricted to the results text. facts appear under "Additional facts" and may appear in either methods or results.
+
+Reuse: Build one context object and pass it to both draft_methods_text() and draft_results_text() for consistent grounding across sections.
+
+Pipeline-specific packages can provide helper functions that extract facts from their output objects and pass them here (e.g., a TaxaAssign helper that reads report_params attributes from posterior output and consensus objects).
+
 ### cache_ok(path, inputs = NULL)
 
 Is a cache file usable, given the inputs it derives from?
@@ -86,6 +128,10 @@ A cache gate that tests only 'file.exists()' silently serves stale results. This
 | inputs | no | NULL | Character vector or NULL. Paths this cache was derived FROM. Missing and NA entries are ignored, so a caller can pass an optional upstream without branching. If any surviving input is newer than path, the cache is rejected. |
 
 **Value:** 'TRUE' if 'path' exists and no declared input is newer; 'FALSE' otherwise. Rejection emits a message naming the culprit.
+
+#### When inputs applies
+
+Declare inputs whenever a cache derives from a file the caller itself writes -- a checkpoint, a bounding box, an upstream .rds. That is the case this function detects. It does NOT help for a cache whose upstream is a remote service (an NCBI or GBIF query has no local mtime to compare against); that staleness axis is time, and the policy for it is to report the cache's age at load rather than expire it silently.
 
 ### call_anthropic_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, api_key = Sys.getenv("ANTHROPIC_API_KEY"))
 
@@ -102,6 +148,10 @@ Low-level generic function: submits one plain character string to the Anthropic 
 | api_key | no | Sys.getenv("ANTHROPIC_API_KEY") | Character. Anthropic API key. Defaults to the ANTHROPIC_API_KEY environment variable. |
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status.
+
+#### Details
+
+Use this directly when you have already built your own prompt string (e.g. for geographic screening, PDF extraction, or any ad-hoc task). For habitat assignment with a build_habitat_prompt() (TaxaHabitat) object, use prompt_api instead -- it handles chunking and per-chunk retries automatically.
 
 ### call_api(prompt_str, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 16000L, api_key = NULL, base_url = NULL, images = NULL, show_tokens = FALSE, max_input_tokens = NULL, timeout = 120)
 
@@ -125,6 +175,27 @@ Generic provider-neutral function. Resolves the provider, model, API key, and en
 
 **Value:** A length-1 character string containing the model's response text. The following attributes are attached: '"model"' The resolved model identifier. '"provider"' The provider name used. '"tokens"' A named list with elements 'input' and 'output' (integers) giving the token counts reported by the provider. Both are 'NA_integer_' when the provider does not return usage information. Stops on any non-200 HTTP status with a provider-specific error message.
 
+#### Details
+
+Individual provider functions (call_anthropic_api, call_gemini_api, etc.) are thin wrappers around this function, useful directly or as llm_fn arguments.
+
+Adding a new provider: Any provider that implements the OpenAI Chat Completions API can be added for the current session with register_provider. The function then dispatches via the openai_compat handler automatically.
+
+Ollama quality note: Local Ollama models vary substantially in their ability to produce the structured JSON and CSV output that TaxaID functions expect. Results are less reliable than cloud providers, especially for obscure taxa. A warning is emitted when Ollama is selected.
+
+Using as llm_fn: call_api is the default llm_fn throughout the TaxaID ecosystem. Individual provider functions can still be passed as llm_fn for explicit provider control:
+
+
+```
+
+# Use Gemini for a specific call prompt_api(prompt, llm_fn = call_gemini_api)
+
+# Use a fast model for a batch task prompt_api(prompt, llm_fn = function(p, ...) call_api(p, tier = "fast"))
+
+# Set session default to OpenAI options(TaxaID.provider = "openai") ```
+
+Data sensitivity: Prompts sent to cloud LLM providers (Anthropic, Google, OpenAI, Azure) are transmitted over the internet and processed on third-party servers. Do not include sensitive, confidential, personally identifiable, or embargoed information in prompts. TaxaID functions pass taxon names, ecological summaries, and methods text -- review prompts before calling when working with pre-publication data. Use provider = "ollama" for fully local inference when data sensitivity is a concern.
+
 ### call_azure_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), endpoint = NULL, max_completion_tokens = 16000L, api_key = Sys.getenv("AZURE_OPENAI_API_KEY"))
 
 Call the Azure OpenAI API with a Single Prompt String
@@ -142,6 +213,21 @@ Low-level provider function: submits one plain character string to an Azure Open
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status.
 
+#### Details
+
+llm_fn usage:
+
+
+```
+
+# Direct use (default DOI endpoint) screen_pdf_structure(pdf_content, llm_fn = call_azure_openai_api) prompt_api(prompt, llm_fn = call_azure_openai_api)
+
+# Non-default endpoint via closure my_azure <- function(p, ...) call_azure_openai_api(p, endpoint = "https://...") prompt_api(prompt, llm_fn = my_azure) ```
+
+#### Department of the Interior (DOI) employees only
+
+The default endpoint (api-dev.ai.doi.net) is an internal DOI service. Access requires an active connection to a DOI computer system or the DOI VPN. Calls from outside the DOI network will fail with a connection error. The AZURE_OPENAI_API_KEY must be obtained through DOI IT channels.
+
 ### call_gemini_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, api_key = Sys.getenv("GEMINI_API_KEY"))
 
 Call the Google Gemini API with a Single Prompt String
@@ -158,6 +244,19 @@ Low-level provider function: submits one plain character string to the Google Ge
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status or safety block.
 
+#### Details
+
+Free tier: The Gemini API offers a genuinely free tier through Google AI Studio with no credit card required. Rate limits apply (requests per minute and per day vary by model). See https://ai.google.dev/gemini-api/docs/rate-limits.
+
+llm_fn usage:
+
+
+```
+
+# Direct use screen_pdf_structure(pdf_content, llm_fn = call_gemini_api) prompt_api(prompt, llm_fn = call_gemini_api)
+
+# Non-default model via closure my_gemini <- function(p, ...) call_gemini_api(p, model = "gemini-2.5-flash") screen_pdf_structure(pdf_content, llm_fn = my_gemini) ```
+
 ### call_ollama_api(prompt_str, model = "llama3.2", max_tokens = 16000L, base_url = "http://localhost:11434")
 
 Call a Local Ollama Model with a Single Prompt String
@@ -172,6 +271,29 @@ Low-level provider function: submits one plain character string to a locally run
 | base_url | no | "http://localhost:11434" | Character. Base URL of the Ollama server. Default "http://localhost:11434". Change only if running Ollama on a different host or port. |
 
 **Value:** A length-1 character string containing the model's response text. Stops with a clear message if Ollama is not running or the model has not been pulled.
+
+#### Details
+
+One-time setup:
+
+- Install Ollama from https://ollama.com
+
+- In Terminal: ollama pull llama3.2
+
+- Confirm with: ollama list
+
+Ollama starts automatically on macOS after installation.
+
+Output quality: Local open-weight models vary substantially in their ability to produce the structured JSON and CSV output that TaxaID functions expect. Results are less reliable than cloud providers, especially for obscure taxa. Recommended minimum for TaxaID tasks: qwen2.5:14b. A warning is emitted automatically.
+
+llm_fn usage:
+
+
+```
+
+# Direct use (default model) screen_pdf_structure(pdf_content, llm_fn = call_ollama_api) prompt_api(prompt, llm_fn = call_ollama_api)
+
+# Specific model via closure my_ollama <- function(p, ...) call_ollama_api(p, model = "qwen2.5:14b") screen_pdf_structure(pdf_content, llm_fn = my_ollama) ```
 
 ### call_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, base_url = "https://api.openai.com", api_key = Sys.getenv("OPENAI_API_KEY"))
 
@@ -190,6 +312,28 @@ Low-level provider function: submits one plain character string to the OpenAI Ch
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status.
 
+#### Details
+
+Pricing note: OpenAI requires a paid account (or expiring $5 trial credits for new accounts). There is no ongoing free API tier. gpt-4o-mini is the most economical capable model.
+
+OpenAI-compatible providers: Many providers implement the OpenAI Chat Completions API. Use base_url to reach them with a single function, or use register_provider for automatic tier resolution:
+
+
+```
+
+# xAI Grok -- specify model explicitly Sys.setenv(XAI_API_KEY = "xai-...") my_grok <- function(p, ...) call_openai_api(p, model = "grok-3-mini", base_url = "https://api.x.ai", api_key = Sys.getenv("XAI_API_KEY") ) options(TaxaID.llm_fn = my_grok)
+
+# Or register for automatic tier resolution: register_provider("xai", "XAI_API_KEY", "https://api.x.ai", fallback_models = list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3") ) ```
+
+llm_fn usage:
+
+
+```
+
+# Direct use screen_pdf_structure(pdf_content, llm_fn = call_openai_api) prompt_api(prompt, llm_fn = call_openai_api)
+
+# Non-default model via closure my_openai <- function(p, ...) call_openai_api(p, model = "gpt-4o") screen_pdf_structure(pdf_content, llm_fn = my_openai) ```
+
 ### census_genus_species(genus_keys, match_species = NULL, rank = "genus", status_filter = "ACCEPTED", verbose = TRUE)
 
 Census described species within genera (or higher ranks) via GBIF backbone
@@ -205,6 +349,18 @@ Queries the GBIF backbone taxonomy to enumerate all described species within eac
 | verbose | no | TRUE | Logical. If TRUE (default), prints progress messages. |
 
 **Value:** A data frame with one row per queried taxon (genus or higher rank): group Character. Taxon name (genus/family/order). gbif_key Integer. GBIF usageKey used for the query. total_described Integer. Number of accepted species in GBIF backbone. in_reference Integer. Species found in 'match_species' (NA if 'match_species' not provided). n_missing Integer. 'total_described - in_reference' (NA if 'match_species' not provided). missing_species List-column. Character vector of missing species names per genus (empty list if 'match_species' not provided or genus is complete). described_species List-column. Character vector of all described species names per genus. status Character. '"complete"', '"singleton_missing"', or '"incomplete"' (NA if 'match_species' not provided). The complete species list across all queried taxa is available as 'attr(result, "all_species")' (a flat character vector).
+
+#### Details
+
+For rank = "genus", the function makes one GBIF API call per genus (rgbif::name_usage(key, data = "children")). For higher ranks (family, order), it first retrieves child genera, then recurses into each genus -- this can be slow for large families (e.g., Gobiidae with 300+ genera).
+
+The status column classifies each genus by reference completeness:
+
+- "complete": all described species are in the reference (n_missing == 0). H2 "unreferenced species" hypotheses should be suppressed.
+
+- "singleton_missing": exactly one described species is missing (n_missing == 1). The H2 hypothesis can be named directly.
+
+- "incomplete": multiple described species are missing (n_missing > 1). A generic H2 phantom is appropriate.
 
 ### change_backbone(input_df, input_col, old_backbone_label = "source_name", new_backbone_label = "translated_name", keep_unmatched = TRUE)
 
@@ -222,6 +378,23 @@ Post-processes the output of 'verify_taxon_names' to (1) rename the source and t
 
 **Value:** A dataframe with: '<old_backbone_label>' Original names (renamed from 'input_col'). '<new_backbone_label>' Translated names (renamed from 'matched_name'). 'backbone_matched' Logical. 'TRUE' when the target backbone returned a genuine match; 'FALSE' when no match was found (the source name was retained due to 'keep_unmatched = TRUE', or left 'NA' when 'keep_unmatched = FALSE'). Always 'TRUE' when 'keep_unmatched = FALSE' and the backbone matched. 'score' Match confidence score from 'verify_taxon_names'. Review rows with low scores before using the translation downstream. 'verified' Logical API-success flag from 'verify_taxon_names'. kingdom, phylum, ... Wide-format rank columns parsed from 'classification_path'. Column names are the rank labels returned by the backbone (typically lowercase Linnaean ranks). Ranks absent for a given row are 'NA'. The intermediate columns 'classification_path' and 'classification_ranks' are dropped after parsing.
 
+#### Details
+
+This function does not call any API. The backbone translation is performed by the upstream verify_taxon_names() call -- this function only reshapes and labels the result. The backbone ID passed to verify_taxon_names() determines which backbone the names are translated into; old_backbone_label and new_backbone_label are purely descriptive column labels in the output.
+
+When keep_unmatched = TRUE (the default), names that have no match in the target backbone (matched_name is NA) are retained by copying the original source name into the translated-name column. This prevents downstream data loss when a backbone does not recognise a valid taxon (e.g., a recently synonymised name, a hybrid, or a regional name absent from NCBI). A message reports how many names were retained this way. Rank columns for unmatched rows remain NA -- callers that need a rank label for these rows (e.g., for taxon_name_rank) should coalesce with an appropriate fallback after the join.
+
+Typical two-step usage:
+
+
+```
+
+# Step 1: verify_taxon_names() does the translation (backbone_id = 11 is GBIF). # Step 2: change_backbone() labels and reshapes the result. verify_taxon_names(ncbi_names, backbone_id = 11) |> change_backbone( input_col = "user_supplied_name", old_backbone_label = "NCBI", new_backbone_label = "GBIF" )
+
+# To translate back (GBIF -> NCBI), call verify_taxon_names() again with the # NCBI backbone ID (4), then pipe to change_backbone() with swapped labels. ```
+
+The score and verified columns from verify_taxon_names are retained in the output so you can inspect translation quality before using the result downstream.
+
 ### check_lineage_agreement(declared, returned, ignore = c("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses",      "Metazoa", "Viridiplantae", "Fungi"))
 
 Check whether a returned lineage agrees with a declared one
@@ -235,6 +408,12 @@ A cheap, no-API-call post-fetch guard: given what a caller DECLARED about a taxo
 | ignore | no | c("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses",      "Metazoa", "Viridiplantae", "Fungi") | Character vector of lineage terms that never count as agreement, case-insensitive. The default holds the roots that every lineage shares ("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses") and the kingdom-level groups a cross-phylum homonym still shares ("Metazoa", "Viridiplantae", "Fungi"). Without this, a full NCBI-style lineage on both sides would return "agrees" for a red alga and a bat on "Eukaryota" alone. Compare lineages scoped below the shared root; pass character(0) to count every term. |
 
 **Value:** Character vector, same length as 'declared', one of '"agrees"' (at least one shared term outside 'ignore' - same clade, whether an exact match or a benign revision), '"disagrees"' (both sides have real terms and share none - a likely homonym), or '"unknown"' (one or both sides had nothing to compare after 'ignore').
+
+#### What a disagreement means
+
+Treat "disagrees" as a review candidate, not a filter. A disagreement at family level alone cannot separate a homonym from a benign reclassification (Modiolus Mytilidae -> Modiolidae is the same mussel), and on a real COI reference set of 4,638 genera only about 12 of 78 family-level disagreements were homonyms. The test that separates them is whether the disagreement is contained within a shared higher clade, which needs ranks above family on both sides. Inspect the candidates, or supply lineages that reach phylum and class.
+
+A homonym can also present as zero results: a name that resolves to the wrong NCBI node may legitimately return nothing, and an empty result gives this function nothing to compare. After a fetch, check which requested taxa returned no sequences at all, not only which returned something odd.
 
 ### check_taxaid_manifest(path, packages = NULL, on_mismatch = c("error", "warning", "message", "silent"))
 
@@ -250,6 +429,16 @@ Compares the library this session is using against a manifest written by 'write_
 
 **Value:** Invisibly, a list with 'ok', 'missing', 'changed', 'extra' and 'manifest' (the freshly built one).
 
+#### What it reports, and why absence comes first
+
+- MISSING: In the manifest, not installed now. Reported first and deliberately: a checker that only compares what it finds on BOTH sides cannot report what is absent, and a package that has silently vanished from the library is the most dangerous of the three -- calls to it fail late, or resolve to a different namespace.
+
+- CHANGED: Installed, but the code hash differs -- someone reinstalled between the manifest and this run.
+
+- EXTRA: Installed now, absent from the manifest; usually a manifest written before a package existed.
+
+Version and Built differences are shown but never fail on their own: rebuilding identical source moves Built and changes nothing that matters, and every TaxaID package sits at 0.1.0 so the version is silent by construction. The code hash is the signal.
+
 ### clean_taxon_names(name_vec, remove_abbr = NULL, strip_modifiers = NULL)
 
 Extract and Clean Taxon Names from a Character Vector
@@ -263,6 +452,17 @@ Cleans a character vector of taxon names by normalising whitespace, removing 'NA
 | strip_modifiers | no | NULL | A character vector of known leading modifier words (case-insensitive, matched against the FIRST whitespace-delimited token only, and only ever removed once per name -- never a repeated strip). Defaults to a curated list of real breeding/ploidy-manipulation terms found on real GenBank hybrid-cross records ("androgenetic", "gynogenetic", "autodiploid", "autotriploid", "autotetraploid", "allodiploid", "allotriploid", "allotetraploid", "diploid", "triploid", "tetraploid", "polyploid"). Deliberately does NOT include uncertainty-hedge words ("possible", "putative", "probable", "tentative", "presumed", etc.) or "hybrid"/"unidentified" themselves -- those genuinely change what the name means (a hedge should keep failing the capital- letter filter below, not get silently rescued into a confident binomial; "hybrid X x Y" with no named first parent has no real maternal-parent identity to recover). Pass a custom vector to extend or replace the default list; character(0) disables this step entirely. |
 
 **Value:** A character vector the same length as 'name_vec'. Names that do not start with a capital letter, are 'NA', or consist only of an abbreviation are set to 'NA'. An R attribute 'collapsed_to_genus' (logical, same length) is also set: 'TRUE' for a row that HAD a real second token (an epithet-shaped string, e.g. an open-nomenclature label like '"Ictalurus cf. pricei USON-01120-1"') which was dropped because it matched 'remove_abbr' or was too short - i.e. this row's output is a genus-only name that used to be (or claimed to be) something finer. 'FALSE' for a row that was already genus-only to begin with, or that was rejected outright ('NA' output). Added so a caller building 'taxon_name'/'taxon_name_rank' pairs from this function's output can correct 'taxon_name_rank' to '"genus"' alongside the name itself - see 'convert_taxonomy_backbone''s own not-found fallback path for the motivating real bug this closes (a restored candidate's 'taxon_name_rank' silently staying '"species"' after its name was correctly collapsed to genus-only). Two further attributes, same length: 'name_qualifier' is '"cf."' or '"aff."' when the name carried that open-nomenclature qualifier (leading, as in '"cf. Laternula"', or after the genus, as in '"Laternula cf. marilina"'), else 'NA'. A qualified name returns its GENUS, with 'collapsed_to_genus = TRUE': the qualifier means the species is not asserted, and the attribute keeps a qualified genus distinguishable from an asserted one. 'clean_reason' names a structural change, else 'NA': '"subgenus_dropped"' (a parenthesised subgenus after the genus, '"Allodia (Brachycampta) lugens"' -> '"Allodia lugens"'; the subgenus is never returned as an epithet), '"qualifier"', '"hybrid_congeneric"' (a hybrid formula whose parents share a genus returns that genus) or '"hybrid_intergeneric"' (parents in different genera return 'NA': neither parent is the organism). A named nothospecies ('"Mentha x piperita"') is not a formula.
+
+#### Details
+
+This function operates on a plain character vector, not a dataframe. Common patterns for dataframe workflows:
+
+
+```
+
+# Pattern 1 -- extract a unique vector for API calls: name_vec <- df |> dplyr::pull(taxon_name) |> clean_taxon_names()
+
+# Pattern 2 -- clean the column in place: df <- df |> dplyr::mutate(taxon_name = clean_taxon_names(taxon_name)) ```
 
 ### common_to_scientific(common_names, taxon_group = NULL, location = NULL, backbone_id = 11L, verify = TRUE, llm_fn = getOption("TaxaID.llm_fn"), ...)
 
@@ -282,6 +482,12 @@ Uses a large language model (LLM) to convert a character vector of common names 
 
 **Value:** A data frame with one row per element of 'common_names': 'common_name' Input common name (character). 'scientific_name_llm' Scientific name suggested by the LLM, or 'NA' if ambiguous or unknown. 'scientific_name_verified' Backbone-verified scientific name (from 'verify_taxon_names'), or 'NA' if verification failed or 'verify = FALSE'. 'backbone_id' Backbone used for verification (integer). 'verified' Logical; 'TRUE' if 'verify = TRUE' and the backbone returned a match. 'notes' Character; LLM explanation for ambiguous or unresolved names.
 
+#### Details
+
+Common names are inherently ambiguous: "Robin" means Turdus migratorius in North America but Erithacus rubecula in Europe; "Hawk" has no unambiguous species referent. Supplying taxon_group and location resolves most ambiguities. The function sends all names in a single LLM call and returns one row per input name.
+
+When a name is too ambiguous to resolve, the LLM returns NA for scientific_name_llm with an explanatory notes entry. When verify = TRUE and backbone verification fails (name not found or spelling inconsistent), scientific_name_verified is NA and verified is FALSE. Returning the unverified LLM suggestion in a separate column allows the user to inspect and decide rather than silently discarding potentially useful information.
+
 ### create_taxon_names(input_df, rank_system = NULL)
 
 Create Most Specific Taxon Name Column
@@ -295,6 +501,10 @@ Takes a dataframe with separate taxonomic rank columns and adds two new columns:
 
 **Value:** The input data frame with two columns appended: taxon_name The most specific non-NA rank value for each row. taxon_name_rank The rank label (lowercase) corresponding to 'taxon_name'. 'NA' when all ranks are 'NA'.
 
+#### Details
+
+If all rank columns are NA for a row, both output columns are NA silently.
+
 ### default_sampling_scheme()
 
 Default Sampling-Group Classification Scheme
@@ -304,6 +514,35 @@ Returns the package's default sampling-group scheme: an ORDERED list of rules (f
 (no parameters)
 
 **Value:** A sampling-group scheme object; see Shape above.
+
+#### Shape
+
+The returned object is a list with three elements:
+
+- rules: An ORDERED list of rules. Each rule is list(group = "<name>", when = list(<clause>, <clause>, ...)). The when clauses are OR'd together (a rule fires if ANY clause matches); a clause is a named list mapping a rank (kingdom/phylum/class/order) to a character vector of values, and the ranks WITHIN one clause are AND'd together. A literal NA as a clause's value for a rank means "this rank is missing" (is.na()), not "match nothing" -- this is what lets the class-less-Chordata fish clause (phylum == "Chordata" AND class missing) be expressed faithfully. Example:
+
+
+```
+
+list( group = "fishes", when = list( list(class = c("Actinopteri", "Elasmobranchii", ...)), list(phylum = "Chordata", class = NA) ) )
+
+```
+
+- catch_all: The group name used when no rule matches ("macroinvertebrates").
+
+- kingdom_guard_vocabulary: Character vector of kingdom values considered "animal" for the kingdom guard (see assign_sampling_group's kingdom_guard argument): c("Animalia", "Metazoa").
+
+#### First-match-wins contract
+
+rules is evaluated top to bottom, exactly like a dplyr::case_when(): a row is assigned to the FIRST rule whose when clauses match, and every later rule is skipped for that row -- even if a later rule would also have matched. This is a real, load-bearing property of the original classifier (e.g. a taxon that matches both a specific rule and a later, broader one always takes the specific one), and assign_sampling_group preserves it exactly.
+
+#### Class-level vs. phylum-level rules
+
+Two traps this scheme's clauses are written to avoid:
+
+- Bacillariophyceae (diatoms) -> "phytoplankton". Trap: GBIF places diatoms in phylum Ochrophyta, the SAME phylum as the kelps/rockweeds (Phaeophyceae, classified as "macroalgae" above). A phylum-level rule for either group would be wrong in one direction or the other -- it would either exclude the diatoms or admit the kelps into the wrong group. This MUST be a class-level rule, and it is: the diatom clause names class = "Bacillariophyceae" only, never phylum = "Ochrophyta".
+
+- Copepoda -> "zooplankton". GBIF's current backbone names this class "Hexanauplia"; NCBI's backbone names it "Copepoda". Both spellings are added to the SAME zooplankton clause, so the classifier works whichever backbone the input taxonomy came from. "Copepoda" is also found live in real GBIF-backbone occurrence data, not only in NCBI match objects, which is why it is added to the rule directly rather than only handled via harmonise = TRUE.
 
 ### define_search_polygon(lat = NULL, lon = NULL, radius_deg = NULL, tile = "Esri.OceanBasemap", points = NULL, group_col = NULL, init_polygon = NULL, title = "Define Search Polygon", done_label = "Done", cancel_label = "Cancel", viewer = shiny::paneViewer(minHeight = 500))
 
@@ -326,6 +565,22 @@ Opens an interactive Shiny gadget centred on a given point (or on a previously d
 | viewer | no | shiny::paneViewer(minHeight = 500) | A shiny gadget viewer, passed to runGadget. Default shiny::paneViewer(minHeight = 500) (renders in RStudio's own Viewer pane) -- matches the viewer style already used by this ecosystem's other interactive mapping gadgets (TaxaHabitat::review_spatial_flags()), so all mapping interactions look and feel the same rather than mixing viewer styles. Not dialogViewer (RStudio's own popup dialog) -- on at least one real system, RStudio's embedded dialog webview silently swallowed the Done button's return value for this specific gadget (confirmed reproducible: clicking Done closed the dialog but define_search_polygon() always returned NULL, even though an identical minimal gadget with no leaflet map worked fine in that same dialog viewer, and this exact gadget worked correctly via both shiny::browserViewer() and shiny::paneViewer() in that same session) -- most likely a Leaflet/webview rendering incompatibility specific to that embedded dialog, not something this package can control. Pass shiny::browserViewer() yourself if you'd rather open in your system's default web browser (also confirmed working); avoid dialogViewer() for this function unless you've independently confirmed it round-trips a real click on your machine. |
 
 **Value:** A length-1 character WKT 'POLYGON' string with vertices ordered counter-clockwise and the ring closed (first == last vertex), ready for the 'geometry' argument of 'download_gbif_occurrences'. Returns 'NULL' if the user closes the gadget without clicking Done.
+
+#### Details
+
+Interaction model:
+
+- Drag any numbered circle to move that vertex.
+
+- Add Point inserts a new draggable vertex at the midpoint of the current longest side. Drag it to the desired position. There is no limit on the number of vertices.
+
+- Remove Last Point removes the most recently added vertex. The initial corners cannot be removed this way.
+
+- The WKT string updates live in the toolbar so you can inspect it before clicking Done.
+
+Tile choice: For marine / coastal studies use the default "Esri.OceanBasemap" (shows bathymetry and shelf). For terrestrial or freshwater studies "OpenStreetMap" or "Esri.WorldTopoMap" may be clearer.
+
+Non-interactive use: For scripted or non-interactive workflows use make_bbox_wkt instead.
 
 ### detect_ranks(input_df, rank_system = NULL, warn = TRUE)
 
@@ -359,6 +614,28 @@ Reads R code (a script, file path, or character vector of code lines) and uses a
 
 **Value:** A character string containing the drafted methods text. Printed to the console via 'cat()' and returned invisibly.
 
+#### Details
+
+The function sends the R code to the LLM with instructions to:
+
+- Describe the analysis workflow in past tense
+
+- Note key parameters and their values
+
+- Use appropriate scientific language for the audience
+
+- Avoid reproducing code; describe what was done conceptually
+
+- Not report findings or summary statistics -- these belong in the Results section (use draft_results_text)
+
+- Flag any analysis steps that used LLM-generated data, with a caveat about stochastic output
+
+Code comments are treated as facts. If the code contains comments like "# 70 paired-end MiSeq samples" or "# DADA2 denoised with default parameters", the LLM will incorporate this information into the methods text. Make sure code comments are accurate before passing the script. To provide verified facts that override inferences from code comments, use the context parameter.
+
+Statistics bleed guard. When a context is provided, its statistics field (sample sizes, resolution rates, etc.) is shown to the LLM for accuracy checking only. The LLM is explicitly instructed not to report these numbers in the methods text. If you find statistics appearing in the methods output, they likely came from code comments rather than the context; review and clean the code comments, or use a more targeted code excerpt.
+
+LLM stochasticity. Because the output is generated by an LLM, it will vary slightly between runs. The output is a starting point for editing, not a final manuscript. Always review for accuracy.
+
 ### draft_results_text(..., description = NULL, context = NULL, audience = "journal", code = NULL, llm_fn = getOption("TaxaID.llm_fn", call_api), max_rows = 20L, verbose = FALSE)
 
 Draft Results Text from R Objects
@@ -377,6 +654,26 @@ Summarizes R objects (data frames, model outputs, summaries) using an LLM to pro
 | verbose | no | FALSE | Logical. Print progress messages. Default FALSE. |
 
 **Value:** A character string containing the drafted results text. Printed to the console via 'cat()' and returned invisibly.
+
+#### Details
+
+For each named object, the function extracts:
+
+- Data frames: dimensions, column names and types, summary(), and the first few rows
+
+- Lists: str() output (truncated)
+
+- Numeric vectors: summary() and length
+
+- Other objects: print() output (truncated)
+
+These summaries are sent to the LLM with instructions to write a results section highlighting key findings, sample sizes, and summary statistics.
+
+When a context object is provided, its statistics and facts are included as verified ground truth. The LLM is instructed to use these numbers exactly rather than computing its own from the data summaries.
+
+LLM-derived data caveat. If the data objects contain values that were generated by an LLM (e.g., habitat classifications, range assessments), the LLM is instructed to note this and include a brief caveat about stochastic output. You can also add an explicit note in context$facts (e.g., facts = list(llm_role = "habitat classification via Claude")).
+
+LLM stochasticity. The output is generated by an LLM and will vary between runs. Always review for accuracy. The output is a starting point for editing, not a final manuscript.
 
 ### escalate_taxonomic_rank(taxon_name, current_rank, rank_system = standard_ranks, max_levels = 2L, backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE, decisions = NULL)
 
@@ -415,6 +712,24 @@ Looks up taxa in the World Register of Marine Species (WoRMS) *by name* and retu
 
 **Value:** A tibble, one row per unique non-'NA' input name: 'taxon_name' The name as supplied (whitespace trimmed). 'in_worms' Logical. A trusted match was found. 'aphia_id', 'accepted_name', 'accepted_aphia_id', 'taxonomic_status', 'worms_rank' From the representative record (the first 'accepted' match, else the first match). 'match_type' '"exact"', or the rejected match type(s) when 'fuzzy_rejected' is 'TRUE'. 'n_matches' Records retained for this name. 'fuzzy_rejected' WoRMS returned only non-exact matches and 'accept_fuzzy = FALSE', so none were used. 'is_marine', 'is_brackish', 'is_freshwater', 'is_terrestrial' Logical, *multi-label and possibly 'NA'*. 'NA' means WoRMS has not assessed that realm, which is not the same claim as 'FALSE'. 'marine_scope' Logical, *never 'NA'*. 'TRUE' when any retained match is marine or brackish. This is the column to hand to a detection-level scope filter. 'habitat_unassessed' In WoRMS but all four flags 'NA' - dropped for lack of evidence rather than on evidence. Counted separately and reported. 'worms_ambiguous', 'habitat_conflict' More than one retained match; and those matches disagreeing about 'marine_scope'. 'ncbi_id' Character NCBI taxon id, or 'NA'. A curated crosswalk, versus the live one computed by 'verify_taxon_names(backbone_id = 4)' / 'change_backbone'. 'wrims' Logical. Any WoRMS distribution record with 'establishmentMeans' of "Alien". Derived, not a WoRMS field - see Details of 'extras'. 'kingdom', 'phylum', 'class', 'order', 'family', 'genus' WoRMS classification of the representative record. Attributes on the result, always present (the 'count_failures' pattern), so a quiet run still leaves the residue inspectable: '"n_not_in_worms"' / '"not_in_worms"', '"n_fuzzy_rejected"' / '"fuzzy_rejected_taxa"', '"n_habitat_unassessed"' / '"habitat_unassessed_taxa"', '"n_habitat_conflict"' / '"habitat_conflict_taxa"', '"n_request_failed"' / '"request_failed_taxa"' (names whose request errored - these are *not* cached and are *not* absences), and '"worms_query"' with the settings used.
 
+#### Details
+
+Why this is not the habitat lookup you already have. TaxaHabitat::build_habitat_lookup() asks an LLM to choose ONE of Marine / Estuarine / Freshwater / Terrestrial. Intertidal foragers that stand on rock come back Terrestrial -- the black oystercatcher (M 0.40 / T 0.50), sanderling (0.20 / 0.50), black turnstone (0.30 / 0.60) and whimbrel all do, and 381 of 578 PtConception birds go the same way. WoRMS records the oystercatcher as marine and terrestrial. The two sources answer different questions and neither replaces the other.
+
+The filter rule is "keep if marine OR brackish", never "drop if terrestrial". Every shorebird above is terrestrial = TRUE. Diadromous fish are handled by the same rule without a special case: Oncorhynchus mykiss and Alosa sapidissima are both marine = TRUE, brackish = TRUE, freshwater = TRUE, terrestrial = FALSE. The marine_scope column applies this rule and is never NA.
+
+Apply the verdict at detection level (an ESV/ASV for sequence data, a per-image or per-recording candidate ID otherwise), not taxon level. Filtering candidates within an observation strips hypotheses out of a candidate set and forces the read onto whichever ones survive. Drop an observation only when NO candidate is in scope; an observation with any marine candidate keeps its whole candidate set, out-of-scope competitors included. See the examples.
+
+This is a different axis from a taxonomic scope filter, and they compose. A taxonomic filter ("is this a fish / macroinvertebrate / macroalga?") keeps terrestrial snails, freshwater mussels, freshwater annelids and freshwater algae, because those are Gastropoda / Bivalvia / Polychaeta / Ulvophyceae wherever they live. Verified here: Cornu aspersum (garden snail) and Lumbricus terrestris are marine = FALSE, so WoRMS cuts them. Conversely WoRMS cannot cut a marine copepod and a taxonomic filter can. Report the saving from both.
+
+What happens to non-marine taxa is the caller's decision, and it should not be silent deletion. Human / pig / cow / chicken DNA is a lab-contamination signal, and out-of-scope counts are a data-quality diagnostic. Cut these taxa from the prior and likelihood path but retain the rows and counts -- a scope_excluded table and a line in the pipeline report.
+
+Two rules protect against silent loss of a real detection. A fuzzy match is not treated as a match unless accept_fuzzy = TRUE: WoRMS will resolve "Mytilus edulus" phonetically to Mytilus edulis, and the same machinery will hand a terrestrial homonym's flags to a marine name. Rejected fuzzy matches are reported in fuzzy_rejected, not hidden. And homonyms are ORed rather than resolved: "Ficus" is both a marine gastropod genus (AphiaID 205605, marine) and the fig genus (447837, not marine), so marine_scope is TRUE if any retained match is marine or brackish, with worms_ambiguous and habitat_conflict marking the case for review.
+
+Absence is part of the filter, and is also its main risk. Cervus elaphus and Zea mays are not in WoRMS at all, so there is no threshold to tune. But a genuinely marine taxon missing from the register is cut the same way. Every absent name is returned in the "not_in_worms" attribute -- read it before trusting a run. Absence is a weaker filter than intuition suggests: Homo sapiens (1455977), Sus scrofa (1469456), Bos taurus (1506698), Canis lupus (1506689) and Gallus gallus (1463738) are all in the register. They are cut on their flags (marine = FALSE / NA, terrestrial = TRUE), not on absence.
+
+Names are used as supplied, apart from whitespace trimming. Pass names that have already been through clean_taxon_names if the source carries open-nomenclature or voucher labels; slash labels and "Genus sp." will not match.
+
 ### fill_higher_ranks(taxon_names, input_rank = NULL, local_sources = list(), fill_ranks = "family", record_source = FALSE, backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE, decisions = NULL, lineage = NULL)
 
 Fill Higher Taxonomic Ranks from Local Data and Backbone APIs
@@ -436,6 +751,32 @@ Given a character vector of taxon names (typically species binomials), derives '
 
 **Value:** A tibble with one row per element of 'taxon_names' (preserving duplicates and order), with columns: 'taxon_name' The original input name. 'genus' First word of 'taxon_name', EXCEPT when an API lookup resolved that genus to a backbone-flagged synonym at genus rank - in that case the backbone's own currently-accepted genus name is returned instead (see @section Genus correction below). Local-source-only lookups (no API call needed) always keep the locally-extracted genus unchanged. <rank> One column per entry in 'fill_ranks' (by default just 'family'), holding the looked-up value or 'NA' if unresolved. <rank>_source Only when 'record_source = TRUE': where that value came from - '"local"', '"backbone_<id>"', or 'NA'. A warning is issued, per rank, for any names that rank could not be resolved for after all fallbacks.
 
+#### Details
+
+Backbone queries are at genus level. verify_taxon_names() is called with the unique unresolved genera (not the full species names). This means a species absent from NCBI is still resolved provided its genus is present -- which covers the vast majority of cross-backbone synonym situations.
+
+Column name conflicts in local sources (e.g. a source has both genus and Genus) are handled by tolower(names(...)) before joining.
+
+#### Filling only where a backbone is silent
+
+A rank is filled only where the backbone above it in the chain said NOTHING. A value the primary backbone supplied is never replaced by the fallback's, and a value already present is never overwritten. Silence and contradiction are different things and only the first is filled here.
+
+This is the opposite emphasis from TaxaAssign::posterior_consensus()'s cross_phylum_eps, where the backbone WINS over a disagreeing input: GBIF makes Sipuncula a phylum in its own right, so a sipunculan row carrying phylum = "Annelida", class = "Sipuncula" is treated as a genuine cross-phylum conflict rather than reconciled. The two rules are consistent because they answer different questions. There, two sources disagree and the backbone is trusted; here, one source is silent and another is asked. Nothing in this function adjudicates a disagreement.
+
+The motivating case is GBIF's treatment of the ray-finned fishes. GBIF returns kingdom|phylum|order|family|genus for them with no class entry at all -- its Actinopterygii/Actinopteri node is not an accepted backbone class -- so class comes back NA and a consensus keyed on class lands at phylum Chordata. NCBI supplies Actinopteri, and because GBIF is silent rather than contradictory, filling it is safe.
+
+#### Homonyms, and what the agreement check does and does not cover
+
+A bare genus name is not a key. GBIF carries a polychaete worm genus "Corallina" (Animalia|Annelida|Polychaeta|...) alongside the red algal genus NCBI resolves (Rhodophyta|Florideophyceae|...), and BOTH match at genus rank, so matched_rank cannot separate them.
+
+Before a FALLBACK value is accepted the primary must have PLACED that genus, and the fallback's lineage must not contradict the primary's at phylum (or division); a rejected genus raises a warning naming it. A genus the primary could not place at all is refused rather than trusted -- that is not the same as the primary being silent about one rank, and it is when the fallback is least safe: NCBI refuses "Liparis" as ambiguous (a snailfish and an orchid), and GBIF resolves the same string to an insect genus, so trusting it would put class = "Insecta" on a fish. When no primary backbone is configured at all the fallback is the only source and is used as given. Coarser ranks are deliberately not compared: the backbones use different vocabulary for the same kingdom ("Metazoa" against "Animalia"), and finer ranks disagree routinely for the same organism (NCBI places Girella in Centrarchiformes, GBIF in Perciformes), so both produced false contradictions when tried.
+
+The check cannot protect against a wrong PRIMARY backbone, which is authoritative by construction: query with backbone_id = 11 (GBIF) and "Corallina" resolves to class "Polychaeta" with nothing to compare it against. Choose the primary backbone for the group being resolved; the default (NCBI primary, GBIF fallback) answers all of the above correctly.
+
+#### Genus correction
+
+genus reflects the backbone's currently-accepted name whenever an API lookup resolves the locally-extracted genus to a taxonomic synonym at genus rank -- e.g. an informally-named reference ("Inu sp. 1 sensu Shibukawa et al., 2020.") extracts genus = "Inu", but GBIF's own backbone resolves it to the currently-accepted genus "Luciogobius", so "Luciogobius" is returned. This matters beyond cosmetics: TaxaAssign::join_priors() joins this function's genus/family output against a likelihood-side coarse-rank taxon_name (produced by TaxaMatch::convert_taxonomy_backbone(), which also prefers the current name over a synonym) via an EXACT STRING match. If the two functions disagreed on which form to report for the same genus, that join would silently fail and the observation would lose its coarse-rank species expansion entirely, falling back to the dark-diversity floor instead of real occurrence-based priors. genus is corrected to the backbone's resolved name whenever an API lookup finds one cleanly at genus rank, keeping this function consistent with convert_taxonomy_backbone(). Verified backbone-general: both NCBI and GBIF resolve the "Inu" case the same way.
+
 ### find_taxonomy_conflicts(input_df, rank_system = NULL)
 
 Find Taxonomic Conflicts in a Taxonomy Data Frame
@@ -449,6 +790,10 @@ Detects higher-rank inconsistencies: cases where the same taxon name at one rank
 
 **Value:** A data frame of conflicts with columns: 'taxon_name' The taxon name that has conflicting higher-rank assignments. 'taxon_rank' The rank of the conflicting taxon (e.g. '"genus"'). 'parent_rank' The coarser rank where disagreement was found (e.g. '"family"'). 'parent_values' Semicolon-separated string of the distinct parent values found (e.g. '"Cottidae; Scorpaenidae"'). 'n_values' Number of distinct parent values. Returns an empty data frame (0 rows, same columns) when no conflicts are found.
 
+#### Details
+
+These conflicts arise when merging taxonomy from multiple sources (GBIF + NCBI + WoRMS) or when supplementing verified taxonomy with manual corrections. Adapted from the GITA pipeline's f_find_taxonomic_inconsistencies(), vectorised for performance.
+
 ### is_plausible_binomial(x)
 
 Test Whether Strings Are Plausible Species Binomials
@@ -460,6 +805,10 @@ Returns TRUE for strings that are structurally plausible species binomials match
 | x | yes |  | Character vector of taxon name strings. |
 
 **Value:** Logical vector, same length as 'x'.
+
+#### Details
+
+Useful for filtering NCBI taxonomy results and occurrence records to described, named species only.
 
 ### list_cache_files(cache_dir, patterns, recursive = FALSE, force = FALSE)
 
@@ -476,6 +825,10 @@ Generic building block for a package's own '<pkg>_clear_cache()' helper: scans '
 
 **Value:** A data frame with columns 'path', 'size_mb', 'mtime' (zero rows if 'cache_dir' has no matching files or does not exist).
 
+#### Details
+
+Three containment checks apply before anything is returned (all part of this shared engine, so every downstream <pkg>_clear_cache() inherits them): (1) cache_dir is refused outright if it resolves to the working directory, the user's home directory, or a filesystem root -- see .assert_cache_dir_is_dedicated(); (2) a directory holding any file that matches NONE of patterns is refused unless force = TRUE -- a real cache directory holds only cache files, so a mixed one is somebody's project, not a cache, even if some of its files happen to match; (3) under recursive = TRUE, a symlinked subdirectory (or file) that resolves outside cache_dir is never followed, so a scan cannot escape cache_dir via a symlink.
+
 ### list_models(provider = NULL)
 
 List Current LLM Model Tier Assignments
@@ -487,6 +840,10 @@ Shows the model name that each tier ('fast', 'mid', 'top') resolves to for each 
 | provider | no | NULL | Character vector. Provider name(s) to show. Default NULL shows all providers with an API key set in the environment. |
 
 **Value:** A data frame (invisibly) with columns 'provider', 'tier', 'model', 'source'.
+
+#### Details
+
+Models are discovered lazily -- the first call for a provider triggers a live /models API query and caches the result for the session. Use refresh_models to force re-discovery.
 
 ### new_report_section(package, section, methods, results = NULL, citations = NULL, params = NULL, statistics = NULL)
 
@@ -520,6 +877,20 @@ Extracts a single rank value from the 'classification_path' and 'classification_
 
 **Value:** The matched taxon name string, or 'NA_character_' if 'target_rank' is not present in 'ranks' or inputs are 'NA'.
 
+#### Details
+
+This function is vectorised over path and ranks via mapply(). To parse an entire column from verify_taxon_names() output use:
+
+```
+verified <- verify_taxon_names(stringr::word(species_names, 1))
+families <- mapply(
+  parse_classification_path,
+  verified$classification_path,
+  verified$classification_ranks,
+  MoreArgs = list(target_rank = "family")
+)
+```
+
 ### prompt_api(prompt, llm_fn = getOption("TaxaID.llm_fn", call_api), pause_seconds = 1, verbose = TRUE)
 
 Submit a Multi-Chunk LLM Prompt to Any Provider
@@ -535,6 +906,31 @@ Submits an 'llm_prompt' object to an LLM provider, handling multi-chunk prompts 
 
 **Value:** A length-1 character string containing the combined raw response text from all chunks.
 
+#### Details
+
+Returns the combined raw response text from all chunks for passing to a response parser such as parse_hierarchical_habitat_response() (TaxaHabitat).
+
+Prompt types in TaxaID: The term "prompt" has two distinct meanings in the ecosystem:
+
+- llm_prompt S3 object: A structured multi-chunk prompt created by domain functions (e.g., build_habitat_prompt() in TaxaHabitat). Contains chunked prompts, metadata, and taxa lists. Used by prompt_api() and prompt_manual().
+
+- Plain character string: A single text prompt passed directly to provider functions (call_api(), call_anthropic_api(), etc.) or to draft_methods_text() / draft_results_text().
+
+prompt_api() requires the S3 object; the individual provider functions accept plain strings.
+
+Provider selection: All provider-specific concerns (API keys, model names, token limits) belong inside the llm_fn function. Use a closure to fix non-default parameters for any provider:
+
+
+```
+
+# Specific provider and tier via call_api my_fn <- function(p, ...) call_api(p, provider = "gemini", tier = "fast")
+
+# Anthropic with a non-default model my_fn <- function(p, ...) call_anthropic_api(p, model = "claude-haiku-4-5-20251001")
+
+# Local Ollama model my_fn <- function(p, ...) call_ollama_api(p, model = "qwen2.5:14b")
+
+raw_text <- prompt_api(prompt, llm_fn = my_fn) ```
+
 ### prompt_manual(prompt, out_dir = getwd(), prefix = "habitat")
 
 Submit a Prompt Manually via Any LLM Interface
@@ -549,6 +945,10 @@ Writes prompt file(s) from an 'llm_prompt' object to disk and prints step-by-ste
 
 **Value:** Invisibly returns a named list: prompt_files Character vector of written prompt file paths. response_files Character vector of expected response file paths. n_chunks Integer. Number of chunks. taxon_list Character vector. All taxa submitted.
 
+#### Details
+
+The function pauses R by calling readline() after printing instructions. This is intentional -- it prevents the next line of your script (typically read_llm_response()) from running before you have saved the response file(s).
+
 ### read_llm_response(files)
 
 Read Saved LLM Response File(s)
@@ -561,6 +961,10 @@ Reads one or more plain-text LLM response files, strips duplicate CSV headers fr
 
 **Value:** A length-1 character string.
 
+#### Details
+
+Missing files generate a warning (not an error) so that partial results can still be parsed. If taxon_name is absent from the combined text, a warning is also emitted.
+
 ### refresh_models(providers = NULL)
 
 Refresh LLM Model Discovery from Provider APIs
@@ -572,6 +976,10 @@ Queries each provider's '/models' endpoint to find the latest available models, 
 | providers | no | NULL | Character vector. Provider names to refresh. Default NULL refreshes all providers with keys set. |
 
 **Value:** A data frame of updated tier assignments (invisibly), as from 'list_models'.
+
+#### Details
+
+Call this function when a model name becomes stale (e.g., a 404 deprecated error) or after adding a new API key.
 
 ### register_provider(name, api_key_var, base_url, fallback_models = list(), tier_patterns = NULL)
 
@@ -589,6 +997,10 @@ Adds a custom provider to the session registry so that 'list_models', 'refresh_m
 
 **Value:** The 'name' string invisibly.
 
+#### Details
+
+Registered providers are session-only and do not persist to disk. Add the call to ~/.Rprofile or the top of your analysis script for automatic re-registration.
+
 ### rename_cols(input_df, col_map = NULL, strict = FALSE)
 
 Rename Data Frame Columns to a Target Convention
@@ -602,6 +1014,38 @@ Renames columns in a data frame using either a user-supplied explicit map or a s
 | strict | no | FALSE | Logical. Controls behaviour when a col_map key is not found in input_df. FALSE (default): warns about unmatched keys and renames whatever it can. Suitable when rename_cols() is applied to frames that may only contain some of the target columns. TRUE: stops with an error if any col_map key is absent from input_df. Use in scripts where all mappings must succeed. Has no effect when col_map = NULL (default patterns always skip non-matching columns silently). |
 
 **Value:** The input data frame with columns renamed as specified. Column types, row names, and all other attributes are preserved. Columns not mentioned in 'col_map' (or not matched by the default patterns) are left unchanged.
+
+#### Details
+
+Default pattern matching (when col_map = NULL): The following case-insensitive regex patterns are applied. A column is renamed only when its name matches exactly one pattern; ambiguous matches (multiple columns matching the same pattern) are skipped with a warning.
+
+- lat, latitude -> decimalLatitude
+
+- lon, long, longitude -> decimalLongitude
+
+- date, SurveyDate, CollectionDate, EventDate, DateCollected -> eventDate
+
+- site, location, locality -> verbatimLocality
+
+Matching is case-insensitive so Lat, LAT, and lat all match. If the target column already exists in input_df (e.g. input_df already has decimalLatitude), that pattern is skipped.
+
+User col_map replaces defaults: When col_map is supplied, none of the default patterns are applied.
+
+Quoted strings required: Both names and values in a user-supplied col_map must be quoted. Unquoted bare names cause an "object not found" error before the function is called.
+
+Scientific name columns: No default pattern maps to scientificName or taxon_name. Column names such as Species are ambiguous (they may hold the epithet only, not the full binomial) and must be mapped explicitly via col_map after confirming column content.
+
+#### The col_map pattern across TaxaID
+
+The col_map concept is used consistently across the TaxaID ecosystem wherever column names need to be reconciled:
+
+- TaxaTools: rename_cols() -- general-purpose column rename with DarwinCore defaults.
+
+- TaxaMatch: standardize_match_data() -- map BLAST/DADA2 output column names to the canonical match object format.
+
+- TaxaFetch: stack_occurrences() -- align column names across occurrence data sources before row-binding.
+
+In all cases, col_map is a named character vector where names are existing column names and values are desired target names.
 
 ### report_and_clear_cache(inv, label, cache_dir, older_than_days = NULL, dry_run = FALSE)
 
@@ -618,6 +1062,10 @@ Shared "apply an age filter, print a summary, delete or dry-run report" engine b
 | dry_run | no | FALSE | Logical. If TRUE, reports what would be removed without removing anything. Default FALSE. |
 
 **Value:** Invisibly, the (possibly 'older_than_days'-filtered) subset of 'inv' that was targeted.
+
+#### Containment
+
+cache_dir is refused outright (before anything is deleted, even under dry_run = FALSE) if it resolves to the working directory, the user's home directory, or a filesystem root -- the same check list_cache_files() applies, repeated here so a caller that builds inv some other way (not via list_cache_files()) still gets it. inv itself is used as-is and is not re-scanned or re-filtered against cache_dir -- a caller is trusted to have built it FROM cache_dir.
 
 ### reset_token_usage()
 
@@ -643,6 +1091,10 @@ Looks up 'barcode_term' in barcode_length_defaults and returns 'c(min_bp, max_bp
 
 **Value:** Integer vector of length 2: 'c(min_bp, max_bp)'.
 
+#### Details
+
+For vector input (multiple marker names), collects all matched ranges and returns c(min(mins), max(maxes)) so the query covers all supplied terms. User-supplied min_len / max_len override the resolved bounds.
+
 ### resolve_barcode_marker(barcode_term)
 
 Resolve a Primer-Variant Barcode Term to the Marker It Amplifies
@@ -654,6 +1106,12 @@ A registered primer-variant name (see barcode_primer_defaults) - '"COI-Folmer"',
 | barcode_term | yes |  | Character vector of barcode/marker/primer-variant names. |
 
 **Value:** Character vector the same length as 'barcode_term': the base marker name for a recognised primer variant, otherwise the input unchanged.
+
+#### Details
+
+This maps such a term to the marker it amplifies, so a search can be built from the marker while primer/length resolution keeps using the variant. Any term that is not a recognised variant is returned unchanged, so a custom or unregistered term still searches as itself.
+
+MiFish terms are deliberately not remapped: unlike the others, real records are annotated with the MiFish primer name, so the variant is genuinely searchable and callers already OR it together with 12S.
 
 ### resolve_barcode_primers(barcode_term)
 
@@ -681,6 +1139,16 @@ A taxon name is not a key - NCBI can hold several nodes with the same name in un
 
 **Value:** A list: taxid Character scalar, the resolved NCBI taxonomy id, or 'NA_character_' if not found or ambiguous. status One of '"unique"' (only one node has this name), '"resolved_by_rank"', '"resolved_by_lineage"', '"ambiguous"' (more than one candidate survived both discriminators), or '"not_found"'. candidates A data frame of every NCBI node sharing this name ('taxid', 'rank', 'division', 'genbankdivision', 'scientificname'), for logging/inspection regardless of status. Zero rows when 'status == "not_found"'.
 
+#### Details
+
+Two discriminators are tried, in order, whenever a name resolves to more than one node:
+
+- Rank. If rank is supplied, candidates whose own NCBI rank does not match are dropped. This alone resolves many real cases (e.g. a genus-rank alga vs. a clade-rank "Vertebrata"), but is NOT sufficient alone -- two candidates can share the same rank (e.g. two genus-rank "Lobophora", one a moth, one a brown alga).
+
+- Lineage containment. If more than one candidate survives the rank filter (or rank was not supplied at all), each surviving candidate's own full NCBI lineage is fetched and tested for ANY overlap (case-insensitive) with lineage_terms -- the caller's own known higher-rank names for this taxon (e.g. its phylum, class, order, family). A candidate with zero overlap is dropped.
+
+A name resolving to exactly one surviving candidate at any stage is returned as the answer; a name resolving to zero or more than one after both discriminators is reported "ambiguous" rather than guessed.
+
 ### scientific_to_common(scientific_names, backbone_id = 11L, location = NULL, use_llm = FALSE, llm_fn = getOption("TaxaID.llm_fn"), cache_dir = NULL, verbose = TRUE, ...)
 
 Convert Scientific Names to Common Names
@@ -700,6 +1168,14 @@ Looks up English common names for a character vector of scientific names. By def
 
 **Value:** A data frame with one row per element of 'scientific_names': 'scientific_name' Input scientific name (character). 'common_name' Primary English common name, or 'NA'. 'common_name_alternatives' Semicolon-delimited additional English common names, or 'NA'. 'source' One of '"gbif"', '"itis"', '"llm"', or '"none"'. 'backbone_id' Integer backbone ID used, or 'NA' for LLM or no-result rows.
 
+#### Details
+
+Backbone sources return structured, curated common names and are preferred when available. GBIF filters to vernacular names with language = "eng"; ITIS filters to language = "English". The first name returned becomes common_name; remaining names become common_name_alternatives (semicolon-delimited).
+
+When backbone_id is not 3 or 11 (or is NULL), only the LLM is used. A warning is issued for unsupported backbone IDs. When a backbone package is required but not installed, an error is thrown with installation instructions.
+
+The location parameter is passed to the LLM and biases name selection toward regionally appropriate common names (e.g., Pacific vs. Atlantic range variants, locally used vernacular names). It has no effect on backbone-sourced results. To apply geographic context to all names, set backbone_id = NULL so the LLM handles the full lookup.
+
 ### set_model(provider, tier, model)
 
 Pin a Specific Model Version for Reproducibility
@@ -713,6 +1189,10 @@ Overrides dynamic tier resolution for the current R session. Use at the top of a
 | model | yes |  | Character. Exact model identifier to use, or NULL to remove an existing pin. |
 
 **Value:** The model string invisibly.
+
+#### Details
+
+Pins are session-only and do not affect the persistent cache. To unpin, restart R or call set_model(provider, tier, NULL).
 
 ### taxaid_build_manifest(packages = NULL)
 
@@ -739,6 +1219,16 @@ Each package has its own '<pkg>_clear_cache()' function, but none of them shows 
 
 **Value:** Invisibly, a data frame with one row per directory: 'cache', 'path', 'exists', 'n_files', 'size_mb', 'oldest', 'newest'. 'size_mb' is APPARENT size (sum of file bytes). A cache of many tiny files occupies substantially more than that on disk, because each file takes at least one filesystem block - TaxaLikely's per-taxon and per-accession stores are thousands of ~1 KB files, so their real footprint is roughly 'n_files' x block size. Read 'n_files' alongside 'size_mb'; the printed output flags stores where the two diverge.
 
+#### Details
+
+Caches default to tools::R_user_dir("<pkg>", "cache"), a hidden per-user directory outside the project, so the sizes here are usually invisible from the analysis they belong to. Project-local cache directories (the file.path(OUT_DIR, ...) convention the workflows use) are not discoverable automatically -- pass them via extra_dirs.
+
+Counts files recursively, so nested stores such as TaxaLikely's fasta/ subdirectory are included.
+
+#### Deliberately not a clear function
+
+Two of these caches do not share one shape. The file-per-key caches (TaxaFetch, TaxaFlag, TaxaHabitat, TaxaLikely) are served by report_and_clear_cache(). TaxaMatch's is row-level and TTL'd -- a few files each holding many entries with their own lifetimes -- so deleting at file granularity would discard live rows. That is why TaxaMatch has no clear_cache() function, and why this one only reports. See list_cache_files()'s note on cache shapes.
+
 ### taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE, force = FALSE)
 
 Report and clear the TaxaTools on-disk caches
@@ -754,6 +1244,10 @@ Covers the package's three file-per-key caches: 'scientific_to_common(cache_dir 
 
 **Value:** Invisibly, the data frame of targeted files (see 'list_cache_files').
 
+#### Details
+
+Note that WoRMS attributes carry no TTL because they are curated and do not drift between runs; clearing them is how you pick up a WoRMS revision.
+
 ### to_faire(input_df, table_type = c("taxaFinal", "taxaRaw"), checkls_ver = "1.02", assay_name = NULL)
 
 Export a TaxaID Data Frame in FAIRe Checklist Format
@@ -768,6 +1262,36 @@ Converts a TaxaID output data frame (match object, likelihood object, or posteri
 | assay_name | no | NULL | Character or NULL. Value to use for the FAIRe assay_name field when df does not contain a testid column. If NULL and testid is absent, assay_name is omitted from the output with a message. |
 
 **Value:** A data frame with FAIRe-compatible column names and a 'faire_table' attribute recording 'table_type' and 'checkls_ver'.
+
+#### Details
+
+Column mapping applied (TaxaID \to FAIRe):
+
+- observation_id \to seq_id
+
+- taxon_name \to scientificName
+
+- taxon_name_rank \to taxonRank
+
+- score \to percent_match
+
+- coverage \to percent_query_cover
+
+- testid \to assay_name
+
+- accession \to accession_id
+
+- kingdom, phylum, class, order, family, genus, species -- unchanged (already match FAIRe / Darwin Core names)
+
+Columns constructed:
+
+- verbatimIdentification -- semicolon-delimited taxonomy string (FAIRe convention) built from whichever of kingdom through species are present and non-NA in each row.
+
+- specificEpithet -- species epithet extracted from the species column (second word of the binomial), when species is present.
+
+- checkls_ver -- FAIRe checklist version (Mandatory field).
+
+Scope: The FAIRe checklist covers the full eDNA workflow including sample collection, extraction, PCR, and sequencing. TaxaID outputs map only to the taxaRaw and taxaFinal classes (bioinformatics taxonomic assignment tables). Sample-level metadata (samp_name, eventDate, decimalLatitude, etc.) must be supplied by the user from field records and joined to this output before submission.
 
 ### token_usage(by = c("call", "function", "provider", "session"), cost_per_1k_input = NULL, cost_per_1k_output = NULL)
 
@@ -803,6 +1327,14 @@ Checks a vector of taxon names against a target taxonomic backbone using the Glo
 | lineage | no | NULL | Character vector or NULL (default). One lineage context per element of name_list (NA = none): a pipe-delimited string of ancestor names the caller already knows for that name, e.g. "Chordata" or "Metazoa\|Chordata\|Actinopteri". Used twice. On the NCBI path (backbone_id = 4) a homonym is resolved, after input_rank and before decisions, to the one candidate whose own lineage contains any of the context's names (the candidates' lineages are already fetched for the ambiguity report, so this adds no request); zero or several containing candidates leave it ambiguous. Second, a returned classification that contradicts the context -- both carry comparable names (kingdoms are ignored, see check_lineage_agreement()) and share none -- is reported as unverified, never accepted, but only where a CHOICE between taxa existed: on the NCBI path a name that had several candidates and was settled by input_rank or decisions; on the Global Names path (one best match, no candidate set) a match whose rank differs from input_rank, or any match when no rank was given; a match AT the asked rank is gated only when the context names a kingdom (Animalia or Metazoa, Plantae or Viridiplantae, Fungi, Chromista, Protozoa, Bacteria, Archaea) and the returned path's kingdom differs, since a same-rank homonym such as Ulvaria (a fish genus and an alga genus) crosses kingdoms while a reclassification never does. A unique node, or a same-rank match within one kingdom, is accepted however the backbones word its lineage: NCBI carries no phylum rank for many protist lineages, and GBIF and NCBI name the same clades differently, which is reclassification, not a homonym. A name is not a key; this is the caller's way of saying which one it means. Part of the cache key when given. |
 
 **Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the match as a taxonomic synonym ('is_synonym = TRUE'), this is the backbone's OWN currently-accepted name, not the (possibly outdated) synonym form that was actually queried - see 'is_synonym' below. Sourced from the Global Names Verifier API's own canonical-name fields, not a local regex, so it is not vulnerable to truncating a trinomial to a binomial the way a naive genus-plus-one-epithet parse would. matched_rank Character. The taxonomic rank 'matched_name' itself was actually resolved at (e.g. '"species"', '"genus"', '"subspecies"') - the last rank present in 'classification_ranks'. Use this, not an assumption carried over from whatever rank the input name was expected to be, to decide how to use 'matched_name' downstream: a query submitted as a species binomial can genuinely resolve only to genus (e.g. an informally-named taxon with no species-level backbone entry), and treating the returned name as still species-level in that case silently corrupts a genus-only name into a fabricated pseudo-binomial. 'NA' when no match was found. is_synonym Logical. 'TRUE' when the backbone's own best match for this name is a taxonomic synonym of a currently-accepted name (in which case 'matched_name' already reports the accepted form, not the synonym). 'NA' when unknown (no match, an API failure, or - for 'backbone_id = 4' specifically - always, since NCBI's direct lookup path does not expose synonym relationships the way the Global Names Verifier path does). Synonymy is a property of the SPECIFIC backbone queried, not a universal fact - the same name can be a synonym under one backbone's own taxonomic opinion and not another's (confirmed directly: GBIF/Catalogue of Life/WoRMS all flag '"Inu"' Snyder 1909 as a synonym of '"Luciogobius"' Gill 1859, while NCBI's own taxonomy does not consider it one at all). This column always reflects whichever single 'backbone_id' was actually queried. classification_path Pipe-delimited classification path from the backbone (e.g., '"Animalia|Chordata|..."'). Already reflects the currently-accepted lineage even when the query matched a synonym. classification_ranks Pipe-delimited rank labels corresponding to 'classification_path'. score Backbone match confidence score between 0 and 1. Higher is better. This measures name-matching quality against the backbone and is unrelated to the sequence match scores used elsewhere in the TaxaID ecosystem (e.g., percent identity from BLAST). verified Logical. 'TRUE' if the lookup ran and the API answered, 'FALSE' if the API failed and fallback values were used - or, when 'lineage' was given, if the API answered and the answer contradicted the caller's lineage (see 'lineage'). The second case is deterministic: the same name with the same context is rejected every time, so retrying it is pointless; the message that names each rejected name tells the two cases apart. It does not say whether the name was found: a name the backbone does not hold returns 'verified = TRUE' with 'matched_name = NA'. Always check rows where 'verified = FALSE'. matched Logical. 'TRUE' only when the lookup ran and returned a name ('verified & !is.na(matched_name)'). Filter on this, not on 'verified', to keep resolved names. fuzzy_corrected Logical. Only present when 'backbone_id = 4'. 'TRUE' if this name was not found by NCBI's own exact search and was instead matched after a fuzzy-spelling correction suggested by 'fallback_backbone_id' (see that parameter). Always review these rows before trusting them - a fuzzy match confirms a plausible correction, not a certain one.
+
+#### Details
+
+Because this function queries the internet, it can be slow for large name lists. It is recommended to run it once on a deduplicated list, save the result, and load that saved file in downstream scripts rather than calling this function repeatedly.
+
+#### Synonym resolution and rank correctness (backbone-general, not GBIF-specific)
+
+Verified directly against the live API across five backbones (Catalogue of Life, ITIS, NCBI, WoRMS, GBIF) with the same query: matched_rank (derived from classificationRanks) and isSynonym/currentName (used to prefer the accepted name over a synonym) are fields the Global Names Verifier API itself normalises identically across every backbone it aggregates -- nothing here is GBIF-specific code. What genuinely varies by backbone is the underlying taxonomic opinion (whether a given name counts as a synonym at all), not the mechanism for reading it. Because dataSources scopes every call to exactly one backbone, this always reports that one backbone's own answer -- it never blends or overrides one backbone's judgment with another's. backbone_id = 4 (NCBI) does not go through this API path at all (see .verify_via_ncbi()) and so never gets synonym resolution, but its own matched_rank is populated identically from its own classification lineage.
 
 ### write_taxaid_manifest(path, packages = NULL)
 

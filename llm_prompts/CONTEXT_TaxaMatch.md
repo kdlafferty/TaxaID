@@ -24,6 +24,22 @@ For each observation, finds the finest taxonomic rank that has a single unambigu
 
 **Value:** 'match_obj' with one new column in strict mode, or four new columns in majority mode: 'lowest_consistent_rank' Character. The finest rank for which the consistency criterion is satisfied. 'NA' when no rank passes. 'rank_majority_value' (_majority mode only_) Character. The majority value at 'lowest_consistent_rank' for the observation. 'NA' when 'lowest_consistent_rank' is 'NA'. 'rank_majority_fraction' (_majority mode only_) Numeric. Fraction of non-blank candidates that hold 'rank_majority_value'. 'NA' when 'lowest_consistent_rank' is 'NA'. 'is_rank_outlier' (_majority mode only_) Logical. 'TRUE' for rows whose value at 'lowest_consistent_rank' differs from 'rank_majority_value'. Rows with 'NA'/blank values at that rank are 'FALSE' (missing data, not a contradiction). All rows are 'FALSE' when 'lowest_consistent_rank' is 'NA'. All original columns of 'match_obj' are retained unchanged; only the columns above are added.
 
+#### Details
+
+Designed to run after standardize_match_data() and (optionally) convert_taxonomy_backbone(). The resulting column can be used to filter out observations that are only resolvable to a coarse rank, or as a diagnostic to guide manual review.
+
+Strict mode (default, majority_threshold = NULL): a rank is consistent only when every non-blank candidate value is identical.
+
+Majority mode (majority_threshold in (0, 1]): a rank is consistent when the single most-common non-blank value accounts for at least majority_threshold of all non-blank candidate values. This handles the common case where one reference-library accession carries a misassigned rank value that would otherwise collapse the observation to a coarser rank. Three additional columns are added (see Value).
+
+Warning: removing rows flagged by is_rank_outlier changes the candidate set seen by evaluate_likelihoods(). Do so before the likelihood step, and inspect the flagged rows before discarding them.
+
+Edge cases: An observation with a single candidate row is always fully consistent at every rank (nothing to disagree with), so lowest_consistent_rank resolves to the finest rank in rank_system regardless of how well-supported that single candidate actually is -- this can give a false sense of resolution for a genuinely weak match.
+
+A rank column that is entirely blank/NA for an observation counts as trivially consistent (no disagreement is possible with zero non-blank values), which does not block finer ranks from being evaluated. If all candidates lack a family value but agree on genus, this function can report lowest_consistent_rank = "species" even though every family value is missing -- this is deliberate (missing data should not prevent resolving finer ranks that ARE populated), but it means a "consistent" result does not imply every coarser rank was actually checked against real data.
+
+Internally, na_as_inconsistent = TRUE mode uses the sentinel string "__MISSING__" to make blanks/NAs count as their own category. If any real taxon name in your data literally equals "__MISSING__", it would be misinterpreted as a blank placeholder -- an extremely unlikely collision in practice.
+
 ### assign_spatial_group(sites, observation_ids, spatial_group_id, id_col = "observation_id")
 
 Manually Assign a Spatial Group to a Set of Observations
@@ -38,6 +54,10 @@ Sets 'spatial_group_id' directly for a named set of observations - for a study w
 | id_col | no | "observation_id" | Character. Observation ID column name. Default "observation_id". |
 
 **Value:** 'sites' with 'spatial_group_id' set to 'spatial_group_id' for the named observations, 'spatial_group_N' recomputed for that group so it stays in sync, and (when present) 'is_default_group' set to 'FALSE' for the named observations - they are no longer eligible to be captured by a future 'group_observations_by_bbox' call. All other rows are unaffected.
+
+#### Details
+
+Collision guard: before assigning, checks whether spatial_group_id is already used by any observation outside observation_ids. If so, stops with an error naming those observations -- silently pulling in an unintended extra member is worse than a hard stop, since nothing downstream would notice the mistake until a fetch or a prior update used the wrong local species pool. To genuinely merge groups, include every observation you want in the merged group in observation_ids.
 
 ### blast_sequences(seq_df, method = "remote", database = "nt", program = "blastn", megablast = FALSE, score_range = 8, max_hits = 20L, max_hits_per_taxon = NULL, min_score = 70, min_query_coverage = 80, barcode_term = NULL, min_subject_length = NULL, max_subject_length = NULL, max_target_seqs = 100L, batch_size = 20L, max_batch_bp = 100000L, num_threads = NULL, word_size = NULL, email = Sys.getenv("NCBI_EMAIL", unset = ""), ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), resolve_taxonomy = TRUE, resolve_location = FALSE, poll_max_wait = 1800, max_consecutive_batch_failures = 3L, verbose = TRUE)
 
@@ -75,6 +95,54 @@ Searches query sequences against NCBI nucleotide (remote) or a local BLAST datab
 
 **Value:** A data frame with one row per query x hit, containing: observation_id Query identifier (from 'asv_id') accession Subject accession score Percent identity (0-100 scale), computed as 'round(100 * identity / align_len, 2)' from HSP fields (the standard NCBI definition). This is _alignment_ identity over the aligned region, not sequence identity over the full query length. For multi-HSP alignments only the highest-scoring HSP is used, which may under- or over-estimate true coverage for fragmented/chimeric reads. evalue E-value bitscore Bit score alignment_length Alignment length query_coverage Percent of query aligned subject_length Subject sequence length subject_start, subject_end Where within the subject/reference sequence this hit's alignment falls (1-based, BLAST tabular convention - 'subject_start > subject_end' on the minus strand; use 'pmin()'/'pmax()' for a directionless span). Distinct from 'subject_length' (the reference's TOTAL length): lets a downstream consumer tell whether two hits against the SAME long subject (e.g. a complete mitogenome) actually cover the same genomic region or two unrelated ones - see 'TaxaLikely::restore_suppressed_candidates(check_regional_overlap = TRUE)'. If 'resolve_taxonomy = TRUE', taxonomy columns ('kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species') are appended. If 'resolve_location = TRUE', 'lat', 'lon', and 'country' columns are appended. This output is ready for 'standardize_match_data'. An 'attr(out, "report_params")' list ('method', 'database', 'min_query_coverage' - the coverage floor, read by 'TaxaLikely::evaluate_likelihoods()' to check it against the model's 'min_pair_coverage' - 'min_score', 'n_samples') is also attached, consumed by 'report_match'. 'attr(out, "failed_query_ids")' (character vector, 'NULL' if none) - remote BLAST only: 'asv_id's whose search never completed (submission or poll failure, even after the automatic halved-batch-size retry) - distinct from a query that completed and genuinely found nothing, which simply has no rows in 'out' at all. Present regardless of which return path this function takes, including every early-return-on-empty-result branch. See 'poll_max_wait''s own documentation. 'attr(out, "circuit_breaker_tripped")' (logical, always present for remote BLAST, 'FALSE' for local) - 'TRUE' when 'max_consecutive_batch_failures' was reached and remaining batches were skipped rather than attempted. Every skipped query's 'asv_id' is included in 'failed_query_ids' either way, so a caller that only checks 'failed_query_ids' still behaves correctly (nothing is silently miscoded as "searched, found nothing") - this attribute is for a caller that wants to distinguish "sustained throttling, stop trying more of this list right now" from an isolated batch failure and react differently (e.g. 'evaluate_reference_accessions()' uses it to stop processing further chunks and surface an actionable message).
 
+#### Details
+
+##### Score window algorithm
+
+Rather than a flat top-N cutoff, hits are filtered per query:
+
+- All hits below min_score are removed
+
+- Hits with query coverage below min_query_coverage are removed
+
+- Hits whose aligned region falls outside the barcode length range are removed (see "Subject length filter" below)
+
+- For each query, the top hit's percent identity is found
+
+- All hits within score_range of the top hit are retained
+
+- A max_hits safety cap is applied per query
+
+This means a clear top match may return only 1-3 hits (the rest are too distant), while an ambiguous query retains all plausible candidates.
+
+##### Subject length filter
+
+This step checks the length of the aligned region (the BLAST length field), not the reference accession's own total sequence length. Confirmed as a real, not cosmetic, distinction on real Great Lakes Ameiurus (bullhead catfish) data: a query's raw BLAST hits included two Ameiurus melas references at 100% identity and 100% query coverage over the full amplicon -- a genuine, exactly-tied congener match -- but both were deposited as long mitogenome/partial-genome records (672bp and 960bp), so checking the subject's own length against a ~130-210bp MiFish window discarded them entirely, leaving only a single A. nebulosus hit (a short, standalone 172bp barcode submission) that happened to be the only reference short enough to survive -- not because it was the best match, but because it was the only correctly-sized record. The aligned region itself, in every one of these mitogenome-embedded hits, was the correct barcode window (full query length, 100% coverage) -- exactly the case this filter should retain, not the "wrong genomic region of the same gene" case (TaxaLikely's documented "Paralabrax footgun") it exists to catch. Checking aligned length rather than raw subject length fixes this while still catching genuinely off-target hits (a poor, partial, non-amplicon overlap is already excluded by min_query_coverage before this step ever runs).
+
+##### Score window validation
+
+This filter decides which candidates ever reach TaxaLikely/TaxaAssign -- a true species dropped here cannot be recovered downstream, no matter how good the likelihood model is. A narrow score_range (e.g. 2, adequate for an easy query with a clear top hit at 98% identity or above) is not safe in general: it is not stress-tested against a taxonomically dense genus where real congeneric divergence can be tight.
+
+A leave-one-out check (the score_window_leave_one_out.R diagnostic, TaxaID_dev repository) against three independent real reference-vs-reference distance matrices found this risk is real, not hypothetical: treating each reference sequence as a query against every other sequence in the same matrix, and asking how often a congener outscores the sequence's own true species, and by how much --
+
+- Sebastes (54 species, real MiFish-window 12S data): 3/113 (2.7%) queries had a congener score higher than the true species, but only by 0.6 points each -- none would be dropped even at score_range = 2.
+
+- Chromis (26 species): 3/33 (9.1%) queries had this happen, by 4.7-7.1 points -- all three would be silently dropped at score_range = 2.
+
+- A real 6-genus PtConception 12S set (Clinocottus, Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1%) queries, by 2.5 points -- would also be dropped at score_range = 2.
+
+Pooling all three: 4 of 7 real congener-outscoring events (57%) exceed a score_range = 2 window and would silently exclude the true species from every downstream step. The default (8) comfortably covers every gap actually observed in this check (worst case 7.1 points); it is an evidence-backed starting point given what has been measured so far, not a guarantee no real dataset will ever exceed it -- max_hits (default 20) bounds the resulting candidate count regardless of how wide score_range is set, and a wider window is precisely what preserves the "gap" feature (TaxaLikely::train_likelihood_model()'s own key discriminator between H1/H2/H3) for the bivariate-normal model to actually use -- dropping the true congener here removes the one signal that model needs to correctly flag a genuinely ambiguous call instead of confidently returning the wrong species.
+
+##### Remote BLAST
+
+Uses the NCBI BLAST URL API with proper rate limiting (minimum 10 seconds between submissions). Sequences are submitted in batches of batch_size. The function polls for results with exponential backoff. An email is required by NCBI usage policy. Remote BLAST results can vary over time as the NCBI nt database is updated; for reproducibility, consider recording the query date (or a specific database version, retrievable via NCBI Entrez) alongside results used in scientific workflows.
+
+max_target_seqs does not guarantee the best-scoring hits are returned first -- NCBI's BLAST truncates its internal hit list before scoring is complete (Shah et al. 2018, Bioinformatics), so a low value can cause the true top hit to be missed. The default (100L) is reasonable for most barcode-length queries; raise it for taxonomically dense searches.
+
+##### Local BLAST
+
+Requires BLAST+ installed on the system and the rBLAST package (Bioconductor). Point database to a local BLAST database path. Much faster for large numbers of queries.
+
 ### build_site_table(match_df, site_df = NULL, id_col = "observation_id")
 
 Build a Unified Long-Format Site Table
@@ -88,6 +156,14 @@ Produces one standardized site table - 'observation_id', 'lat', 'lon', 'observed
 | id_col | no | "observation_id" | Character. Observation ID column name, present in both match_df and site_df. Default "observation_id". |
 
 **Value:** A tibble in long format: one row per '(observation_id, site)' pair actually present in 'match_df', with columns 'id_col', 'lat', 'lon', 'observed_on' ('NA' where unknown), 'spatial_group_id', 'spatial_group_N', and 'is_default_group'. 'spatial_group_id' defaults to '"spatial_group_<n>"', grouping rows that share an *exact* '(lat, lon)' pair (see Details), and 'spatial_group_N' to the count of rows sharing that default label - until 'group_observations_by_bbox' (or 'assign_spatial_group') updates them in place for whichever observations get grouped. 'is_default_group' is 'TRUE' for every row until one of those two functions reassigns it; this is the marker they use to know which rows are still eligible to be captured by a newly drawn box or manual assignment, so they never need to re-derive "is this still a default" from 'spatial_group_id''s contents. This guarantees every site table has valid, non-missing 'spatial_group_id'/'spatial_group_N'/'is_default_group' values from the moment it is built, even before any grouping step runs.
+
+#### Details
+
+Why site info can't just be joined in generically: the image pathway embeds site info directly in the match object (one value per image); the acoustic pathway's BirdNET-Analyzer CSV output carries no site metadata at all (confirmed directly in read_birdnet_output()'s columns -- only detection window start/end times and the source filename); the DNA/BLAST pathway's observation_id is an ASV identifier that can be genuinely detected at multiple real sites within one sequencing run. site_df is therefore required (not derived) for the acoustic and DNA/BLAST pathways -- callers must build it from whatever recording-filename or sample-metadata convention their own study uses.
+
+Why the default spatial_group_id is location-based, not observation-based: spatial_group_id is meant to answer "do these coordinates belong to the same neighborhood," a property of location, not of which observation happens to own a row. Defaulting it to observation_id instead would mean a genuine multi-site observation's own several sites always default to one shared group purely because they share an observation -- regardless of whether those sites are actually near each other -- while two genuinely co-located observations would never be grouped by default at all, contradicting this ecosystem's own stated design principle that clustering should be a geometric property of coordinates. The exact-match default handles both: two of one observation's own sites at different real coordinates now default to different groups (as they should), and two different observations sharing the exact same coordinate (typically because both were joined from the same site-metadata row -- e.g. join_event_site_metadata's pattern) now default to the same group (also as they should) -- group_observations_by_bbox's interactive step remains available as a refinement/override on top of this more sensible default, not the only mechanism that ever creates a shared group.
+
+Why exact match, not grid-snapping/binning to a fixed resolution: a grid-snapping design (rounding coordinates to a fixed bin size) was tried first and rejected after live testing against this ecosystem's own bundled example data. A 0.1-degree bin collapsed four genuinely distinct observations (a real sample coordinate and a fallback/placeholder coordinate that happened to sit within ~11km of each other) into one default group -- reintroducing the exact "swept into an unrelated cluster" ambiguity this whole redesign exists to avoid. Choosing a "correct" bin size is not well-posed in general: it depends on how close together a given study's real sites happen to be, which this function has no way to know in advance. In this ecosystem's actual data flow, two coordinates that are supposed to represent the same site come from the same site-metadata lookup row (exactly equal), not from independent noisy GPS reads of the same physical spot (nearly, but not exactly, equal) -- so exact match is both simpler and the semantically correct comparison here, with no tuning parameter and no equivalent failure mode.
 
 ### check_marker_mismatch(accessions, expected_marker, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), verbose = TRUE)
 
@@ -103,6 +179,10 @@ Before investigating a flagged accession as a possible SPECIES mislabel (see 'in
 | verbose | no | TRUE | As in evaluate_reference_accessions(). |
 
 **Value:** A data frame, one row per unique input accession: 'accession' As supplied. 'expected_marker' As supplied. 'annotated_genes' Semicolon-joined, deduplicated /gene qualifier values found anywhere in the record's feature table. 'NA' if none were found (may still have /product annotation). 'annotated_products' Same, for /product. 'marker_match' 'TRUE' if ANY annotated /gene or /product text matches 'expected_marker''s resolved pattern; 'FALSE' if the record has real gene/CDS/rRNA/misc_feature annotation but none of it matches; 'NA' if the record has NO such annotation to judge at all - a distinct, honest outcome, not evidence of mismatch.
+
+#### Why this exists
+
+Directly grounded in a real, confirmed case from this ecosystem: AY850362 (a real GreatLakes 12S reference-database audit accession) is a genuine 16S-vs-12S MARKER mislabel, not a species mislabel. An earlier hypothesis -- that a disagreement resolved only at a coarse taxonomic rank (family/order/phylum) signals a marker/gene mislabel, while a disagreement at genus/species signals a real species mislabel -- was tested directly against MZ605481 (a real confirmed SPECIES mislabel) and refuted: MZ605481's own disagreement is also recorded at a coarse rank (order), yet is a real species mislabel, not a marker mislabel. What actually distinguishes the two is each record's own annotated gene/product metadata, not its taxonomic rank of disagreement -- this function checks that directly instead.
 
 ### convert_taxonomy_backbone(match_df, target_backbone_id, source_backbone_id = NULL, rank_system = c("order", "family", "genus", "species"), taxon_col = "taxon_name", update_taxon_name = TRUE, original_col = "taxon_name_original", backbone_col = "taxonomy_backbone", collision_col = "taxonomy_collision", verify_fn = TaxaTools::verify_taxon_names, verbose = TRUE)
 
@@ -126,6 +206,36 @@ Looks up each unique taxon name in 'match_df[[taxon_col]]' against a target taxo
 
 **Value:** 'match_df' with rank columns potentially updated, plus 'backbone_col', 'collision_col', and (when 'update_taxon_name = TRUE') 'original_col' columns added - 'backbone_col'/'collision_col' are created if absent and left unchanged (not overwritten) if already present, which matters for iterative/multi-pass pipeline use. The attribute 'backbone_cols' is set: a named list mapping '"backbone_N_cols"' to the rank column names that were subject to conversion, e.g. 'list(backbone_11_cols = c("order", "family"), backbone_4_cols = c("kingdom", "phylum"))'. Because R uses copy-on-modify semantics, the caller's original 'match_df' object is untouched; the return value must be (re)assigned.
 
+#### Details
+
+A taxonomy_collision column records what happened for each row:
+
+- "consistent": Taxon found in target backbone; all supplied rank columns agree with the original.
+
+- "backbone_N[col1,col2]": Taxon found; listed columns were changed to target backbone N values.
+
+- "backbone_N" or "original": Taxon not found in target backbone; hierarchy unchanged. Label is "backbone_N" when source_backbone_id is supplied, otherwise "original".
+
+A taxonomy_backbone column records which backbone the row's hierarchy was drawn from ("backbone_N" for found rows, source label for not-found rows).
+
+#### Rank correction on fallback
+
+When a row's own taxon_name_rank has no matching target-backbone value at that same rank (e.g. a row claims "species" but the target only resolved this name to genus), match_df[[taxon_col]] falls back to the coarser resolved name -- and taxon_name_rank is now corrected to match it, using verify_fn's matched_rank column when present (silently skipped when verify_fn's return value lacks that column, e.g. a custom function injected for offline testing). Real motivating case: an informally-named NCBI reference ("Inu sp. 1 sensu Shibukawa et al., 2020.") resolves against GBIF to the genus Luciogobius (a synonym relationship -- GBIF's own backbone considers "Inu" Snyder 1909 a synonym of Luciogobius Gill 1859; NCBI's own taxonomy does not) with no species-level entry to fill. Demoting taxon_name to the genus without also correcting taxon_name_rank to match would leave a downstream slash-name builder treating the bare genus as if it were a complete binomial, manufacturing a fabricated pseudo-binomial ("Inu Inu") from it. This is backbone-general, not GBIF-specific -- see TaxaTools::verify_taxon_names()'s own @section Synonym resolution and rank correctness.
+
+Finer rank columns are also cleared on the same rows (e.g. species set to NA when the row is demoted to genus), not just taxon_name/taxon_name_rank. Found necessary by testing against a real production workflow, not by inspection alone: the per-column fallback (documented above) deliberately keeps each rank column's own cleaned original value when the target backbone has no replacement for it -- correct for a column that genuinely didn't change, but it left a stale, semantically-invalid value (species = "Inu") in place even after taxon_name/taxon_name_rank were correctly demoted. Any code that re-derives a name from rank columns after calling this function (e.g. a second TaxaTools::create_taxon_names() call, a real step some production workflows already run "to re-derive taxon_name after backbone conversion") would otherwise see species still populated, apply "most specific non-NA rank wins", and silently undo the correction.
+
+#### Rank correction on a genus-collapsing name, any source
+
+The matched_rank-driven correction above only fires when the target backbone's own reported rank disagrees with the row's claimed rank. A second, independent mechanism corrects taxon_name_rank whenever the value that actually ended up in taxon_name was produced by TaxaTools::clean_taxon_names() COLLAPSING a real second token to genus-only -- regardless of which of the three possible sources produced it (a not-found row's fallback cleaning; a found row's matched_name_clean fallback when its own rank had no target value; or a found row's own target_<rank> value at its claimed rank). This closes two real, independently-discovered cases from GreatLakes2023 production data: (1) an open-nomenclature, specimen-voucher-tagged reference label (e.g. "Ictalurus cf. pricei USON-01120-1") that never resolves in the target backbone at all (found_mask = FALSE); and (2) NCBI's own taxonomy DB genuinely contains leaf-level nodes for informally-named specimens (e.g. a real node literally named "Ictalurus sp. UM 105-1789", ranked "species" by NCBI itself) -- here found_mask = TRUE and matched_rank genuinely IS "species" (backbone-consistent, so the matched_rank-driven correction correctly does nothing), but the classification path's own species-rank VALUE is that same informal label, which collapses to genus-only when cleaned. No rank-MISMATCH-based correction can ever catch case (2) -- the backbone's own rank claim is genuinely self-consistent; only the collapse signal itself reveals the problem. Without this correction, taxon_name_rank would stay stale at whatever rank the row claimed before conversion, mislabeling a bare genus as if it were still species-level.
+
+Deliberately tracks the actual collapse event through the pipeline (via collapsed_to_genus) rather than re-deriving the signal from the final value's shape (e.g. via TaxaTools::is_plausible_binomial()) -- that function's binomial regex requires a literal space immediately after the genus token, which a real hyphenated genus (e.g. Pseudo-nitzschia, already a real fixture elsewhere in this ecosystem's own test suite) fails, which would have wrongly demoted every hyphenated-genus species row. Requires "genus" to be present in rank_system; a no-op otherwise. A no-op when the input lacks the collapsed_to_genus attribute (e.g. from a clean_taxon_names()-alike that does not set it). Rank columns finer than the demoted rank are cleared, same as the matched_rank-driven correction above.
+
+An R attribute backbone_cols is set on the returned data frame recording which rank columns were subject to backbone conversion. A summary message is also printed.
+
+#### Not-found rows are cleaned too
+
+When a taxon is not found in the target backbone, its original rank columns and taxon_col value are still run through TaxaTools::clean_taxon_names() before being used as the output value -- without this, an exotic name that failed to resolve (e.g. a compound hybrid-formula name straight from a raw reference-database accession label, "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata") would pass through completely unmodified. This does NOT change which names are sent to verify_fn or which rows count as "found" -- only the fallback value's formatting.
+
 ### corroborate_references_locally(seq_matrix, reference_meta, min_overlap = 0.8, min_pident = 0.99, submission_window = 5L)
 
 Corroborate Reference Labels From the Local Reference Set, Without BLAST
@@ -141,6 +251,18 @@ For each reference accession, asks whether an INDEPENDENT conspecific in the cal
 | submission_window | no | 5L | Integer (default 5L). As in evaluate_reference_accessions(); pass the same value used there. |
 
 **Value:** A data frame, one row per accession (version suffix stripped) in the union of 'reference_meta' and 'seq_matrix': 'accession' Version-stripped id. 'species' From 'reference_meta$species' when present, else the accession's 'species.x' in 'seq_matrix'. 'n_conspecific' Distinct conspecific partners at 'coverage >= min_overlap', any batch. 'n_independent_conspecific' Of those, from a different submission batch. 'best_independent_pident' Highest 'p_match' (0-1) among the independent conspecifics; 'NA' if none. 'best_independent_partner' The partner supplying it (ties broken by id, so the result is deterministic). 'local_tier' '"singleton"' (no conspecific at sufficient overlap), '"same_batch_only"' (conspecifics, none independent), '"disagree"' (independent conspecifics, none at 'min_pident'), or '"corroborated"'. 'attr(result, "local_corroboration_params")' records 'min_overlap', 'min_pident' and 'submission_window'.
+
+#### What "independent" means
+
+Exactly what it means in evaluate_reference_accessions(): two accessions are the same submission batch if their create_dates are within submission_window days OR their accession numbers are within submission_window under the same prefix. The same internal helpers (.build_submission_batch_lookup() / .same_submission_batch()) are used, so "independent" means one thing in both places. A conspecific from the same batch is counted in n_conspecific but never corroborates -- the motivating true mislabel MN883227 (Fundulus luciae, actually a Pacific Fundulus) has a same-day sibling MN883226 at 100% that must not rescue it.
+
+#### Why the overlap filter is not optional
+
+p_match from build_sequence_matrix() is identity over the ALIGNED region; coverage is how much of the shorter sequence that region spans. KM057967 (Jordania zonope) looked corroborated by LC126244 at "100%" -- over a 5.6% overlap, about 40 bp of a different 12S region. Pairs with coverage < min_overlap (or NA coverage) are excluded before anything is counted, so Jordania is correctly a "singleton".
+
+#### Where 0.99 comes from
+
+min_pident must sit INSIDE the marker's intraspecific range. The motivating true mislabel MN883227 is corroborated locally by five independent conspecifics at 0.9814 -- 98% between "conspecifics" is what a sister-species swap looks like at MiFish-U, so 0.98 would veto/skip it and 0.99 keeps it screened. Re-deriving this from the trained H1 within-species distribution is a recorded later refinement, not built.
 
 ### evaluate_reference_accessions(accessions, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), insufficient_evidence_ttl_days = 180, incongruent_ttl_days = 30, top_n = 5L, min_congruent_rank = "family", hierarchy_incongruent_threshold = 0.5, min_independent_partners = 3L, submission_window = 5L, method = c("remote", "local"), database = "nt", score_range = 8, min_score = 70, max_hits = 20L, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), poll_max_wait = 1800, barcode_term = NULL, query_span = c("amplicon", "primer_inclusive"), chunk_size = NULL, max_consecutive_batch_failures = 3L, max_query_len = NULL, max_batch_bp = 100000L, prioritize_uncached = TRUE, retry_insufficient = TRUE, local_corroboration = NULL, skip_locally_corroborated = TRUE, num_threads = NULL, word_size = NULL, verbose = TRUE)
 
@@ -182,6 +304,94 @@ For each accession, BLASTs its own sequence against a broad, *unrestricted* data
 
 **Value:** A data frame, one row per unique input accession: 'accession' Exactly as supplied by the caller. 'listed_taxon' The accession's own labeled organism (from its real GenBank record). 'n_independent_top_matches' Independent BLAST hits actually used for the verdict (<= top_n). Also excludes any hit whose OWN listed species isn't itself resolved to species level - see @section Species-resolved comparison partners below. 'n_top_matches_available' All BLAST hits before the independence filter - diagnostic only. 'frac_independent_below_min_congruent_rank' Jeffreys-smoothed fraction of independent hits disagreeing at or above 'min_congruent_rank'. 'finest_common_rank' Finest rank at which the single best independent hit agrees with the listed taxon ('NA' if none), walking the full 'kingdom'->'species' ladder - see @section Coarse-rank diagnostic above. 'best_hit_pident' Percent identity (0-100) of the single best independent hit, regardless of whether it agrees or disagrees. 'best_agreeing_pident' Percent identity of the highest-identity independent hit that agrees at or above 'min_congruent_rank', among the 'top_n' slice used for the verdict itself. 'NA' if none agree. 'best_disagreeing_pident' Percent identity of the highest- identity independent hit that disagrees (coarser than 'min_congruent_rank'), among the 'top_n' slice. 'NA' if none disagree. See @section Identity diagnostics below for why this matters - a high value here is a much stronger mislabel signal than a low one, information the binary 'hierarchy_flag' alone cannot convey. 'best_disagreeing_taxon' The listed species of that same highest-identity disagreeing hit ('NA' if none disagree). Lets a reviewer - human or LLM - recognize e.g. a known hybrid-cross partner or an informal specimen code by name, not just by percent identity alone. 'congruent_evidence_exists_anywhere' Logical. Unlike 'hierarchy_flag' (computed only from the 'top_n' closest independent hits), this asks whether ANY independent hit anywhere in the full BLAST result (up to 'max_hits') agrees at or above 'min_congruent_rank'. 'FALSE' here is a stronger statement than an '"incongruent"' 'hierarchy_flag' alone - it means the listed rank has no representation at all among this accession's independent matches, not just none close enough to make the 'top_n' cut. 'congruent_evidence_best_pident' Percent identity of the best such anywhere-agreeing hit. 'NA' when 'congruent_evidence_exists_anywhere' is 'FALSE'. 'hierarchy_flag' '"congruent"', '"incongruent"', '"insufficient_independent_evidence"', '"not_evaluated_oversized"' (see @section Long-sequence robustness below; the query was never submitted to BLAST at all, so this is NOT evidence of anything, and downstream consumers ('flag_incongruent_references()', 'remove_incongruent_references()') never treat it as a flag), '"not_evaluated_wrong_marker"' (also never submitted, and also never a flag, but it names a CAUSE rather than a symptom: the record's own GBSeq feature table carries annotated features and none of them is the marker 'barcode_term' implies, so the accession does not belong in this screen's candidate set and no 'max_query_len' can rescue it), or '"locally_corroborated"' (skipped because an independent conspecific in the caller's own reference set already corroborates it; see @section Local corroboration. Treated like '"congruent"' everywhere downstream: never a flag, never removable, 'reference_action = "keep"'). 'NA' if the accession's own GenBank record could not be fetched (a 'warning()' is issued listing these; not cached, so a subsequent call retries them). 'local_corroborator_accession' The specific accession vouching for a '"locally_corroborated"' row - 'NA' for every other 'hierarchy_flag' value. '"locally_corroborated"' is cached indefinitely and exempt from 'refine_reference_verdicts()''s trust-weighted refinement (the MATCH itself, once observed, is permanent) - but the corroborator's own label is exactly as falsifiable as any other accession's, so this column exists to make that dependency visible and checkable, the same transparency 'verify_removal_candidates()' already gives its own corroborators. 'evaluated_at' When this verdict was computed ('NA' for a fetch failure). 'cache_hit' 'TRUE' if this row was read from 'cache_dir' rather than recomputed this call. 'taxonomy_resolution_source' '"direct"' (the accession's own NCBI taxonomy, the normal case), '"hybrid_maternal_proxy"' (a hybrid-labeled accession whose coarser-rank lineage was resolved from its maternal parent species instead - see @section Hybrid-labeled accessions below), '"hybrid_marker_not_maternal"' (hybrid-labeled with an unresolvable lineage, but 'barcode_term' is not a maternally inherited marker or is 'NULL', so no proxy), '"hybrid_unresolved"' (detected as hybrid-labeled but no usable parent species name could be extracted from the label, so the accession's own - structurally incomplete - NCBI lineage is used as-is), or 'NA' for a fetch failure. 'query_len_submitted' Integer. Base pairs actually sent to BLAST for this accession, after primer trimming and the annotation fallback. 'NA' for a row that was never submitted. 'query_trim_path' Which rescue produced the submitted sequence: '"as_deposited"', '"primer_match"' or '"feature_table"'. 'query_over_amplicon' Logical. 'TRUE' when the sequence submitted for this accession is longer than the marker's target amplicon, so its percent identities describe a WIDER REGION than a correctly trimmed row's and the two are not comparable. The trimming gate asks whether a deposit exceeds the marker's longest plausible length, not whether it exceeds the amplicon, and those differ for every registered marker with a primer pair - by 25 bp for MiFish-U and by 530 for COI-Leray, where a typical 658 bp Folmer deposit is never offered to the trimmer and whose feature table reads '"COI"' for the whole record, so neither rescue can shorten it. This column reports that footprint; it does not change what is submitted, because that would move every cached identity. A call with any such row also warns once, with the count and the median and longest submitted length. 'NA' for a row that was never submitted, and for a 'barcode_term' with no registered amplicon range. 'listed_taxon_is_species' Logical. 'FALSE' when 'listed_taxon' does not structurally look like a species-level binomial (via 'TaxaTools::is_plausible_binomial()' - e.g. a family name used in place of a genus with an informal specimen code, such as '"Serranidae sp. JL-2015"', a real GreatLakes case). A structurally different problem from both mislabeling ('hierarchy_flag') and hybrid-labeling ('taxonomy_resolution_source'): such a reference can't discriminate at species level regardless of whether it's internally self-consistent, so this can be 'FALSE' even when 'hierarchy_flag' reads '"congruent"'. 'NA' for a fetch failure (never 'FALSE' - a fetch failure means "not evaluated," not "evaluated and found non-species"). Also carries 'attr(result, "run_summary")' - a list ('n_total', 'n_from_cache', 'n_evaluated_this_call', 'n_skipped_locally_corroborated', 'n_pending', 'pct_complete', 'circuit_breaker_tripped', 'recommended_pause_minutes') summarizing what happened this call - see @section Chunked evaluation and NCBI rate-limiting resilience below.
 
+#### Why this exists
+
+The archived approach's "among"/foreign comparison population for ANY accession is exactly and only whatever else got fetched under the caller's own taxa argument -- no broader NCBI comparison exists anywhere in that pipeline. This produces both false positives (real, correctly-labeled accessions read "incongruent" purely because nothing else from their own family happened to be in the caller's list) and false negatives (a mislabeled accession's true contaminating identity can only ever be caught if its genus happens to be on the caller's list too). BLASTing each accession against an unrestricted database removes the taxa-list dependency for both directions at once. The real-data evidence is direct (a real 6-genus GreatLakes 12S test flagged 15 genuine, Smithsonian-vouchered Menidia accessions "incongruent" purely because Menidia's family had no other representative on the list).
+
+#### Scoping a large marker's screen
+
+Per-accession remote BLAST does not scale to a large reference set under this ecosystem's own NCBI throttle -- confirmed directly: a 995-accession PtConception 12S run has already tripped it, and the 18S reference set (21,899 accessions) is over 20x that size. Screening every accession in a large marker's reference set is NOT the recommended default; it is a deliberate, budgeted choice for when you specifically want that coverage and can absorb the cost (chunk_size/max_consecutive_batch_failures exist to make a full run survivable, not to make it free).
+
+The recommended default for a large marker scopes the screen to the two populations that actually drive real decisions, both already-built tools, not something this section is asking you to build:
+
+- Accessions that actually drive a match. match_driving_accessions() returns only the accessions that are the max-scoring accession of their species for at least one real observation -- everything else can never change an assignment regardless of what this function would say about it. Real effect: 709 of 995 on a real PtConception 12S match object.
+
+- Accessions the free local check can't already resolve. corroborate_references_locally() runs first, for free (no NCBI call, reusing the seq_matrix already built for training) -- pass its output as local_corroboration with skip_locally_corroborated = TRUE and this function only BLASTs the accessions that check couldn't already corroborate from within the reference set itself, turning "BLAST the whole training reference set" into "BLAST only what's still disputed after the free pass."
+
+Together these concentrate this screen's real NCBI cost exactly where a verdict can change something -- a match-driving accession feeds a real assignment; a training accession the free local check couldn't already resolve is exactly the population worth spending NCBI budget on -- while leaving every other accession in a large reference set unscreened by default, not as an oversight but as the documented, correct scope.
+
+#### Why "incongruent" carries a TTL
+
+Caching this verdict indefinitely would rest on the reasoning that an accession's own sequence and label do not change once deposited. That is true and still irrelevant: the verdict is not a property of the accession, it is a property of what BLAST returns about the accession's NEIGHBOURHOOD, and that changes. Measured, not hypothesised: OP056918 (Cryptacanthodes maculatus) reads "incongruent" with no corroborating evidence anywhere on one real fetch, and "congruent" with four conspecific hits at 100% identity on a later real fetch the next day, under an IDENTICAL params_key. Without a TTL that first, wrong verdict would be served from cache forever -- and it is the one verdict remove_incongruent_references() acts on destructively.
+
+What the flip was, established by the blast_verdict_repeatability_probe.R diagnostic (TaxaID_dev repository): NOT instability. Three back-to-back replicates of all 12 PtConception "incongruent" accessions, each into a fresh cache, returned identical verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000, 14-20 partners each) -- BLAST is exactly reproducible at a fixed params_key. The corroborating records' GenBank create- AND update-dates are both months earlier, so they were not newly released either. The surviving explanation is that NCBI's nt is a periodically-rebuilt SNAPSHOT rather than the live nuccore database: a record public in Entrez since January need not be in the nt volume BLAST searches until a rebuild includes it.
+
+That reframes this TTL. The later verdict was not a correction of a malfunction -- both verdicts were correct given the database each was computed against. What goes stale is the SNAPSHOT, which is exactly what a TTL is for -- and it is also what sets the right cadence for one. nt rebuilds run on the order of days to weeks, so the default is 30 days, not the 180 of the "we do not know yet" flags: a TTL much longer than the rebuild interval would keep serving a stale "incongruent" long after the evidence that overturns it became searchable, which is the exact failure this TTL exists to prevent. The recheck costs ~1% of an accession population.
+
+#### Coarse-rank diagnostic
+
+finest_common_rank walks the FULL kingdom->species ladder (TaxaTools::standard_ranks), not just min_congruent_rank and finer. hierarchy_flag's classification threshold is unaffected -- it still fires at min_congruent_rank (default "family") exactly as before -- but finest_common_rank can now report a real coarser match (e.g. "order") instead of collapsing straight to NA the moment "family" fails. This distinction is real, not cosmetic: found live-testing against a real PtConception 18S accession (Abylopsis eschscholtzii, KY594854/KX384617) whose top independent BLAST hits are consistently Diphyidae -- a SISTER family within the same order (Siphonophorae, Calycophorae), not an unrelated organism. Both accessions flagged "incongruent" under the family-only version with no way to tell that apart from a genuine cross-phylum mismatch; finest_common_rank = "order" now reports that real, more specific picture. The likely underlying cause here is 18S's well-documented poor resolving power within Calycophorae combined with thin Abylidae GenBank coverage at this locus -- NOT necessarily a mislabel -- and this diagnostic is what makes that distinguishable at all from the output alone, without re-BLASTing by hand. Query-side taxonomy for every rank is resolved via the internal .resolve_taxonomy_by_acc() (the same NCBI-taxonomy-DB mechanism already used to classify BLAST hits), not TaxaTools::fill_higher_ranks() (GNVerifier-backed, and only ever resolved genus/family) -- keeps both sides of every comparison authority-consistent.
+
+#### Caching
+
+Deduplication (unique(accessions)) happens regardless of caching -- an accession is never re-evaluated twice within one call. A persistent, cross-run cache underneath (keyed by accession alone, not by taxon/genus/project) is what lets a project only pay evaluation cost for accessions that are genuinely new or previously out of scope anywhere -- no taxa list to decide up front. Staleness is handled asymmetrically, per flag, and the asymmetry follows what each verdict actually CLAIMS:
+
+- "congruent" -- cached indefinitely. It asserts corroborating evidence WAS FOUND, and nothing a later BLAST returns can withdraw a match already observed; new deposits can only add more.
+
+- "incongruent" -- expires after incongruent_ttl_days (default 30). It asserts corroborating evidence was NOT found, which is a statement about ABSENCE, and absence is exactly what later evidence overturns. See @section Why "incongruent" carries a TTL below.
+
+- "insufficient_independent_evidence", "not_evaluated_oversized" and "not_evaluated_wrong_marker" -- expire after insufficient_evidence_ttl_days (default 180). All three explicitly mean "we do not know yet": new NCBI deposits (for the first), a later annotation/primer fix or a raised max_query_len (for the second), or a corrected upstream annotation -- or simply a different barcode_term, since the wrong-marker claim is relative to the marker THIS call asked for (for the third).
+
+- "locally_corroborated" -- cached indefinitely, like "congruent": it asserts corroborating evidence WAS found, in the caller's own reference set. The one way it is re-evaluated is a later call with skip_locally_corroborated = FALSE, which sends it to BLAST after all.
+
+retry_insufficient = FALSE opts a single call out of retrying ANY expired row past its TTL, serving the stale row instead (see that param's own documentation). Setting incongruent_ttl_days = Inf caches "incongruent" indefinitely, exactly like "congruent". TTLs are deliberately NOT part of params_key -- changing one must not invalidate a cache. A cached row is also treated as stale (recomputed) if any parameter that affects the verdict itself (top_n, min_congruent_rank, submission_window, hierarchy_incongruent_threshold, min_independent_partners, score_range, min_score, max_hits, method, database, query_span) differs from the call that produced it -- chunk_size, max_consecutive_batch_failures, max_query_len, max_batch_bp, prioritize_uncached, retry_insufficient, local_corroboration and skip_locally_corroborated are deliberately NOT in this list (see @section Long-sequence robustness below for why). A cached row whose params_key does not match the current one -- because it was written under an earlier internal cache version, or under different verdict-affecting arguments -- is simply recomputed on the next call; there is no separate step to carry it forward.
+
+#### Local search speed
+
+Against a database the size of core_nt, a local search spends its time per query, not per database scan, and almost all of it extending short random seed matches. Measured on real 12S reference queries against two core_nt volumes: one thread took 184 s for 200 queries and 14 threads 18 s with identical output; word_size = 16 then cut 90 s to 14 s for 1,000 queries. Against the default word size, 16 returned the same best-hit identity for every query and the same best-hit taxon for 99.9%, with differences confined to queries whose best hit was below about 83% identity -- a region where the verdict already rests on distant relatives. Changing max_target_seqs alone moved about 2.5% of top-5 taxa in the same test, so this is inside the noise BLAST's own settings already carry. Two faster options were measured and rejected: megablast lost real conspecific hits (a 98.7% match fell to 94.0%), and a marker-only database built by bait search was 290x smaller but only 6x faster and lost 1.1% of queries, because the time goes into aligning to real relatives, which any correct database must contain.
+
+#### Chunked evaluation and NCBI rate-limiting resilience
+
+A large accession list is evaluated chunk_size accessions at a time, with the persistent cache written after EACH chunk rather than once at the very end. Combined with blast_sequences()'s own circuit breaker (max_consecutive_batch_failures -- stops submitting further BLAST batches once several in a row have failed, rather than continuing to pay up to poll_max_wait for each of dozens of doomed batches), this means a sustained NCBI rate-limiting or CPU-budget-throttling episode is detected and this function stops itself early, rather than grinding through the full accession list at up to 30 minutes per doomed batch. When this happens: every accession successfully evaluated in an EARLIER chunk this call is already safely cached (nothing already computed is lost); attr(result, "run_summary")$circuit_breaker_tripped is TRUE; and an actionable message() reports how many accessions were resolved this call (as a percentage), how many are still pending, and recommends a pause before calling evaluate_reference_accessions() again with the same accessions and cache_dir -- already-cached accessions are read straight from the cache (no re-BLAST), so a resumed call only pays for what's still genuinely outstanding. chunk_size automates what would otherwise require manually pre-splitting the accession list into chunks of ~200 and calling this function once per chunk, as a large real run (e.g. AuditNCBI_Goal2_MatchCandidateScreen.R, a real external GreatLakes workflow) needs.
+
+#### Hybrid-labeled accessions
+
+NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g. "Ctenopharyngodon idella x Megalobrama amblycephala") is genuinely incomplete -- confirmed live against several real GreatLakes candidates: the lineage terminates at "unclassified Cyprinoidei", with no family, genus, or species populated at all. Left as-is, such an accession can never agree with any independent hit at family rank or finer (there is nothing on the query side to compare), which this function's rank-walk mechanically reads as maximal disagreement -- a real, confirmed false-positive mode (10 of 13 "incongruent" flags on a real 1,183-accession GreatLakes run were this artifact, not genuine mislabels; the other 3, with complete normal lineages, were real candidates worth reviewing).
+
+Fixed by resolving the accession's maternal parent species' OWN real lineage instead, for every rank coarser than species: since mtDNA is maternally inherited in fish, a hybrid's barcode sequence genuinely IS its maternal parent's lineage at kingdom through genus, even though it is (correctly) not literally the same SPECIES as that parent. The maternal parent's name is the first-listed parent of the formula (the GenBank convention lists the female parent first; not always followed), cleaned with TaxaTools::clean_taxon_names(), then resolved via TaxaTools::verify_taxon_names(backbone_id = 4L) (NCBI, the same authority every other taxonomy resolution in this function uses). species.x (the finest rank) is deliberately left as the accession's own real listed hybrid label, never replaced by the proxy -- a hybrid genuinely is not the same species as its maternal parent, so a spurious species-level agreement would be biologically wrong in the opposite direction. The proxy requires a maternally inherited marker: barcode_term must name a mitochondrial (12S/MiFish/Teleo, 16S, COI, cytb, ND genes, control region) or chloroplast (rbcL, matK, trnL, psbA) marker. A nuclear marker (18S, ITS) carries both parents, and with barcode_term = NULL the genome cannot be established; such accessions are stamped "hybrid_marker_not_maternal" and keep their own lineage. Detection also requires BOTH listed_taxon containing a standalone " x " token (the standard nomenclatural hybrid marker) AND the accession's own resolved family being unresolvable -- so an ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage (e.g. a real undescribed/unclassified species) is never routed through this maternal-parent substitution, which would have no biological justification for a non-hybrid. A leading lowercase breeding/ploidy- manipulation modifier (e.g. "androgenetic", "autodiploid", "autotetraploid" -- all found on real GreatLakes records) is stripped before clean_taxon_names() runs, since the maternal- inheritance argument still holds (these manipulate the nuclear genome, not which egg's cytoplasm/mitochondria the offspring develops in). A label the hybrid-marker regex catches but still cannot be parsed into a usable proxy even after that stripping falls back to the accession's own unresolved lineage, taxonomy_resolution_source = "hybrid_unresolved" -- an honest admission, not a guess.
+
+#### Species-resolved comparison partners
+
+A comparison partner (an independent BLAST hit) whose OWN listed species isn't resolved to species level (e.g. "Serranidae sp. JL-2015" -- a family name used in place of a genus, with an informal specimen code) is excluded from n_independent_top_matches/ frac_independent_below_min_congruent_rank entirely, via require_species_resolved_partner = TRUE (default, not currently a caller-facing parameter). Found live on the real GreatLakes Stereolepis doederleini case: both real accessions of this genuinely isolated species (Polyprionidae has only 2 genera) read "incongruent" purely because the one real independent hit available in all of NCBI to disagree with them was itself a non-species-resolved accession -- whether such a partner happens to agree or disagree isn't meaningful evidence either way, since its own identity is only fuzzily determined. Live-verified before shipping (a direct standalone BLAST re- run against the real accession, not assumed): after this exclusion, the real vote count for S. doederleini drops to 1 (a single genuine independent conspecific), correctly producing "insufficient_independent_evidence" instead of "incongruent" -- the honest answer, not an inflated "congruent" either, since there really is only one real corroborating record in NCBI for this species. Reuses TaxaTools::is_plausible_binomial() (the same check listed_taxon_is_species already applies to the QUERY side) applied to the HIT side's own resolved species name.
+
+#### Identity diagnostics
+
+hierarchy_flag/finest_common_rank alone cannot distinguish a genuine mislabel from "the listed rank has no well-covered independent relative in GenBank at this marker" -- both produce identical rank-agreement output. Percent identity is the cheapest available discriminator and was already being computed (p_match, used only to ORDER hits) and then discarded. A DISAGREEING hit at ~99% identity is a real mislabel signal (the deposited sequence is nearly identical to something in a different family); a disagreeing hit at ~85-90% is unremarkable for a conserved marker (e.g. 18S) with poor resolving power at that rank. This does NOT resolve the ambiguity on its own -- it is a design-consult finding (grounded in a real case: Abylopsis eschscholtzii, KY594854/KX384617, both flagged "incongruent" with disagreeing hits at family that are consistently a SISTER family within the same order) that these columns give a caller genuinely new information to judge that question with, not a verdict. No classification threshold in this function reads these columns; they are informational only.
+
+#### Long-sequence robustness
+
+barcode_term trimming already shortens an over-length query when the primer sites can be found; four further mechanisms address what happens when they CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST at full length is dramatically more CPU-expensive than a short amplicon, the real, confirmed cause of sustained NCBI server-side CPU-budget rejections that stall this function's own progress:
+
+- Feature-table-guided extraction fallback -- a query still over-length after primer trimming is checked against the record's OWN annotated GBSeq feature table for a feature matching the marker barcode_term implies, and that coordinate span (plus margin) is extracted instead. See .extract_feature_table_fallback() (R/trim_query_to_amplicon.R), which reuses check_marker_mismatch()'s own fetch/matching internals (R/check_marker_mismatch.R) rather than duplicating them.
+
+- Hard submission cap -- max_query_len: a query still over-length after BOTH rescue strategies is never submitted to BLAST at all. Gets a real cached row, hierarchy_flag = "not_evaluated_oversized", every diagnostic column NA -- an explicit, labeled non-result, not a silent drop. TTL-retryable like "insufficient_independent_ evidence" (see @section Caching above), so a later annotation fix, primer update, or a raised max_query_len can rescue it.
+
+- Wrong marker, separated from wrong size: when the feature-table fallback declined because the record HAS annotated features and none is this marker, the deferred row reads "not_evaluated_wrong_marker" instead. The distinction is actionable, which is the whole point: "oversized" implies a size problem a caller could fix by raising max_query_len, and for this class no length ever helps -- the accession should not be in the candidate set. Real case: HM561627 (Lasiurus intermedius), 2,657 bp, whose feature table contains exactly one feature, 16S ribosomal RNA at 1061-2657, sitting in a 12S (MiFishU) screen. It was 1 of 1 oversized accessions on the real 995-accession PtConception run -- i.e. 100% of that population was this case, not a length problem. Before building more rescue machinery, check what fraction of your own oversized rows are really this.
+
+- Length-aware BLAST batching -- max_batch_bp, forwarded to blast_sequences(): closes a submission batch on a cumulative bp cap as well as the existing count cap, and rides one very long query alone rather than letting it doom a whole batch of otherwise-cheap queries.
+
+- Retry-priority ordering + a retry switch -- prioritize_uncached (default TRUE, changes existing default ordering, deliberately safe) and retry_insufficient (default TRUE; FALSE makes a call purely cache-served, spending zero new NCBI budget on expired retries this call).
+
+max_query_len, max_batch_bp, prioritize_uncached, and retry_insufficient are all additive and deliberately excluded from params_key -- like chunk_size/max_consecutive_batch_failures before them, they govern call MECHANICS/scheduling policy (how/whether work is submitted this call), not what verdict a given accession's evidence would produce, so changing them between calls never invalidates an already-"congruent"/"incongruent"-cached row. .EVAL_REF_ACC_ VERSION is unaffected by these -- only query_span (see below) changes it.
+
+#### Why the query is the primer-stripped amplicon
+
+The screen runs blastn (megablast = FALSE, +2 match / -3 mismatch). With the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect conspecific amplicon-only deposit scores 338 raw, while every full-length relative at >= 93.1% identity over the whole 217 bp scores >= 359 -- so NCBI's HITLIST_SIZE = 100 list fills with mitogenome relatives and the short perfect conspecific never arrives. Behind that, blast_sequences()'s default min_query_coverage = 80 would have dropped it anyway (169/217 = 77.9%). Found on the real PtConception screen: KM057996 (Zaniolepis frenata) was actioned "remove" ("no conspecific evidence anywhere in nt") while the user's own reference set held OQ846041, a 169 bp Z. frenata deposit from 2023 at 100% identity over 97% overlap. A live probe (the blast_coverage_blindspot_probe.R diagnostic, TaxaID_dev repository) confirmed the mechanism: the 217 bp query returns no conspecific but itself among 100 hits; the same query with the primers stripped (169 bp) returns OQ846041 at rank 2, score 100, coverage 100. Amplicon-only deposits are 33% of PtConception's references and 25% of GreatLakes', so the whole class was invisible as corroborators. With the stripped query both barriers vanish and min_query_coverage needs no change. Because this changes what is submitted, it is verdict-affecting: query_span is in params_key, so a cached row written under an earlier query_span (or any other verdict-affecting argument) simply re-BLASTs under the new query on the next call.
+
+#### Local corroboration
+
+If an ASV matches several references of the same species that agree with each other, why BLAST any of them? corroborate_references_locally() answers that from the workflow's own seq_matrix, for free: a reference whose best INDEPENDENT (different submission batch, the screen's own rule) conspecific matches at >= min_pident over >= min_overlap of the amplicon is "corroborated". Passed here as local_corroboration, such accessions are skipped rather than BLASTed (about 40% of the PtConception population, 15% of GreatLakes), cached as "locally_corroborated" with TTL Inf. score_reference_labels() uses the same table for provenance (corroboration_source) and to VETO a BLAST "remove" down to "inspect" when the local set corroborates the label -- the disagreement between the two is what exposed the blind spot above. The overlap filter is not optional: KM057967 (Jordania zonope) looked corroborated by LC126244 at "100%" over a 5.6% overlap (~40 bp of a different 12S region); it is a true singleton and its removal stands.
+
 ### filter_redundant_hypotheses(match_df, rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species"))
 
 Filter Redundant Higher-Rank Hypotheses
@@ -194,6 +404,10 @@ Removes coarser-rank rows that are superseded by finer-rank rows within the same
 | rank_system | no | c("kingdom", "phylum", "class", "order", "family", "genus", "species") | Character vector of taxonomic rank names in coarsest-to-finest order. Defaults to c("kingdom","phylum","class","order","family","genus","species"). Each name must match both an element of taxon_name_rank and a column name in match_df (case-sensitive after standardize_match_data() has lowercased everything) -- if match_df has not been through standardize_match_data(), rank column names may not match this default and no rows will be removed (a warning() is issued when none of rank_system matches a match_df column at all). |
 
 **Value:** A data frame with the same columns as 'match_df' but with redundant higher-rank rows removed. Row order and all other attributes are preserved.
+
+#### Details
+
+Should be called after standardize_match_data() (or any step that populates taxon_name_rank) so that rank labels are already in the canonical lowercase form used by rank_system.
 
 ### filter_sequences(seq_df, barcode_term = NULL, min_length = NULL, max_length = NULL, min_abundance = 2L)
 
@@ -211,6 +425,14 @@ Removes sequences that fall outside acceptable length bounds or below a minimum 
 
 **Value:** A filtered data frame (same structure as input). A message reports how many sequences were removed and why. An 'attr(out, "report_params")' list ('min_length', 'max_length', 'min_abundance', 'n_retained') is also attached, mirroring 'blast_sequences()''s own 'report_params' attribute, so downstream reporting functions can incorporate the filtering parameters into automated methods text.
 
+#### Details
+
+Singletons (sequences observed only once across all samples) are commonly removed in eDNA workflows because they are enriched for PCR/sequencing errors. The default min_abundance = 2 removes these. When seq_df has no abundance column, abundance filtering is silently skipped with a message() (not a warning or error).
+
+When barcode_term is supplied, length bounds are resolved from an internal lookup table covering common eDNA markers (12S, 16S, COI, ITS, etc.). These are intentionally broad ranges that exclude obvious non-target amplicons while retaining genuine length variation.
+
+The length filter operates on seq_df$length if present, computing it from seq_df$sequence otherwise. If length was pre-computed by an upstream step from a different string (e.g. a provider's reported length that includes alignment gaps), the filter is applied to that value, not to nchar(sequence) -- verify the two agree when using a provider-supplied data frame directly (not one produced by read_sequence_table(), which always derives length from sequence itself).
+
 ### flag_incongruent_references(match_df, evaluation)
 
 Annotate a Match Object with Reference-Accession Quality, Without Removing Anything
@@ -223,6 +445,14 @@ The RECOMMENDED default consumer of 'evaluate_reference_accessions()' - left-joi
 | evaluation | yes |  | Data frame. Output of evaluate_reference_accessions(). |
 
 **Value:** 'match_df' with 'hierarchy_flag', 'finest_common_rank', 'frac_independent_below_min_congruent_rank', 'n_independent_top_matches', 'n_top_matches_available', 'best_hit_pident', 'best_agreeing_pident', 'best_disagreeing_pident', 'congruent_evidence_exists_anywhere', and 'congruent_evidence_best_pident' joined on, plus 'label_confidence', 'label_identity_margin', 'reference_action' and 'listed_taxon_is_species' whenever 'evaluation' carries them (it always does when it came from 'evaluate_reference_accessions()' or 'score_reference_labels()'; an 'evaluation' read straight off a cache file created before these columns existed will not). A row whose accession was not found in 'evaluation' gets 'NA' in all of these (not evaluated yet, not evidence of anything). Row count and order are unchanged.
+
+#### Why flag-by-default, not drop-by-default
+
+A real case (Abylopsis eschscholtzii, KY594854/KX384617) shows why an unreviewed hard drop is the wrong default: hierarchy_flag = "incongruent" cannot currently distinguish a genuine mislabel from "correct label, but this marker has poor resolving power at this rank for this clade and GenBank coverage is thin" -- see evaluate_reference_accessions()'s own @section Identity diagnostics. Dropping the accession destroys the candidate taxon entirely and irreversibly on the strength of a verdict that can be wrong in exactly this ambiguous way. The same pattern recurs elsewhere in this ecosystem with unrelated mechanisms, for the identical reason -- TaxaLikely::apply_coverage_constraints(constraint_behavior) defaults to "relabel" rather than "zero" (a genus-completeness NCBI-query result treated as certain ground truth would permanently discard a correct hypothesis with no way for downstream evidence to recover it), and TaxaFetch::filter_gbif_quality() defaults to flag_institution rather than exclude_institution (real, correctly-labeled observations near a biodiversity institution would otherwise be auto-removed alongside real errors, since proximity to an institution -- like thin reference coverage for a correctly-labeled clade -- is not itself proof of error). Use this function by default; reach for remove_incongruent_references() deliberately, after review, not as the default pipeline step.
+
+#### When evaluation carries more than one row per accession
+
+evaluate_reference_accessions() keys its own cache on the literal (version-suffixed) accession string, so two rows of evaluation can share the same version-stripped accession -- e.g. "AB123.1" and "AB123.2", evaluated independently. No other function in this package picks a single row among same-accession duplicates (remove_incongruent_references() removes a match_df row if ANY of its accession's evaluation rows was flagged, never selects one; .local_corroboration_columns() keeps whichever row happens to sort first). In the absence of an established rule, this function keeps the row with the HIGHEST numeric version suffix (an accession with no version suffix sorts below any versioned one) before joining, so every match_df row is matched to at most one evaluation row and row count/order are preserved exactly as documented below.
 
 ### group_observations_by_bbox(sites, id_col = "observation_id", lat_col = "lat", lon_col = "lon", tile = "Esri.OceanBasemap")
 
@@ -239,6 +469,16 @@ Plots all observations' site coordinates and lets the user draw one or more boun
 | tile | no | "Esri.OceanBasemap" | Character. Leaflet tile provider, passed to define_search_polygon. Default "Esri.OceanBasemap". |
 
 **Value:** 'sites' with 'spatial_group_id'/'spatial_group_N'/ 'is_default_group' updated in place: observations captured by a drawn box (in draw order; an observation falling inside more than one box gets the *most recently drawn* one, with a warning - see Details) get '"spatial_group_1"', '"spatial_group_2"', ..., 'spatial_group_N' equal to that group's member count, and 'is_default_group = FALSE'. Observations already in a non-default (previously grouped, or manually assigned via 'assign_spatial_group') group are left untouched regardless of geometry. Everything else keeps its existing default. A message reports how many observations were left at their default group and why.
+
+#### Details
+
+Interaction model: each iteration re-centres define_search_polygon on the bounding box of the still-ungrouped observations (guaranteed to fully enclose them -- see .bbox_center_radius()) and overlays them as reference points. Draw a box around a cluster and click Done to record that group and continue to the next box; click Cancel (the title-bar X) when you are finished drawing boxes. This opens an end-of-loop review: a numbered list of drawn groups with their member counts, where you can enter a number to reopen that group's polygon for reshaping, "delete <n>" to remove it (releasing its members back to their default), or press Enter to finalize.
+
+Run this as one isolated command in RStudio. The end-of-loop review step reads console input via readline(). If you select and run this call together with other lines (e.g. highlighting both grouped <- group_observations_by_bbox(sites) and a following print(grouped) and pressing Cmd/Ctrl+Enter once), RStudio queues the remaining line(s) as pending console input -- readline() will silently consume that queued text as its answer instead of waiting for you to type one, which can finalize early, misinterpret a queued blank line as "done", or otherwise produce a result that does not match what you actually drew. Run this call on its own, watch the console for the box-by-box progress messages and the final review prompt, answer it explicitly, and only then run any follow-up command.
+
+Overlap rule: if an observation falls inside more than one drawn polygon, the most recently drawn polygon's group claims it -- a later box is more likely to be a deliberate correction/refinement of an earlier one covering the same area. A warning() lists every ambiguous observation_id.
+
+Fetch-scope consequence (not performed by this function): multi-member spatial groups are intended to share one pooled bounding-box occurrence/reference fetch. Single-observation spatial groups are intended to be fetched per-observation, scoped to that observation's own candidate taxa, broadened taxonomically rather than spatially. TaxaAssign::update_prior_from_consensus() pools confirmation evidence within each spatial group only, so a single-observation group neither donates nor receives -- see its spatial_group_map and detections arguments.
 
 ### investigate_flagged_accession(accession, species = NULL, max_related = 30L, method = c("remote", "local"), database = "nt", score_range = 8, min_score = 70, max_hits = 20L, submission_window = 5L, min_coverage = 0.5, max_length_ratio = 3, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), inconclusive_ttl_days = 30, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), verbose = TRUE)
 
@@ -266,6 +506,28 @@ For ONE accession 'evaluate_reference_accessions()' flagged (typically '"incongr
 
 **Value:** A list: 'accession', 'listed_species' As given/discovered. 'conspecific_comparison' data.frame(accession, pident, coverage, meets_min_coverage, create_date) - one row per real conspecific accession BLAST actually returned a hit for. ALWAYS check 'coverage'/'meets_min_coverage' before trusting 'pident' - a high 'pident' at low coverage is not meaningful evidence of anything, see 'min_coverage' above. 'disagreeing_taxon' The species name of the top independent disagreeing BLAST hit, or 'NA' if none found. 'disagreeing_taxon_comparison' Same shape as 'conspecific_comparison', for 'disagreeing_taxon''s own other accessions. Also prints a narrative summary comparing the two, unless 'verbose = FALSE'.
 
+#### Why this exists
+
+Manually reviewing evaluate_reference_accessions()'s real flagged accessions by hand found that the raw top BLAST hits alone can be actively misleading -- PV382872's top hits (an eel, a catfish, a parasitic isopod, all ~99.5% identity) looked like severe contamination until direct verification showed every one was from the SAME real submission batch as the query itself, correctly already excluded by evaluate_reference_accessions()'s own independence filter, but invisible without re-fetching the raw GenBank records by hand. This function automates that verification step, applying the SAME independence-filter logic (.build_submission_batch_lookup()/ .same_submission_batch()) so a caller doesn't have to re-derive it by hand every time.
+
+#### The two comparisons
+
+- Self-consistency: How well does the flagged accession match OTHER real GenBank accessions of its own listed species (searched directly by species name, not discovered via blast_sequences()'s own score_range/max_hits window, which can miss real conspecifics sitting just outside it)? High identity here is reassuring; low identity is a much stronger warning sign than evaluate_reference_accessions() alone can report, since it means the accession doesn't even resemble other deposits of its own claimed species.
+
+- Cross-taxon consistency: How well does the flagged accession match other real accessions of whichever taxon its top INDEPENDENT disagreeing BLAST hit belongs to (freshly re-discovered via a live BLAST call, independence-filtered the same way)? High identity here paired with low self-consistency above is the strongest evidence this function can produce for a genuine mislabel -- e.g. the real MZ605481 case (self-consistency not yet checked at the time of writing; cross-taxon consistency to Cyprinus carpio was confirmed by hand at 100% identity across 20 independent real accessions).
+
+#### Why both comparisons run via BLAST, not pairwise alignment
+
+A pairwise-alignment approach to MZ605481's own real motivating case comes back inconclusive in BOTH directions: 0 of 30+ candidate accessions found via NCBI species search would clear a 50% coverage floor on either side, because NCBI's [Organism]-based search returns records of ANY length (most real GenBank deposits for both Pseudorasbora parva and Cyprinus carpio are full ~16kb mitogenomes, against which a 173bp amplicon can only ever find a small, non-meaningful local-alignment fragment). The evidence that makes MZ605481 a real candidate_mislabel is never a pairwise alignment at all -- it is a direct blast_sequences() call, which already enforces min_query_coverage internally and finds 20 independent, coverage-safe Cyprinus carpio hits at genuine 100% identity. Both comparisons here reuse that mechanism (.blast_against_ comparison_set(), internal) rather than a hand-rolled pwalign::pairwiseAlignment() loop.
+
+#### Why a length-ratio pre-filter is required alongside the scoped BLAST search
+
+Even with the comparison-set search scoped via NCBI's ENTREZ_QUERY mechanism (see .blast_against_comparison_set()'s own @section Why the comparison-set search is scoped, not post-hoc filtered), the real MZ605481 case can still return zero matches: direct inspection of the real candidate accessions (.search_species_ accessions("Pseudorasbora parva")'s own output) shows the root cause is one level further upstream than the scoping alone can fix: 26 of 30 candidates are whole-chromosome shotgun-assembly records 60-80+ million bp long (Pseudorasbora parva has a published reference genome), and the one real short candidate that does have usable sequence content is an entirely different gene (COI, not 12S) -- neither BLAST restriction mechanism can find a meaningful alignment against a candidate that either isn't practically alignable at that scale or covers a non-overlapping genomic region entirely. The length-ratio candidate pre-filter (the reentry prompt's own "Option B") is therefore a REQUIRED companion to the scoped BLAST search ("Option A"), not an alternative to it. Implemented in .search_species_accessions() (reference_length/ max_length_ratio params, using NCBI's already-batched, free slen ESummary field to filter BEFORE ever fetching full sequence content -- fetching a 70-million-bp record's full GBSeq_sequence is exactly what silently fails/returns NA for those chromosome accessions).
+
+#### Caching
+
+Implements Question 3, item 1: a persistent, cross-call cache keyed on (accession, species override), mirroring evaluate_reference_accessions()'s own asymmetric-TTL philosophy. A result where NEITHER comparison cleared min_coverage on either side (the real MZ605481-class "inconclusive_length_mismatch" outcome) expires after inconclusive_ttl_days and is retried on the next call -- new, shorter GenBank deposits for either species could genuinely change that answer. Any other result is cached indefinitely (a confident self/cross-taxon comparison doesn't change once computed). A cache HIT still prints the identical narrative summary a fresh call would (unless verbose = FALSE), so this is safe to call repeatedly without losing the printed output. Set cache_dir = NULL to disable caching entirely.
+
 ### investigate_flagged_accessions(accessions, species = NULL, max_related = 30L, method = c("remote", "local"), database = "nt", score_range = 8, min_score = 70, max_hits = 20L, submission_window = 5L, min_coverage = 0.5, max_length_ratio = 3, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), inconclusive_ttl_days = 30, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), verbose = TRUE)
 
 Deep-Dive Verification for a Batch of Flagged Reference Accessions
@@ -291,6 +553,10 @@ The natural 'investigate_flagged_accessions()' (plural) batch wrapper 'investiga
 | verbose | no | TRUE | As in investigate_flagged_accession() -- applied uniformly across the whole batch (not per-accession). |
 
 **Value:** A named list (names = 'accessions'), one element per accession, each in the same shape 'investigate_flagged_accession()' returns.
+
+#### Not the same as cluster-level mislabel detection
+
+This function shares WORK across a batch (search results, cache entries) -- it does not look for cross-accession PATTERNS (e.g. several independently-flagged accessions all disagreeing toward the same species). That is a separate, higher-value, not-yet-designed idea (see the reentry prompt's Question 3, item 3) -- deliberately out of scope here.
 
 ### join_event_site_metadata(detections, site_metadata, event_col = "event_id", id_col = "observation_id", lat_col = "lat", lon_col = "lon", observed_on_col = "observed_on", control_samples = NULL)
 
@@ -327,6 +593,10 @@ Returns the accessions that are the max-scoring accession of their species for a
 
 **Value:** Character vector of accessions, exactly as they appear in 'match_df' (version suffixes untouched, so they key the same cache rows a plain 'unique(match_df$accession)' would), unique, in first-appearance order.
 
+#### Details
+
+RESTORED_* provenance accessions (from TaxaLikely::restore_suppressed_candidates()) are dropped -- they are not GenBank records and cannot be screened. The Mugu workflow did this by hand at its call site; it is done here once.
+
 ### read_animl_output(files, file_col = "FileName", species_col = "prediction", score_col = "confidence", common_name_col = NULL, n_candidates = NULL, min_confidence = 0, top_n = NULL, bbox_cols = NULL)
 
 Read Animl Camera Trap Results into a Match Object
@@ -347,6 +617,37 @@ Reads one or more Animl (MegaDetector + SpeciesNet) result CSV files and returns
 
 **Value:** A data frame with one row per image x candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem (path stripped, extension(s) stripped). Multiple rows with the same 'observation_id' represent alternative species candidates for the same image/crop - analogous to multiple BLAST hits per eDNA query or multiple BirdNET candidates per time window. 'score' Animl classifier confidence (0-1). Pass as 'score_col' to 'standardize_match_data()'. 'species' Species prediction as reported by Animl. May be '"empty"' (no animal detected), '"human"', or '"vehicle"' for non-wildlife detections - filter these out before proceeding. 'genus' Genus name (first word of 'species'). 'NA' for non-binomial labels such as '"empty"'. 'common_name' Common name from 'common_name_col', or 'NA' if that column is absent. 'source_file' Basename of the source CSV file.
 
+#### Details
+
+Animl output formats: The Animl R package (animl on CRAN; wraps MegaDetector + SpeciesNet) supports multiple export formats. Two are handled here:
+
+Long format (default, n_candidates = NULL): one row per image crop x candidate species. Columns: FileName, prediction, confidence. This is the format produced when you export classification results row-by-row.
+
+Wide format (n_candidates = 3): one row per image crop with top-N candidates in columns pred1/score1, pred2/score2, pred3/score3. Pass species_col = "pred", score_col = "score", n_candidates = 3.
+
+Filtering non-wildlife detections: Animl assigns non-animal labels ("empty", "human", "vehicle") to images with no wildlife. Filter these before standardizing:
+
+```
+match_df <- read_animl_output("animl_results/") |>
+  dplyr::filter(!species %in% c("empty", "human", "vehicle"))
+```
+
+observation_id encoding: Each image (or bounding box crop, if cropped images are used) is one observation_id. Multiple species candidates for the same image share the same observation_id, enabling TaxaLikely's gap metric (top-1 minus top-2 confidence) to operate correctly. A camera trap image with multiple detected individuals/species yields multiple crops from MegaDetector, each a separate observation_id -- if Animl encodes the crop index in the filename (e.g. IMG_001_crop1.jpg), these are handled automatically; if the same filename is reused across crops, they will collide under one observation_id (a warning() is issued when duplicate image basenames are detected in file_col).
+
+Taxonomy: genus is derived as the first word of the species column. For the full taxonomic hierarchy (family, order), run TaxaTools::verify_taxon_names() on the species column after filtering, then re-run standardize_match_data().
+
+Downstream workflow:
+
+```
+match_df <- read_animl_output("animl_results/", min_confidence = 0.5) |>
+  dplyr::filter(!species %in% c("empty", "human", "vehicle")) |>
+  standardize_match_data(
+    observation_id_col = "observation_id",
+    score_col          = "score",
+    rank_system        = c("genus", "species")
+  )
+```
+
 ### read_birdnet_output(files, min_confidence = 0, top_n = NULL)
 
 Read BirdNET-Analyzer Results into a Match Object
@@ -360,6 +661,33 @@ Reads one or more BirdNET-Analyzer result CSV files and returns a tidy data fram
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n detections (by confidence) within each time window are retained. Default NULL (keep all detections per window). Setting top_n = 1 retains only the best species per window; top_n = 3 reproduces BirdNET's default output when the tool is run with --top_n 3. |
 
 **Value:** A data frame with one row per file x time-window x detected species, containing: 'observation_id' Unique identifier combining file stem and time window: '"{file_stem}_{start_s}-{end_s}"', with 'start_s'/'end_s' formatted to a fixed 1 decimal place so the same window produces the same ID across platforms/R versions. Pass as 'observation_id_col' to 'standardize_match_data()'. 'score' BirdNET confidence (0-1). Pass as 'score_col' to 'standardize_match_data()'. 'species' Full scientific binomial as reported by BirdNET. 'genus' Genus name (first word of 'species'); 'NA' for non-standard binomial formats. 'common_name' English common name. 'start_s' Detection window start time in seconds. 'end_s' Detection window end time in seconds. 'source_file' For the file-path input path, the basename of the source BirdNET result CSV. For the combined/Gradio data-frame input path, there is no CSV path to report (the data frame was already loaded before being passed in); this is instead the audio filename stem from the 'File' column, which may equal that column's own value and should not be assumed to be a CSV filename.
+
+#### Details
+
+BirdNET output formats: Two formats are supported:
+
+CLI format (recommended): BirdNET-Analyzer (v2.x) run from the command line produces one CSV per audio file, typically named recording.BirdNET.results.csv, with columns Start (s), End (s), Scientific name, Common name, Confidence. The recording identity is encoded in the CSV filename and used as the observation_id stem. Pass a directory of these files or a character vector of paths.
+
+Combined format: The BirdNET web interface (Gradio) and some third-party tools export a single CSV covering all recordings, with an additional File column containing the audio file path. When a File column is present, the observation_id stem is derived from the audio filename in that column rather than the CSV filename, so detections from different recordings remain distinct even in a single combined export -- except when two different recordings happen to share the same basename (e.g. recording.wav from different directories), which produces colliding observation_id stems; a warning() is issued when this is detected in the File column.
+
+Only the default CSV output (--rtype csv, or the equivalent legacy default) is supported. BirdNET-Analyzer v2.4+'s --rtype flag can produce other formats (Audacity, R, kaleidoscope, table); passing one of those files here will fail the required-column check with an uninformative column list rather than a format-specific error. Per-recording metadata some BirdNET output modes include (latitude/longitude, week number, sensitivity) is not read or preserved.
+
+Each row is one candidate species detection within a 3-second window (BirdNET's default segment length). Multiple rows per window occur when BirdNET returns top-N results.
+
+observation_id encoding: Each time window in each recording is one observation_id. Multiple detections within the same window share the same observation_id (analogous to multiple BLAST hits per eDNA query). The gap metric in TaxaLikely is computed as the difference between the top-1 and top-2 confidence scores within each window -- so retaining multiple detections per window is important for model training.
+
+Taxonomy: genus is derived as the first word of BirdNET's scientific name (NA for non-standard binomial formats such as hybrid notations or undescribed-species placeholders). species is the full binomial. For the full taxonomic hierarchy (family, order, class), run TaxaTools::verify_taxon_names() and convert_taxonomy_backbone() on the species column after standardization, then re-run standardize_match_data().
+
+Downstream workflow:
+
+```
+match_df <- read_birdnet_output("birdnet_results/", min_confidence = 0.1) |>
+  standardize_match_data(
+    observation_id_col = "observation_id",
+    score_col          = "score",
+    rank_system        = c("genus", "species")
+  )
+```
 
 ### read_inaturalist_cv_output(files, score_type = c("combined_score", "score"), min_confidence = 0, top_n = NULL)
 
@@ -375,6 +703,40 @@ Reads one or more saved JSON files from the iNaturalist computer vision API and 
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n candidates (by score) within each image are retained. Default NULL (keep all). |
 
 **Value:** A data frame with one row per image x candidate taxon, containing: 'observation_id' Unique identifier derived from the JSON filename stem (the name you gave the saved response file, ideally the image filename stem). 'score' iNaturalist CV score, passed through unchanged from the saved JSON's 'score_type' field. The live API returns scores on iNaturalist's 0-100 softmax convention (candidates for one image sum to approximately 100, not 1) - confirmed directly against the real API (see 'score_image_inat()''s matching @return note); do not assume a 0-1 scale or rescale before passing to 'TaxaLikely::evaluate_likelihoods()'. 'species' Scientific name (binomial) if the API returned a species-rank taxon; coarser name otherwise. 'genus' Genus name (first word of 'species'). 'NA' for non-binomial labels. 'common_name' Common name from the API response, or 'NA'. 'taxon_rank' Rank reported by the API (e.g., '"species"', '"genus"'). Useful for filtering to species-only suggestions. 'source_file' Basename of the source JSON file.
+
+#### Details
+
+Each JSON file should be the raw API response for one image, saved to disk after calling the iNaturalist API endpoint POST https://api.inaturalist.org/v1/computervision/score_image -- confirmed live and working (returning HTTP 200 with real results) as of this package's score_image_inat(), which calls the same v1 endpoint directly rather than saving JSON to disk first. See the @details section for a minimal API call example for the save-to-disk path this function reads.
+
+Saving API responses: Each JSON file must be the API response for exactly one image. Name the file using the image stem so that observation_id is interpretable downstream:
+
+```
+# Requires httr2 and jsonlite
+img_path <- "field_images/IMG_001.jpg"
+resp <- httr2::request("https://api.inaturalist.org/v1") |>
+  httr2::req_url_path("/computervision/score_image") |>
+  httr2::req_body_multipart(
+    image    = curl::form_file(img_path),
+    jwt      = your_inat_api_token   # from inaturalist.org
+  ) |>
+  httr2::req_perform()
+json_path <- sub("\\.jpg$", ".json", img_path)
+writeLines(httr2::resp_body_string(resp), json_path)
+```
+
+Then: read_inaturalist_cv_output("field_images/"). The endpoint is rate-limited (documented at 60 requests/minute for authenticated users); pace calls accordingly when generating many JSON files in a batch.
+
+Species rank filtering: iNaturalist CV returns suggestions at any rank (species, genus, family, ...). Filter before standardizing:
+
+```
+match_df <- read_inaturalist_cv_output("inat_results/") |>
+  subset(taxon_rank == "species") |>
+  standardize_match_data(
+    observation_id_col = "observation_id",
+    score_col          = "score",
+    rank_system        = c("genus", "species")
+  )
+```
 
 ### read_sequence_table(input_data, sequence_col = "sequence", observation_id_col = NULL, abundance_cols = NULL, taxonomy = NULL, header_format = "none", id_prefix = "ASV")
 
@@ -394,6 +756,22 @@ Converts a DADA2 sequence table (matrix), a FASTA file, or a data frame (e.g., f
 
 **Value:** A data frame with columns: asv_id Unique identifier (e.g., "ASV_001") sequence DNA sequence string length Sequence length in base pairs abundance Total read count across all samples If taxonomy is provided (via 'taxonomy' argument, parsed from FASTA headers, or present in a data frame input), taxonomy columns are appended. For FASTA/'DNAStringSet' input with 'header_format = "none"' (the default), an 'accession' column is also added (the header's first whitespace-delimited token) - this column drives taxonomy joining via the 'taxonomy' argument's '"accession"' key.
 
+#### Details
+
+DADA2 input: The standard DADA2 sequence table is a matrix where rows are samples, columns are ASV sequences (the column names are the literal DNA strings), and cells are integer read counts. read_sequence_table() collapses across samples to get total abundance per unique sequence. Rows are expected to be samples and columns sequences (DADA2's own convention); a transposed OTU-table-style matrix (rows = OTUs/ASVs, columns = samples, as used by QIIME2's biom format or mothur shared files) is not auto-detected and will be misread.
+
+FASTA input: Accepts a file path (extensions .fasta, .fa, .fna, .fas) or a Biostrings::DNAStringSet object. Abundance is set to 1 per sequence unless the header contains abundance information (e.g., ;size=42). Sequences are not validated to contain only IUPAC nucleotide characters; a warning() is issued (not an error) when non-IUPAC characters or duplicate sequences are found.
+
+Data frame input: Accepts any data frame with a column containing DNA sequences. Common sources include provider ASV/ESV tables with sample read counts in separate columns (e.g. Jonah Ventures tab+taxa CSV files). Abundance is computed by summing across abundance_cols. If not specified, the function auto-detects numeric columns that are not standard taxonomy or metadata columns -- see @param abundance_cols for the auto-detection rule. Taxonomy columns (kingdom, phylum, class, order, family, genus, species) and other non-numeric columns are retained in the output.
+
+Taxonomy: Can be supplied three ways:
+
+- Via the taxonomy argument (data frame with a sequence or accession column for joining)
+
+- Parsed from FASTA headers with header_format = "semicolon"
+
+- Directly present in a data frame input (retained automatically)
+
 ### read_speciesnet_output(files, min_confidence = 0, top_n = NULL, include_coverage = FALSE, min_detection_conf = 0)
 
 Read SpeciesNet Batch Classification Results into a Match Object
@@ -409,6 +787,40 @@ Reads one or more real SpeciesNet CLI ('google/cameratrapai', python -m speciesn
 | min_detection_conf | no | 0 | Numeric. Only used when include_coverage = TRUE: detections below this MegaDetector confidence are not eligible to be the representative detection. Default 0. |
 
 **Value:** A data frame with one row per image x candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem ('filepath', path stripped, extension(s) stripped). 'score' SpeciesNet classifier confidence (0-1) for this candidate, from the RAW top-5 'classifications' block - pre-geofencing, pre-taxonomic-rollup. This is deliberately NOT the same as 'ensemble_prediction_score' (see @details). 'species', 'genus', 'family', 'order', 'class' Parsed from SpeciesNet's own uuid;class;order;family;genus;species;common_name label string. Any of these may be 'NA' - SpeciesNet's own classifier taxonomy has 2000+ labels spanning every rank from class down to species. 'species' is the full binomial (genus + epithet, genus capitalized); the raw label's own species field is the epithet only. 'common_name' Common name from the label string, or the non-taxonomic label itself ('"animal"', '"blank"', '"vehicle"', '"human"') when no taxonomic rank is populated. 'taxon_rank' Finest populated rank among 'species'/'genus'/ 'family'/'order'/'class'; 'NA' for a non-taxonomic candidate. 'ensemble_prediction', 'ensemble_prediction_score', 'ensemble_prediction_source' SpeciesNet's own final answer for the WHOLE IMAGE (constant across every candidate row for that image) - the label string's own common name, plus the ensemble's confidence and which internal component produced it (e.g. '"classifier"', '"detector"', '"geofence"'). Kept as reference/diagnostic metadata; NOT used to build 'species'/'score' above - see @details. 'lat', 'lon', 'country' From the prediction's optional 'latitude'/'longitude'/'country' fields, when SpeciesNet was run with geographic context. 'NA' otherwise. Feed directly to 'build_site_table()' (already in the canonical 'lat'/'lon' names). 'coverage', 'detection_conf' Only present when 'include_coverage = TRUE'; see that parameter. 'source_file' Basename of the source JSON file.
+
+#### Details
+
+Why classifications, not prediction: SpeciesNet's ensemble deliberately rolls a prediction up to genus/family/order/class/kingdom whenever species-level confidence is insufficient (Markoff & Galaktionovs 2025, arXiv:2510.14594 -- precision over recall by design). The raw top-5 classifications block is the classifier's OWN candidate list, computed before that rollup and before geofencing -- it still carries species-level signal that the ensemble's own prediction field has already discarded. This function treats classifications as the primary multi-candidate source (mirroring blast_sequences()/ read_animl_output()'s multiple-hypotheses-per-query shape) precisely so that species-level candidates reach TaxaLikely/TaxaAssign's own prior-informed resolution instead of being silently pre-resolved by SpeciesNet's conservative rollup. ensemble_prediction/ ensemble_prediction_score are retained only as reference metadata (e.g. to compare against what TaxaID's own posterior later resolves to), not as an alternative candidate source.
+
+Filtering non-wildlife detections: SpeciesNet assigns non-taxonomic labels ("animal", "blank", "human", "vehicle") when no wildlife taxon is identified, and a "no cv result" placeholder when the classifier itself failed. All of these have taxon_rank = NA. Filter before standardizing:
+
+```
+match_df <- read_speciesnet_output("speciesnet_predictions.json") |>
+  dplyr::filter(!is.na(taxon_rank))
+```
+
+Running SpeciesNet:
+
+```
+pip install speciesnet
+python -m speciesnet.scripts.run_model \
+  --folders /path/to/images \
+  --predictions_json speciesnet_predictions.json
+```
+
+Then:
+
+```
+match_df <- read_speciesnet_output("speciesnet_predictions.json") |>
+  dplyr::filter(!is.na(taxon_rank)) |>
+  standardize_match_data(
+    observation_id_col = "observation_id",
+    score_col          = "score",
+    rank_system        = c("class", "order", "family", "genus", "species")
+  )
+```
+
+Label format: SpeciesNet's label strings are confirmed directly against the shipped taxonomy file (data/model_package/taxonomy_release.txt in google/cameratrapai): uuid;class;order;family;genus;species;common_name, e.g. "...;amphibia;anura;bufonidae;rhinella;marina;cane toad". Any of the 5 taxonomic fields may be empty (coarser rollup); this function normalizes both an empty field and the literal "no cv result" placeholder to NA.
 
 ### refine_reference_verdicts(evaluation, cache_dir = NULL, pair_table = NULL, rank_system = TaxaTools::standard_ranks, min_congruent_rank = "family", top_n = 5L, hierarchy_incongruent_threshold = 0.5, min_independent_partners = 3L, min_partner_weight = 0, max_iter = 10L, tol = 1e-04, verbose = TRUE, local_corroboration = NULL, ...)
 
@@ -435,6 +847,22 @@ Re-run Reference Verdicts With Each Partner Weighted by Its Own Trustworthiness
 
 **Value:** 'evaluation' with these columns added: 'hierarchy_flag_trust', 'label_confidence_trust', 'reference_action_trust', 'frac_below_min_congruent_rank_trust', 'n_effective_partners' (the weighted partner count, which is what 'min_independent_partners' is now compared against), and 'trust_refined' (logical - 'FALSE' where no pair data existed, in which case the *_trust columns simply repeat the unrefined values). 'attr(result, "trust_iterations")' and 'attr(result, "trust_converged")' record the fixpoint's own behaviour.
 
+#### Details
+
+Nothing is removed and nothing is overwritten: the refined verdicts arrive as parallel *_trust columns beside the originals.
+
+#### What this needs, and what happens without it
+
+The individual votes are not in the per-accession cache -- they are summarised and discarded from it. evaluate_reference_accessions() persists them separately, to a sidecar reference_pair_cache.rds, whenever cache_dir is not NULL. An accession evaluated with cache_dir = NULL has no pair rows, so it CANNOT be refined: it keeps its original verdict, trust_refined reads FALSE, and a message says how many accessions that applied to. Re-running evaluate_reference_accessions() on those accessions with a cache_dir set is what builds their pair rows; there is no way to reconstruct them without a fresh BLAST.
+
+#### Determinism
+
+Every iteration updates every accession simultaneously from the PREVIOUS iteration's confidences (a Jacobi sweep, not Gauss-Seidel), so the result does not depend on the order accessions appear in. The top_n slice breaks percent-identity ties by id_y rather than by input order, for the same reason.
+
+#### What it does on real data
+
+On the PtConception 12S screen the motivating case was Askoldia variegata (MT627596), the disagreeing partner in 4 of the 12 "incongruent" verdicts. Its own row reads "insufficient_independent_evidence" with a 100% agreeing hit and nothing disagreeing -- label_confidence 0.999. So the honest answer is that weighting does not discount it: it is an under-evaluated partner, not a likely error, and the disagreement it registers is a real family-level distinction in a thinly-covered clade. The mechanism is right and the cascade guard is doing its job; this particular accession was simply not the culprit it looked like.
+
 ### remove_incongruent_references(match_df, evaluation, remove_insufficient_evidence = FALSE, override_accessions = NULL, gate = c("action", "flag"))
 
 Remove Confidently-Incongruent Reference Accessions from a Match Object
@@ -450,6 +878,18 @@ Filters a match data frame to remove rows whose reference accession was flagged 
 | gate | no | c("action", "flag") | Character, "action" (default) or "flag". "action" removes accessions whose reference_action is "remove"; "flag" removes every accession whose hierarchy_flag is "incongruent". Under "action", reference_action is computed on the fly via score_reference_labels() if evaluation does not already carry it. |
 
 **Value:** The input 'match_df' with flagged rows removed. Unchanged if no flagged accessions are found.
+
+#### Use flag_incongruent_references() first
+
+This function is not the recommended default pipeline step -- see flag_incongruent_references()'s own @section Why flag-by-default, not drop-by-default for the real case illustrating why. Reach for this function deliberately, after reviewing hierarchy_flag alongside the identity diagnostics (best_agreeing_pident/best_disagreeing_pident/ congruent_evidence_exists_anywhere), not as an unreviewed default step.
+
+#### The evidence gate is the default
+
+gate = "action" (the default) removes an accession only when score_reference_labels() resolved it to reference_action == "remove" -- flagged "incongruent" AND uncorroborated anywhere AND below the confidence threshold -- rather than on hierarchy_flag == "incongruent" alone. hierarchy_flag is a majority vote over the top-N neighbours in which percent identity never appears, so in a thinly-covered clade it fires on correct references by construction. Measured on the real 995-accession PtConception screen: gate = "flag" removes 12 accessions behind 1,688 observations -- including cabezon (OK172573, 1,120 observations, agreeing hit at 100%) -- to catch the 4 (16 observations) that genuinely had no corroboration anywhere. gate = "action" removes exactly those 4.
+
+#### This is a blacklist decision, not the whole signal
+
+Even under gate = "action" this function consumes only a yes/no removal decision. The continuous signal (score_reference_labels()'s label_confidence) travels separately, via flag_incongruent_references(), and is meant for review. A likelihood-model covariate driven by it was evaluated and found not to help. Do not let this function's use become the only place the full evaluation object's signal is consulted.
 
 ### report_match(match_data, data_type = NULL, verbose = FALSE)
 
@@ -480,6 +920,10 @@ Bridges 'review_flagged_accessions()''s LLM-based second-look verdicts to 'remov
 
 **Value:** Character vector of accessions to pass directly as 'remove_incongruent_references(override_accessions = ...)'.
 
+#### Real motivating case
+
+A real GreatLakes match-candidate screen flagged Stereolepis doederleini (LC649807) hierarchy_flag = "incongruent". A separate, earlier investigation into this exact accession found it is very likely a correctly-labeled record with genuinely poor marker resolution at this rank, not a real mislabel -- exactly the ambiguity remove_incongruent_references()'s own @section Use flag_incongruent_references() first documents. This function is the automated version of applying that finding: run review_flagged_accessions() once, and any accession the LLM categorizes as something other than a genuine mislabel is kept, without needing a human to individually re-decide each one every time the pipeline re-runs.
+
 ### review_flagged_accessions(evaluated_df, hierarchy_flags = c("incongruent", "insufficient_independent_evidence"), include_non_species_resolved = TRUE, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), taxa_per_call = 10L, max_tokens = NULL, max_retries = 2L, pause_seconds = 1, verbose = TRUE, local_min_overlap = NULL)
 
 LLM Second-Look Review of Flagged Reference Accessions
@@ -502,6 +946,26 @@ Sends 'evaluate_reference_accessions()''s flagged/borderline rows to an LLM for 
 
 **Value:** 'evaluated_df' with 4 columns appended ('NA' for out-of-scope rows): 'accession_likely_explanation' One of '"genuine_mislabel"', '"poor_marker_resolution"', '"sister_family_thin_coverage"', '"hybrid_or_specimen_code_artifact"', '"uncertain"' - the LLM's own categorization of WHY the accession was flagged, never a re-decided 'hierarchy_flag'. 'accession_review_confidence' '"high"' / '"moderate"' / '"low"'. 'accession_review_comment' Free-text note, or 'NA'. 'accession_review_cache_hit' Logical. 'TRUE' if this row's review was read from 'cache_dir' rather than freshly generated this call (always 'FALSE', never 'NA', for an in-scope row when 'cache_dir = NULL'). 'NA' for an out-of-scope row. Also carries 'attr(result, "llm_prompts")' - a named list of the exact prompt string sent for each LLM call actually made this call (named by batch number, with an '"a"'/'"b"' suffix per retry sub-batch split), matching 'review_assignments()''s own convention. A batch entirely served from cache makes no LLM call at all and so has no entry here.
 
+#### Prompt content, lifted from the evaluation guide, not re-derived
+
+The prompt teaches the LLM inst/reference_accession_evaluation_guide.md's own 5-category decision framework (genuine mislabel / poor marker resolving power / sister-family-thin-coverage artifact / hybrid-cross or specimen-code artifact / non-species-resolved partner) using that guide's own worked real examples (Stereolepis doederleini, Abylopsis eschscholtzii, NC_028197/"Serranidae sp. JL-2015") -- the same reasoning a careful human reviewer already applies by hand. Keep the guide updated (and this function's prompt in sync with it) if real usage surfaces a case class the guide doesn't yet cover.
+
+#### What the LLM outputs -- and does NOT output
+
+A free-text accession_review_comment plus two small structured fields (accession_likely_explanation, accession_review_confidence) -- never a re-decided hierarchy_flag, and this function never calls remove_incongruent_references() or otherwise mutates the evaluation itself. This follows this ecosystem's own caution around a trusted_rank- style mechanism (TaxaLikely::evaluate_likelihoods()) that once recomputed/overrode an existing categorical verdict and was removed after a real ~30% mismatch between the hypothesis it was computed for and the one that actually won downstream: a mechanism that recomputes/overrides an existing categorical verdict is exactly the shape that broke there. A human reads accession_review_comment before acting on it.
+
+#### Package placement
+
+Lives in TaxaMatch, not TaxaFlag, deliberately. Every other reference- accession-quality function (evaluate_reference_accessions(), investigate_flagged_accession(), check_marker_mismatch(), flag_incongruent_references(), remove_incongruent_references()) already lives here and operates on this same output shape. TaxaMatch -> TaxaFlag is not currently a dependency edge in this ecosystem -- TaxaFlag::review_assignments() reviews post-assignment DETECTIONS (a structurally later pipeline stage, downstream of TaxaAssign); this reviews pre-assignment REFERENCE DATABASE quality, upstream of TaxaExpect/TaxaAssign entirely. No new dependency is needed to place it here either way: this function calls TaxaTools::call_api() the exact same way review_assignments() does, and TaxaMatch already depends on TaxaTools for several other reasons (is_plausible_binomial(), clean_taxon_names(), verify_taxon_names(), standard_ranks).
+
+#### Scope (cost control)
+
+Only reviews rows matching hierarchy_flags/include_non_species_resolved -- not the whole evaluated population. On the real GreatLakes Goal-2 population this reentry prompt was written against, the default scope selects 8 + 17 + 57 = 82 of 1,183 accessions (~7%), a tractable LLM batch size -- see the reentry prompt's own "Cost/scale" discussion.
+
+#### Caching
+
+An in-scope accession is served from cache_dir instead of a real LLM call when a cached review exists AND its stored content fingerprint (built from listed_taxon/hierarchy_flag/finest_common_rank/the identity diagnostics/taxonomy_resolution_source/ listed_taxon_is_species/the independence-filtering counts -- see .accession_review_fingerprint()) matches the CURRENT row in evaluated_df. Re-running evaluate_reference_accessions() on an accession and getting a genuinely different verdict or diagnostic value therefore triggers a fresh review automatically -- the cache never masks a real change, unlike a plain accession-keyed or TTL-based cache would. The cache is written incrementally, once per LLM batch actually sent (matching evaluate_reference_accessions()'s own per-chunk cache-write design) -- an interruption partway through a large review run only loses whatever batch was still in flight, not every batch completed so far.
+
 ### score_image_inat(image_path, lat = NULL, lng = NULL, observed_on = NULL, top_n = 10L, recursive = FALSE, api_token = Sys.getenv("INAT_API_TOKEN"))
 
 Score images using the iNaturalist Computer Vision API
@@ -519,6 +983,22 @@ Submits one or more images to the iNaturalist CV API and returns a tidy match ob
 | api_token | no | Sys.getenv("INAT_API_TOKEN") | Character. iNaturalist API token. Defaults to the INAT_API_TOKEN environment variable. Obtain a token by visiting https://www.inaturalist.org/users/api_token while logged in. |
 
 **Value:** A tibble with up to 'top_n' rows per image (one per candidate taxon; some images may return fewer when the API has fewer suggestions), containing: 'observation_id' (image filename stem), 'taxon_name', 'taxon_name_rank', 'score_original' (identical to 'combined_score'; kept under the canonical pipeline name for compatibility with 'evaluate_likelihoods()'), 'genus', 'common_name', 'iconic_taxon_name', 'taxon_id', 'n_observations' (global iNat observation count for the taxon - not location-filtered), 'vision_score', 'combined_score', 'freq_score' (a thresholded presence indicator from the iNaturalist geomodel, not a raw frequency; see Details), 'geo_prior_weight' ('combined_score / vision_score'; the continuous geographic prior signal), 'lat', 'lng', 'observed_on' (per-image location/date metadata), and zero or more 'folder_1', 'folder_2', ... columns encoding the nested directory levels between the input base path and each image file. *Score scale:* all score columns are in iNaturalist's 0-100 softmax convention (scores across candidates sum to approximately 100 per image). Do not rescale to 0-1 before passing to 'TaxaLikely::evaluate_likelihoods()'.
+
+#### Details
+
+Score semantics: vision_score is the raw image classifier output (discriminative CNN, no location). combined_score approximates a Bayesian posterior by weighting vision_score by the geomodel prior (geo_prior_weight). freq_score is a thresholded presence indicator from the iNaturalist geomodel and is not a raw frequency. Neither score is a true likelihood in the Bayesian sense; combined_score is used as score_original because it is the most informative predictor when location is available.
+
+EXIF extraction: When lat, lng, or observed_on are NULL, the function attempts to read these values from each image's EXIF metadata using the exifr package (if installed). Install with install.packages("exifr") and ensure ExifTool is available (see ?exifr::read_exif). When exifr is not available and no arguments are supplied, the API call omits location and date (vision score only; geo_prior_weight = 1).
+
+Path metadata: Directory levels between the input base path and each image are output as folder_1, folder_2, ... columns. These may encode site, date, treatment, or other study design information embedded in a nested folder hierarchy (e.g., images/SiteA/2024-06-01/IMG_001.jpg yields folder_1 = "SiteA", folder_2 = "2024-06-01").
+
+Taxonomy normalization: The CV API returns iNaturalist taxonomy. Before feeding the output into join_priors(), run TaxaMatch::convert_taxonomy_backbone() to remap iNat names to the GBIF backbone (or your prior backbone). The family column is not populated here because it is not returned by the CV API; use TaxaTools::fill_higher_ranks() to add it after backbone normalization.
+
+Authentication: Tokens expire periodically. If you receive a 401 error, regenerate your token at https://www.inaturalist.org/users/api_token.
+
+Rate limiting: Requests to non-final images are throttled to iNaturalist's documented authenticated-user limit of 60 requests/minute.
+
+Known biases: the iNaturalist geomodel prior is trained on iNaturalist observation data, which carries well-known geographic and taxonomic biases (urban bias, observer hotspot bias, charismatic-species bias) -- combined_score may underweight rare or cryptic species that are genuinely present but underobserved on iNaturalist. The CV model itself is trained primarily on human-submitted wildlife photographs (close-range, well-lit, single subject); camera trap images (infrared, wide-angle, partially occluded or distant subjects) are out-of-distribution for it, and scores may be systematically lower or less well-calibrated than for standard photographs. Consider supplementing camera trap workflows with read_animl_output() (SpeciesNet), which is trained on camera trap data.
 
 ### score_reference_labels(evaluation, margin_scale = 1, margin_cap = 5, action_remove_below = 0.05, action_inspect_below = 0.25, action_caution_below = 0.75, overwrite = FALSE, local_corroboration = NULL)
 
@@ -539,6 +1019,44 @@ Adds two derived columns to an 'evaluate_reference_accessions()' result: 'label_
 
 **Value:** 'evaluation' with seven columns added: 'label_confidence' Numeric in (0, 1). 'NA' for a row with no computed congruence at all ('"not_evaluated_oversized"', '"not_evaluated_wrong_marker"', or a fetch failure). *Named contract: this value CANNOT REACH 1*, by construction - the Jeffreys smoothing floors the disagreement fraction at '0.5/(n+1)', so even a perfectly corroborated multi-partner accession tops out just under 1 (e.g. '0.99939' for a real 5-partner case). Any future consumer reading this as a RATIO where 1 means "no adjustment needed" (e.g. a likelihood-covariate-style rescale) must normalize by the per-row achievable ceiling first, or it will silently adjust every candidate in the dataset - this is exactly the bug a prior attempt to use this column as a likelihood covariate hit before being removed entirely. 'label_identity_margin' Numeric, the capped 'd' in percent-identity points. 'NA' when the row carries no identity information of any kind. 'reference_action' '"keep"', '"caution"', '"inspect"', '"remove"', or '"untested"'. '"untested"' means NO USABLE EVIDENCE WAS OBTAINED, which covers two different routes there: the query was never submitted to BLAST ('"not_evaluated_oversized"', '"not_evaluated_wrong_marker"'), or it was submitted and came back with zero valid comparison partners ('n_independent_top_matches == 0'; included in this case - see @section No partners is not a coin flip). 'action_reason' '"vetoed_by_local_corroboration"' where a '"remove"' was downgraded to '"inspect"' by the local set, '"locally_corroborated_not_blasted"' for a skipped row, 'NA' otherwise. 'corroboration_source' '"blast"', '"local"', '"both"', or '"none"'. 'NA' for a row with no verdict at all. 'local_best_independent_pident' Percent identity (0-100) of the best independent local conspecific; 'NA' without a table. 'local_n_independent_conspecific' Its count; 'NA' without a table. Row count and order are unchanged.
 
+#### Polarity
+
+HIGH label_confidence means MORE confidence that the label is correct, i.e. LESS concern. This deliberately does NOT follow the ecosystem's *_risk/*_confusion_risk convention (where high = more concern), which is why the column is named label_confidence and not label_risk -- the name states the direction. It is on the same scale and polarity as score_likelihood and TaxaFlag::observation_validity, which is what a consumer that multiplies it into a weight actually needs.
+
+#### No partners is not a coin flip
+
+An accession with ZERO valid comparison partners (n_independent_top_matches == 0) has label_confidence = NA and reference_action = "untested", rather than the 0.500 the arithmetic would otherwise produce.
+
+Why it would otherwise be 0.500: with no partners, frac_independent_below_min_congruent_rank falls back to its 0.5 default and the identity margin is NA, so the formula reduces to plogis(qlogis(0.5) + 0). That is a prior with no data, not a measurement, and it lands squarely in the "caution" band -- i.e. the screen asserting concern earned by an absence, against a base rate of 931 congruent out of 989 evaluated PtConception accessions.
+
+Measured across four independent real caches (PtConception plus three GreatLakes), the split is total and has no exceptions: all 98 zero-partner rows scored exactly 0.500 and read "caution", while all 55 rows with at least one partner had corroborating evidence (congruent_evidence_exists_anywhere == TRUE) and read "keep".
+
+The rule keys on the partner COUNT, deliberately not on hierarchy_flag. An accession with 1-2 partners also reads "insufficient_independent_evidence", but it does have real evidence and (55 of 55, measured) that evidence corroborates it; keying on the verdict would wrongly blank those too.
+
+Some of these rows are a max_hits truncation artifact rather than a property of the accession -- re-running PtConception's 34 at max_hits = 100 resolved 12, including 7 zero-partner rows that moved "caution" to "keep" (the insufficient_evidence_probe.R diagnostic (TaxaID_dev repository)). But 21 of 34 gained no hits at all when the window quintupled, so most of the population is genuinely thin. "untested" is the honest reading either way: we do not know.
+
+#### Where the numbers come from
+
+label_confidence is a pure function of columns evaluate_reference_accessions() already caches, so it applies to any existing cache with no .EVAL_REF_ACC_VERSION bump and no re-BLAST. Its formula is a log-odds sum of the existing Jeffreys-smoothed vote and the percent-identity margin the vote itself ignores:
+
+```
+
+logit(label_confidence) = logit(1 - frac_independent_below_min_congruent_rank) + d / margin_scale d = (best_agreeing_pident, else congruent_evidence_best_pident) - best_disagreeing_pident, capped to +/- margin_cap ```
+
+margin_scale is the one free parameter: it says how many percent-identity points are worth one unit of log-odds. The default 1 is not fitted -- it is a stated convention, chosen because at MiFish-U amplicon lengths (~170 bp) one percent identity is roughly 1.7 nucleotide differences, the granularity at which this ecosystem already treats identity differences as discriminating at species level. What the default is checked against is behaviour, not fit: on the real 995-accession PtConception evaluation it reproduces the measured, user-approved evidence-gate split exactly (the 4 no-corroboration accessions score <= 0.001 and are the only ones that reach "remove"; the 8 spared score 0.056 to 0.97 and reach at worst "inspect"), and leaves all 919 "congruent" accessions at "keep".
+
+#### Why "remove" also requires no corroboration anywhere
+
+reference_action == "remove" is gated on THREE conditions, not just a low label_confidence: the accession must be flagged "incongruent", have no corroborating evidence anywhere in the untruncated independence-filtered hit pool, AND score below action_remove_below. The corroboration test is a hard veto rather than another additive term because one corroborating record anywhere is qualitatively different from none -- it means some independent submitter's sequence agrees with this label at family or finer. The case that shows why a threshold alone is not enough is Oxylebius pictus (KM057978), a real, locally-abundant painted greenling whose only corroboration sits outside its top-5 window at 93.58, just below the 94.01 that contradicts it. It scores 0.056 -- a hair above the 0.05 default, so the default threshold happens to spare it, but its fate would flip on any small change to margin_scale or to action_remove_below. The veto is what makes the outcome robust rather than lucky: raise action_remove_below to 0.2 and it is still "inspect", while the genuinely uncorroborated accessions are still "remove". That is the right treatment: a borderline reference should be surfaced for review, not deleted.
+
+"remove" is furthermore unreachable for any flag other than "incongruent". "insufficient_independent_evidence" is retryable, not removable (it may simply mean a sparsely-referenced region of the database), "not_evaluated_oversized" and "not_evaluated_wrong_marker" were never submitted to BLAST at all, and "locally_corroborated" was deliberately not submitted because the caller's own reference set already corroborates it -- it reads "keep" with label_confidence = NA (there is no BLAST evidence to grade).
+
+#### Local corroboration
+
+provenance and the veto: When local_corroboration (corroborate_references_locally() output) is supplied, three things happen, and one deliberately does not. corroboration_source records where the corroboration for each label came from: "blast" (congruent_evidence_exists_anywhere), "local" (local_tier == "corroborated", or the row was skipped as "locally_corroborated"), "both", or "none". local_best_independent_pident and local_n_independent_conspecific carry the local numbers beside the BLAST ones. And a row that resolves to "remove" while the local set corroborates it is VETOED to "inspect", with action_reason = "vetoed_by_local_corroboration".
+
+What does not happen: label_confidence stays the BLAST-only probability. Local evidence is not folded into it, on purpose, so a reviewer can see the two disagree -- that disagreement is exactly what found the primer-inclusive-query blind spot (KM057996, Zaniolepis frenata, actioned "remove" by BLAST while OQ846041 in the local set matched it at 100% over 97% of the amplicon; see evaluate_reference_accessions()'s @section Why the query is the primer-stripped amplicon). All four columns are present (NA/"none"-filled) even when no table is supplied, so downstream code can rely on them.
+
 ### standardize_match_data(data = NULL, observation_id_col, score_col, rank_system = NULL, coverage_col = NULL, col_map = NULL, lowercase_names = TRUE)
 
 Standardize Raw Match Data to Canonical Match Object
@@ -557,6 +1075,10 @@ Reads raw match data (from a data frame or file), renames the observation identi
 
 **Value:** A data frame with at minimum: 'observation_id' Unique query identifier (renamed from 'observation_id_col'). 'score_original' Raw match score (renamed from 'score_col'). Preserved unchanged throughout the pipeline; downstream functions add 'score_norm', 'score_softmax', and 'score_likelihood' columns as transformations are applied. 'taxon_name' Most specific non-NA taxon name (derived). 'taxon_name_rank' Rank of 'taxon_name', lowercase (derived). Useful for reporting what proportion of observations resolved to species/genus/family level, per eDNA minimum-information reporting guidelines (e.g. Thalinger et al. 2021). All other input columns are retained unchanged - *except* that when 'lowercase_names = TRUE' (the default), every column name in the output, including retained ones, is converted to lowercase; the underlying data is untouched, only the names.
 
+#### Details
+
+The result is a canonical match object ready for input to TaxaLikely. One row per observation_id x reference match (e.g. one ESV x one accession hit). Sample context (site, date, replicate) is stored in a separate table and joined to the likelihood output downstream -- it is not part of the match object.
+
 ### verify_removal_candidates(evaluation, ..., audit_max_hits = 100L, cache_dir = NULL, screen_corroborators = TRUE, verbose = TRUE)
 
 Verify Removal Candidates Against a Wider Evidence Window
@@ -573,6 +1095,24 @@ Re-evaluates ONLY the accessions an evaluation would actually remove, at a large
 | verbose | no | TRUE | Logical (default TRUE). |
 
 **Value:** A data frame with one row per removal candidate: 'accession', 'listed_taxon', 'action_production'/'action_audit', 'anywhere_production'/'anywhere_audit', 'n_partners_production'/'n_partners_audit', 'n_hits_audit', 'still_saturated' (the audit itself hit 'audit_max_hits', so its own window is also truncated), 'spared' ('TRUE'/'FALSE', or 'NA' when the audit itself never completed - i.e. 'action_audit' is '"untested"'/'NA', e.g. an NCBI BLAST timeout or CPU-budget rejection. 'NA' is not "not removable" - test 'spared %in% TRUE', never bare 'spared', before treating a row as overturned). The corroborator columns - 'n_corroborators', 'best_corroborator_rank', 'corroborators' (a short list of the strongest partners that agreed), and, when 'screen_corroborators = TRUE', 'corroborator_accessions' (the checked accession(s)), 'corroborator_worst_action' (the worst 'reference_action' among them), and 'corroborator_flagged' (logical) - are ALWAYS present as columns, but are NA-filled whenever 'cache_dir' is 'NULL' (nothing to build them from) or a given row is not thin (spared on more than 2 corroborators, or not spared at all). Zero rows, and zero NCBI calls, when nothing would be removed; zero EXTRA NCBI calls (beyond the audit itself) when nothing is thin or 'screen_corroborators = FALSE'.
+
+#### Why this exists
+
+congruent_evidence_exists_anywhere is the hard veto that spares an accession from reference_action == "remove" however low its label_confidence. It is documented as walking the pool "not limited to top_n" -- and it is, but the pool is itself capped by max_hits (default 20). On the real PtConception 12S screen, 899 of 989 accessions (91%) came back AT that cap, so in practice "anywhere" has meant "anywhere in the top 20".
+
+That was measured, not suspected (the veto_truncation_probe.R diagnostic (TaxaID_dev repository)): at max_hits = 100, congruent_evidence_exists_anywhere flipped FALSE to TRUE for 8 of 15 veto-critical accessions, and OQ846263 (Rathbunella hypoplecta) -- one of only two accessions that PtConception run would have removed -- turned out to be corroborated and dropped to "inspect". KM057967 (Jordania zonope) still removed at 100 hits, correctly: it is a genuine singleton. Both congruent controls were unchanged, as they must be, since widening a window cannot withdraw corroboration already observed.
+
+Raising the max_hits DEFAULT was considered and deliberately not done: max_hits is part of params_key, so a change would invalidate every cached row across every project cache (~3,000 real rows) for a screen that has been NCBI-throttled before. Auditing only the removal candidates is the cheap targeted alternative -- a real population is 1-4 accessions, and removal is the one decision this package makes destructively.
+
+#### Comparability, and why the params_key is checked
+
+The audit is only meaningful if the re-evaluation differs from the production run in max_hits ALONE. Pass through ... exactly the same verdict-affecting arguments the production screen used -- barcode_term above all, since an untrimmed query is a different query. This function compares the params_key its own call will produce against the one carried on evaluation and warns, naming the fields, if anything other than max_hits differs. Heed that warning: a mismatch does not make the call fail, it makes the result mean nothing.
+
+#### Read the corroborators, not just spared
+
+congruent_evidence_exists_anywhere counts a corroborating partner without any notion of whether that partner's own label is trustworthy, so a mislabeled reference can be rescued by another instance of the SAME mislabel. This is not hypothetical -- it has happened in real use. GreatLakes KJ135626 (Pseudorasbora parva) came back spared = TRUE, rescued by exactly one partner agreeing at species rank: MZ605481, which this project's own the reference_accession_ground_truth.csv diagnostic (TaxaID_dev repository) records as a candidate_mislabel whose real identity is Cyprinus carpio. KJ135626's own best disagreeing hit is Cyprinus carpio at 100%. Two copies of one error agreeing with each other is not corroboration, and the LLM reviewer's independent "genuine_mislabel" call on that accession was the better answer.
+
+refine_reference_verdicts() cannot close this: it discounts a partner by that partner's OWN verdict, and a corroborator which is merely a BLAST hit -- not itself in the screened population -- has no verdict to discount. Widening the window makes the exposure larger, not smaller, since it admits more potential bad corroborators. So treat spared as a prompt to look, not a conclusion: a row rescued by one or two partners gets an explicit warning naming them, and (screen_corroborators = TRUE) that corroborator's own label is checked -- never automatically, only flagged, per this project's own "flag, don't auto-act" convention.
 
 ## Quick Start {#quick-start}
 

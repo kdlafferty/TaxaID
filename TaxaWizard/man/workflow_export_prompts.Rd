@@ -51,7 +51,9 @@ Awareness" section), and a setup-requirements summary. At most 400
 lines.}
 \item{\code{CONTEXT_<Package>.md}}{One per TaxaID package: its
 DESCRIPTION Title/Description, every exported function with its
-signature/title/description/params table/value, and its README's
+signature/title/description/params table/value, then its full
+\\details and every titled \\section (headings at four hashes,
+subsections at five), and its README's
 Quick Start section when one exists and the source repo is reachable
 (see \code{TAXAID_ROOT} in Details).}
 \item{\code{SETUP_REPORT.md}}{\code{\link{workflow_check}}'s report for
