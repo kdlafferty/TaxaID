@@ -288,10 +288,10 @@ convert_taxonomy_backbone <- function(
   # ---------------------------------------------------------------------------
   # Query target backbone (single batched API call on unique names)
   # ---------------------------------------------------------------------------
-  # The rank of each name is known (taxon_name_rank), so pass it as `ranks=`
+  # The rank of each name is known (taxon_name_rank), so pass it as `input_rank=`
   # to let verify_fn resolve an NCBI homonym by rank. Only when verify_fn
   # declares the argument (it is user-injectable; mocks may not).
-  .fn_takes_ranks <- "ranks" %in% names(formals(verify_fn))
+  .fn_takes_input_rank <- "input_rank" %in% names(formals(verify_fn))
   .first_rank <- function(nm, key) {
     if (!"taxon_name_rank" %in% names(match_df)) {
       return(rep(NA_character_, length(nm)))
@@ -304,9 +304,9 @@ convert_taxonomy_backbone <- function(
   }
   unique_ranks <- .first_rank(unique_names, match_df[[taxon_col]])
   verified <- tryCatch(
-    if (.fn_takes_ranks) {
+    if (.fn_takes_input_rank) {
       verify_fn(unique_names, backbone_id = target_backbone_id,
-                ranks = unique_ranks)
+                input_rank = unique_ranks)
     } else {
       verify_fn(unique_names, backbone_id = target_backbone_id)
     },
@@ -483,11 +483,11 @@ convert_taxonomy_backbone <- function(
   .second <- .second[!is.na(.second) & nzchar(.second)]
   if (length(.second) > 0L) {
     v2 <- tryCatch(
-      if (.fn_takes_ranks) {
+      if (.fn_takes_input_rank) {
         # rank of the rows whose cleaned name is this name (fallback path);
         # NA for names that arose only from matched_name_clean
         verify_fn(.second, backbone_id = target_backbone_id,
-                  ranks = .first_rank(.second, taxon_col_clean_fallback))
+                  input_rank = .first_rank(.second, taxon_col_clean_fallback))
       } else {
         verify_fn(.second, backbone_id = target_backbone_id)
       },

@@ -1180,7 +1180,7 @@ utils::globalVariables(c(
               .proxy_names <- unique(proxy_name[has_proxy])
               TaxaTools::verify_taxon_names(
                 .proxy_names, backbone_id = 4L,
-                ranks = rep("species", length(.proxy_names))
+                input_rank = rep("species", length(.proxy_names))
               )
             },
             error = function(e) NULL
