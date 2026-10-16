@@ -623,15 +623,18 @@ test_that("Global Names: a same-rank match is gated only on a kingdom difference
 
 # ---- 12: kingdom helpers ------------------------------------------------------
 
-test_that(".kingdom_of_context normalises and returns NA when no kingdom is named", {
-  f <- TaxaTools:::.kingdom_of_context
+test_that(".kingdoms_of_context returns the SET of kingdoms named, normalised, empty when none", {
+  f <- TaxaTools:::.kingdoms_of_context
   expect_identical(f("Metazoa|Chordata"), "animalia")
   expect_identical(f("Animalia|Chordata"), "animalia")
   expect_identical(f("chordata|Viridiplantae"), "plantae")
-  expect_identical(f("Plantae > x"), NA_character_)  # only the pipe delimits
+  expect_identical(f("Plantae > x"), character(0))  # only the pipe delimits
   expect_identical(f("Fungi|Ascomycota"), "fungi")
-  expect_identical(f("Chordata|Perciformes"), NA_character_)
-  expect_identical(f(NA_character_), NA_character_)
+  expect_identical(f("Chordata|Perciformes"), character(0))
+  expect_identical(f(NA_character_), character(0))
+  # a union context names two kingdoms, in either order, once each
+  expect_setequal(f("Metazoa|Chordata|Plantae|Chlorophyta"), c("animalia", "plantae"))
+  expect_setequal(f("Plantae|Chlorophyta|Metazoa|Chordata|Animalia"), c("animalia", "plantae"))
 })
 
 test_that(".kingdom_of_path prefers the kingdom-rank node and handles NA", {

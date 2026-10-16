@@ -523,10 +523,15 @@ verify_taxon_names <- function(name_list,
     same <- known & mr == ranks & !is.na(lineage)
     gate_eligible[known] <- mr[known] != ranks[known]
     if (any(same)) {
-      kc <- vapply(lineage[same], .kingdom_of_context, character(1L))
+      # A context can name SEVERAL kingdoms (the fill unions contexts per
+      # genus word: a fish Ulvaria and an alga Ulvaria in one table give
+      # "Metazoa|Chordata|Plantae|Chlorophyta"), so the test is a SET test,
+      # order-free: gated only when the path's kingdom is in none of them.
+      kc <- lapply(lineage[same], .kingdoms_of_context)
       kp <- mapply(.kingdom_of_path, final_df$classification_path[same],
                    final_df$classification_ranks[same], USE.NAMES = FALSE)
-      gate_eligible[same] <- !is.na(kc) & !is.na(kp) & kc != kp
+      gate_eligible[same] <- mapply(function(set, k) !is.na(k) && length(set) > 0L && !(k %in% set),
+                                    kc, kp, USE.NAMES = FALSE)
     }
   }
   .apply_lineage_gate(final_df, lineage, gate_eligible)
@@ -538,13 +543,14 @@ verify_taxon_names <- function(name_list,
                      fungi = "fungi", chromista = "chromista", protozoa = "protozoa",
                      bacteria = "bacteria", archaea = "archaea")
 
-#' The kingdom named in a pipe-delimited context, normalised; NA if none
+#' EVERY kingdom named in a pipe-delimited context, normalised and unique;
+#' character(0) if none. A set, because a context may be the union of
+#' several taxa's lineages.
 #' @noRd
-.kingdom_of_context <- function(ctx) {
-  if (is.na(ctx)) return(NA_character_)
+.kingdoms_of_context <- function(ctx) {
+  if (is.na(ctx)) return(character(0L))
   terms <- tolower(trimws(strsplit(ctx, "|", fixed = TRUE)[[1L]]))
-  k <- unname(.KINGDOM_LABELS[terms]); k <- k[!is.na(k)]
-  if (length(k)) k[[1L]] else NA_character_
+  k <- unname(.KINGDOM_LABELS[terms]); unique(k[!is.na(k)])
 }
 
 #' The kingdom of a classification path: its kingdom-rank node, else the
