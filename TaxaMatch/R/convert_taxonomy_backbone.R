@@ -288,8 +288,28 @@ convert_taxonomy_backbone <- function(
   # ---------------------------------------------------------------------------
   # Query target backbone (single batched API call on unique names)
   # ---------------------------------------------------------------------------
+  # The rank of each name is known (taxon_name_rank), so pass it as `ranks=`
+  # to let verify_fn resolve an NCBI homonym by rank. Only when verify_fn
+  # declares the argument (it is user-injectable; mocks may not).
+  .fn_takes_ranks <- "ranks" %in% names(formals(verify_fn))
+  .first_rank <- function(nm, key) {
+    if (!"taxon_name_rank" %in% names(match_df)) {
+      return(rep(NA_character_, length(nm)))
+    }
+    r <- as.character(match_df[["taxon_name_rank"]])
+    vapply(nm, function(n) {
+      v <- r[!is.na(key) & key == n & !is.na(r)]
+      if (length(v)) v[[1L]] else NA_character_
+    }, character(1), USE.NAMES = FALSE)
+  }
+  unique_ranks <- .first_rank(unique_names, match_df[[taxon_col]])
   verified <- tryCatch(
-    verify_fn(unique_names, backbone_id = target_backbone_id),
+    if (.fn_takes_ranks) {
+      verify_fn(unique_names, backbone_id = target_backbone_id,
+                ranks = unique_ranks)
+    } else {
+      verify_fn(unique_names, backbone_id = target_backbone_id)
+    },
     error = function(e) {
       stop(
         "convert_taxonomy_backbone: verify_fn call failed -- check network ",
@@ -462,7 +482,15 @@ convert_taxonomy_backbone <- function(
   .second <- setdiff(unique(.clean_changed), unique_names)
   .second <- .second[!is.na(.second) & nzchar(.second)]
   if (length(.second) > 0L) {
-    v2 <- tryCatch(verify_fn(.second, backbone_id = target_backbone_id),
+    v2 <- tryCatch(
+      if (.fn_takes_ranks) {
+        # rank of the rows whose cleaned name is this name (fallback path);
+        # NA for names that arose only from matched_name_clean
+        verify_fn(.second, backbone_id = target_backbone_id,
+                  ranks = .first_rank(.second, taxon_col_clean_fallback))
+      } else {
+        verify_fn(.second, backbone_id = target_backbone_id)
+      },
       error = function(e) NULL
     )
     if (!is.null(v2) && is.data.frame(v2) && nrow(v2) > 0L &&
