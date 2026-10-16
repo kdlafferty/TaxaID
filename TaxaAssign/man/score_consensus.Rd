@@ -232,56 +232,41 @@ pipelines.
 
 \strong{Why \code{rank_thresholds} has no default:}
 \code{min_score} and \code{max_gap} alone provide essentially no protection against
-confusing a species with its closest congener -- an ROC-style sweep against
-real 12S reference data found true-positive (within-species) and
-false-positive (congeneric) rates track almost identically up to a ~97
-percent-identity threshold (see the \code{score_floor_roc_sweep.R} diagnostic,
-TaxaID_dev repository).
-This is a real limitation of percent-identity thresholds generally --
-\code{rank_thresholds} is what does the real species-level discrimination this
-function offers, so a caller getting NO thresholds at all would have no
-real protection against that confusion.
-
-No single fixed threshold set (e.g. the conventional GITA/Jonah Ventures
-percent-identity convention) is safe to assume universally: this
-function has no way to know what marker \code{score_col} was scored against,
-or even whether the data is DNA, image, or acoustic evidence at all --
-the real, calibrated threshold for "98\% identity means species-level
-confidence" is a property of the SPECIFIC marker and reference database,
-not a universal constant (mirrors \code{TaxaAssign::join_priors()}'s
-\code{backbone_id} precedent: no safe default exists when the correct value
-depends on data the function itself cannot see). The function therefore
-requires the caller to make this choice explicitly -- either supplying
-real thresholds directly, or deriving marker-specific ones from real
-reference data via \code{TaxaLikely::compute_rank_thresholds()} (which uses
-the identical genus-/family-equal-weighted, Empirical-Bayes-shrunk
-per-rank Youden's J logic the \code{score_floor_roc_sweep.R} diagnostic
-prototyped). Pass \code{rank_thresholds = NULL} explicitly only if the specific
-pipeline you're mirroring genuinely has no rank-threshold step (rare).
+confusing a species with its closest congener: true-positive
+(within-species) and false-positive (congeneric) rates track almost
+identically up to about 97 percent identity. This is a limitation of
+percent-identity thresholds generally; \code{rank_thresholds} is what does the
+species-level discrimination this function offers. No single fixed
+threshold set (e.g. the conventional GITA/Jonah Ventures percent-identity
+convention) is safe to assume: this function cannot know the marker
+\code{score_col} was scored against, or even whether the data is DNA, image or
+acoustic evidence, and the calibrated threshold for "98\% identity means
+species-level confidence" is a property of the specific marker and
+reference database. The caller must therefore choose explicitly: supply
+thresholds directly, or derive marker-specific ones from reference data via
+\code{TaxaLikely::compute_rank_thresholds()}. Pass \code{rank_thresholds = NULL}
+explicitly only if the pipeline you are mirroring has no rank-threshold
+step (rare).
 }
 \section{Purpose -- why this function exists alongside the Bayesian pathway}{
 
 \code{score_consensus()} is deliberately a \strong{reproduction of a conventional,
 non-Bayesian pipeline's decision rule}, not TaxaID's own species-level
-discriminator. Its purpose is to let a user run the exact same match data
-through both approaches and compare: what would a conventional workflow
-have called here, versus what does TaxaID's Bayesian pathway
-(\code{TaxaLikely}'s bivariate-normal likelihoods -> \code{\link[=compute_posterior]{compute_posterior()}} ->
-\code{\link[=posterior_consensus]{posterior_consensus()}}) call? This is the intended, load-bearing use case
--- mirroring another pipeline's process so its output can be directly
-compared against TaxaID's.
+discriminator. Its purpose is to let a user run the same match data
+through both approaches and compare what a conventional workflow would
+have called with what TaxaID's Bayesian pathway (\code{TaxaLikely}'s
+bivariate-normal likelihoods -> \code{\link[=compute_posterior]{compute_posterior()}} ->
+\code{\link[=posterior_consensus]{posterior_consensus()}}) calls.
 
-\strong{Which convention is reproduced.} \code{"gap"} mode
-reproduces the \strong{common fixed-threshold / LCA convention}: a fixed
-percent-identity floor, an optional gap window, per-rank thresholds, and a
-strict-unanimity LCA. \code{"bracket"} mode reproduces the
-\strong{adaptive-bracket-with-agreement-fraction convention used by Jonah
-Ventures}: a 1\%-wide bracket anchored at the ESV's top score, a taxon
-reported at a rank only when it holds at least 90\% of the hits in that
-bracket, \code{NA} at that rank otherwise, and a widen-to-2\% fallback when a
-match of 97\% or better still returns no family. \code{"gap"} mode is NOT "the
-GITA / Jonah Ventures convention" -- \code{"bracket"} mode is. The
-difference is not cosmetic for a published comparison: \strong{strict unanimity
+\strong{Which convention is reproduced.} \code{"gap"} mode reproduces the common
+fixed-threshold / LCA convention with strict-unanimity LCA. \code{"bracket"}
+mode reproduces the adaptive-bracket-with-agreement-fraction convention
+used by Jonah Ventures: a 1\%-wide bracket anchored at the ESV's top score,
+a taxon reported at a rank only when it holds at least 90\% of the hits in
+that bracket, \code{NA} at that rank otherwise, and a widen-to-2\% fallback when
+a match of 97\% or better still returns no family. \code{"gap"} mode is NOT "the
+GITA / Jonah Ventures convention" -- \code{"bracket"} mode is. The difference
+matters for a published comparison: \strong{strict unanimity
 (\code{agreement_fraction = 1}) upranks more readily than a 90\% rule}, so a
 TaxaID-vs-\code{score_consensus()} comparison run in gap mode is biased toward
 TaxaID on resolution.
@@ -290,23 +275,19 @@ TaxaID on resolution.
 commercial provider ships its own consensus taxonomy alongside the read
 data (Jonah Ventures' \verb{*-read-data.csv} carries \code{Kingdom}...\code{Species} per
 ESV; the companion \verb{*-esv-data.csv} carries the bracketed hit table it was
-derived from), \strong{comparing against that delivered taxonomy is more
-defensible than reconstructing their rule}: the reconstruction cannot see
-their reference library, their taxonomic backbone, or their own
-undocumented tie-breaking, so any disagreement confounds the algorithm with
-the database. \code{"bracket"} mode is for the case where a delivered
-taxonomy is \emph{not} shipped -- or for showing what the published rule alone
-would have produced.
+derived from), comparing against that delivered taxonomy is more defensible
+than reconstructing their rule: the reconstruction cannot see their
+reference library, taxonomic backbone or tie-breaking, so any disagreement
+confounds the algorithm with the database. \code{"bracket"} mode is for when a
+delivered taxonomy is \emph{not} shipped, or to show what the published rule
+alone would have produced.
 
-Because of this, \code{rank_thresholds}' known inability to reliably separate a
-true species from its closest congener (percent-identity alone cannot do
-this at almost any real-world threshold -- see Details) is \strong{not a defect
-to fix in this function}: it is a faithful reproduction of the same
-limitation those conventional pipelines actually have. "Fixing" it (e.g. by
-gating on reference completeness, or routing through the bivariate-normal
-model) would defeat the comparison this function exists to provide. If you
-need real species-vs-congener discrimination for an actual assignment,
-use \code{\link[=posterior_consensus]{posterior_consensus()}}, not this function.
+\code{rank_thresholds}' inability to reliably separate a true species from its
+closest congener (percent identity alone cannot do this at almost any
+real-world threshold) is \strong{not a defect to fix in this function}: it is a
+faithful reproduction of the same limitation conventional pipelines have,
+and "fixing" it would defeat the comparison. For real
+species-vs-congener discrimination, use \code{\link[=posterior_consensus]{posterior_consensus()}}.
 }
 
 \section{Attributes}{

@@ -54,13 +54,10 @@ correctly bounded on [0, 1].
 species with tiny but non-zero prior_mean would almost always lose to species
 with a well-concentrated prior at a lower mean. For these rows, the prior is
 treated as fixed at \code{prior_mean} in simulation rather than sampled, making the
-simulation consistent with the point-estimate path. (This threshold covers
+simulation consistent with the point-estimate path. (This covers
 \code{prior_alpha == 1} exactly, a real, common case, e.g.
 \code{TaxaExpect::generate_undetected_diversity()}'s global floor
-\code{Beta(1, N_total - 1)}. Whether the boundary should extend further, e.g.
-to \code{prior_alpha} moderately above 1 with high relative uncertainty, is
-still open -- it needs a larger real \code{prior_alpha} distribution than the
-small bundled fixtures to characterize.)
+\code{Beta(1, N_total - 1)}.)
 Only runs when \code{n_sims > 0} AND at least one source of uncertainty exists
 (non-zero \code{score_likelihood_sd}, or \code{prior_alpha}/\code{prior_beta} columns present).
 }
@@ -68,25 +65,20 @@ Only runs when \code{n_sims > 0} AND at least one source of uncertainty exists
 \strong{Why truncated Normal, not the true generative distribution:} this
 function only receives \code{score_likelihood_mean}/\code{score_likelihood_sd} --
 already-summarized fitted values, not the raw match scores or the model
-object that produced them. The true generative model (e.g.
-\code{TaxaLikely::train_likelihood_model()}'s \code{score_transform} -- Normal on a
-logit or sqrt-mismatch-transformed scale, then back-transformed) is not
-available at this interface boundary, and \code{likelihood_w_prior} may equally
-come from a non-TaxaLikely source (e.g. \code{assign_taxa_llm()}'s own
-LLM-derived likelihood proxy). Treating the summary as approximately
-Normal, truncated only at 0 (likelihoods below zero are not meaningful; no
-upper truncation, since \code{score_likelihood} need not sum to 1 across
-candidates before \code{normalize_vec()} runs) is a documented approximation at
-this boundary, not a claim that match scores are truly Gaussian.
+that produced them (e.g. \code{TaxaLikely::train_likelihood_model()}'s
+\code{score_transform}), and \code{likelihood_w_prior} may come from a non-TaxaLikely
+source (e.g. \code{assign_taxa_llm()}'s LLM-derived likelihood proxy). Treating
+the summary as approximately Normal, truncated only at 0 (no upper
+truncation, since \code{score_likelihood} need not sum to 1 across candidates
+before \code{normalize_vec()} runs), is a documented approximation, not a claim
+that match scores are truly Gaussian.
 
 \strong{The truncated mean can differ substantially from \code{mu}:} when
 \code{sigma} is large relative to \code{mu} (e.g. \code{mu = 0.001}, \code{sigma = 2}), the
-truncated distribution's mean is pulled well above \code{mu} -- e.g. \code{~1.60}
-for that pair, matching the standard truncated-normal expectation formula
+truncated mean is pulled well above \code{mu} (\code{~1.60} for that pair), per
 \eqn{E[X \mid X > 0] = \mu + \sigma \cdot \phi(\alpha) / (1 - \Phi(\alpha))},
-\eqn{\alpha = -\mu/\sigma}. This is the correct, intended behavior of
-truncation (the whole point of switching away from a clamp), not a bug --
-but it means a hypothesis with a small \code{mu} and large \code{sigma} is not
+\eqn{\alpha = -\mu/\sigma}. This is the intended behavior of truncation, not
+a bug, but it means a hypothesis with a small \code{mu} and large \code{sigma} is not
 "mostly sampled near \code{mu}"; a substantial share of its simulated draws can
 be far above it.
 
@@ -106,16 +98,14 @@ rows carrying non-NA \code{prior_mix_w}/\code{prior_mix_theta_present}/
 \code{TaxaExpect::apply_undetected_evidence()} for evidence-elevated
 species) are presence mixtures: with probability \code{prior_mix_w} the
 species is locally present (theta at the ceiling-anchor state), otherwise
-absent (theta at the floor). In simulation these rows draw presence
 explicitly (\code{z ~ Bernoulli(w)}; \code{theta = z*theta_present +
-(1-z)*theta_absent}) instead of sampling their Beta summary -- which is
-J-shaped by construction and would otherwise be pinned at its mean by the
-\code{prior_alpha <= 1} guard, erasing exactly the bimodality the mixture
-expresses. \code{posterior_mean} therefore integrates over presence
-states, and \code{confidence_score} reads as the fraction of presence
-states in which the hypothesis wins. The point-estimate path is unchanged:
-\code{prior_mean} equals the mixture's exact expectation by construction.
-Non-mixture rows are completely unaffected.
+(1-z)*theta_absent}) instead of sampling their J-shaped Beta summary, which
+the \code{prior_alpha <= 1} guard would pin at its mean and so erase the
+bimodality the mixture expresses. \code{posterior_mean} therefore
+integrates over presence states, and \code{confidence_score} reads as the
+fraction of presence states in which the hypothesis wins. The
+point-estimate path is unchanged: \code{prior_mean} equals the mixture's
+exact expectation by construction. Non-mixture rows are unaffected.
 
 \strong{Closed-genus placeholders (weight moved, not removed):}
 a row marked \code{constraint_applied == "census_closed_genus_relabeled"}
@@ -134,12 +124,7 @@ well, so \code{posterior_mean}, \code{posterior_sd} and
 from a \code{genus} column when present, else from the placeholder's own
 name and the first word of each candidate's binomial. A placeholder
 whose observation holds no referenced member of its genus keeps its
-posterior (there is nothing to eliminate into), and a message counts
-both cases. Why not zero the likelihood upstream: renormalising over
-every hypothesis then hands the placeholder's share to the other genera
-and families in the observation as well -- at Great Lakes the grass
-carp genus fell from 0.925 to 0.848 of the posterior and the call from
-species to family.
+both cases.
 
 \strong{Prior uncertainty (Beta distribution):}
 When \code{prior_alpha} and \code{prior_beta} columns are present, the prior

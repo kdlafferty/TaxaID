@@ -401,45 +401,37 @@ utils::globalVariables(c(
 #' }
 #'
 #' ## Dark diversity fallback
-#' Dark diversity is an ecological concept: the set of species that
-#' belong to the regional species pool and could inhabit a site given
-#' its environmental conditions, but have not been observed there. In
-#' TaxaAssign, species with no TaxaExpect prior (e.g., referenced
-#' species not expected at the site) receive a dark diversity prior:
-#' the mean `alpha` and `beta` from Tier 3 (undetected) rows in
-#' `taxaexpect_priors` for the same `grid_id` x `main_habitat`.
-#' If no site-level Tier 3 rows exist, a global average across all
-#' Tier 3 rows is used. This ensures that every hypothesis has a
-#' non-zero prior, reflecting the possibility that unobserved species
-#' could be present.
+#' Dark diversity is the set of species that belong to the regional species
+#' pool and could inhabit a site, but have not been observed there. Species
+#' with no TaxaExpect prior (e.g., referenced species not expected at the
+#' site) receive a dark diversity prior: the mean `alpha` and `beta` from Tier
+#' 3 (undetected) rows in `taxaexpect_priors` for the same `grid_id` x
+#' `main_habitat`, or, if no site-level Tier 3 rows exist, a global average
+#' across all Tier 3 rows. Every hypothesis therefore has a non-zero prior.
 #'
 #' ## Habitat-agnostic named-species prior fallback
 #' A named prior row can legitimately have no habitat concept at all --
-#' `TaxaExpect::generate_domestic_food_priors()`'s output is the real example
-#' (a food/domestic species' plausibility is governed by human food supply,
-#' not local habitat suitability, so `main_habitat = NA` there is intentional,
-#' not a missing value to fill in). The primary composite-key join above
-#' requires an exact `main_habitat` match, so such a row could never match a
-#' real observation's specific habitat on its own -- this function re-matches
-#' any row whose primary join failed on `(taxon_name, taxon_name_rank,
-#' grid_id)` alone against habitat-agnostic (`main_habitat = NA`)
-#' `taxaexpect_priors` rows, ranked below a real per-habitat match but above
-#' the dark-diversity/global-floor fallback below. Confirmed on real data: a
-#' domestic-food prior row never matches a real observation under
-#' habitat-scoped priors alone, silently falling back to the generic floor
-#' instead of the tailored prior `generate_domestic_food_priors()` computed
-#' for it.
+#' `TaxaExpect::generate_domestic_food_priors()`'s output is the example (a
+#' food/domestic species' plausibility is governed by human food supply, not
+#' local habitat suitability, so `main_habitat = NA` there is intentional, not
+#' a missing value to fill in). The primary composite-key join requires an
+#' exact `main_habitat` match, so such a row could never match on its own.
+#' This function therefore re-matches any row whose primary join failed on
+#' `(taxon_name, taxon_name_rank, grid_id)` alone against habitat-agnostic
+#' (`main_habitat = NA`) `taxaexpect_priors` rows, ranked below a real
+#' per-habitat match but above the dark-diversity/global-floor fallback.
+#' Without it, a domestic-food prior row would silently fall back to the
+#' generic floor instead of the tailored prior.
 #'
-#' **Domestic/synanthropic species caveat:** this fallback
-#' assumes unmodelled species are exchangeable draws from one detection
-#' process. Domestic/synanthropic species (pets, livestock) violate this in
-#' a known, systematic direction, since GBIF/iNaturalist under-index captive
-#' organisms -- see `TaxaExpect::generate_undetected_diversity()`'s own
-#' Domestic/synanthropic species section for the root cause and the
-#' recommended fix (augment your occurrence data before training, rather
-#' than relying on this floor). `TaxaFlag::add_posthoc_assessment(domestic_taxa
-#' = ...)` can flag the resulting low-prior-vs-strong-likelihood contrast
-#' downstream for review.
+#' **Domestic/synanthropic species caveat:** the floor assumes unmodelled
+#' species are exchangeable draws from one detection process. Domestic and
+#' synanthropic species (pets, livestock) violate this systematically, since
+#' GBIF/iNaturalist under-index captive organisms; see
+#' `TaxaExpect::generate_undetected_diversity()`'s Domestic/synanthropic
+#' species section for the recommended fix (augment your occurrence data
+#' before training, rather than relying on this floor).
+#' `TaxaFlag::add_posthoc_assessment(domestic_taxa = ...)` can flag the
+#' resulting low-prior-vs-strong-likelihood contrast downstream for review.
 #'
 #' ## Deduplication and redundancy filtering
 #' After the join, rows are deduplicated on `observation_id` x
@@ -569,7 +561,7 @@ utils::globalVariables(c(
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
 #' `"family"` or `"genus"`), the primary species-level join finds no match
-#' and the row would otherwise fall back to the global floor prior -- ignoring
+#' and the row would otherwise fall back to the global floor prior, ignoring
 #' all species-level prior information within that taxon.
 #'
 #' When `expansion_taxonomy` is supplied, `join_priors()` instead expands each
