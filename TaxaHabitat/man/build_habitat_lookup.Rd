@@ -15,7 +15,6 @@ build_habitat_lookup(
   cache_tag = "",
   pause_seconds = 1,
   verbose = TRUE,
-  compound_sep = NULL,
   compound_rule = c("sum", "max")
 )
 }
@@ -40,12 +39,6 @@ directory, e.g. \code{file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))}.
 cache key; change it to force fresh verdicts (e.g. after a model change).}
 
 \item{pause_seconds, verbose}{Passed to \code{TaxaTools::prompt_api()}.}
-
-\item{compound_sep}{Passed to \code{\link[=build_habitat_prompt]{build_habitat_prompt()}}: \code{NULL} (default) or
-the separator that marks a compound scheme label (\code{"-"}). With it, the
-model scores each compound's parts and the compound's weight is the max
-over them; see that function's \emph{Compound labels} section. It is part of
-the cache key, so switching it on re-classifies every taxon once.}
 
 \item{compound_rule}{Passed to \code{\link[=build_habitat_prompt]{build_habitat_prompt()}}: \code{"sum"} (default)
 or \code{"max"}. NOT part of the cache key: the cache holds the parts the model

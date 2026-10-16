@@ -103,7 +103,7 @@ attribute is set: the type scan is the fallback, and it would absorb the new
 column as an extra habitat weight.
 
 \strong{Compound labels:} when \code{habitat_scheme} is a prompt object
-built with \code{compound_sep}, the model returns the compounds' PARTS as
+whose scheme declares \code{parts}, the model returns the compounds' PARTS as
 columns and this function derives each compound label's weight from its
 parts (the sum of their shares, capped at 1, or the max; see
 \code{\link{build_habitat_prompt}}'s \code{compound_rule}), so the

@@ -106,7 +106,7 @@
 #' column as an extra habitat weight.
 #'
 #' \strong{Compound labels:} when \code{habitat_scheme} is a prompt object
-#' built with \code{compound_sep}, the model returns the compounds' PARTS as
+#' whose scheme declares \code{parts}, the model returns the compounds' PARTS as
 #' columns and this function derives each compound label's weight from its
 #' parts (the sum of their shares, capped at 1, or the max; see
 #' \code{\link{build_habitat_prompt}}'s \code{compound_rule}), so the
@@ -199,6 +199,13 @@ parse_hierarchical_habitat_response <- function(raw_text,
           nzchar(trimws(scheme$l2_name))])
       } else {
         expected_hab_cols <- unique(scheme$l1_name)
+        if ("parts" %in% names(habitat_scheme) && any(!is.na(habitat_scheme$parts))) {
+          sc2 <- scheme; sc2$parts <- as.character(habitat_scheme$parts)[match(scheme$l1_name, habitat_scheme$l1_name)]
+          sp <- .compounds_from_scheme(sc2)
+          scheme_cols <- expected_hab_cols
+          expected_hab_cols <- sp$asked
+          compounds <- sp$compounds
+        }
       }
     }
   }

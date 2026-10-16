@@ -169,8 +169,8 @@ test_that("taxahabitat_clear_cache() reports and prunes the per-taxon files", {
 
 # ---- compound labels end to end, and the cache key --------------------------
 
-test_that("build_habitat_lookup(compound_sep=) asks for the parts, returns the scheme's labels, and keys the cache on it", {
-  scheme <- data.frame(l1_name = c("Coastal-Stream", "Lake"), stringsAsFactors = FALSE)
+test_that("build_habitat_lookup() with declared parts asks for them, returns the scheme's labels, and keys the cache on them", {
+  scheme <- data.frame(l1_name = c("Coastal-Stream", "Lake"), parts = c("Coastal|Stream", NA), stringsAsFactors = FALSE)
   taxa <- c("Pimephales promelas")
   seen <- new.env(parent = emptyenv()); seen$prompts <- list()
   fake <- function(p, ...) {
@@ -179,7 +179,7 @@ test_that("build_habitat_lookup(compound_sep=) asks for the parts, returns the s
   }
   cache <- withr::local_tempdir()
   out <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme, llm_fn = fake,
-    cache_dir = cache, verbose = FALSE, compound_sep = "-"))
+    cache_dir = cache, verbose = FALSE))
   expect_true(grepl("COMPOUND LABELS", seen$prompts[[1]], fixed = TRUE))
   expect_equal(out[["Coastal-Stream"]], 0.2)
   expect_equal(out[["Lake"]], 0.8)
@@ -187,22 +187,23 @@ test_that("build_habitat_lookup(compound_sep=) asks for the parts, returns the s
   expect_equal(out$habitat_breadth, 1 / sum((c(0.2, 0.8))^2))
   # a cache hit returns the same derived table without a call
   out2 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme, llm_fn = fake,
-    cache_dir = cache, verbose = FALSE, compound_sep = "-"))
+    cache_dir = cache, verbose = FALSE))
   expect_length(seen$prompts, 1L)
   expect_equal(out2[["Coastal-Stream"]], 0.2)
   # the rule is applied to the cached PARTS, not frozen into the cache: no new call
   fake3 <- function(p, ...) "taxon_name,Coastal,Stream,Lake,Other_weight,habitat_best_guess\nPimephales promelas,0.3,0.2,0.5,0.0,"
   cache2 <- withr::local_tempdir()
   s1 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme, llm_fn = fake3,
-    cache_dir = cache2, verbose = FALSE, compound_sep = "-"))
+    cache_dir = cache2, verbose = FALSE))
   expect_equal(s1[["Coastal-Stream"]], 0.5)   # sum
   s2 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme,
     llm_fn = function(p, ...) stop("must not be called"),
-    cache_dir = cache2, verbose = FALSE, compound_sep = "-", compound_rule = "max"))
+    cache_dir = cache2, verbose = FALSE, compound_rule = "max"))
   expect_equal(s2[["Coastal-Stream"]], 0.3)   # max, served from the cached parts
-  # the same scheme WITHOUT compound_sep is a different key: it calls again
+  # the same labels WITHOUT declared parts is a different key: it calls again
+  plain <- data.frame(l1_name = c("Coastal-Stream", "Lake"), stringsAsFactors = FALSE)
   fake2 <- function(p, ...) "taxon_name,Coastal-Stream,Lake,Other_weight,habitat_best_guess\nPimephales promelas,0.0,1.0,0.0,"
-  out3 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme, llm_fn = fake2,
+  out3 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = plain, llm_fn = fake2,
     cache_dir = cache, verbose = FALSE))
   expect_equal(out3[["Coastal-Stream"]], 0.0)
 })

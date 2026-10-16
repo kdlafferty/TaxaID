@@ -64,11 +64,6 @@
 #'   directory, e.g. `file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))`.
 #' @param extra_covariates,chunk_size,geographic_context Passed to
 #'   [build_habitat_prompt()].
-#' @param compound_sep Passed to [build_habitat_prompt()]: `NULL` (default) or
-#'   the separator that marks a compound scheme label (`"-"`). With it, the
-#'   model scores each compound's parts and the compound's weight is the max
-#'   over them; see that function's *Compound labels* section. It is part of
-#'   the cache key, so switching it on re-classifies every taxon once.
 #' @param compound_rule Passed to [build_habitat_prompt()]: `"sum"` (default)
 #'   or `"max"`. NOT part of the cache key: the cache holds the parts the model
 #'   returned and the compound is re-derived from them on every call, so the
@@ -104,7 +99,6 @@ build_habitat_lookup <- function(taxon_list,
                                  cache_tag = "",
                                  pause_seconds = 1,
                                  verbose = TRUE,
-                                 compound_sep = NULL,
                                  compound_rule = c("sum", "max")) {
   compound_rule <- match.arg(compound_rule)
   if (!is.character(taxon_list) || length(taxon_list) == 0L) {
@@ -133,7 +127,6 @@ build_habitat_lookup <- function(taxon_list,
     chunk_size = chunk_size,
     habitat_scheme = habitat_scheme,
     geographic_context = geographic_context,
-    compound_sep = compound_sep,
     compound_rule = compound_rule
   ))
   out_hab_cols <- probe$scheme_cols %||% probe$habitat_cols
@@ -141,8 +134,7 @@ build_habitat_lookup <- function(taxon_list,
     "v1", cache_tag,
     paste(probe$habitat_cols, collapse = "|"),
     paste(sort(extra_covariates), collapse = "|"),
-    geographic_context %||% "",
-    compound_sep %||% ""
+    geographic_context %||% ""
   ), collapse = "")
 
   cache_hits <- NULL
@@ -188,7 +180,6 @@ build_habitat_lookup <- function(taxon_list,
       chunk_size = chunk_size,
       habitat_scheme = habitat_scheme,
       geographic_context = geographic_context,
-      compound_sep = compound_sep,
       compound_rule = compound_rule
     )
     raw <- TaxaTools::prompt_api(

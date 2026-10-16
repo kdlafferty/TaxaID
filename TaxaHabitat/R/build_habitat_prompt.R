@@ -264,22 +264,15 @@
 #'   (e.g. \code{c("Invasive", "Migratory")}) only when you intend to use
 #'   the trait information downstream; extra covariates add tokens and output
 #'   columns that are ignored by the rest of the habitat pipeline.
-#' @param compound_sep \code{NULL} (default) or a single string, e.g. \code{"-"}.
-#'   When supplied, any single-level scheme label that contains it is read as
-#'   a COMPOUND of the parts it joins: \code{"Coastal-Marine-Estuary-Stream"}
-#'   is the union of Coastal, Marine, Estuary and Stream. The LLM is then asked
-#'   to weight each distinct part as a habitat column of its own (alongside the
-#'   scheme's plain labels), and the compound label's weight is derived by
-#'   \code{\link{parse_hierarchical_habitat_response}} as the MAXIMUM over its
-#'   parts. See the section \emph{Compound labels}. Only single-level schemes
-#'   may carry compounds; a two-level scheme with \code{compound_sep} errors.
 #' @param compound_rule \code{"sum"} (default) or \code{"max"}: how a compound
 #'   label's weight is derived from its parts. The parts are disjoint shares of
 #'   the species' habitat use that sum to 1 with the plain labels, so the
 #'   union's share is their SUM (capped at 1); \code{"max"} takes the largest
 #'   part instead, which never falls below a component either but discards the
-#'   other parts' shares. Ignored when \code{compound_sep} is \code{NULL}.
-#' @param habitat_scheme A dataframe defining the habitat classification to use,
+#'   other parts' shares. Ignored when no scheme row declares \code{parts}.
+#' @param habitat_scheme A dataframe defining the habitat classification to use.
+#'   An optional \code{parts} column declares a COMPOUND label's real parts
+#'   (pipe-delimited habitat names; see the section \emph{Compound labels}),
 #'   the string \code{"IUCN_L1"}, or \code{NULL}.
 #'   \code{NULL} (default) uses a simple three-category scheme:
 #'   Marine, Freshwater, Terrestrial. This is always a valid starting point
@@ -327,27 +320,30 @@
 #' Estuary-Stream"} for a stream-fed lagoon) is one column to the model, and a
 #' model scores one column as one habitat: in practice it reads the marine words
 #' and ignores the rest, so a stream fish can score \emph{lower} on the compound
-#' than on \code{"Coastal-Stream"}, a label the compound contains. With
-#' \code{compound_sep} the model never sees the compound as a scorable column.
-#' It weights the parts, and a species that uses ANY part of a site uses the
-#' site, so the compound's weight is the SUM of its parts' shares, capped at 1
-#' (\code{compound_rule = "sum"}): it is never below any component, by
+#' than on \code{"Coastal-Stream"}, a label the compound contains. A scheme
+#' row may therefore DECLARE the label's real parts in a \code{parts} column,
+#' a pipe-delimited list of habitat names (\code{"Marine|Estuary|Stream"} for
+#' the lagoon; \code{"Stream"} for \code{"Coastal-Stream"}, because "Coastal"
+#' is a modifier, not a habitat). The model then never sees the compound as a
+#' scorable column: it weights the parts (a part that is itself a plain label
+#' is asked once and serves both), and a species that uses ANY part of a site
+#' uses the site, so the compound's weight is the SUM of its parts' shares,
+#' capped at 1 (\code{compound_rule = "sum"}): it is never below any part, by
 #' construction. The alternative \code{"max"} keeps only the largest part;
 #' because the model's sum-to-1 budget is spread over more columns once a
 #' compound is split, \code{"max"} systematically LOWERS the compound for the
-#' species that use several of its parts (an estuarine resident scored 0.3
-#' Coastal + 0.5 Estuary + 0.1 Marine reads 0.5 under max, 0.9 under sum).
+#' species that use several of its parts (an estuarine resident scored 0.5
+#' Estuary + 0.3 Marine + 0.1 Stream reads 0.5 under max, 0.9 under sum).
 #' The derived column is NOT part of the sum-to-1 constraint (the parts are), so
 #' a lookup built this way has scheme columns that can sum above 1; every
 #' consumer in this ecosystem reads a weight as a per-habitat affinity, not as
-#' a share, so that is harmless, and the breadth statistic renormalises. One
-#' caveat to declare rather than hide: a part that is a modifier rather than a
-#' habitat ("Coastal" in "Coastal-Stream") is scored as the habitat it names,
-#' and a marine species then carries its coastal share into every compound
-#' that lists it. The returned object records the mapping in
-#' \code{$compounds} and the scheme's own labels in \code{$scheme_cols};
-#' \code{$habitat_cols} is what the model is asked to output. A part that is
-#' also a plain scheme label is asked once and serves both.
+#' a share, so that is harmless, and the breadth statistic renormalises. Parts
+#' are declared, never derived from a label's spelling: splitting
+#' "Coastal-Stream" on its hyphen would score "Coastal" as a habitat and hand
+#' every marine species a coastal share. The returned object records the
+#' mapping in \code{$compounds} and the scheme's own labels in
+#' \code{$scheme_cols}; \code{$habitat_cols} is what the model is asked to
+#' output. Only a single-level scheme may declare parts.
 #' \code{habitat_best_guess} is a free-text column populated only when
 #' \code{Other_weight > 0}; it records the LLM's best description of the
 #' species' actual habitat for scheme review.
@@ -396,19 +392,13 @@ build_habitat_prompt <- function(
   chunk_size = 60L,
   habitat_scheme = NULL,
   geographic_context = NULL,
-  compound_sep = NULL,
   compound_rule = c("sum", "max")
 ) {
   compound_rule <- match.arg(compound_rule)
   if (!is.character(taxon_list) || length(taxon_list) == 0) {
     stop("build_habitat_prompt: 'taxon_list' must be a non-empty character vector.")
   }
-  if (!is.null(compound_sep)) {
-    if (!is.character(compound_sep) || length(compound_sep) != 1L ||
-      is.na(compound_sep) || !nzchar(compound_sep)) {
-      stop("build_habitat_prompt: 'compound_sep' must be NULL or a single non-empty string.")
-    }
-  }
+
   if (!is.character(extra_covariates)) {
     stop("build_habitat_prompt: 'extra_covariates' must be a character vector.")
   }
@@ -493,14 +483,14 @@ build_habitat_prompt <- function(
   # each compound by its parts. See the "Compound labels" section.
   scheme_cols <- habitat_cols
   compounds <- list()
-  if (!is.null(compound_sep)) {
+  if (any(!is.na(scheme$parts))) {
     if (has_l2_rows) {
       stop(
-        "build_habitat_prompt: 'compound_sep' is only supported for a ",
+        "build_habitat_prompt: a 'parts' column is only supported for a ",
         "single-level scheme (l1_name only)."
       )
     }
-    sp <- .split_compound_levels(habitat_cols, compound_sep)
+    sp <- .compounds_from_scheme(scheme)
     compounds <- sp$compounds
     habitat_cols <- sp$asked
   }
@@ -524,7 +514,6 @@ build_habitat_prompt <- function(
       habitat_cols       = habitat_cols,
       scheme_cols        = scheme_cols,
       compounds          = compounds,
-      compound_sep       = compound_sep,
       compound_rule      = compound_rule,
       extra_covariates   = extra_covariates,
       geographic_context = geographic_context,
@@ -754,26 +743,35 @@ print.habitat_prompt <- function(x, ...) {
 # .split_compound_levels() -- internal helper
 # ==============================================================================
 
-#' Split compound scheme labels into the columns the model is asked for
+#' Read declared compound labels off a validated single-level scheme
 #'
-#' A label containing `sep` with at least two non-empty parts is a compound.
-#' Returns `asked` (plain labels plus the distinct parts, in first-seen scheme
-#' order, each once) and `compounds` (a named list, compound -> its parts).
-#' A label with `sep` but fewer than two non-empty parts is kept as a plain
-#' label.
+#' A row whose `parts` entry is non-NA is a compound: `parts` is a
+#' pipe-delimited list of the habitat names it is the union of. Returns
+#' `asked` (plain labels plus the distinct parts, in scheme order, each once)
+#' and `compounds` (a named list, compound -> its parts). A part may itself be
+#' a plain label (asked once, serving both). A compound may not list itself,
+#' and every part must be a non-empty name.
 #' @noRd
-.split_compound_levels <- function(levels, sep) {
+.compounds_from_scheme <- function(scheme) {
   compounds <- list()
   asked <- character(0)
-  for (lv in levels) {
-    parts <- trimws(strsplit(lv, sep, fixed = TRUE)[[1L]])
-    parts <- unique(parts[nzchar(parts)])
-    if (grepl(sep, lv, fixed = TRUE) && length(parts) >= 2L) {
-      compounds[[lv]] <- parts
-      asked <- c(asked, parts)
-    } else {
+  for (i in seq_len(nrow(scheme))) {
+    lv <- scheme$l1_name[i]
+    pr <- scheme$parts[i]
+    if (is.na(pr) || !nzchar(trimws(pr))) {
       asked <- c(asked, lv)
+      next
     }
+    parts <- unique(trimws(strsplit(pr, "|", fixed = TRUE)[[1L]]))
+    parts <- parts[nzchar(parts)]
+    if (length(parts) == 0L) {
+      stop(sprintf("habitat_scheme: 'parts' for '%s' names no habitat.", lv))
+    }
+    if (lv %in% parts) {
+      stop(sprintf("habitat_scheme: '%s' lists itself among its own parts.", lv))
+    }
+    compounds[[lv]] <- parts
+    asked <- c(asked, parts)
   }
   list(asked = unique(asked), compounds = compounds)
 }
@@ -811,6 +809,12 @@ print.habitat_prompt <- function(x, ...) {
   if (!"l2_code" %in% names(scheme)) scheme$l2_code <- NA_character_
   if (!"l2_name" %in% names(scheme)) scheme$l2_name <- NA_character_
   if (!"realm" %in% names(scheme)) scheme$realm <- NA_character_
+  if (!"parts" %in% names(scheme)) scheme$parts <- NA_character_
+  if (!is.character(scheme$parts) && !all(is.na(scheme$parts))) {
+    stop("habitat_scheme: 'parts' must be a character column (pipe-delimited habitat names) or absent.")
+  }
+  scheme$parts <- as.character(scheme$parts)
+  scheme$parts[!is.na(scheme$parts) & !nzchar(trimws(scheme$parts))] <- NA_character_
 
   # Validate realm values where supplied
   valid_realms <- c("marine", "freshwater", "terrestrial", NA)
@@ -832,7 +836,7 @@ print.habitat_prompt <- function(x, ...) {
     )
   }
 
-  scheme[, c("l1_name", "l2_code", "l2_name", "realm")]
+  scheme[, c("l1_name", "l2_code", "l2_name", "realm", "parts")]
 }
 
 #' Is a normalised scheme two-level (has any non-NA l2_name)?
