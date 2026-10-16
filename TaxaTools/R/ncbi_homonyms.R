@@ -398,6 +398,7 @@ check_lineage_agreement <- function(declared, returned,
   out <- dplyr::bind_rows(rows)
   all_taxids <- unique(out$candidate_taxid)
   lineage_map <- stats::setNames(rep(NA_character_, length(all_taxids)), all_taxids)
+  full_map <- lineage_map
   if (length(all_taxids) > 0L) {
     fetch_batches <- split(all_taxids, ceiling(seq_along(all_taxids) / 100L))
     for (b in fetch_batches) {
@@ -410,12 +411,16 @@ check_lineage_agreement <- function(declared, returned,
         for (tid in names(parsed)) {
           lin <- parsed[[tid]]
           lineage_map[[tid]] <- .short_ncbi_lineage(lin$classification_path, lin$classification_ranks)
+          full_map[[tid]] <- as.character(lin$classification_path)
         }
       }
       Sys.sleep(delay)
     }
   }
   out$candidate_lineage <- unname(lineage_map[out$candidate_taxid])
+  # The full path, for lineage containment (the short form keeps only
+  # kingdom/phylum/class and would miss an order- or family-level context).
+  out$candidate_lineage_full <- unname(full_map[out$candidate_taxid])
   out
 }
 
