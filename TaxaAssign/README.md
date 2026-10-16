@@ -203,16 +203,27 @@ LLM-estimated biogeographic prior).
     rare tail of alternatives still counts against a species call, and a
     hypothesis named at a coarser rank counts toward that taxon and its
     ancestors. Why choose it: it is the more conservative rule, and it
-    reports why a call stopped where it did (`consensus_limit`). Evidence
-    so far does not justify making it the default, which stays LCA: on
-    the Great Lakes validation against an independent conventional
-    pipeline, species-level precision was the same under both rules
-    (0.865), reached on fewer agreeing detections (703 of 813, against
-    722 of 835 for LCA). Relative to LCA it withheld 19 calls the
-    independent pipeline supported and avoided 3 it did not, so on that
-    dataset the extra conservatism bought no fewer errors. It also
+    reports why a call stopped where it did (`consensus_limit`). The
+    default stays LCA. What the evidence shows, on the Great Lakes
+    validation scored against an independent survey of the same water
+    body (a survey, not ground truth, so a call it does not list is
+    unconfirmed rather than wrong): the credible node is the more
+    precise rule and the more cautious one, and the choice between them
+    is a trade, not a ranking. Species-level precision was 0.887 for the
+    credible node (698 agreeing of 787 called) against 0.878 for LCA
+    (794 of 904); both exceed the 0.872 the survey's own comparison
+    reached. Neither rule missed a species outright. Relative to LCA,
+    the credible node avoided 21 calls the survey does not support and
+    withheld 96 it does, so about 4.6 supported detections are given up
+    for each unsupported call avoided; it also leaves 381 observations
+    at a rank coarser than species against LCA's 285. The withheld
+    species are mostly common ones with several congeners present
+    (*Carpiodes cyprinus* 38, *Moxostoma macrolepidotum* 24, *Notropis
+    hudsonius* 13, *Percina maculata* 11), and the credible node
     coarsens a monotypic genus with one local record to family where LCA
-    keeps the species.
+    keeps the species. Which rule to prefer therefore depends on whether
+    a false species call or a withheld one is the more costly error for
+    the study.
 -   Robust prior bound (`robust_prior_s`, default 1, active with the
     credible node): the occurrence prior is an estimate from finitely
     many records, so a node is reported only if its posterior stays at
