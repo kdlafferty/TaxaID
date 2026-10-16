@@ -300,3 +300,15 @@ test_that("a part absent from the response leaves the compound at the max of wha
   expect_equal(out[["A-B"]], 0.7)
   expect_equal(out[["B"]], 0)
 })
+
+test_that("a compound with NO part column present is NA (unknown), never a silent 0", {
+  df <- data.frame(taxon_name = c("a", "b"), Lake = c(0.5, 1), stringsAsFactors = FALSE)
+  out <- TaxaHabitat:::.derive_compound_weights(df, list("Coastal-Stream" = c("Coastal", "Stream")), "sum")
+  expect_true(all(is.na(out[["Coastal-Stream"]])))
+  out <- TaxaHabitat:::.derive_compound_weights(df, list("Coastal-Stream" = c("Coastal", "Stream")), "max")
+  expect_true(all(is.na(out[["Coastal-Stream"]])))
+  # one part present is enough to derive
+  df$Stream <- c(0.2, 0)
+  out <- TaxaHabitat:::.derive_compound_weights(df, list("Coastal-Stream" = c("Coastal", "Stream")), "sum")
+  expect_equal(out[["Coastal-Stream"]], c(0.2, 0))
+})

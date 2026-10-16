@@ -472,7 +472,8 @@
 #'
 #' For each compound (a named list, label -> parts), writes df[[label]] as the
 #' sum (capped at 1) or the max of the part columns present in df, NA read as
-#' 0. A compound none of whose parts is present is set to 0. Used by
+#' 0. A compound NONE of whose parts is present is NA: unknown, not excluded
+#' (a zero would read downstream as "does not use this habitat"). Used by
 #' parse_hierarchical_habitat_response() and, again, by build_habitat_lookup()
 #' after it combines cached rows, so the rule is applied to what is cached (the
 #' parts), never frozen into it.
@@ -482,7 +483,7 @@
   for (cn in names(compounds)) {
     parts <- intersect(compounds[[cn]], names(df))
     if (length(parts) == 0L) {
-      df[[cn]] <- rep(0, nrow(df))
+      df[[cn]] <- rep(NA_real_, nrow(df))
       next
     }
     m <- as.matrix(df[, parts, drop = FALSE])
