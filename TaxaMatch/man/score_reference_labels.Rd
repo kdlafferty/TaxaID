@@ -109,36 +109,23 @@ consumer that multiplies it into a weight actually needs.
 
 An accession with ZERO valid comparison partners
 (\code{n_independent_top_matches == 0}) has \code{label_confidence = NA} and
-\code{reference_action = "untested"}, rather than the 0.500 the arithmetic
-would otherwise produce.
-
-Why it would otherwise be 0.500: with no partners,
+\code{reference_action = "untested"}, rather than the 0.500 the arithmetic would
+otherwise produce. With no partners,
 \code{frac_independent_below_min_congruent_rank} falls back to its 0.5 default
 and the identity margin is \code{NA}, so the formula reduces to
-\code{plogis(qlogis(0.5) + 0)}. That is a prior with no data, not a
-measurement, and it lands squarely in the \code{"caution"} band -- i.e. the
-screen asserting concern earned by an absence, against a base rate of 931
-congruent out of 989 evaluated PtConception accessions.
-
-Measured across four independent real caches (PtConception plus three
-GreatLakes), the split is total and has no exceptions: all 98 zero-partner
-rows scored exactly 0.500 and read \code{"caution"}, while all 55 rows with at
-least one partner had corroborating evidence
-(\code{congruent_evidence_exists_anywhere == TRUE}) and read \code{"keep"}.
+\code{plogis(qlogis(0.5) + 0)}. That is a prior with no data, not a measurement,
+and it lands in the \code{"caution"} band, asserting concern earned by an
+absence.
 
 The rule keys on the partner COUNT, deliberately not on \code{hierarchy_flag}.
 An accession with 1-2 partners also reads
-\code{"insufficient_independent_evidence"}, but it does have real evidence and
-(55 of 55, measured) that evidence corroborates it; keying on the verdict
-would wrongly blank those too.
+\code{"insufficient_independent_evidence"}, but it does have real evidence, and
+keying on the verdict would wrongly blank those too.
 
-Some of these rows are a \code{max_hits} truncation artifact rather than a
-property of the accession -- re-running PtConception's 34 at
-\code{max_hits = 100} resolved 12, including 7 zero-partner rows that moved
-\code{"caution"} to \code{"keep"} (the \code{insufficient_evidence_probe.R} diagnostic (TaxaID_dev repository)). But
-21 of 34 gained no hits at all when the window quintupled, so most of the
-population is genuinely thin. \code{"untested"} is the honest reading either
-way: we do not know.
+Some zero-partner rows are a \code{max_hits} truncation artifact rather than a
+property of the accession, and a larger \code{max_hits} can resolve some of them,
+but many stay genuinely thin. \code{"untested"} is the honest reading either way:
+we do not know.
 }
 
 \section{Where the numbers come from}{
@@ -157,72 +144,55 @@ percent-identity margin the vote itself ignores:
 }
 
 \code{margin_scale} is the one free parameter: it says how many percent-identity
-points are worth one unit of log-odds. The default \code{1} is not fitted -- it
-is a stated convention, chosen because
-at MiFish-U amplicon lengths (~170 bp) one percent identity is roughly 1.7
-nucleotide differences, the granularity at which this ecosystem already
-treats identity differences as discriminating at species level. What the
-default is checked against is behaviour, not fit: on the real 995-accession
-PtConception evaluation it reproduces the measured, user-approved
-evidence-gate split exactly (the 4 no-corroboration accessions score
-<= 0.001 and are the only ones that reach \code{"remove"}; the 8 spared score
-0.056 to 0.97 and reach at worst \code{"inspect"}), and leaves all 919
-\code{"congruent"} accessions at \code{"keep"}.
+points are worth one unit of log-odds. The default \code{1} is a stated
+convention, not a fitted value: at MiFish-U amplicon lengths (~170 bp) one
+percent identity is roughly 1.7 nucleotide differences, the granularity at
+which this ecosystem treats identity differences as discriminating at
+species level.
 }
 
 \section{Why \code{"remove"} also requires no corroboration anywhere}{
 
 \code{reference_action == "remove"} is gated on THREE conditions, not just a low
 \code{label_confidence}: the accession must be flagged \code{"incongruent"}, have no
-corroborating evidence anywhere in the untruncated independence-filtered
-hit pool, AND score below \code{action_remove_below}. The corroboration test is
-a hard veto rather than another additive term because one corroborating
-record anywhere is qualitatively different from none -- it means some
-independent submitter's sequence agrees with this label at family or finer.
-The case that shows why a threshold alone is not enough is \verb{Oxylebius pictus} (\code{KM057978}), a real, locally-abundant painted greenling whose only
-corroboration sits outside its top-5 window at 93.58, just below the 94.01
-that contradicts it. It scores 0.056 -- a hair above the 0.05 default, so
-the default threshold happens to spare it, but its fate would flip on any
-small change to \code{margin_scale} or to \code{action_remove_below}. The veto is
-what makes the outcome robust rather than lucky: raise
-\code{action_remove_below} to 0.2 and it is still \code{"inspect"}, while the
-genuinely uncorroborated accessions are still \code{"remove"}. That is the right
-treatment: a borderline reference should be surfaced for review, not
-deleted.
+corroborating evidence anywhere in the untruncated independence-filtered hit
+pool, AND score below \code{action_remove_below}. The corroboration test is a
+hard veto rather than another additive term because one corroborating record
+anywhere is qualitatively different from none: some independent submitter's
+sequence agrees with this label at family or finer. A threshold alone is not
+robust, because a borderline reference whose only corroboration sits just
+outside the top-\code{n} window would flip on any small change to \code{margin_scale}
+or \code{action_remove_below}. The veto keeps such a reference at \code{"inspect"}
+(surfaced for review, not deleted) while genuinely uncorroborated accessions
+are still \code{"remove"}.
 
-\code{"remove"} is furthermore unreachable for any flag other than
-\code{"incongruent"}. \code{"insufficient_independent_evidence"} is retryable, not
-removable (it may simply mean a sparsely-referenced region of the
-database), \code{"not_evaluated_oversized"} and
-\code{"not_evaluated_wrong_marker"} were never submitted to BLAST
-at all, and \code{"locally_corroborated"} was deliberately not
-submitted because the caller's own reference set already corroborates it
--- it reads \code{"keep"} with \code{label_confidence = NA} (there is no BLAST
-evidence to grade).
+\code{"remove"} is unreachable for any flag other than \code{"incongruent"}.
+\code{"insufficient_independent_evidence"} is retryable, not removable (it may
+simply mean a sparsely-referenced region of the database).
+\code{"not_evaluated_oversized"} and \code{"not_evaluated_wrong_marker"} were never
+submitted to BLAST. \code{"locally_corroborated"} was deliberately not submitted
+because the caller's own reference set already corroborates it; it reads
+\code{"keep"} with \code{label_confidence = NA} (there is no BLAST evidence to grade).
 }
 
 \section{Local corroboration}{
  provenance and the veto:
 When \code{local_corroboration} (\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} output) is
 supplied, three things happen, and one deliberately does not.
-\code{corroboration_source} records where the corroboration for each label
-came from: \code{"blast"} (\code{congruent_evidence_exists_anywhere}), \code{"local"}
+\code{corroboration_source} records where the corroboration for each label came
+from: \code{"blast"} (\code{congruent_evidence_exists_anywhere}), \code{"local"}
 (\code{local_tier == "corroborated"}, or the row was skipped as
 \code{"locally_corroborated"}), \code{"both"}, or \code{"none"}.
-\code{local_best_independent_pident} and \code{local_n_independent_conspecific}
-carry the local numbers beside the BLAST ones. And a row that resolves to
+\code{local_best_independent_pident} and \code{local_n_independent_conspecific} carry
+the local numbers beside the BLAST ones. And a row that resolves to
 \code{"remove"} while the local set corroborates it is VETOED to \code{"inspect"},
 with \code{action_reason = "vetoed_by_local_corroboration"}.
 
 What does not happen: \code{label_confidence} stays the BLAST-only probability.
-Local evidence is not folded into it, on purpose, so a reviewer can see
-the two disagree -- that disagreement is exactly what found the
-primer-inclusive-query blind spot (\code{KM057996}, \emph{Zaniolepis frenata},
-actioned \code{"remove"} by BLAST while \code{OQ846041} in the local set matched it
-at 100\% over 97\% of the amplicon; see \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s
-\verb{@section Why the query is the primer-stripped amplicon}). All four
-columns are present (\code{NA}/\code{"none"}-filled) even when no table is
-supplied, so downstream code can rely on them.
+Local evidence is not folded into it, on purpose, so a reviewer can see the
+two disagree (see \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s \verb{@section Why the query is the primer-stripped amplicon}). All four columns are present
+(\code{NA}/\code{"none"}-filled) even when no table is supplied, so downstream code
+can rely on them.
 }
 
 \examples{

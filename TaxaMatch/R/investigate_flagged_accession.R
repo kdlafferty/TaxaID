@@ -918,96 +918,69 @@
 #' not at production scale.
 #'
 #' @section Why this exists:
-#' Manually reviewing `evaluate_reference_accessions()`'s real flagged
-#' accessions by hand found that the raw top BLAST hits alone can be
-#' actively misleading -- `PV382872`'s top hits (an eel, a catfish, a
-#' parasitic isopod, all ~99.5% identity) looked like severe contamination
-#' until direct verification showed every one was from the SAME real
-#' submission batch as the query itself, correctly already excluded by
-#' `evaluate_reference_accessions()`'s own independence filter, but
-#' invisible without re-fetching the raw GenBank records by hand. This
-#' function automates that verification step, applying the SAME
-#' independence-filter logic (`.build_submission_batch_lookup()`/
-#' `.same_submission_batch()`) so a caller doesn't have to re-derive it by
-#' hand every time.
+#' The raw top BLAST hits for a flagged accession can be actively misleading.
+#' Hits at ~99.5% identity to an eel, a catfish and a parasitic isopod look
+#' like severe contamination, yet may all come from the SAME submission batch as
+#' the query. `evaluate_reference_accessions()`'s independence filter already
+#' excludes those, but the exclusion is invisible without re-fetching the raw
+#' GenBank records by hand. This function automates that verification, applying
+#' the SAME independence-filter logic (`.build_submission_batch_lookup()` and
+#' `.same_submission_batch()`).
 #'
 #' @section The two comparisons:
 #' \describe{
-#'   \item{Self-consistency}{How well does the flagged accession match
-#'     OTHER real GenBank accessions of its own listed species (searched
-#'     directly by species name, not discovered via `blast_sequences()`'s
-#'     own `score_range`/`max_hits` window, which can miss real conspecifics
-#'     sitting just outside it)? High identity here is reassuring; low
-#'     identity is a much stronger warning sign than
-#'     `evaluate_reference_accessions()` alone can report, since it means
-#'     the accession doesn't even resemble other deposits of its own
+#'   \item{Self-consistency}{How well does the flagged accession match OTHER
+#'     GenBank accessions of its own listed species (searched directly by
+#'     species name, not discovered via `blast_sequences()`'s own
+#'     `score_range`/`max_hits` window, which can miss real conspecifics just
+#'     outside it)? High identity is reassuring; low identity is a much
+#'     stronger warning than `evaluate_reference_accessions()` alone can
+#'     report, since the accession does not resemble other deposits of its own
 #'     claimed species.}
-#'   \item{Cross-taxon consistency}{How well does the flagged accession
-#'     match other real accessions of whichever taxon its top INDEPENDENT
-#'     disagreeing BLAST hit belongs to (freshly re-discovered via a live
-#'     BLAST call, independence-filtered the same way)? High identity here
-#'     paired with low self-consistency above is the strongest evidence
-#'     this function can produce for a genuine mislabel -- e.g. the real
-#'     `MZ605481` case (self-consistency not yet checked at the time of
-#'     writing; cross-taxon consistency to `Cyprinus carpio` was confirmed
-#'     by hand at 100% identity across 20 independent real accessions).}
+#'   \item{Cross-taxon consistency}{How well does the flagged accession match
+#'     other accessions of whichever taxon its top INDEPENDENT disagreeing
+#'     BLAST hit belongs to (re-discovered with a live BLAST call,
+#'     independence-filtered the same way)? High identity here paired with low
+#'     self-consistency is the strongest evidence this function can produce for
+#'     a genuine mislabel.}
 #' }
 #'
 #' @section Why both comparisons run via BLAST, not pairwise alignment:
-#' A pairwise-alignment approach to `MZ605481`'s own real motivating case
-#' comes back inconclusive in BOTH
-#' directions: 0 of 30+ candidate
-#' accessions found via NCBI species search would clear a 50% coverage floor on
-#' either side, because NCBI's `[Organism]`-based search returns records of
-#' ANY length (most real GenBank deposits for both *Pseudorasbora parva*
-#' and *Cyprinus carpio* are full ~16kb mitogenomes, against which a 173bp
-#' amplicon can only ever find a small, non-meaningful local-alignment
-#' fragment). The evidence that makes `MZ605481` a real
-#' `candidate_mislabel` is never a pairwise alignment
-#' at all -- it is a direct [blast_sequences()] call, which already
-#' enforces `min_query_coverage` internally and finds 20 independent,
-#' coverage-safe *Cyprinus carpio* hits at genuine 100% identity. Both
-#' comparisons here reuse that mechanism (`.blast_against_
-#' comparison_set()`, internal) rather than a hand-rolled
-#' `pwalign::pairwiseAlignment()` loop.
+#' A pairwise-alignment approach can come back inconclusive in BOTH directions.
+#' NCBI's `[Organism]`-based search returns records of ANY length, and most
+#' deposits for a species are full ~16kb mitogenomes, against which a ~173bp
+#' amplicon can only find a small, non-meaningful local-alignment fragment, so
+#' few or no candidates clear a 50% coverage floor. A direct [blast_sequences()]
+#' call already enforces `min_query_coverage` internally and returns
+#' coverage-safe independent hits. Both comparisons therefore reuse that
+#' mechanism (`.blast_against_comparison_set()`, internal) rather than a
+#' hand-rolled `pwalign::pairwiseAlignment()` loop.
 #'
 #' @section Why a length-ratio pre-filter is required alongside the scoped BLAST search:
-#' Even with the comparison-set search scoped via NCBI's `ENTREZ_QUERY`
-#' mechanism (see `.blast_against_comparison_set()`'s own `@section Why the
-#' comparison-set search is scoped, not post-hoc filtered`), the real
-#' `MZ605481` case can still return zero matches: direct
-#' inspection of the real candidate accessions (`.search_species_
-#' accessions("Pseudorasbora parva")`'s own output) shows the root cause
-#' is one level further upstream than the scoping alone can fix: 26 of 30 candidates are
-#' whole-chromosome shotgun-assembly records 60-80+ million bp long
-#' (`Pseudorasbora parva` has a published reference genome), and the one
-#' real short candidate that does have usable sequence content is an
-#' entirely different gene (`COI`, not `12S`) -- neither BLAST restriction
-#' mechanism can find a meaningful alignment against a candidate that
-#' either isn't practically alignable at that scale or covers a
-#' non-overlapping genomic region entirely. The length-ratio candidate
-#' pre-filter (the reentry prompt's own "Option B") is therefore a
-#' REQUIRED companion to the scoped BLAST search ("Option A"), not an
-#' alternative to it. Implemented in
-#' `.search_species_accessions()` (`reference_length`/
-#' `max_length_ratio` params, using NCBI's already-batched, free `slen`
-#' ESummary field to filter BEFORE ever fetching full sequence content --
-#' fetching a 70-million-bp record's full `GBSeq_sequence` is exactly what
-#' silently fails/returns `NA` for those chromosome accessions).
+#' Scoping the comparison-set search via NCBI's `ENTREZ_QUERY` mechanism (see
+#' `.blast_against_comparison_set()`'s `@section Why the comparison-set search
+#' is scoped, not post-hoc filtered`) is not enough on its own. For a species
+#' with a published reference genome, most candidates can be whole-chromosome
+#' shotgun-assembly records tens of millions of bp long, and the few short
+#' candidates may cover a different gene entirely; neither BLAST restriction
+#' can find a meaningful alignment against such candidates. The length-ratio
+#' candidate pre-filter is therefore a REQUIRED companion to the scoped BLAST
+#' search, not an alternative to it. It is implemented in
+#' `.search_species_accessions()` (`reference_length` and `max_length_ratio`),
+#' using NCBI's already-batched, free `slen` ESummary field to filter BEFORE
+#' fetching full sequence content, since fetching a 70-million-bp record's
+#' `GBSeq_sequence` silently fails and returns `NA`.
 #'
 #' @section Caching:
-#' Implements Question 3, item 1: a persistent, cross-call cache keyed on
-#' `(accession, species override)`, mirroring
-#' `evaluate_reference_accessions()`'s own asymmetric-TTL philosophy. A
-#' result where NEITHER comparison cleared `min_coverage` on either side
-#' (the real `MZ605481`-class `"inconclusive_length_mismatch"` outcome)
-#' expires after `inconclusive_ttl_days` and is retried on the next call --
-#' new, shorter GenBank deposits for either species could genuinely change
-#' that answer. Any other result is cached indefinitely (a confident
-#' self/cross-taxon comparison doesn't change once computed). A cache HIT
-#' still prints the identical narrative summary a fresh call would (unless
-#' `verbose = FALSE`), so this is safe to call repeatedly without losing the
-#' printed output. Set `cache_dir = NULL` to disable caching entirely.
+#' A persistent cross-call cache keyed on `(accession, species override)`
+#' mirrors `evaluate_reference_accessions()`'s asymmetric-TTL approach. A
+#' result where NEITHER comparison cleared `min_coverage` on either side (the
+#' `"inconclusive_length_mismatch"` outcome) expires after
+#' `inconclusive_ttl_days` and is retried on the next call, since new, shorter
+#' GenBank deposits for either species could change that answer. Any other
+#' result is cached indefinitely. A cache HIT still prints the identical
+#' narrative summary a fresh call would (unless `verbose = FALSE`), so repeated
+#' calls lose no output. Set `cache_dir = NULL` to disable caching entirely.
 #'
 #' @param accession Character scalar. The flagged accession to investigate.
 #' @param species Character or `NULL` (default). The accession's own listed
