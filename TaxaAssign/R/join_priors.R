@@ -500,8 +500,9 @@ utils::globalVariables(c(
 #' @param expansion_taxonomy Optional data frame mapping species names in
 #'   `taxaexpect_priors` to their higher-rank taxonomy. Must contain
 #'   `taxon_name` plus one or more coarser-rank columns (e.g. `genus`,
-#'   `family`). Typically produced by
-#'   `TaxaTools::fill_higher_ranks(unique(taxaexpect_priors$taxon_name),
+#'   `family`). Typically produced from the priors' distinct
+#'   (`taxon_name`, `taxon_name_rank`) pairs, passing each name's own rank:
+#'   `TaxaTools::fill_higher_ranks(tx$taxon_name, input_rank = tx$taxon_name_rank,
 #'   local_sources = list(match_df))`. When `NULL` (default) and coarse-rank
 #'   likelihood rows are present, a warning is emitted and those rows fall
 #'   back to the dark diversity floor prior. See Details.
@@ -1046,8 +1047,9 @@ join_priors <- function(likelihoods,
       "{n_coarse_unmatched} likelihood row(s) have a coarse-rank taxon_name_rank ({paste(sort(unique(result$taxon_name_rank[is.na(result$alpha) & result$taxon_name_rank %in% coarser_than_finest & !is.na(result$taxon_name)])), collapse = ', ')}) that cannot join to species-level priors.",
       "i" = "These rows will receive the dark diversity floor prior.",
       "i" = "To expand them into species-level hypotheses, supply {.arg expansion_taxonomy}:",
+      "i" = "  tx <- dplyr::distinct(taxaexpect_priors[!is.na(taxaexpect_priors$taxon_name), ], taxon_name, taxon_name_rank)",
       "i" = "  expansion_taxonomy = TaxaTools::fill_higher_ranks(",
-      "i" = "    unique(taxaexpect_priors$taxon_name[!is.na(taxaexpect_priors$taxon_name)]),",
+      "i" = "    tx$taxon_name, input_rank = tx$taxon_name_rank,",
       "i" = "    local_sources = list(match_df, gbif_occurrences))"
     ))
   }

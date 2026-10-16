@@ -392,7 +392,10 @@ fill_higher_ranks <- function(taxon_names,
   }
   lineage_by_genus <- NULL
   if (!is.null(lineage)) {
-    lineage_by_genus <- tapply(lineage, work$genus, function(v) {
+    # Per input ROW (lineage is one per element of taxon_names), grouped by the
+    # row's own genus word; `work` is one row per unique name, so a duplicate
+    # or NA taxon name would misalign the two.
+    lineage_by_genus <- tapply(lineage[valid_mask], sub(" .*", "", taxon_names[valid_mask]), function(v) {
       v <- unique(unlist(strsplit(v[!is.na(v)], "|", fixed = TRUE)))
       v <- trimws(v[nzchar(trimws(v))])
       if (length(v)) paste(unique(v), collapse = "|") else NA_character_

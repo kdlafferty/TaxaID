@@ -1059,3 +1059,28 @@ test_that("default (no input_rank) still sends rank genus for every name", {
                     fallback_backbone_id = NULL, verbose = FALSE)
   expect_equal(seen, c("genus", "genus"))
 })
+
+
+test_that("lineage= accepts duplicate and NA taxon names (per-row context, per-genus union)", {
+  seen <- list()
+  testthat::local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      seen[[length(seen) + 1L]] <<- list(names = names, lineage = list(...)$lineage)
+      .make_verified(names, "Beroidae")
+    },
+    .package = "TaxaTools"
+  )
+  out <- fill_higher_ranks(c("Nuda", "Nuda"), local_sources = list(), backbone_id = 4L,
+                           fallback_backbone_id = NULL, verbose = FALSE,
+                           lineage = c("Ctenophora", "Ctenophora"))
+  expect_equal(nrow(out), 2L)
+  expect_identical(seen[[1]]$names, "Nuda")
+  expect_identical(seen[[1]]$lineage, "Ctenophora")
+  seen <- list()
+  out2 <- fill_higher_ranks(c("Nuda", NA, "Gadus morhua"), local_sources = list(), backbone_id = 4L,
+                            fallback_backbone_id = NULL, verbose = FALSE,
+                            lineage = c("Ctenophora", NA, "Chordata"))
+  expect_equal(nrow(out2), 3L)
+  expect_true(is.na(out2$genus[2]))
+  expect_identical(seen[[1]]$lineage[match(c("Nuda", "Gadus"), seen[[1]]$names)], c("Ctenophora", "Chordata"))
+})

@@ -598,7 +598,7 @@ verify_taxon_names <- function(name_list,
 .check_verify_ranks <- function(ranks, name_list) {
   if (is.null(ranks)) return(NULL)
   if (!is.character(ranks) || length(ranks) != length(name_list)) {
-    stop("`ranks` must be NULL or a character vector with one rank per element of `name_list`.")
+    stop("`input_rank` must be NULL or a character vector with one rank per element of `name_list`.")
   }
   r <- tolower(trimws(ranks))
   r[!is.na(r) & !nzchar(r)] <- NA_character_
