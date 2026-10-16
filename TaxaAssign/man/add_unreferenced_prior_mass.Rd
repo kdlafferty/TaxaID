@@ -126,6 +126,17 @@ the function reports how many of them are missing from \code{referenced_names}
 and messages when that fraction exceeds \code{mismatch_message_fraction}.
 }
 
+\section{Withheld species}{
+
+A local unreferenced species whose genus has a reference for this marker
+(the genus of any name in \code{referenced_names}) is claimed only by its own
+genus ring. Where the unit has no genus ring for it, the genus's
+references were compared with the read and did not match, so no family,
+order, class or phylum ring may name it; it is withheld and listed in
+\code{attr(result, "unreferenced_withheld")} (\code{observation_id}, \code{taxon_name},
+\code{scope}, \code{scope_rank}, \code{reason}), present on every return.
+}
+
 \examples{
 joined <- data.frame(
   observation_id = "E1",

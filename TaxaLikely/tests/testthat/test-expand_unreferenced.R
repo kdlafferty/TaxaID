@@ -169,9 +169,11 @@ test_that("expand_unreferenced_hypotheses: H2 suppresses only exact H1 species, 
   expect_false("Fundulus heteroclitus" %in% h2$taxon_name)
 })
 
-test_that("expand_unreferenced_hypotheses: H3 suppresses only exact H1 species, not full genus", {
-  # H1 is Lucania goodei (species-rank). Lucania parva is a DIFFERENT species --
-  # species-level suppression allows it to appear in H3.
+test_that("expand_unreferenced_hypotheses: a species of a REFERENCED genus is never named from the family ring; a genus with no reference still is", {
+  # H1 is Lucania goodei (species-rank), so genus Lucania HAS references for
+  # this marker and they were compared with the read. Lucania parva may not
+  # borrow the family ring: it is withheld and listed. Fundulus has no
+  # candidate anywhere in this table, so its species still borrow the ring.
   lik_lucania_h1 <- data.frame(
     observation_id = "ESV_001",
     taxon_name = c("Lucania goodei", "Atherinops", "Fundulidae"),
@@ -187,9 +189,15 @@ test_that("expand_unreferenced_hypotheses: H3 suppresses only exact H1 species, 
   )
   out <- expand_unreferenced_hypotheses(lik_lucania_h1, .make_unref_df())
   h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
-  # Lucania parva is a different species from H1 Lucania goodei -- should appear in H3
-  expect_true("Lucania parva" %in% h3$taxon_name)
-  # Fundulus species should still expand into H3 (their genus is not covered by H1)
+  expect_false("Lucania parva" %in% h3$taxon_name)
+  w <- attr(out, "unreferenced_withheld")
+  expect_true(is.data.frame(w))
+  expect_identical(w$taxon_name, "Lucania parva")
+  expect_identical(w$reason, "genus_referenced_unmatched")
+  expect_identical(w$observation_id, "ESV_001")
+  # the generic family ring itself is kept
+  expect_true("Fundulidae" %in% out$taxon_name[out$taxon_name_rank == "family"])
+  # Fundulus species still expand into H3 (their genus has no reference here)
   expect_true(any(grepl("Fundulus", h3$taxon_name)))
 })
 

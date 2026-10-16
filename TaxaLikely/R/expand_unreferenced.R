@@ -109,6 +109,16 @@ utils::globalVariables(c("hypothesis_type"))
 #'   value itself (identical across every expanded species under one generic
 #'   row) rather than anything row-specific, so they are copied through too.
 #'
+#' @section Withheld rows:
+#'   A species whose genus has references for this marker (any genus with a
+#'   `specific_candidate` row anywhere in `likelihood_df`) is never named from
+#'   a FAMILY ring: its genus's references were compared with the read and
+#'   did not match within the reporting window, so "an unreferenced genus of
+#'   this family" cannot be it. It is still named from its genus ring when
+#'   that ring is present. The rows so withheld are listed in
+#'   `attr(result, "unreferenced_withheld")` (`observation_id`, `taxon_name`,
+#'   `genus`, `family`, `reason`) and counted in a message; the data frame is
+#'   present, possibly empty, on every return.
 #' @seealso [TaxaAssign::compute_posterior()], [evaluate_likelihoods()],
 #'   [audit_barcode_coverage()], [apply_coverage_constraints()],
 #'   [restore_suppressed_candidates()] for the `check_regional_overlap`
@@ -193,6 +203,25 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   h1_rows <- dplyr::filter(likelihood_df, hypothesis_type == "specific_candidate")
   h2_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_species")
   h3_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_genus")
+
+  # Which genera HAVE references for this marker: every genus that matched any
+  # read anywhere in this table (a candidate exists only because a reference
+  # does). A species of such a genus is never named from a FAMILY ring: the
+  # genus's own references were compared with the read and did not match
+  # within the reporting window, so "an unreferenced genus of this family"
+  # cannot be it. It is still named from its genus ring when that ring is
+  # present (the H2 block above), because that ring is built from its
+  # congeners' actual fit. Only a species whose genus has no reference at all
+  # borrows the family ring, which is what the ring is for.
+  referenced_genera_lc <- unique(tolower(trimws(c(
+    sub(" .*$", "", h1_rows$taxon_name[h1_rows$taxon_name_rank != "genus"]),
+    h1_rows$taxon_name[h1_rows$taxon_name_rank == "genus"]
+  ))))
+  referenced_genera_lc <- referenced_genera_lc[!is.na(referenced_genera_lc) & nzchar(referenced_genera_lc)]
+  if (length(referenced_genera_lc) == 0L && nrow(unref) > 0L) {
+    warning("expand_unreferenced_hypotheses: likelihood_df carries no specific_candidate rows, so no genus can be known to have references; every unreferenced species may borrow a family ring.", call. = FALSE)
+  }
+  withheld <- list()
 
   observation_ids <- unique(likelihood_df$observation_id)
   n_h2_species <- 0L
@@ -294,6 +323,19 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
           (is.na(unref$observation_id) | unref$observation_id == sid), ,
         drop = FALSE
       ]
+      # The narrow rule: a species of a REFERENCED genus gets no family-level
+      # row. Recorded per observation, never silent.
+      if (nrow(family_sp) > 0L) {
+        ref_gen <- family_sp$genus_lc %in% referenced_genera_lc
+        if (any(ref_gen)) {
+          withheld[[length(withheld) + 1L]] <- data.frame(
+            observation_id = sid, taxon_name = family_sp$species[ref_gen],
+            genus = family_sp$genus[ref_gen], family = h3$taxon_name[1L],
+            reason = "genus_referenced_unmatched", stringsAsFactors = FALSE
+          )
+          family_sp <- family_sp[!ref_gen, , drop = FALSE]
+        }
+      }
 
       n_h3_covered <- n_h3_covered + sum(
         unref$family_lc == h3_family_lc &
@@ -329,6 +371,17 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     result_list[[i]] <- dplyr::bind_rows(new_rows)
   }
 
+  withheld_df <- if (length(withheld)) do.call(rbind, withheld) else data.frame(
+    observation_id = character(0), taxon_name = character(0), genus = character(0),
+    family = character(0), reason = character(0), stringsAsFactors = FALSE
+  )
+  if (nrow(withheld_df) > 0L) {
+    message(sprintf(
+      "expand_unreferenced_hypotheses: %d species-named family-level row(s) withheld in %d observation(s): their genus has references for this marker that did not match the read (attr 'unreferenced_withheld' lists them).",
+      nrow(withheld_df), length(unique(withheld_df$observation_id))
+    ))
+  }
+
   expanded <- dplyr::bind_rows(result_list)
 
   message(sprintf(
@@ -342,5 +395,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     n_h3_species, n_h3_generic_kept, n_h3_covered
   ))
 
-  dplyr::bind_rows(h1_rows, expanded)
+  out <- dplyr::bind_rows(h1_rows, expanded)
+  attr(out, "unreferenced_withheld") <- withheld_df
+  out
 }

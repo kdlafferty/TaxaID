@@ -128,6 +128,19 @@ For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
 \code{result}/\code{unreferenced_species_result} are derived), see
 \code{inst/review_function_inputs.R} Section 7 in the package source.
 }
+\section{Withheld rows}{
+
+A species whose genus has references for this marker (any genus with a
+\code{specific_candidate} row anywhere in \code{likelihood_df}) is never named from
+a FAMILY ring: its genus's references were compared with the read and
+did not match within the reporting window, so "an unreferenced genus of
+this family" cannot be it. It is still named from its genus ring when
+that ring is present. The rows so withheld are listed in
+\code{attr(result, "unreferenced_withheld")} (\code{observation_id}, \code{taxon_name},
+\code{genus}, \code{family}, \code{reason}) and counted in a message; the data frame is
+present, possibly empty, on every return.
+}
+
 \examples{
 \dontrun{
 expanded <- expand_unreferenced_hypotheses(
