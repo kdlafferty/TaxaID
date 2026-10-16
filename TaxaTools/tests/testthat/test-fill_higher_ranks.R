@@ -911,3 +911,151 @@ test_that(".build_name_rank_lookup returns a shaped empty table with no usable s
   expect_true(all(c("taxon_name", "family") %in% names(lu)))
   expect_equal(attr(lu, "ambiguous_names"), character(0))
 })
+
+
+# =============================================================================
+# taxon_ranks=: a name whose own rank is coarser than genus is asked at that rank
+# =============================================================================
+
+# Mock that records every call's names/ranks/lineage and answers Nuda by rank.
+.nuda_mock <- function(calls) {
+  function(names, backbone_id, ...) {
+    dots <- list(...)
+    rk <- if (is.null(dots$ranks)) rep(NA_character_, length(names)) else dots$ranks
+    calls$names[[length(calls$names) + 1L]] <- names
+    calls$ranks[[length(calls$ranks) + 1L]] <- rk
+    calls$lineage[[length(calls$lineage) + 1L]] <- dots$lineage
+    one <- function(nm, r) {
+      if (identical(nm, "Nuda") && identical(r, "class")) {
+        tibble::tibble(user_supplied_name = nm, matched_name = "Nuda",
+          matched_rank = "class",
+          classification_path = "Metazoa|Ctenophora|Nuda",
+          classification_ranks = "kingdom|phylum|class", score = 1, verified = TRUE)
+      } else if (identical(nm, "Nuda")) {
+        tibble::tibble(user_supplied_name = nm, matched_name = "Nuda",
+          matched_rank = "genus",
+          classification_path = "Eukaryota|Preaxostyla|Nuda",
+          classification_ranks = "superkingdom|phylum|genus", score = 1, verified = TRUE)
+      } else {
+        tibble::tibble(user_supplied_name = nm, matched_name = nm,
+          matched_rank = r,
+          classification_path = paste0("Animalia|Chordata|Fam", nm, "|", nm),
+          classification_ranks = "kingdom|phylum|family|genus", score = 1, verified = TRUE)
+      }
+    }
+    dplyr::bind_rows(Map(one, names, rk))
+  }
+}
+
+.new_calls <- function() {
+  e <- new.env()
+  e$names <- list(); e$ranks <- list(); e$lineage <- list()
+  e
+}
+
+.all_asked <- function(calls) {
+  data.frame(name = unlist(calls$names), rank = unlist(calls$ranks),
+             stringsAsFactors = FALSE)
+}
+
+test_that("Nuda regression: a class-rank name is asked at class, not genus", {
+  # the mocks answer only the ranks under test; the unfilled-rank warning is expected noise here
+  withr::local_options(list(warn = -1))
+  calls <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls), .package = "TaxaTools")
+  out <- fill_higher_ranks("Nuda", ranks = c("phylum", "class"),
+                           taxon_ranks = "class",
+                           fallback_backbone_id = NULL, verbose = FALSE)
+  asked <- .all_asked(calls)
+  expect_true(all(asked$rank == "class"))
+  expect_true("class" %in% asked$rank)
+  expect_equal(out$class, "Nuda")
+  expect_equal(out$phylum, "Ctenophora")
+
+  calls2 <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls2), .package = "TaxaTools")
+  out2 <- fill_higher_ranks("Nuda", ranks = c("phylum", "class"),
+                            fallback_backbone_id = NULL, verbose = FALSE)
+  asked2 <- .all_asked(calls2)
+  expect_true(all(asked2$rank == "genus"))
+  expect_true(is.na(out2$class))
+  expect_equal(out2$phylum, "Preaxostyla")
+})
+
+test_that("mixed table: each name is asked at its own rank", {
+  # the mocks answer only the ranks under test; the unfilled-rank warning is expected noise here
+  withr::local_options(list(warn = -1))
+  calls <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls), .package = "TaxaTools")
+  fill_higher_ranks(c("Nuda", "Beroe forskalii", "Barentsiidae"),
+                    taxon_ranks = c("class", "species", "family"),
+                    fallback_backbone_id = NULL, verbose = FALSE)
+  asked <- .all_asked(calls)
+  i <- match(c("Nuda", "Beroe", "Barentsiidae"), asked$name)
+  expect_false(anyNA(i))
+  expect_equal(asked$rank[i], c("class", "genus", "family"))
+})
+
+test_that("a word at two coarse ranks falls back to genus with a message", {
+  # the mocks answer only the ranks under test; the unfilled-rank warning is expected noise here
+  withr::local_options(list(warn = -1))
+  calls <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls), .package = "TaxaTools")
+  expect_message(
+    fill_higher_ranks(c("Nuda", "Nuda"), taxon_ranks = c("class", "order"),
+                      fallback_backbone_id = NULL, verbose = TRUE),
+    "more than one coarse rank"
+  )
+  asked <- .all_asked(calls)
+  expect_true(all(asked$rank[asked$name == "Nuda"] == "genus"))
+})
+
+test_that("a species row does not count as a coarse rank for the word", {
+  # the mocks answer only the ranks under test; the unfilled-rank warning is expected noise here
+  withr::local_options(list(warn = -1))
+  calls <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls), .package = "TaxaTools")
+  expect_no_message(
+    fill_higher_ranks(c("Nuda", "Nuda foo"), taxon_ranks = c("class", "species"),
+                      fallback_backbone_id = NULL, verbose = FALSE)
+  )
+  asked <- .all_asked(calls)
+  expect_true(all(asked$rank[asked$name == "Nuda"] == "class"))
+})
+
+test_that("taxon_ranks validation", {
+  # the mocks answer only the ranks under test; the unfilled-rank warning is expected noise here
+  withr::local_options(list(warn = -1))
+  expect_error(
+    fill_higher_ranks(c("Nuda", "Pica pica"), taxon_ranks = "class",
+                      backbone_id = NULL, verbose = FALSE),
+    "one rank per element"
+  )
+  calls <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls), .package = "TaxaTools")
+  out <- fill_higher_ranks("Nuda", ranks = c("phylum", "class"),
+                           taxon_ranks = NA, fallback_backbone_id = NULL, verbose = FALSE)
+  expect_true(all(.all_asked(calls)$rank == "genus"))
+  expect_equal(out$phylum, "Preaxostyla")
+
+  calls2 <- .new_calls()
+  local_mocked_bindings(verify_taxon_names = .nuda_mock(calls2), .package = "TaxaTools")
+  out2 <- fill_higher_ranks("Nuda", ranks = c("phylum", "class"),
+                            taxon_ranks = "CLASS", fallback_backbone_id = NULL, verbose = FALSE)
+  expect_true(all(.all_asked(calls2)$rank == "class"))
+  expect_equal(out2$class, "Nuda")
+})
+
+test_that("default (no taxon_ranks) still sends rank genus for every name", {
+  seen <- NULL
+  local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      seen <<- list(...)$ranks
+      .make_verified(names, "Corvidae")
+    },
+    .package = "TaxaTools"
+  )
+  fill_higher_ranks(c("Corvus corax", "Pica pica"),
+                    fallback_backbone_id = NULL, verbose = FALSE)
+  expect_equal(seen, c("genus", "genus"))
+})

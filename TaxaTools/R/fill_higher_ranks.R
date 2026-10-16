@@ -25,6 +25,16 @@ utils::globalVariables(c(
 #'   a zero-row table with the usual columns).  Binomial species names
 #'   are expected; genus is extracted as the first word.  Single-word names
 #'   (genus only) are accepted and returned as-is in the `genus` column.
+#' @param input_rank Character vector or \code{NULL} (default). One rank per
+#'   element of \code{taxon_names} (\code{NA} = unknown), e.g. the table's
+#'   \code{taxon_name_rank} column. The backbone query asks the first word of
+#'   each name, which for a species or a genus is its genus and is asked at
+#'   rank genus. A name whose own rank is family, order, class, phylum or
+#'   kingdom is a single word that is the whole name, and asking it at genus
+#'   picks whatever genus shares the spelling (a class-rank Nuda resolved to a
+#'   flagellate genus Nuda); given its rank here it is asked at that rank. A
+#'   word that arrives at two coarse ranks is asked at genus with a message.
+#'   \code{NULL} asks every word at genus.
 #' @param local_sources List of data frames to consult before any API call.
 #'   Each element must contain at least `genus` and the requested rank; elements
 #'   lacking those columns are silently skipped.  Sources are consulted in
@@ -49,7 +59,7 @@ utils::globalVariables(c(
 #'   carried competing family circumscriptions for the same organism -- two
 #'   backbones disagreeing about one fish, not a homonym -- which no lineage
 #'   can arbitrate and which the precedence therefore still settles.
-#' @param ranks Character vector of higher ranks to resolve.  Default
+#' @param fill_ranks Character vector of higher ranks to resolve.  Default
 #'   \code{"family"}.  Any rank label the backbone reports is accepted, e.g.
 #'   \code{c("family", "class")}.  \code{"genus"} is rejected (it is derived
 #'   from \code{taxon_names}, not looked up) and so is \code{"species"}.
@@ -57,7 +67,7 @@ utils::globalVariables(c(
 #' @param record_source Logical.  \code{FALSE} (default) returns only the
 #'   \code{taxon_name}, \code{genus} and rank columns.
 #'   \code{TRUE} adds one \code{<rank>_source} column per entry in
-#'   \code{ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
+#'   \code{fill_ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
 #'   \code{NA} where the rank was never resolved.  It is off by default
 #'   because \code{TaxaAssign::join_priors()} joins EVERY non-\code{taxon_name}
 #'   column of its \code{expansion_taxonomy} argument onto the priors table,
@@ -84,7 +94,7 @@ utils::globalVariables(c(
 #'   \code{\link{verify_taxon_names}(lineage =)} on both backbones: it
 #'   resolves an NCBI homonym rank alone cannot (two genus-rank nodes in
 #'   different kingdoms) and rejects a fallback-backbone answer that
-#'   contradicts it. The genus queries always carry \code{ranks = "genus"}.
+#'   contradicts it. The genus queries always carry \code{input_rank = "genus"}.
 #' @return A tibble with one row per element of `taxon_names` (preserving
 #'   duplicates and order), with columns:
 #'   \describe{
@@ -95,7 +105,7 @@ utils::globalVariables(c(
 #'       returned instead (see `@section Genus correction` below).
 #'       Local-source-only lookups (no API call needed) always keep the
 #'       locally-extracted genus unchanged.}
-#'     \item{`<rank>`}{One column per entry in `ranks` (by default just
+#'     \item{`<rank>`}{One column per entry in `fill_ranks` (by default just
 #'       `family`), holding the looked-up value or `NA` if unresolved.}
 #'     \item{`<rank>_source`}{Only when `record_source = TRUE`: where that
 #'       value came from -- `"local"`, `"backbone_<id>"`, or `NA`.}
@@ -199,8 +209,9 @@ utils::globalVariables(c(
 #' @importFrom tibble tibble
 #' @export
 fill_higher_ranks <- function(taxon_names,
+                              input_rank = NULL,
                               local_sources = list(),
-                              ranks = "family",
+                              fill_ranks = "family",
                               record_source = FALSE,
                               backbone_id = 4L,
                               fallback_backbone_id = 11L,
@@ -219,19 +230,27 @@ fill_higher_ranks <- function(taxon_names,
     lineage <- trimws(lineage)
     lineage[!is.na(lineage) & !nzchar(lineage)] <- NA_character_
   }
+  if (!is.null(input_rank)) {
+    if (is.logical(input_rank) && all(is.na(input_rank))) input_rank <- as.character(input_rank)
+    if (!is.character(input_rank) || length(input_rank) != length(taxon_names)) {
+      stop("`input_rank` must be NULL or a character vector with one rank per element of `taxon_names`.")
+    }
+    input_rank <- tolower(trimws(input_rank))
+    input_rank[!is.na(input_rank) & !nzchar(input_rank)] <- NA_character_
+  }
   if (!is.list(local_sources)) {
     stop("local_sources must be a list of data frames")
   }
-  if (!is.character(ranks) || length(ranks) == 0L || anyNA(ranks) ||
-    !all(nzchar(ranks))) {
-    stop("ranks must be a non-empty character vector of rank names")
+  if (!is.character(fill_ranks) || length(fill_ranks) == 0L || anyNA(fill_ranks) ||
+    !all(nzchar(fill_ranks))) {
+    stop("fill_ranks must be a non-empty character vector of rank names")
   }
-  ranks <- unique(ranks)
-  if ("genus" %in% ranks) {
-    stop("ranks must not include 'genus': genus is derived from taxon_names, not looked up")
+  fill_ranks <- unique(fill_ranks)
+  if ("genus" %in% fill_ranks) {
+    stop("fill_ranks must not include 'genus': genus is derived from taxon_names, not looked up")
   }
-  if ("species" %in% ranks) {
-    stop("ranks must not include 'species': a species is the input, not a higher rank")
+  if ("species" %in% fill_ranks) {
+    stop("fill_ranks must not include 'species': a species is the input, not a higher rank")
   }
   if (!is.logical(record_source) || length(record_source) != 1L || is.na(record_source)) {
     stop("record_source must be TRUE or FALSE")
@@ -254,7 +273,7 @@ fill_higher_ranks <- function(taxon_names,
   if (length(taxon_names) == 0L) {
     if (verbose) message("fill_higher_ranks: no taxon names supplied; returning an empty table.")
     out <- tibble::tibble(taxon_name = character(0), genus = character(0))
-    for (r in ranks) {
+    for (r in fill_ranks) {
       out[[r]] <- character(0)
       if (record_source) out[[paste0(r, "_source")]] <- character(0)
     }
@@ -270,14 +289,14 @@ fill_higher_ranks <- function(taxon_names,
     taxon_name = uniq,
     genus      = sub(" .*", "", uniq)
   )
-  for (r in ranks) {
+  for (r in fill_ranks) {
     work[[r]] <- NA_character_
     work[[paste0(r, "_source")]] <- NA_character_
   }
 
   # Local sources first, per rank: they are offline and authoritative for the
   # caller's own data.
-  for (r in ranks) {
+  for (r in fill_ranks) {
     local_lookup <- .build_genus_rank_lookup(local_sources, r)
     .amb <- attr(local_lookup, "ambiguous_genera")
     na_idx <- which(is.na(work[[r]]))
@@ -342,6 +361,35 @@ fill_higher_ranks <- function(taxon_names,
   # (a fish Ulvaria and an alga Ulvaria in one table) yield a context that
   # both candidates contain, so the name stays ambiguous -- which is right for
   # a table keyed on the bare name.
+  # The rank each queried word is asked at. The word is the first word of the
+  # taxon name, which for a species or a genus IS its genus, so it is asked at
+  # rank genus. A name whose OWN rank is coarser than genus (a family, order,
+  # class or phylum row in a mixed table) is a single word that is the whole
+  # name, and asking it at genus picks whatever genus shares the spelling:
+  # Nuda the ctenophore class became Nuda the flagellate genus. With
+  # `input_rank` such a name is asked at its own rank. A word arriving at two
+  # different coarse ranks falls back to genus, with a message.
+  rank_by_genus <- NULL
+  if (!is.null(input_rank)) {
+    coarse <- c("family", "order", "class", "phylum", "kingdom")
+    # Read EVERY row, not one row per unique name: the same word can arrive
+    # twice at two coarse ranks, and only the full set shows the conflict.
+    nm_all <- taxon_names[valid_mask]
+    tr_all <- input_rank[valid_mask]
+    g_all <- sub(" .*", "", nm_all)
+    own <- ifelse(!is.na(tr_all) & tr_all %in% coarse & nm_all == g_all, tr_all, NA_character_)
+    rank_by_genus <- tapply(own, g_all, function(v) {
+      v <- unique(v[!is.na(v)])
+      if (length(v) == 1L) v else if (length(v) == 0L) "genus" else "conflict"
+    })
+    rank_by_genus <- stats::setNames(as.character(rank_by_genus), names(rank_by_genus))
+    conflict <- names(rank_by_genus)[rank_by_genus == "conflict"]
+    if (length(conflict) && verbose) {
+      message(sprintf("fill_higher_ranks: %d name(s) carry more than one coarse rank in `input_rank` and are queried at rank genus: %s",
+                      length(conflict), paste(sort(conflict), collapse = ", ")))
+    }
+    rank_by_genus[rank_by_genus == "conflict"] <- "genus"
+  }
   lineage_by_genus <- NULL
   if (!is.null(lineage)) {
     lineage_by_genus <- tapply(lineage, work$genus, function(v) {
@@ -351,18 +399,18 @@ fill_higher_ranks <- function(taxon_names,
     })
     lineage_by_genus <- stats::setNames(as.character(lineage_by_genus), names(lineage_by_genus))
   }
-  need <- unique(work$genus[Reduce(`|`, lapply(ranks, function(r) is.na(work[[r]])))])
+  need <- unique(work$genus[Reduce(`|`, lapply(fill_ranks, function(r) is.na(work[[r]])))])
   lin_primary <- NULL
   if (length(need) > 0L && !is.null(backbone_id)) {
     if (verbose) {
       message(sprintf(
         "fill_higher_ranks: %d genera unresolved in local sources; querying backbone %d for %s...",
-        length(need), as.integer(backbone_id), paste(ranks, collapse = "/")
+        length(need), as.integer(backbone_id), paste(fill_ranks, collapse = "/")
       ))
     }
     lin_primary <- .lookup_lineage_from_backbone(need, as.integer(backbone_id), decisions,
-                                                 lineage_of = lineage_by_genus)
-    for (r in ranks) {
+                                                 lineage_of = lineage_by_genus, rank_of = rank_by_genus)
+    for (r in fill_ranks) {
       na_idx <- which(is.na(work[[r]]))
       if (!length(na_idx) || is.null(lin_primary) || nrow(lin_primary) == 0L) next
       val <- .rank_from_lineage(lin_primary, work$genus[na_idx], r)
@@ -388,7 +436,7 @@ fill_higher_ranks <- function(taxon_names,
   # a homonym's class from the fallback -- writing "Polychaeta" into a red
   # alga. Requiring agreement on the ranks both backbones DID supply catches
   # exactly that: it is the same evidence a reader would use.
-  still <- unique(work$genus[Reduce(`|`, lapply(ranks, function(r) is.na(work[[r]])))])
+  still <- unique(work$genus[Reduce(`|`, lapply(fill_ranks, function(r) is.na(work[[r]])))])
   if (length(still) > 0L &&
     !is.null(fallback_backbone_id) &&
     !identical(as.integer(fallback_backbone_id), as.integer(backbone_id))) {
@@ -399,7 +447,7 @@ fill_higher_ranks <- function(taxon_names,
       ))
     }
     lin_fb <- .lookup_lineage_from_backbone(still, as.integer(fallback_backbone_id), decisions,
-                                            lineage_of = lineage_by_genus)
+                                            lineage_of = lineage_by_genus, rank_of = rank_by_genus)
     if (!is.null(lin_fb) && nrow(lin_fb) > 0L) {
       ok_genus <- .lineages_agree(lin_primary, lin_fb)
       rejected <- setdiff(lin_fb$genus, ok_genus)
@@ -412,7 +460,7 @@ fill_higher_ranks <- function(taxon_names,
         ), call. = FALSE)
       }
       lin_fb <- lin_fb[lin_fb$genus %in% ok_genus, , drop = FALSE]
-      for (r in ranks) {
+      for (r in fill_ranks) {
         na_idx <- which(is.na(work[[r]]))
         if (!length(na_idx) || nrow(lin_fb) == 0L) next
         val <- .rank_from_lineage(lin_fb, work$genus[na_idx], r)
@@ -428,7 +476,7 @@ fill_higher_ranks <- function(taxon_names,
   }
 
   # ---- Warn about any remaining NAs, per rank -------------------------------
-  for (r in ranks) {
+  for (r in fill_ranks) {
     n_na <- sum(is.na(work[[r]]))
     if (n_na > 0L) {
       unresolved <- work$taxon_name[is.na(work[[r]])]
@@ -444,12 +492,12 @@ fill_higher_ranks <- function(taxon_names,
   out <- tibble::tibble(taxon_name = all_names)
   out$genus <- work$genus[i]
   out$genus[!valid_mask] <- NA_character_
-  for (r in ranks) {
+  for (r in fill_ranks) {
     out[[r]] <- work[[r]][i]
     out[[r]][!valid_mask] <- NA_character_
   }
   if (record_source) {
-    for (r in ranks) {
+    for (r in fill_ranks) {
       sc <- paste0(r, "_source")
       out[[sc]] <- work[[sc]][i]
       out[[sc]][!valid_mask] <- NA_character_
@@ -705,7 +753,7 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # same lineage without a second round trip.
 #' @noRd
 .lookup_lineage_from_backbone <- function(genera, backbone_id, decisions = NULL,
-                                          lineage_of = NULL) {
+                                          lineage_of = NULL, rank_of = NULL) {
   ask <- function(nm) {
     tryCatch(
       verify_taxon_names(
@@ -714,10 +762,13 @@ parse_classification_path <- function(path, ranks, target_rank) {
         # unconditionally would trip verify_taxon_names()'s own "unused"
         # warning when this call targets a non-NCBI backbone.
         decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL,
-        # Every name asked here IS a genus (the first word of taxon_names), so
-        # the rank is known and free: it separates Etheostoma the genus from
-        # Etheostoma the subgenus with no decision from anyone.
-        ranks = rep("genus", length(nm)),
+        # Every name asked here is the first word of a taxon name: a genus,
+        # unless the caller said (`input_rank`) the whole name sits at a
+        # coarser rank. The rank is known and free: it separates Etheostoma
+        # the genus from Etheostoma the subgenus with no decision from anyone.
+        ranks = if (is.null(rank_of)) rep("genus", length(nm)) else {
+          r <- unname(rank_of[nm]); r[is.na(r)] <- "genus"; r
+        },
         # The caller's own lineage for the taxon (phylum/class it already
         # knows), per genus: resolves a two-kingdom homonym and gates a
         # contradicting fallback answer. NULL when the caller gave none.

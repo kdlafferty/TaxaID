@@ -60,7 +60,7 @@
 #'   \code{verified = FALSE} -- never cached, asked again next call, with the
 #'   candidate table in a warning -- and the rest of the batch proceeds.
 #'
-#' @param ranks Character vector or \code{NULL} (default). One rank per
+#' @param input_rank Character vector or \code{NULL} (default). One rank per
 #'   element of \code{name_list} (\code{"genus"}, \code{"species"}, ...; \code{NA}
 #'   where unknown): the rank the CALLER means each name at. Only used by the
 #'   NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
@@ -75,7 +75,7 @@
 #'   pipe-delimited string of ancestor names the caller already knows for that
 #'   name, e.g. \code{"Chordata"} or \code{"Metazoa|Chordata|Actinopteri"}.
 #'   Used twice. On the NCBI path (\code{backbone_id = 4}) a homonym is
-#'   resolved, after \code{ranks} and before \code{decisions}, to the one
+#'   resolved, after \code{input_rank} and before \code{decisions}, to the one
 #'   candidate whose own lineage contains any of the context's names (the
 #'   candidates' lineages are already fetched for the ambiguity report, so
 #'   this adds no request); zero or several containing candidates leave it
@@ -231,9 +231,9 @@ verify_taxon_names <- function(name_list,
                                decisions = NULL,
                                cache_dir = NULL,
                                cache_ttl_days = 365,
-                               ranks = NULL,
+                               input_rank = NULL,
                                lineage = NULL) {
-  ranks <- .check_verify_ranks(ranks, name_list)
+  ranks <- .check_verify_ranks(input_rank, name_list)
   lineage <- .check_verify_lineage(lineage, name_list)
   if (!is.null(cache_dir)) {
     return(.verify_taxon_names_cached(
@@ -1041,7 +1041,7 @@ verify_taxon_names <- function(name_list,
         warning(
           "verify_taxon_names: ", length(still_pending), " name(s) resolved to more than one ",
           "NCBI taxonomy node and could not be told apart by rank; reported as unverified ",
-          "(verified = FALSE), not cached. Supply `ranks =` or `decisions =` to resolve them:\n\n",
+          "(verified = FALSE), not cached. Supply `input_rank =` or `decisions =` to resolve them:\n\n",
           .format_ncbi_ambiguous_report(ambiguous_df),
           call. = FALSE
         )
