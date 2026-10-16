@@ -22,7 +22,7 @@ vulnerabilities -- are what Stage B's passes 1 to 7 measure. So the screen is th
 pre-submission package for the reviewed version, and an item is worth doing when
 a reviewer would ask about it.
 
-**Before starting any pass, read `RULES_OF_ENGAGEMENT_agents.md`** (19
+**Before starting any pass, read `RULES_OF_ENGAGEMENT_agents.md`** (20
 constraints: the shared repository, installing and running R, what may change
 under the freeze, how to report). The generated `llm_prompts/CONTEXT_*.md` carry
 the current API surface; this document carries the state. Those three are what a
@@ -295,7 +295,7 @@ Two consequences shape everything here:
 | `usgs_release_review/README.md` | the WERC *release* review (distinct from Micah's code review); three items undecided, no written response exists |
 | `CACHE_POLICY_REVIEW_2026_09_14.md` | the one cache policy; A6 documents it for users, does not reopen it |
 | `REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md` | run checklist for B2, not a work order |
-| `RULES_OF_ENGAGEMENT_agents.md` | the 19 constraints every session works under; read before a pass, not after |
+| `RULES_OF_ENGAGEMENT_agents.md` | the 20 constraints every session works under; read before a pass, not after |
 | `AUDIT_prerelease_findings_2026_10_10.md` | the post-publication read-only audit; four findings, each naming the decision it needs |
 | `ARCHIVE_screen_run_log_2026_10.md` | this document's own 2026-10-04/08 run log; a record, never an open item |
 | `llm_prompts/CONTEXT_*.md` | the generated API surface, regenerated from the installed packages; trust it over memory |
