@@ -173,7 +173,12 @@ better. This measures name-matching quality against the backbone and is
 unrelated to the sequence match scores used elsewhere in the TaxaID
 ecosystem (e.g., percent identity from BLAST).}
 \item{verified}{Logical. \code{TRUE} if the lookup ran and the API
-answered, \code{FALSE} if the API failed and fallback values were used.
+answered, \code{FALSE} if the API failed and fallback values were used
+-- or, when \code{lineage} was given, if the API answered and the
+answer contradicted the caller's lineage (see \code{lineage}). The
+second case is deterministic: the same name with the same context is
+rejected every time, so retrying it is pointless; the message that
+names each rejected name tells the two cases apart.
 It does not say whether the name was found: a name the backbone does
 not hold returns \code{verified = TRUE} with \code{matched_name = NA}.
 Always check rows where \code{verified = FALSE}.}

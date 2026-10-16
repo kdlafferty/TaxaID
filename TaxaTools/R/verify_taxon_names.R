@@ -155,7 +155,12 @@
 #'     unrelated to the sequence match scores used elsewhere in the TaxaID
 #'     ecosystem (e.g., percent identity from BLAST).}
 #'   \item{verified}{Logical. \code{TRUE} if the lookup ran and the API
-#'     answered, \code{FALSE} if the API failed and fallback values were used.
+#'     answered, \code{FALSE} if the API failed and fallback values were used
+#'     -- or, when \code{lineage} was given, if the API answered and the
+#'     answer contradicted the caller's lineage (see \code{lineage}). The
+#'     second case is deterministic: the same name with the same context is
+#'     rejected every time, so retrying it is pointless; the message that
+#'     names each rejected name tells the two cases apart.
 #'     It does not say whether the name was found: a name the backbone does
 #'     not hold returns \code{verified = TRUE} with \code{matched_name = NA}.
 #'     Always check rows where \code{verified = FALSE}.}
@@ -468,6 +473,9 @@ verify_taxon_names <- function(name_list,
   if (n_unverified > 0L) msg <- paste0(msg, sprintf(" %d were unverified due to API failure.", n_unverified))
   message(msg)
 
+  # The gate prints its own line naming every rejected name, so the count
+  # above is the API-failure count only; the gate's rejections are reported
+  # separately, not folded into "API failure".
   .apply_lineage_gate(final_df, lineage)
 }
 
@@ -563,7 +571,7 @@ verify_taxon_names <- function(name_list,
     df$user_supplied_name[bad], lineage[bad],
     vapply(df$classification_path[bad], function(p) .short_lineage_terms(p), character(1L))))
   message(sprintf(
-    "verify_taxon_names: %d name(s) resolved to a lineage that contradicts the caller's and are reported as unverified (a name is not a key): %s.",
+    "verify_taxon_names: %d name(s) resolved to a lineage that contradicts the caller's and are reported as unverified (a name is not a key; deterministic, not an API failure, so retrying will not change it): %s.",
     length(unique(df$user_supplied_name[bad])), paste(utils::head(shown, 10L), collapse = "; ")
   ))
   df$verified[bad] <- FALSE
