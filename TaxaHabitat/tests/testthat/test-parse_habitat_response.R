@@ -259,18 +259,18 @@ test_that("a compound label's weight is the max over its parts and the scheme's 
     habitat_scheme = scheme, compound_sep = "-"))
   raw <- paste(
     "taxon_name,Coastal,Marine,Estuary,Stream,Lake,Other_weight,habitat_best_guess",
-    "Pimephales promelas,0.00,0.00,0.10,0.40,0.50,0.00,",
+    "Pimephales promelas,0.00,0.00,0.10,0.35,0.55,0.00,",
     "Mugil cephalus,0.30,0.50,0.20,0.00,0.00,0.00,",
     sep = "\n"
   )
   out <- parse_hierarchical_habitat_response(raw, taxon_list = p$taxa, habitat_scheme = p)
   # the compound is never below any part
   fm <- out[out$taxon_name == "Pimephales promelas", ]
-  expect_equal(fm[["Coastal-Marine-Estuary-Stream"]], 0.40)   # max(0, 0, 0.10, 0.40)
-  expect_equal(fm[["Coastal-Stream"]], 0.40)                  # max(0, 0.40)
-  expect_equal(fm[["Lake"]], 0.50)
+  expect_equal(fm[["Coastal-Marine-Estuary-Stream"]], 0.45)   # sum(0, 0, 0.10, 0.35)
+  expect_equal(fm[["Coastal-Stream"]], 0.35)                  # sum(0, 0.35)
+  expect_equal(fm[["Lake"]], 0.55)
   mc <- out[out$taxon_name == "Mugil cephalus", ]
-  expect_equal(mc[["Coastal-Marine-Estuary-Stream"]], 0.50)
+  expect_equal(mc[["Coastal-Marine-Estuary-Stream"]], 1.00)   # sum capped at 1
   expect_equal(mc[["Coastal-Stream"]], 0.30)
   # declared habitat columns are the scheme's labels, not the parts
   expect_identical(attr(out, "habitat_cols"), c(scheme$l1_name, "Other_weight"))
@@ -280,7 +280,16 @@ test_that("a compound label's weight is the max over its parts and the scheme's 
   # argmax and breadth run over the scheme's labels
   expect_identical(fm$Habitat, "Lake")
   expect_identical(mc$Habitat, "Coastal-Marine-Estuary-Stream")
-  expect_equal(fm$habitat_breadth, 1 / sum((c(0.4, 0.4, 0.5) / 1.3)^2))
+  expect_equal(fm$habitat_breadth, 1 / sum((c(0.45, 0.35, 0.55) / 1.35)^2))
+})
+
+test_that("compound_rule = 'max' keeps only the largest part", {
+  scheme <- data.frame(l1_name = c("Coastal-Marine-Estuary-Stream", "Lake"), stringsAsFactors = FALSE)
+  p <- suppressMessages(build_habitat_prompt("Mugil cephalus", habitat_scheme = scheme,
+    compound_sep = "-", compound_rule = "max"))
+  raw <- "taxon_name,Coastal,Marine,Estuary,Stream,Lake,Other_weight,habitat_best_guess\nMugil cephalus,0.30,0.50,0.20,0.00,0.00,0.00,"
+  out <- parse_hierarchical_habitat_response(raw, taxon_list = "Mugil cephalus", habitat_scheme = p)
+  expect_equal(out[["Coastal-Marine-Estuary-Stream"]], 0.50)
 })
 
 test_that("a part absent from the response leaves the compound at the max of what was returned", {

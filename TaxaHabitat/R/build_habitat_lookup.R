@@ -69,6 +69,10 @@
 #'   model scores each compound's parts and the compound's weight is the max
 #'   over them; see that function's *Compound labels* section. It is part of
 #'   the cache key, so switching it on re-classifies every taxon once.
+#' @param compound_rule Passed to [build_habitat_prompt()]: `"sum"` (default)
+#'   or `"max"`. NOT part of the cache key: the cache holds the parts the model
+#'   returned and the compound is re-derived from them on every call, so the
+#'   rule can be changed without a single new model call.
 #' @param cache_tag Character (default `""`). Free-text component of the
 #'   cache key; change it to force fresh verdicts (e.g. after a model change).
 #' @param pause_seconds,verbose Passed to `TaxaTools::prompt_api()`.
@@ -100,7 +104,9 @@ build_habitat_lookup <- function(taxon_list,
                                  cache_tag = "",
                                  pause_seconds = 1,
                                  verbose = TRUE,
-                                 compound_sep = NULL) {
+                                 compound_sep = NULL,
+                                 compound_rule = c("sum", "max")) {
+  compound_rule <- match.arg(compound_rule)
   if (!is.character(taxon_list) || length(taxon_list) == 0L) {
     stop("build_habitat_lookup: 'taxon_list' must be a non-empty character vector.")
   }
@@ -127,7 +133,8 @@ build_habitat_lookup <- function(taxon_list,
     chunk_size = chunk_size,
     habitat_scheme = habitat_scheme,
     geographic_context = geographic_context,
-    compound_sep = compound_sep
+    compound_sep = compound_sep,
+    compound_rule = compound_rule
   ))
   out_hab_cols <- probe$scheme_cols %||% probe$habitat_cols
   shared_key <- paste(c(
@@ -181,7 +188,8 @@ build_habitat_lookup <- function(taxon_list,
       chunk_size = chunk_size,
       habitat_scheme = habitat_scheme,
       geographic_context = geographic_context,
-      compound_sep = compound_sep
+      compound_sep = compound_sep,
+      compound_rule = compound_rule
     )
     raw <- TaxaTools::prompt_api(
       prompt,
@@ -226,6 +234,11 @@ build_habitat_lookup <- function(taxon_list,
     # would fill those with NA -- silently, and permanently for any taxon whose
     # verdict is already cached. Deriving it instead means no cache-key bump and
     # no re-running the LLM over thousands of already-settled taxa.
+    # Re-derive every compound from its cached parts under THIS call's rule:
+    # a row cached under "max" must read "sum" when asked for it, and vice versa.
+    if (length(probe$compounds %||% list()) > 0L) {
+      out <- .derive_compound_weights(out, probe$compounds, compound_rule)
+    }
     out[["habitat_breadth"]] <- .compute_habitat_breadth(out, out_hab_cols)
     # Declare the weight columns (see parse_hierarchical_habitat_response()).
     # bind_rows() drops attributes, so this is set after the combine, not

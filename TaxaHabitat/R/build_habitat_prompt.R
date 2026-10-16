@@ -273,6 +273,12 @@
 #'   \code{\link{parse_hierarchical_habitat_response}} as the MAXIMUM over its
 #'   parts. See the section \emph{Compound labels}. Only single-level schemes
 #'   may carry compounds; a two-level scheme with \code{compound_sep} errors.
+#' @param compound_rule \code{"sum"} (default) or \code{"max"}: how a compound
+#'   label's weight is derived from its parts. The parts are disjoint shares of
+#'   the species' habitat use that sum to 1 with the plain labels, so the
+#'   union's share is their SUM (capped at 1); \code{"max"} takes the largest
+#'   part instead, which never falls below a component either but discards the
+#'   other parts' shares. Ignored when \code{compound_sep} is \code{NULL}.
 #' @param habitat_scheme A dataframe defining the habitat classification to use,
 #'   the string \code{"IUCN_L1"}, or \code{NULL}.
 #'   \code{NULL} (default) uses a simple three-category scheme:
@@ -324,12 +330,21 @@
 #' than on \code{"Coastal-Stream"}, a label the compound contains. With
 #' \code{compound_sep} the model never sees the compound as a scorable column.
 #' It weights the parts, and a species that uses ANY part of a site uses the
-#' site, so the compound's weight is the maximum over its parts: it is never
-#' below any component, by construction. The derived column is NOT part of the
-#' sum-to-1 constraint (the parts are), so a lookup built this way has scheme
-#' columns that can sum above 1; every consumer in this ecosystem reads a weight
-#' as a per-habitat affinity, not as a share, so that is harmless, and the
-#' breadth statistic renormalises. The returned object records the mapping in
+#' site, so the compound's weight is the SUM of its parts' shares, capped at 1
+#' (\code{compound_rule = "sum"}): it is never below any component, by
+#' construction. The alternative \code{"max"} keeps only the largest part;
+#' because the model's sum-to-1 budget is spread over more columns once a
+#' compound is split, \code{"max"} systematically LOWERS the compound for the
+#' species that use several of its parts (an estuarine resident scored 0.3
+#' Coastal + 0.5 Estuary + 0.1 Marine reads 0.5 under max, 0.9 under sum).
+#' The derived column is NOT part of the sum-to-1 constraint (the parts are), so
+#' a lookup built this way has scheme columns that can sum above 1; every
+#' consumer in this ecosystem reads a weight as a per-habitat affinity, not as
+#' a share, so that is harmless, and the breadth statistic renormalises. One
+#' caveat to declare rather than hide: a part that is a modifier rather than a
+#' habitat ("Coastal" in "Coastal-Stream") is scored as the habitat it names,
+#' and a marine species then carries its coastal share into every compound
+#' that lists it. The returned object records the mapping in
 #' \code{$compounds} and the scheme's own labels in \code{$scheme_cols};
 #' \code{$habitat_cols} is what the model is asked to output. A part that is
 #' also a plain scheme label is asked once and serves both.
@@ -381,8 +396,10 @@ build_habitat_prompt <- function(
   chunk_size = 60L,
   habitat_scheme = NULL,
   geographic_context = NULL,
-  compound_sep = NULL
+  compound_sep = NULL,
+  compound_rule = c("sum", "max")
 ) {
+  compound_rule <- match.arg(compound_rule)
   if (!is.character(taxon_list) || length(taxon_list) == 0) {
     stop("build_habitat_prompt: 'taxon_list' must be a non-empty character vector.")
   }
@@ -508,6 +525,7 @@ build_habitat_prompt <- function(
       scheme_cols        = scheme_cols,
       compounds          = compounds,
       compound_sep       = compound_sep,
+      compound_rule      = compound_rule,
       extra_covariates   = extra_covariates,
       geographic_context = geographic_context,
       chunk_size         = chunk_size,
@@ -540,8 +558,8 @@ print.habitat_prompt <- function(x, ...) {
   cat(sprintf("  Habitats:    %d columns (+ Other_weight)\n", length(x$habitat_cols)))
   if (length(x$compounds %||% list()) > 0L) {
     cat(sprintf(
-      "  Compounds:   %d scheme label(s) derived as the max over their parts\n",
-      length(x$compounds)
+      "  Compounds:   %d scheme label(s) derived as the %s over their parts\n",
+      length(x$compounds), x$compound_rule %||% "sum"
     ))
   }
   if (!is.null(x$geographic_context)) {
@@ -692,7 +710,7 @@ print.habitat_prompt <- function(x, ...) {
         sprintf("'%s' = %s", cn, paste(compounds[[cn]], collapse = " + "))
       }, character(1)), collapse = "; "),
       ". Do NOT output a column for a compound label; its weight is derived ",
-      "afterwards as the maximum over its components. Score each component as ",
+      "afterwards from its components. Score each component as ",
       "the habitat it names, in the context of the compound(s) it belongs to.\n\n"
     )
   } else {

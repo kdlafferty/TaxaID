@@ -10,7 +10,8 @@ build_habitat_prompt(
   chunk_size = 60L,
   habitat_scheme = NULL,
   geographic_context = NULL,
-  compound_sep = NULL
+  compound_sep = NULL,
+  compound_rule = c("sum", "max")
 )
 }
 \arguments{
@@ -53,6 +54,13 @@ scheme's plain labels), and the compound label's weight is derived by
 \code{\link{parse_hierarchical_habitat_response}} as the MAXIMUM over its
 parts. See the section \emph{Compound labels}. Only single-level schemes
 may carry compounds; a two-level scheme with \code{compound_sep} errors.}
+
+\item{compound_rule}{\code{"sum"} (default) or \code{"max"}: how a compound
+label's weight is derived from its parts. The parts are disjoint shares of
+the species' habitat use that sum to 1 with the plain labels, so the
+union's share is their SUM (capped at 1); \code{"max"} takes the largest
+part instead, which never falls below a component either but discards the
+other parts' shares. Ignored when \code{compound_sep} is \code{NULL}.}
 }
 \value{
 An object of class \code{c("habitat_prompt", "llm_prompt")}, which
@@ -101,12 +109,21 @@ and ignores the rest, so a stream fish can score \emph{lower} on the compound
 than on \code{"Coastal-Stream"}, a label the compound contains. With
 \code{compound_sep} the model never sees the compound as a scorable column.
 It weights the parts, and a species that uses ANY part of a site uses the
-site, so the compound's weight is the maximum over its parts: it is never
-below any component, by construction. The derived column is NOT part of the
-sum-to-1 constraint (the parts are), so a lookup built this way has scheme
-columns that can sum above 1; every consumer in this ecosystem reads a weight
-as a per-habitat affinity, not as a share, so that is harmless, and the
-breadth statistic renormalises. The returned object records the mapping in
+site, so the compound's weight is the SUM of its parts' shares, capped at 1
+(\code{compound_rule = "sum"}): it is never below any component, by
+construction. The alternative \code{"max"} keeps only the largest part;
+because the model's sum-to-1 budget is spread over more columns once a
+compound is split, \code{"max"} systematically LOWERS the compound for the
+species that use several of its parts (an estuarine resident scored 0.3
+Coastal + 0.5 Estuary + 0.1 Marine reads 0.5 under max, 0.9 under sum).
+The derived column is NOT part of the sum-to-1 constraint (the parts are), so
+a lookup built this way has scheme columns that can sum above 1; every
+consumer in this ecosystem reads a weight as a per-habitat affinity, not as
+a share, so that is harmless, and the breadth statistic renormalises. One
+caveat to declare rather than hide: a part that is a modifier rather than a
+habitat ("Coastal" in "Coastal-Stream") is scored as the habitat it names,
+and a marine species then carries its coastal share into every compound
+that lists it. The returned object records the mapping in
 \code{$compounds} and the scheme's own labels in \code{$scheme_cols};
 \code{$habitat_cols} is what the model is asked to output. A part that is
 also a plain scheme label is asked once and serves both.

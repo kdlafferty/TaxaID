@@ -107,8 +107,10 @@
 #'
 #' \strong{Compound labels:} when \code{habitat_scheme} is a prompt object
 #' built with \code{compound_sep}, the model returns the compounds' PARTS as
-#' columns and this function derives each compound label's weight as the
-#' maximum over its parts, so the compound is never below any part. The
+#' columns and this function derives each compound label's weight from its
+#' parts (the sum of their shares, capped at 1, or the max; see
+#' \code{\link{build_habitat_prompt}}'s \code{compound_rule}), so the
+#' compound is never below any part. The
 #' output then carries the scheme's own labels (the compounds and the plain
 #' labels) as its habitat columns, declared in the \code{"habitat_cols"}
 #' attribute, with the part columns kept after them for inspection. The
@@ -180,11 +182,13 @@ parse_hierarchical_habitat_response <- function(raw_text,
   scheme <- NULL
 
   compounds <- list()
+  compound_rule <- "sum"
   scheme_cols <- NULL
   if (inherits(habitat_scheme, "habitat_prompt")) {
     expected_hab_cols <- habitat_scheme$habitat_cols # ordered vector from build_habitat_prompt()
     scheme <- habitat_scheme$scheme # validated dataframe (or NULL for IUCN)
     compounds <- habitat_scheme$compounds %||% list()
+    compound_rule <- habitat_scheme$compound_rule %||% "sum"
     scheme_cols <- habitat_scheme$scheme_cols
   } else if (is.data.frame(habitat_scheme)) {
     # A bare dataframe: derive cols the same way build_habitat_prompt() would
@@ -421,10 +425,7 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # ---------------------------------------------------------------------------
   part_cols <- character(0)
   if (length(compounds) > 0L) {
-    for (cn in names(compounds)) {
-      parts <- intersect(compounds[[cn]], names(parsed))
-      parsed[[cn]] <- if (length(parts) == 0L) 0 else do.call(pmax, c(unname(as.list(parsed[parts])), list(na.rm = TRUE)))
-    }
+    parsed <- .derive_compound_weights(parsed, compounds, compound_rule)
     part_cols <- setdiff(pure_hab_cols, scheme_cols)
     pure_hab_cols <- scheme_cols
   }

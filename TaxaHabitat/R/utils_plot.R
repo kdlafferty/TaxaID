@@ -468,6 +468,31 @@
 #' @return Numeric vector, one per row. `NA` where the scheme weights are all
 #'   zero or missing (nothing to measure breadth over).
 #' @noRd
+#' Derive compound scheme labels from their parts
+#'
+#' For each compound (a named list, label -> parts), writes df[[label]] as the
+#' sum (capped at 1) or the max of the part columns present in df, NA read as
+#' 0. A compound none of whose parts is present is set to 0. Used by
+#' parse_hierarchical_habitat_response() and, again, by build_habitat_lookup()
+#' after it combines cached rows, so the rule is applied to what is cached (the
+#' parts), never frozen into it.
+#' @noRd
+.derive_compound_weights <- function(df, compounds, rule = c("sum", "max")) {
+  rule <- match.arg(rule)
+  for (cn in names(compounds)) {
+    parts <- intersect(compounds[[cn]], names(df))
+    if (length(parts) == 0L) {
+      df[[cn]] <- rep(0, nrow(df))
+      next
+    }
+    m <- as.matrix(df[, parts, drop = FALSE])
+    storage.mode(m) <- "double"
+    m[is.na(m)] <- 0
+    df[[cn]] <- if (rule == "sum") pmin(1, rowSums(m)) else apply(m, 1L, max)
+  }
+  df
+}
+
 .compute_habitat_breadth <- function(df, hab_cols) {
   hab_cols <- intersect(hab_cols, names(df))
   n <- nrow(df)

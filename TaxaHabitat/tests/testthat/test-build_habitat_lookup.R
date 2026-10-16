@@ -190,6 +190,16 @@ test_that("build_habitat_lookup(compound_sep=) asks for the parts, returns the s
     cache_dir = cache, verbose = FALSE, compound_sep = "-"))
   expect_length(seen$prompts, 1L)
   expect_equal(out2[["Coastal-Stream"]], 0.2)
+  # the rule is applied to the cached PARTS, not frozen into the cache: no new call
+  fake3 <- function(p, ...) "taxon_name,Coastal,Stream,Lake,Other_weight,habitat_best_guess\nPimephales promelas,0.3,0.2,0.5,0.0,"
+  cache2 <- withr::local_tempdir()
+  s1 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme, llm_fn = fake3,
+    cache_dir = cache2, verbose = FALSE, compound_sep = "-"))
+  expect_equal(s1[["Coastal-Stream"]], 0.5)   # sum
+  s2 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme,
+    llm_fn = function(p, ...) stop("must not be called"),
+    cache_dir = cache2, verbose = FALSE, compound_sep = "-", compound_rule = "max"))
+  expect_equal(s2[["Coastal-Stream"]], 0.3)   # max, served from the cached parts
   # the same scheme WITHOUT compound_sep is a different key: it calls again
   fake2 <- function(p, ...) "taxon_name,Coastal-Stream,Lake,Other_weight,habitat_best_guess\nPimephales promelas,0.0,1.0,0.0,"
   out3 <- suppressMessages(build_habitat_lookup(taxa, habitat_scheme = scheme, llm_fn = fake2,

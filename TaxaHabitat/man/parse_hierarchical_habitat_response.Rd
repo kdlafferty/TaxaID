@@ -104,8 +104,10 @@ column as an extra habitat weight.
 
 \strong{Compound labels:} when \code{habitat_scheme} is a prompt object
 built with \code{compound_sep}, the model returns the compounds' PARTS as
-columns and this function derives each compound label's weight as the
-maximum over its parts, so the compound is never below any part. The
+columns and this function derives each compound label's weight from its
+parts (the sum of their shares, capped at 1, or the max; see
+\code{\link{build_habitat_prompt}}'s \code{compound_rule}), so the
+compound is never below any part. The
 output then carries the scheme's own labels (the compounds and the plain
 labels) as its habitat columns, declared in the \code{"habitat_cols"}
 attribute, with the part columns kept after them for inspection. The
