@@ -97,35 +97,30 @@ sit at such points yields no resident row.
 
 \strong{Why \code{habitat_levels} rather than a list of sentinels.} This
 function has to tell an UNPLACEABLE point (recoverable) from one placed in a
-DIFFERENT habitat (correctly excluded, not this function's business). The
-obvious way is to test against the producer's sentinels -- \code{NA},
-\code{""}, \code{"Uncertain"}. That makes this package responsible for
-tracking a vocabulary it does not own: add a sentinel in the habitat
-producer and the test here keeps returning \code{FALSE} for it, silently,
-with nothing failing. Note also that the producer may not be
-\code{TaxaHabitat} at all -- a habitat column can come from a polygon
-layer, which is why TaxaExpect only \emph{Suggests} that package.
+DIFFERENT habitat (correctly excluded, not this function's business).
+Testing against the producer's sentinels (\code{NA}, \code{""},
+\code{"Uncertain"}) would make this package responsible for a vocabulary it
+does not own: a sentinel added in the producer would silently keep returning
+\code{FALSE} here. The producer may not even be \code{TaxaHabitat} -- a
+habitat column can come from a polygon layer, which is why TaxaExpect only
+\emph{Suggests} that package.
 
-So the test is CLOSED-WORLD instead: unassigned is anything that is not one
-of the scheme's own declared habitats, which the caller already has in hand
+So the test is CLOSED-WORLD: unassigned is anything that is not one of the
+scheme's own declared habitats, which the caller already has in hand
 (\code{simple_scheme$l1_name} in the standard workflows). \code{NA} and
-\code{""} fall out for free, any sentinel invented later is caught without
-a code change, and so is a typo. The failure mode moves from silent
-under-recovery to a warning: a label that is neither a declared habitat nor
-a recognisable no-verdict marker would be RECOVERED as evidence -- the
-unsafe direction -- so the function names those labels rather than acting on
-them quietly.
+\code{""} fall out for free, and so does any later sentinel or typo. A label
+that is neither a declared habitat nor a recognisable no-verdict marker
+would be RECOVERED as evidence -- the unsafe direction -- so the function
+names those labels in a warning rather than acting on them quietly.
 
 Downstream, the standard workflow builds its evidence candidate list as
 \code{setdiff(match_list, taxaexpect_priors$taxon_name)}: every taxon with
 no prior row. Such a taxon therefore reaches
 \code{\link{generate_regional_proximity_evidence}} labelled
 \strong{zero-bbox} -- priced as having no records in the search polygon at
-all, and re-queried from GBIF to find its nearest one. That claim is false.
-The records exist, they are in the bbox, and their distance is already
-known exactly from the occurrence table. The information was not merely
-lost; it was discarded and then replaced by a coarser estimate from a
-second data source, with nothing reporting the substitution.
+all, and re-queried from GBIF to find its nearest one. That claim is false:
+the records exist, they are in the bbox, and their distance is already
+known exactly from the occurrence table.
 
 \strong{Not the same thing as a habitat-agnostic prior.} A
 \code{main_habitat} of \code{NA} in a PRIORS table means "matches any
@@ -162,16 +157,14 @@ resident row and adding evidence would double-count it. Whether it
 \code{\link{estimate_kernel_priors}} applies downstream of the stratum --
 a year window, for instance. A taxon whose only in-stratum records fall
 outside such a filter is skipped here, keeps no resident row, and stays on
-the zero-bbox path exactly as before. That is the pre-existing behaviour and
-it errs toward under-recovery, which is the safe direction: this function
-can only ever fail to rescue a taxon, never inflate one. Read the returned
-row count as a lower bound on the affected population, not the whole of it.
+the zero-bbox path. This errs toward under-recovery, the safe direction:
+this function can only ever fail to rescue a taxon, never inflate one. Read
+the returned row count as a lower bound on the affected population.
 
-\strong{Scale.} On PtConception 12S this population was 31,383 unassigned
-points before a pre-fetch scope filter and 145 after it -- 99.9\% of the
-records that motivated this function were out-of-scope birds that should
-never have been fetched. Expect a small residual, and treat a large one as
-a scope-filter problem first.
+\strong{Scale.} Expect a small residual. A large number of unassigned
+points usually means records outside the study scope (e.g. out-of-scope
+taxa) that should have been removed by a scope filter before fetching;
+treat a large one as a scope-filter problem first.
 
 \strong{Not alongside the kernel's own unplaceable-record rule.}
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} can count the same records itself, at their

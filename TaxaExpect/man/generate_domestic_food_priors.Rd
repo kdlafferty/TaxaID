@@ -211,19 +211,17 @@ Each is checked against \code{TaxaFetch::fetch_inat_occurrence_counts(
 prior row if that check finds real local casual-grade
 (cultivated/garden) evidence. Default \code{NULL}.}
 \item{Open discovery (automatic, requires \code{match_list_taxa})}{
-The reason a live-check channel exists at all: a fixed list, however
-extensive, cannot anticipate every real cultivated escapee. When
+A fixed list cannot anticipate every real cultivated escapee. When
 \code{match_list_taxa} is supplied, any match-list taxon not already
 covered by a fixed list or an existing modelled prior
 (\code{taxaexpect_priors}), and whose \code{taxonomy}-supplied
 \code{phylum} is \code{"Streptophyta"} or \code{"Tracheophyta"}
 (land plants -- both spellings needed, since
 \code{TaxaMatch::convert_taxonomy_backbone()}'s per-column NCBI
-fallback means either can legitimately appear in one dataset), is
-added as an open candidate for exactly this reason -- deliberately
-NOT pre-restricted to \code{known_cultivar_taxa} or any other list,
-since restricting the discovery channel to what's already known
-would defeat its purpose. See \code{@section Match-list gating}.}
+fallback means either can appear in one dataset), is added as an open
+candidate -- deliberately NOT pre-restricted to
+\code{known_cultivar_taxa} or any other list. See
+\code{@section Match-list gating}.}
 }
 }
 
@@ -247,37 +245,29 @@ cannot be cleaned to a valid binomial/genus is dropped with a
 \section{Match-list gating}{
 
 \code{match_list_taxa = NULL} (the default): every fixed-list channel is
-checked in full,
-regardless of whether those taxa have any bearing on your actual data.
-This is simple, but wasteful in a real
-workflow -- most fixed-list taxa were never even detected this run, so
-checking them (each a real iNaturalist API call) buys nothing.
+checked in full, regardless of whether those taxa have any bearing on your
+data. This is simple but wasteful: most fixed-list taxa were never detected
+this run, and each check is a real iNaturalist API call.
 
-Supplying \code{match_list_taxa} (the taxa that actually have a
-likelihood this run -- e.g. \code{unique(match_obj$species)} or
+Supplying \code{match_list_taxa} (the taxa that actually have a likelihood
+this run -- e.g. \code{unique(match_obj$species)} or
 \code{unique(lik_result$likelihoods$taxon_name[taxon_name_rank ==
-"species"])}) changes this: every channel (the three fixed lists AND
-any user-supplied \code{candidate_plant_taxa}) is first restricted to
-the intersection with \code{match_list_taxa}, and the residual --
-match-list taxa left over after that restriction and after excluding
-anything already carrying a named prior in \code{taxaexpect_priors} --
-becomes the pool for the open-discovery channel described above. This
-is the actual point of supplying it: fewer, more meaningful iNaturalist
-calls (most real candidates are already covered by a fixed list or
-already have real GBIF evidence), and a genuine chance to catch a
-cultivated species nothing anticipated.
+"species"])}) restricts every channel (the three fixed lists AND any
+user-supplied \code{candidate_plant_taxa}) to the intersection with
+\code{match_list_taxa}, and the residual -- match-list taxa left over after
+that restriction and after excluding anything already carrying a named
+prior in \code{taxaexpect_priors} -- becomes the pool for the
+open-discovery channel. The result is fewer, more meaningful iNaturalist
+calls and a chance to catch a cultivated species nothing anticipated.
 
 \code{taxaexpect_priors} is optional even when \code{match_list_taxa} is
-supplied -- omitting it just means the residual pool is a superset of
-the minimum necessary (a few more candidates get checked than strictly
-needed), never a correctness problem.
+supplied -- omitting it just means a few more candidates get checked than
+strictly needed, never a correctness problem.
 
-The open-discovery step is silently skipped (with a \code{message()},
-not a \code{warning()}) whenever \code{taxonomy} lacks a \code{phylum}
-column -- there is no safe way to scope an unrestricted live-check pool
-to plausible taxa without it, and checking, say, every unreferenced
-protozoan or diatom against iNaturalist would be both wasteful and
-pointless.
+The open-discovery step is skipped (with a \code{message()}, not a
+\code{warning()}) whenever \code{taxonomy} lacks a \code{phylum} column:
+there is no safe way to scope an unrestricted live-check pool to plausible
+taxa without it.
 }
 
 \section{What this does NOT fix}{
@@ -287,12 +277,10 @@ Cross-genus reference gaps (e.g. \emph{Bison bison} anchored reads with
 observation) are unaffected -- \code{TaxaLikely::restore_suppressed_candidates()}
 only pulls same-genus congeners. This function only changes the PRIOR
 for a species already under consideration; it does not expand candidate
-sets. See \code{[[project_taxaflag_domestic_species_floor_note]]} for the
-full real-data finding this design responds to, including why
-\emph{Homo sapiens} sequence-level resolution already works fine without
-this fix (strong matches resolve correctly regardless of prior magnitude)
--- this function's value is the categorical flag plus help for weaker/
-degraded matches, not sequence resolution itself.
+sets. Strong sequence matches (e.g. \emph{Homo sapiens}) resolve correctly
+regardless of prior magnitude; this function's value is the categorical
+flag plus help for weaker or degraded matches, not sequence resolution
+itself.
 }
 
 \section{Why habitat is always NA here, deliberately}{
@@ -305,13 +293,10 @@ stamping a real habitat value here -- the correct fix lives in
 \code{TaxaAssign::join_priors()}, which reads a \code{NA main_habitat}
 named-species prior row as applying to ANY habitat at that \code{grid_id}
 (its own dedicated fallback tier, ranked below a real per-habitat match but
-above the generic dark-diversity floor). A row here that predates this
-fallback tier, or predates \code{taxon_name_rank} being set at all (both
-fixed the same session), was silently defeated by \code{join_priors()}'s
-primary composite-key join for any workflow using habitat-scoped priors --
-confirmed on real GreatLakes2023 data (a real \emph{Gadus morhua} row never
-matched; the observation fell back to the ordinary group-dark-diversity
-prior, theta_mean off by ~3.4x from what this function intended).
+above the generic dark-diversity floor). Without that tier, or without
+\code{taxon_name_rank} set, \code{join_priors()}'s primary composite-key
+join silently defeats the row under habitat-scoped priors and the
+observation falls back to the ordinary dark-diversity prior.
 }
 
 \examples{

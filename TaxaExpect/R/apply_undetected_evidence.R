@@ -62,10 +62,9 @@
 #' two-point presence mixture, uncertainty about w cancels out of the
 #' marginal variance) -- it records how much weight the presence claim
 #' carries against future evidence, for the confirmation update.
-#' Blending toward \code{theta_singleton} (rather than, say, multiplying the
-#' floor's own alpha by a factor) gives this a principled ceiling for free:
-#' at \code{w_combined = 1} the elevated prior equals the singleton-mirror
-#' mean exactly, so external evidence -- however strong -- can never make an
+#' Blending toward \code{theta_singleton} gives a ceiling: at
+#' \code{w_combined = 1} the elevated prior equals the singleton-mirror mean
+#' exactly, so external evidence -- however strong -- can never make an
 #' unobserved species look more plausible than one genuinely detected once.
 #'
 #' \strong{Ceiling anchor ladder (datasets without singletons):} when
@@ -88,50 +87,41 @@
 #' compete with observed ones.
 #'
 #' \code{pricing = "curve"} has no analogous veto bound: \code{theta_present}
-#' is priced from \code{mass/f1} (see \code{\link{estimate_kernel_priors}}'s
-#' own roxygen), pinned to exactly the neighborhood's own singleton mean,
-#' which makes the curve veto bound a fixed \code{((1-m)/m) = 19} at the
-#' default \code{min_posterior = 0.05} for every group, always -- unreachable
-#' for any admissible weight \code{<= 1} and therefore never informative.
-#' Pricing off \code{f1} rather than Chao (which can divide by a thin
-#' doubleton count and push the price above the singleton mean) is what keeps
-#' this bound unreachable. Prints \code{f1} (and, for a multi-group fit, the
-#' whole per-group budget) next to the price for transparency, but names no
-#' bound.
+#' is priced from \code{mass/f1} (see \code{\link{estimate_kernel_priors}}),
+#' pinned to exactly the neighborhood's own singleton mean, which makes the
+#' curve veto bound a fixed \code{((1-m)/m) = 19} at the default
+#' \code{min_posterior = 0.05} for every group -- unreachable for any
+#' admissible weight \code{<= 1} and therefore never informative. Pricing off
+#' \code{f1} rather than Chao keeps it unreachable. The call prints \code{f1}
+#' (and, for a multi-group fit, the whole per-group budget) next to the price,
+#' but names no bound.
 #'
 #' @section Per-group curve pricing:
 #' A \code{model_obj} fitted with \code{sampling_group_col} carries one
-#' Good-Turing budget PER GROUP, and those budgets are not interchangeable. On
-#' real PtConception 18S data (the \code{kernel_budget_18S_sampling_groups.R}
-#' diagnostic, TaxaID_dev repository)
-#' they span \strong{1859x} across the ten groups present -- 441x restricting
-#' to groups the assay can actually amplify, or to groups with at least 100
-#' effective records -- and the single pooled price sits BELOW all seven priced
-#' groups, so it is not even a compromise between them. Under
+#' Good-Turing budget PER GROUP, and those budgets are not interchangeable
+#' (on real multi-group data they can span orders of magnitude, and a single
+#' pooled price can sit below every priced group). Under
 #' \code{pricing = "curve"} each taxon is therefore priced at its own group's
 #' \code{theta_present}, resolved from \code{sampling_group}.
 #'
-#' \strong{The guards.} Per-group budgets fail in ways a pooled one does not,
-#' and every failure below was measured on that real data, not imagined:
+#' \strong{The guards.} Per-group budgets fail in ways a pooled one does not:
 #' \itemize{
-#'   \item \emph{No anchor.} 3 of 10 groups had \code{f1 = 0} -- no budget at
-#'     all, since \code{theta_present = missing_mass / f1} is undefined there.
-#'   \item \emph{Too thin to trust.} A group with 24 effective records priced a
-#'     single unseen species at \code{0.755} -- 75% of its own community.
-#'     \code{min_group_n_eff}/\code{min_group_f1} exclude these.
+#'   \item \emph{No anchor.} A group with \code{f1 = 0} has no budget at all,
+#'     since \code{theta_present = missing_mass / f1} is undefined there.
+#'   \item \emph{Too thin to trust.} A group with very few effective records
+#'     can price a single unseen species at a large share of its own
+#'     community. \code{min_group_n_eff}/\code{min_group_f1} exclude these.
 #' }
-#' A third possible guard, capping a group's price at its own singleton mean,
-#' is unnecessary: \code{theta_present} IS the singleton mean by construction
-#' (\code{mass/f1}), so there is nothing left for a cap to bound.
+#' No cap at the group's singleton mean is needed: \code{theta_present} IS the
+#' singleton mean by construction (\code{mass/f1}).
 #'
 #' A group failing the guards is priced by \code{group_fallback}. The
 #' \code{"pooled_qualifying"} price combines the qualifying groups GROUP-WISE
-#' and never by re-pooling records (which would reintroduce the very \code{f1}
+#' and never by re-pooling records (which would reintroduce the \code{f1}
 #' inflation per-group pricing exists to remove): unseen-species counts and
 #' missing masses both add across disjoint groups, giving the missing mass of
-#' the union expressed as a share of the union's own singleton count -- the
-#' same \code{mass/f1} formula as any single qualifying group, applied to the
-#' union.
+#' the union as a share of the union's own singleton count -- the same
+#' \code{mass/f1} formula as any single qualifying group.
 #'
 #' Every row records \code{sampling_group} and \code{pricing_basis}
 #' (\code{"own_group"} or \code{"pooled_qualifying"}), and the call prints the
@@ -139,11 +129,10 @@
 #' never silent.
 #'
 #' \strong{Single-group fits are untouched.} The guards police borrowing
-#' BETWEEN groups, which only exists once there is more than one group. With
-#' one group the caller has asserted the whole stratum is a single detection
-#' process; that assertion is not second-guessed here (its \code{f1}/\code{f2}
-#' are printed, and \code{\link{kernel_budget_sensitivity}()} is the tool for
-#' interrogating it).
+#' BETWEEN groups. With one group the caller has asserted the whole stratum is
+#' a single detection process; that assertion is not second-guessed here (its
+#' \code{f1}/\code{f2} are printed, and
+#' \code{\link{kernel_budget_sensitivity}()} is the tool for interrogating it).
 #'
 #' @section Combining multiple sources for one taxon:
 #' When more than one evidence row names the same taxon (e.g. a regional-
@@ -151,21 +140,17 @@
 #' species), the weights combine via
 #' \code{w_combined = 1 - prod(1 - weight_i)} and the presence-claim
 #' confidences combine via \code{p_conc_combined = sum(p_conc_i)}
-#' (independent pseudo-observation counts add). \strong{This assumes the evidence sources are independent
-#' readers of different underlying facts} -- e.g. a curated invasion-biology
-#' database and raw occurrence geography are evidentially unrelated, not two
-#' noisy reads of the same signal. This is NOT a safe assumption for every
-#' possible pair of sources: this exact codebase already found that a plain
-#' maximum or probabilistic-OR combination across CORRELATED confirmations
-#' (e.g. several observations independently reviewed by one classifier that
-#' structurally cannot separate two similar species) manufactures spurious
-#' confidence that renormalization does not undo (see
-#' \code{TaxaAssign::update_prior_from_consensus()}'s confirmation-quantile
-#' design and its own documented rejection of noisy-OR for exactly this
-#' reason). Before combining a new evidence source with an existing one,
-#' confirm they are independent in this sense -- two sources both ultimately
-#' derived from the same underlying occurrence database would need this
-#' revisited, not assumed safe by default.
+#' \strong{This assumes the evidence sources are independent readers of
+#' different underlying facts} -- e.g. a curated invasion-biology database and
+#' raw occurrence geography are evidentially unrelated, not two noisy reads of
+#' the same signal. It is NOT safe for every pair of sources: a plain maximum
+#' or probabilistic-OR combination across CORRELATED confirmations (e.g.
+#' several observations reviewed by one classifier that cannot separate two
+#' similar species) manufactures spurious confidence that renormalization does
+#' not undo (see \code{TaxaAssign::update_prior_from_consensus()}'s
+#' confirmation-quantile design). Before combining a new evidence source with
+#' an existing one, confirm they are independent; two sources both derived
+#' from the same underlying occurrence database would need this revisited.
 #'
 #' @section Which species are eligible:
 #' Only taxa with \strong{no row anywhere} in \code{taxaexpect_priors} are
@@ -184,13 +169,12 @@
 #' (invasive-watch, regional-proximity) are opposite claims about the same
 #' zero-local-record fact: the former is plausible because the species is
 #' transported/food-handled near the site (a contamination-risk signal,
-#' unrelated to whether a wild population exists), the latter is plausible
-#' because a real wild population might actually be present. OR-combining
-#' them would conflate two different questions into one number. A taxon
-#' flagged by both mechanisms is a real, interesting case, but belongs
-#' surfaced as two distinct reviewer-facing caveats (see
-#' \code{TaxaFlag::add_posthoc_assessment()}'s existing
-#' \code{domestic_prior_caveat}), not collapsed here.
+#' unrelated to whether a wild population exists), the latter because a real
+#' wild population might be present. OR-combining them would conflate two
+#' questions into one number. A taxon flagged by both mechanisms is surfaced
+#' as two distinct reviewer-facing caveats (see
+#' \code{TaxaFlag::add_posthoc_assessment()}'s \code{domestic_prior_caveat}),
+#' not collapsed here.
 #'
 #' @param taxaexpect_priors Data frame. Must already contain the
 #'   \code{undetected_type == "global_floor"} row from
