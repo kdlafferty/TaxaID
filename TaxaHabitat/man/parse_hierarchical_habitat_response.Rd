@@ -102,6 +102,18 @@ columns. Do not add a numeric column to this table without checking that
 attribute is set: the type scan is the fallback, and it would absorb the new
 column as an extra habitat weight.
 
+\strong{Compound labels:} when \code{habitat_scheme} is a prompt object
+whose scheme declares \code{parts}, the model returns the compounds' PARTS as
+columns and this function derives each compound label's weight from its
+parts (the sum of their shares, capped at 1, or the max; see
+\code{\link{build_habitat_prompt}}'s \code{compound_rule}), so the
+compound is never below any part. The
+output then carries the scheme's own labels (the compounds and the plain
+labels) as its habitat columns, declared in the \code{"habitat_cols"}
+attribute, with the part columns kept after them for inspection. The
+sum-to-1 check runs over the columns the model returned, not over the
+derived ones.
+
 \strong{Weight normalisation:} Weights are NOT renormalised. A warning is
 emitted for any row where weights deviate more than 0.05 from 1.0.
 

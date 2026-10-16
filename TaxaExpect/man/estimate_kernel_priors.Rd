@@ -263,6 +263,21 @@ records whatsoever -- it only re-enters via the evidence pathway
 on top of whatever this function already omitted.
 }
 
+\section{Habitat is not a kernel covariate (measured, left out)}{
+
+Habitat enters this estimator as a record FILTER (the site stratum) and,
+with \code{habitat_weights}, as a per-record weight for unplaceable records. A
+third form, treating habitat as a dimension of the product kernel through a
+declared habitat-to-habitat similarity, was built and measured against the
+Great Lakes pool and deliberately left out: leave-one-block-out prediction
+of the in-habitat composition got WORSE at every similarity strength (loss
+3.375 at strength 0, 3.426 at 0.25, 3.487 at 0.5, 3.594 at 1, against a
+no-space reference of 3.623), and a taxon-affinity weight on every
+off-habitat record performed the same as the similarity. Habitat is an
+unordered categorical variable with no metric, so any such kernel is a
+declared table rather than a measurement; the data did not support one.
+}
+
 \examples{
 set.seed(1)
 occ <- data.frame(

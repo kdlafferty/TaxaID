@@ -9,7 +9,8 @@ build_habitat_prompt(
   extra_covariates = character(0),
   chunk_size = 60L,
   habitat_scheme = NULL,
-  geographic_context = NULL
+  geographic_context = NULL,
+  compound_rule = c("sum", "max")
 )
 }
 \arguments{
@@ -27,7 +28,9 @@ Larger lists are split into multiple chunks automatically. Reduce if
 your LLM has a small context window; increase cautiously for APIs with
 large windows.}
 
-\item{habitat_scheme}{A dataframe defining the habitat classification to use,
+\item{habitat_scheme}{A dataframe defining the habitat classification to use.
+An optional \code{parts} column declares a COMPOUND label's real parts
+(pipe-delimited habitat names; see the section \emph{Compound labels}),
 the string \code{"IUCN_L1"}, or \code{NULL}.
 \code{NULL} (default) uses a simple three-category scheme:
 Marine, Freshwater, Terrestrial. This is always a valid starting point
@@ -42,6 +45,13 @@ region where these species were observed (e.g. \code{"Southern California"},
 \code{"Chesapeake Bay watershed"}). When non-NULL, the prompt includes a
 geographic context block and requests an additional \code{ecoregion_best_guess}
 column from the LLM. Default \code{NULL} (no geographic context).}
+
+\item{compound_rule}{\code{"sum"} (default) or \code{"max"}: how a compound
+label's weight is derived from its parts. The parts are disjoint shares of
+the species' habitat use that sum to 1 with the plain labels, so the
+union's share is their SUM (capped at 1); \code{"max"} takes the largest
+part instead, which never falls below a component either but discards the
+other parts' shares. Ignored when no scheme row declares \code{parts}.}
 }
 \value{
 An object of class \code{c("habitat_prompt", "llm_prompt")}, which
@@ -80,6 +90,37 @@ review.
 \strong{Output shape from the LLM:} The LLM returns a CSV with one row per
 species. Each listed habitat is a column containing a numeric weight
 (0.0-1.0). All habitat weights plus \code{Other_weight} sum to 1.0.
+}
+\section{Compound labels}{
+
+A scheme label that names several habitats at once (\code{"Coastal-Marine-
+Estuary-Stream"} for a stream-fed lagoon) is one column to the model, and a
+model scores one column as one habitat: in practice it reads the marine words
+and ignores the rest, so a stream fish can score \emph{lower} on the compound
+than on \code{"Coastal-Stream"}, a label the compound contains. A scheme
+row may therefore DECLARE the label's real parts in a \code{parts} column,
+a pipe-delimited list of habitat names (\code{"Marine|Estuary|Stream"} for
+the lagoon; \code{"Stream"} for \code{"Coastal-Stream"}, because "Coastal"
+is a modifier, not a habitat). The model then never sees the compound as a
+scorable column: it weights the parts (a part that is itself a plain label
+is asked once and serves both), and a species that uses ANY part of a site
+uses the site, so the compound's weight is the SUM of its parts' shares,
+capped at 1 (\code{compound_rule = "sum"}): it is never below any part, by
+construction. The alternative \code{"max"} keeps only the largest part;
+because the model's sum-to-1 budget is spread over more columns once a
+compound is split, \code{"max"} systematically LOWERS the compound for the
+species that use several of its parts (an estuarine resident scored 0.5
+Estuary + 0.3 Marine + 0.1 Stream reads 0.5 under max, 0.9 under sum).
+The derived column is NOT part of the sum-to-1 constraint (the parts are), so
+a lookup built this way has scheme columns that can sum above 1; every
+consumer in this ecosystem reads a weight as a per-habitat affinity, not as
+a share, so that is harmless, and the breadth statistic renormalises. Parts
+are declared, never derived from a label's spelling: splitting
+"Coastal-Stream" on its hyphen would score "Coastal" as a habitat and hand
+every marine species a coastal share. The returned object records the
+mapping in \code{$compounds} and the scheme's own labels in
+\code{$scheme_cols}; \code{$habitat_cols} is what the model is asked to
+output. Only a single-level scheme may declare parts.
 \code{habitat_best_guess} is a free-text column populated only when
 \code{Other_weight > 0}; it records the LLM's best description of the
 species' actual habitat for scheme review.
@@ -101,6 +142,7 @@ is split into chunks and one prompt string is built per chunk. Each chunk
 is self-contained. Chunks must be submitted and parsed independently; do
 not concatenate prompts before submitting.
 }
+
 \examples{
 taxa <- c("Gadus morhua", "Sebastes mystinus", "Oncorhynchus mykiss")
 
