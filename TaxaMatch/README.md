@@ -101,7 +101,16 @@ match_df <- filter_redundant_hypotheses(match_df)
     [Reference Accession Quality](#reference-accession-quality)
 -   `evaluate_reference_accessions()`: BLAST-based reference-accession
     quality screen; see [Reference Accession
-    Quality](#reference-accession-quality)
+    Quality](#reference-accession-quality). The trimming gate asks
+    whether a deposit exceeds its marker's longest plausible length, not
+    the amplicon the queries actually cover, so a full-length deposit
+    can be screened whole and its percent identities then describe a
+    wider region than the queries. `query_over_amplicon` marks every
+    such row and a call containing any of them warns once with the count
+    and the median and longest submitted length; `query_len_submitted`
+    and `query_trim_path` report what was submitted and how it was
+    trimmed. What is submitted is unchanged -- this makes the
+    miscalibration visible rather than correcting it
 -   `score_reference_labels()`: combines the local and BLAST checks
     into one `reference_action` verdict per accession
 -   `flag_incongruent_references()` / `remove_incongruent_references()`:

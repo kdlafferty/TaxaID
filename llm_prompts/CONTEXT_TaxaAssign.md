@@ -291,12 +291,20 @@ joined     <- join_priors(likelihoods, priors,       # priors from TaxaExpect
                                       main_habitat = "Marine"),
                           backbone_id = 11)          # 11 = GBIF; 4 = NCBI
 posteriors <- compute_posterior(joined)
-consensus  <- posterior_consensus(posteriors, backbone_id = 11)
+consensus  <- posterior_consensus(posteriors)            # LCA, the default
 
-# Round 2: confirmation update, then consensus again
-updated    <- update_prior_from_consensus(posteriors, consensus)
-consensus  <- posterior_consensus(updated, backbone_id = 11)
+# Round 2: confirmation update within each sample, then consensus again
+# with the same settings (posterior_consensus() attaches them to its result)
+updated    <- update_prior_from_consensus(posteriors, consensus,
+                                          detections = detections,  # observation_id x sample_id
+                                          group_cols = "sample_id")
+consensus  <- posterior_consensus(updated)
 head(consensus)
+
+# The credible-node method, a more conservative option (see Statistical Methods).
+# backbone_id lets the cross-phylum rule compare phyla by lineage, not by name.
+consensus_cn <- posterior_consensus(posteriors, consensus_method = "credible_node",
+                                    backbone_id = 11)
 ```
 
 ### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
