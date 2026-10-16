@@ -356,3 +356,54 @@ test_that("prompt quoting instruction only mentions ecoregion_best_guess when ge
 })
 
 # ==============================================================================
+
+# ---- compound labels (compound_sep) ----------------------------------------
+
+test_that("compound_sep splits a compound label into the parts the model is asked for", {
+  scheme <- data.frame(
+    l1_name = c("Deepwater", "Coastal-Marine-Estuary-Stream", "Coastal-Stream", "Lake"),
+    stringsAsFactors = FALSE
+  )
+  p <- suppressMessages(build_habitat_prompt("Pimephales promelas", habitat_scheme = scheme, compound_sep = "-"))
+  # asked columns: plain labels plus each distinct part, once, in scheme order
+  expect_identical(p$habitat_cols, c("Deepwater", "Coastal", "Marine", "Estuary", "Stream", "Lake"))
+  # the scheme's own labels are kept for the output
+  expect_identical(p$scheme_cols, scheme$l1_name)
+  expect_identical(names(p$compounds), c("Coastal-Marine-Estuary-Stream", "Coastal-Stream"))
+  expect_identical(p$compounds[["Coastal-Stream"]], c("Coastal", "Stream"))
+  txt <- p$prompts[[1]]
+  expect_true(grepl("COMPOUND LABELS", txt, fixed = TRUE))
+  expect_true(grepl("'Coastal-Stream' = Coastal + Stream", txt, fixed = TRUE))
+  expect_true(grepl("Stream  [part of: Coastal-Marine-Estuary-Stream; Coastal-Stream]", txt, fixed = TRUE))
+  # the compound never appears as a REQUIRED column
+  lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+  req <- lines[which(grepl("^REQUIRED COLUMNS", lines)) + 1L]
+  expect_false(grepl("Coastal-Stream", req, fixed = TRUE))
+  expect_true(grepl("Deepwater, Coastal, Marine, Estuary, Stream, Lake, Other_weight", req, fixed = TRUE))
+})
+
+test_that("compound_sep = NULL leaves a hyphenated label as one plain column", {
+  scheme <- data.frame(l1_name = c("Coastal-Stream", "Lake"), stringsAsFactors = FALSE)
+  p <- suppressMessages(build_habitat_prompt("x", habitat_scheme = scheme))
+  expect_identical(p$habitat_cols, c("Coastal-Stream", "Lake"))
+  expect_identical(p$scheme_cols, p$habitat_cols)
+  expect_length(p$compounds, 0L)
+  expect_false(grepl("COMPOUND LABELS", p$prompts[[1]], fixed = TRUE))
+})
+
+test_that("a label with the separator but a single part stays plain; a part shared with a plain label is asked once", {
+  scheme <- data.frame(l1_name = c("Stream", "Coastal-Stream", "Lake-"), stringsAsFactors = FALSE)
+  p <- suppressMessages(build_habitat_prompt("x", habitat_scheme = scheme, compound_sep = "-"))
+  expect_identical(p$habitat_cols, c("Stream", "Coastal", "Lake-"))
+  expect_identical(names(p$compounds), "Coastal-Stream")
+})
+
+test_that("compound_sep is validated and refused on a two-level scheme", {
+  scheme <- data.frame(l1_name = c("A-B", "C"), stringsAsFactors = FALSE)
+  expect_error(build_habitat_prompt("x", habitat_scheme = scheme, compound_sep = ""), "compound_sep")
+  expect_error(build_habitat_prompt("x", habitat_scheme = scheme, compound_sep = c("-", "/")), "compound_sep")
+  expect_error(
+    suppressMessages(build_habitat_prompt("x", habitat_scheme = example_habitat_scheme, compound_sep = "-")),
+    "single-level"
+  )
+})

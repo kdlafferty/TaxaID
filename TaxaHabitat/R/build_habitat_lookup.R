@@ -64,6 +64,11 @@
 #'   directory, e.g. `file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))`.
 #' @param extra_covariates,chunk_size,geographic_context Passed to
 #'   [build_habitat_prompt()].
+#' @param compound_sep Passed to [build_habitat_prompt()]: `NULL` (default) or
+#'   the separator that marks a compound scheme label (`"-"`). With it, the
+#'   model scores each compound's parts and the compound's weight is the max
+#'   over them; see that function's *Compound labels* section. It is part of
+#'   the cache key, so switching it on re-classifies every taxon once.
 #' @param cache_tag Character (default `""`). Free-text component of the
 #'   cache key; change it to force fresh verdicts (e.g. after a model change).
 #' @param pause_seconds,verbose Passed to `TaxaTools::prompt_api()`.
@@ -94,7 +99,8 @@ build_habitat_lookup <- function(taxon_list,
                                  geographic_context = NULL,
                                  cache_tag = "",
                                  pause_seconds = 1,
-                                 verbose = TRUE) {
+                                 verbose = TRUE,
+                                 compound_sep = NULL) {
   if (!is.character(taxon_list) || length(taxon_list) == 0L) {
     stop("build_habitat_lookup: 'taxon_list' must be a non-empty character vector.")
   }
@@ -120,13 +126,16 @@ build_habitat_lookup <- function(taxon_list,
     extra_covariates = extra_covariates,
     chunk_size = chunk_size,
     habitat_scheme = habitat_scheme,
-    geographic_context = geographic_context
+    geographic_context = geographic_context,
+    compound_sep = compound_sep
   ))
+  out_hab_cols <- probe$scheme_cols %||% probe$habitat_cols
   shared_key <- paste(c(
     "v1", cache_tag,
     paste(probe$habitat_cols, collapse = "|"),
     paste(sort(extra_covariates), collapse = "|"),
-    geographic_context %||% ""
+    geographic_context %||% "",
+    compound_sep %||% ""
   ), collapse = "")
 
   cache_hits <- NULL
@@ -171,7 +180,8 @@ build_habitat_lookup <- function(taxon_list,
       extra_covariates = extra_covariates,
       chunk_size = chunk_size,
       habitat_scheme = habitat_scheme,
-      geographic_context = geographic_context
+      geographic_context = geographic_context,
+      compound_sep = compound_sep
     )
     raw <- TaxaTools::prompt_api(
       prompt,
@@ -216,12 +226,12 @@ build_habitat_lookup <- function(taxon_list,
     # would fill those with NA -- silently, and permanently for any taxon whose
     # verdict is already cached. Deriving it instead means no cache-key bump and
     # no re-running the LLM over thousands of already-settled taxa.
-    out[["habitat_breadth"]] <- .compute_habitat_breadth(out, probe$habitat_cols)
+    out[["habitat_breadth"]] <- .compute_habitat_breadth(out, out_hab_cols)
     # Declare the weight columns (see parse_hierarchical_habitat_response()).
     # bind_rows() drops attributes, so this is set after the combine, not
     # inherited from either input.
     attr(out, "habitat_cols") <- c(
-      probe$habitat_cols,
+      out_hab_cols,
       if ("Other_weight" %in% names(out)) "Other_weight"
     )
   }

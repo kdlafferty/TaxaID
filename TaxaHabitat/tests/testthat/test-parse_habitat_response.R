@@ -247,3 +247,47 @@ test_that("a headerless single-taxon response is parsed when the prompt's layout
                                                          habitat_scheme = prompt))
   )
 })
+
+# ---- compound labels: derived as the max over the parts --------------------
+
+test_that("a compound label's weight is the max over its parts and the scheme's labels are the habitat columns", {
+  scheme <- data.frame(
+    l1_name = c("Coastal-Marine-Estuary-Stream", "Coastal-Stream", "Lake"),
+    stringsAsFactors = FALSE
+  )
+  p <- suppressMessages(build_habitat_prompt(c("Pimephales promelas", "Mugil cephalus"),
+    habitat_scheme = scheme, compound_sep = "-"))
+  raw <- paste(
+    "taxon_name,Coastal,Marine,Estuary,Stream,Lake,Other_weight,habitat_best_guess",
+    "Pimephales promelas,0.00,0.00,0.10,0.40,0.50,0.00,",
+    "Mugil cephalus,0.30,0.50,0.20,0.00,0.00,0.00,",
+    sep = "\n"
+  )
+  out <- parse_hierarchical_habitat_response(raw, taxon_list = p$taxa, habitat_scheme = p)
+  # the compound is never below any part
+  fm <- out[out$taxon_name == "Pimephales promelas", ]
+  expect_equal(fm[["Coastal-Marine-Estuary-Stream"]], 0.40)   # max(0, 0, 0.10, 0.40)
+  expect_equal(fm[["Coastal-Stream"]], 0.40)                  # max(0, 0.40)
+  expect_equal(fm[["Lake"]], 0.50)
+  mc <- out[out$taxon_name == "Mugil cephalus", ]
+  expect_equal(mc[["Coastal-Marine-Estuary-Stream"]], 0.50)
+  expect_equal(mc[["Coastal-Stream"]], 0.30)
+  # declared habitat columns are the scheme's labels, not the parts
+  expect_identical(attr(out, "habitat_cols"), c(scheme$l1_name, "Other_weight"))
+  # the parts are kept for inspection, after the scheme columns
+  expect_true(all(c("Coastal", "Marine", "Estuary", "Stream") %in% names(out)))
+  expect_lt(match("Lake", names(out)), match("Coastal", names(out)))
+  # argmax and breadth run over the scheme's labels
+  expect_identical(fm$Habitat, "Lake")
+  expect_identical(mc$Habitat, "Coastal-Marine-Estuary-Stream")
+  expect_equal(fm$habitat_breadth, 1 / sum((c(0.4, 0.4, 0.5) / 1.3)^2))
+})
+
+test_that("a part absent from the response leaves the compound at the max of what was returned", {
+  scheme <- data.frame(l1_name = c("A-B", "C"), stringsAsFactors = FALSE)
+  p <- suppressMessages(build_habitat_prompt("x sp", habitat_scheme = scheme, compound_sep = "-"))
+  raw <- "taxon_name,A,C,Other_weight,habitat_best_guess\nx sp,0.7,0.3,0,"
+  out <- suppressWarnings(parse_hierarchical_habitat_response(raw, taxon_list = "x sp", habitat_scheme = p))
+  expect_equal(out[["A-B"]], 0.7)
+  expect_equal(out[["B"]], 0)
+})

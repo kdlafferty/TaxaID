@@ -9,7 +9,8 @@ build_habitat_prompt(
   extra_covariates = character(0),
   chunk_size = 60L,
   habitat_scheme = NULL,
-  geographic_context = NULL
+  geographic_context = NULL,
+  compound_sep = NULL
 )
 }
 \arguments{
@@ -42,6 +43,16 @@ region where these species were observed (e.g. \code{"Southern California"},
 \code{"Chesapeake Bay watershed"}). When non-NULL, the prompt includes a
 geographic context block and requests an additional \code{ecoregion_best_guess}
 column from the LLM. Default \code{NULL} (no geographic context).}
+
+\item{compound_sep}{\code{NULL} (default) or a single string, e.g. \code{"-"}.
+When supplied, any single-level scheme label that contains it is read as
+a COMPOUND of the parts it joins: \code{"Coastal-Marine-Estuary-Stream"}
+is the union of Coastal, Marine, Estuary and Stream. The LLM is then asked
+to weight each distinct part as a habitat column of its own (alongside the
+scheme's plain labels), and the compound label's weight is derived by
+\code{\link{parse_hierarchical_habitat_response}} as the MAXIMUM over its
+parts. See the section \emph{Compound labels}. Only single-level schemes
+may carry compounds; a two-level scheme with \code{compound_sep} errors.}
 }
 \value{
 An object of class \code{c("habitat_prompt", "llm_prompt")}, which
@@ -80,6 +91,25 @@ review.
 \strong{Output shape from the LLM:} The LLM returns a CSV with one row per
 species. Each listed habitat is a column containing a numeric weight
 (0.0-1.0). All habitat weights plus \code{Other_weight} sum to 1.0.
+}
+\section{Compound labels}{
+
+A scheme label that names several habitats at once (\code{"Coastal-Marine-
+Estuary-Stream"} for a stream-fed lagoon) is one column to the model, and a
+model scores one column as one habitat: in practice it reads the marine words
+and ignores the rest, so a stream fish can score \emph{lower} on the compound
+than on \code{"Coastal-Stream"}, a label the compound contains. With
+\code{compound_sep} the model never sees the compound as a scorable column.
+It weights the parts, and a species that uses ANY part of a site uses the
+site, so the compound's weight is the maximum over its parts: it is never
+below any component, by construction. The derived column is NOT part of the
+sum-to-1 constraint (the parts are), so a lookup built this way has scheme
+columns that can sum above 1; every consumer in this ecosystem reads a weight
+as a per-habitat affinity, not as a share, so that is harmless, and the
+breadth statistic renormalises. The returned object records the mapping in
+\code{$compounds} and the scheme's own labels in \code{$scheme_cols};
+\code{$habitat_cols} is what the model is asked to output. A part that is
+also a plain scheme label is asked once and serves both.
 \code{habitat_best_guess} is a free-text column populated only when
 \code{Other_weight > 0}; it records the LLM's best description of the
 species' actual habitat for scheme review.
@@ -101,6 +131,7 @@ is split into chunks and one prompt string is built per chunk. Each chunk
 is self-contained. Chunks must be submitted and parsed independently; do
 not concatenate prompts before submitting.
 }
+
 \examples{
 taxa <- c("Gadus morhua", "Sebastes mystinus", "Oncorhynchus mykiss")
 

@@ -264,6 +264,15 @@
 #'   (e.g. \code{c("Invasive", "Migratory")}) only when you intend to use
 #'   the trait information downstream; extra covariates add tokens and output
 #'   columns that are ignored by the rest of the habitat pipeline.
+#' @param compound_sep \code{NULL} (default) or a single string, e.g. \code{"-"}.
+#'   When supplied, any single-level scheme label that contains it is read as
+#'   a COMPOUND of the parts it joins: \code{"Coastal-Marine-Estuary-Stream"}
+#'   is the union of Coastal, Marine, Estuary and Stream. The LLM is then asked
+#'   to weight each distinct part as a habitat column of its own (alongside the
+#'   scheme's plain labels), and the compound label's weight is derived by
+#'   \code{\link{parse_hierarchical_habitat_response}} as the MAXIMUM over its
+#'   parts. See the section \emph{Compound labels}. Only single-level schemes
+#'   may carry compounds; a two-level scheme with \code{compound_sep} errors.
 #' @param habitat_scheme A dataframe defining the habitat classification to use,
 #'   the string \code{"IUCN_L1"}, or \code{NULL}.
 #'   \code{NULL} (default) uses a simple three-category scheme:
@@ -306,6 +315,24 @@
 #' \strong{Output shape from the LLM:} The LLM returns a CSV with one row per
 #' species. Each listed habitat is a column containing a numeric weight
 #' (0.0-1.0). All habitat weights plus \code{Other_weight} sum to 1.0.
+#'
+#' @section Compound labels:
+#' A scheme label that names several habitats at once (\code{"Coastal-Marine-
+#' Estuary-Stream"} for a stream-fed lagoon) is one column to the model, and a
+#' model scores one column as one habitat: in practice it reads the marine words
+#' and ignores the rest, so a stream fish can score \emph{lower} on the compound
+#' than on \code{"Coastal-Stream"}, a label the compound contains. With
+#' \code{compound_sep} the model never sees the compound as a scorable column.
+#' It weights the parts, and a species that uses ANY part of a site uses the
+#' site, so the compound's weight is the maximum over its parts: it is never
+#' below any component, by construction. The derived column is NOT part of the
+#' sum-to-1 constraint (the parts are), so a lookup built this way has scheme
+#' columns that can sum above 1; every consumer in this ecosystem reads a weight
+#' as a per-habitat affinity, not as a share, so that is harmless, and the
+#' breadth statistic renormalises. The returned object records the mapping in
+#' \code{$compounds} and the scheme's own labels in \code{$scheme_cols};
+#' \code{$habitat_cols} is what the model is asked to output. A part that is
+#' also a plain scheme label is asked once and serves both.
 #' \code{habitat_best_guess} is a free-text column populated only when
 #' \code{Other_weight > 0}; it records the LLM's best description of the
 #' species' actual habitat for scheme review.
@@ -353,10 +380,17 @@ build_habitat_prompt <- function(
   extra_covariates = character(0),
   chunk_size = 60L,
   habitat_scheme = NULL,
-  geographic_context = NULL
+  geographic_context = NULL,
+  compound_sep = NULL
 ) {
   if (!is.character(taxon_list) || length(taxon_list) == 0) {
     stop("build_habitat_prompt: 'taxon_list' must be a non-empty character vector.")
+  }
+  if (!is.null(compound_sep)) {
+    if (!is.character(compound_sep) || length(compound_sep) != 1L ||
+      is.na(compound_sep) || !nzchar(compound_sep)) {
+      stop("build_habitat_prompt: 'compound_sep' must be NULL or a single non-empty string.")
+    }
   }
   if (!is.character(extra_covariates)) {
     stop("build_habitat_prompt: 'extra_covariates' must be a character vector.")
@@ -437,13 +471,30 @@ build_habitat_prompt <- function(
     habitat_cols <- unique(scheme$l1_name)
   }
 
+  # Compound labels: the scheme's own labels are what consumers read back
+  # (scheme_cols); the columns the model is asked for (habitat_cols) replace
+  # each compound by its parts. See the "Compound labels" section.
+  scheme_cols <- habitat_cols
+  compounds <- list()
+  if (!is.null(compound_sep)) {
+    if (has_l2_rows) {
+      stop(
+        "build_habitat_prompt: 'compound_sep' is only supported for a ",
+        "single-level scheme (l1_name only)."
+      )
+    }
+    sp <- .split_compound_levels(habitat_cols, compound_sep)
+    compounds <- sp$compounds
+    habitat_cols <- sp$asked
+  }
+
   chunks <- split(taxon_list, ceiling(seq_along(taxon_list) / chunk_size))
   n_chunks <- length(chunks)
 
   prompts <- lapply(chunks, function(chunk_taxa) {
     .build_single_prompt(
       chunk_taxa, extra_covariates, scheme, habitat_cols,
-      geographic_context
+      geographic_context, compounds
     )
   })
 
@@ -454,6 +505,9 @@ build_habitat_prompt <- function(
       chunks             = chunks,
       scheme             = scheme,
       habitat_cols       = habitat_cols,
+      scheme_cols        = scheme_cols,
+      compounds          = compounds,
+      compound_sep       = compound_sep,
       extra_covariates   = extra_covariates,
       geographic_context = geographic_context,
       chunk_size         = chunk_size,
@@ -484,6 +538,12 @@ print.habitat_prompt <- function(x, ...) {
     ))
   }
   cat(sprintf("  Habitats:    %d columns (+ Other_weight)\n", length(x$habitat_cols)))
+  if (length(x$compounds %||% list()) > 0L) {
+    cat(sprintf(
+      "  Compounds:   %d scheme label(s) derived as the max over their parts\n",
+      length(x$compounds)
+    ))
+  }
   if (!is.null(x$geographic_context)) {
     cat(sprintf("  Geographic:  %s\n", x$geographic_context))
   }
@@ -506,7 +566,7 @@ print.habitat_prompt <- function(x, ...) {
 #' Build one prompt string for a chunk of taxa
 #' @noRd
 .build_single_prompt <- function(taxon_chunk, extra_covariates, scheme, habitat_cols,
-                                 geographic_context = NULL) {
+                                 geographic_context = NULL, compounds = list()) {
   species_block <- paste(paste0('"', trimws(taxon_chunk), '"'), collapse = ", ")
 
   # ---- Shared weight-column instructions -------------------------------------
@@ -610,6 +670,31 @@ print.habitat_prompt <- function(x, ...) {
       "The column name for each habitat is its exact name as listed above ",
       "(e.g. '", habitat_cols[1], "').\n\n"
     )
+  } else if (length(compounds) > 0L) {
+    # The model is asked for the PARTS of each compound label, never for the
+    # compound itself; each part is annotated with the label(s) it belongs to
+    # so a modifier such as "Coastal" is read in its scheme context.
+    part_of <- vapply(habitat_cols, function(h) {
+      owners <- names(compounds)[vapply(compounds, function(cc) h %in% cc, logical(1))]
+      if (length(owners) == 0L) "" else paste0("  [part of: ", paste(owners, collapse = "; "), "]")
+    }, character(1))
+    hab_block <- paste(sprintf("  %s%s", habitat_cols, part_of), collapse = "\n")
+    class_header <- paste0(
+      "HABITAT CLASSES:\n",
+      "(the classification uses compound labels; each compound is listed here ",
+      "as its component habitats, and you score the COMPONENTS)\n"
+    )
+    col_note <- paste0(
+      "The column name for each habitat is its exact name as listed above ",
+      "(e.g. '", habitat_cols[1], "').\n",
+      "COMPOUND LABELS: ",
+      paste(vapply(names(compounds), function(cn) {
+        sprintf("'%s' = %s", cn, paste(compounds[[cn]], collapse = " + "))
+      }, character(1)), collapse = "; "),
+      ". Do NOT output a column for a compound label; its weight is derived ",
+      "afterwards as the maximum over its components. Score each component as ",
+      "the habitat it names, in the context of the compound(s) it belongs to.\n\n"
+    )
   } else {
     hab_block <- paste(sprintf("  %s", scheme$l1_name), collapse = "\n")
     class_header <- "HABITAT CLASSES:\n"
@@ -645,6 +730,34 @@ print.habitat_prompt <- function(x, ...) {
     "SPECIES LIST:\n",
     species_block
   )
+}
+
+# ==============================================================================
+# .split_compound_levels() -- internal helper
+# ==============================================================================
+
+#' Split compound scheme labels into the columns the model is asked for
+#'
+#' A label containing `sep` with at least two non-empty parts is a compound.
+#' Returns `asked` (plain labels plus the distinct parts, in first-seen scheme
+#' order, each once) and `compounds` (a named list, compound -> its parts).
+#' A label with `sep` but fewer than two non-empty parts is kept as a plain
+#' label.
+#' @noRd
+.split_compound_levels <- function(levels, sep) {
+  compounds <- list()
+  asked <- character(0)
+  for (lv in levels) {
+    parts <- trimws(strsplit(lv, sep, fixed = TRUE)[[1L]])
+    parts <- unique(parts[nzchar(parts)])
+    if (grepl(sep, lv, fixed = TRUE) && length(parts) >= 2L) {
+      compounds[[lv]] <- parts
+      asked <- c(asked, parts)
+    } else {
+      asked <- c(asked, lv)
+    }
+  }
+  list(asked = unique(asked), compounds = compounds)
 }
 
 # ==============================================================================
