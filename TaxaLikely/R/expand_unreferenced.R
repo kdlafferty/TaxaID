@@ -185,6 +185,16 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
 
   # ---- normalise case for matching --------------------------------------------
   unref <- unreferenced_df
+  # Input shapes: a row with no species name cannot be a hypothesis; a species
+  # listed twice (for the same observation scope) is one hypothesis, not two.
+  no_name <- is.na(unref$species) | !nzchar(trimws(as.character(unref$species)))
+  if (any(no_name)) {
+    message(sprintf("expand_unreferenced_hypotheses: %d unreferenced_df row(s) with no species name dropped.", sum(no_name)))
+    unref <- unref[!no_name, , drop = FALSE]
+  }
+  dup_key <- paste(tolower(trimws(unref$species)),
+                   if ("observation_id" %in% names(unref)) unref$observation_id else NA, sep = "\r")
+  if (anyDuplicated(dup_key)) unref <- unref[!duplicated(dup_key), , drop = FALSE]
   unref$genus_lc <- tolower(trimws(unref$genus))
   unref$family_lc <- tolower(trimws(unref$family))
   # observation_id is optional. A row with NA (or an absent
@@ -262,7 +272,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
       if (h2_genus_lc %in% h1_genus_rank_lc) {
         # Genus already covered by a genus-rank specific_candidate -- drop all.
         genus_sp_all <- unref[
-          unref$genus_lc == h2_genus_lc &
+          unref$genus_lc %in% h2_genus_lc &
             (is.na(unref$observation_id) | unref$observation_id == sid), ,
           drop = FALSE
         ]
@@ -272,7 +282,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         new_rows[[3L]] <- h2[1L, , drop = FALSE] # generic H2 kept
         n_h2_generic_kept <- n_h2_generic_kept + 1L
         genus_sp <- unref[
-          unref$genus_lc == h2_genus_lc &
+          unref$genus_lc %in% h2_genus_lc &
             (is.na(unref$observation_id) | unref$observation_id == sid), ,
           drop = FALSE
         ]
@@ -316,7 +326,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
       # Exclude: H2 genus (handled above), species already H1, genera covered
       # by genus-rank H1 rows.
       family_sp <- unref[
-        unref$family_lc == h3_family_lc &
+        unref$family_lc %in% h3_family_lc &
           !unref$genus_lc %in% h2_genus_lc &
           !tolower(trimws(unref$species)) %in% h1_species_lc &
           !unref$genus_lc %in% h1_genus_rank_lc &
@@ -338,7 +348,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
       }
 
       n_h3_covered <- n_h3_covered + sum(
-        unref$family_lc == h3_family_lc &
+        unref$family_lc %in% h3_family_lc &
           !unref$genus_lc %in% h2_genus_lc &
           (tolower(trimws(unref$species)) %in% h1_species_lc |
             unref$genus_lc %in% h1_genus_rank_lc) &
