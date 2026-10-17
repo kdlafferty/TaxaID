@@ -177,6 +177,28 @@ test_that(".get_llm_caller() survives a closure in the function slot", {
     "unknown"
   )
 
+  # An anonymous call in the function slot deparses to several lines. It
+  # must be skipped, not deparsed into a label such as "(function(x) {".
+  anon_call <- quote((function(x) {
+    a <- 1
+    a + x
+  })(1))
+  expect_gt(length(deparse(anon_call[[1L]])), 1L)
+  expect_identical(
+    TaxaTools:::.get_llm_caller(list(anon_call, quote(review_assignments(x)))),
+    "review_assignments"
+  )
+
+  # tryCatch's internal frames never label a caller.
+  expect_identical(
+    TaxaTools:::.get_llm_caller(list(
+      quote(tryCatchList(expr, names, parentenv, handlers)),
+      quote(doTryCatch(return(expr), name, parentenv, handler)),
+      quote(review_assignments(x))
+    )),
+    "review_assignments"
+  )
+
   # pkg::fn still labels by its full name.
   expect_identical(
     TaxaTools:::.get_llm_caller(list(quote(TaxaFlag::review_assignments(x)))),
@@ -193,4 +215,5 @@ test_that(".get_llm_caller() returns one string under a real do.call() on a clos
   out <- do.call(long_fn, list())
   expect_type(out, "character")
   expect_length(out, 1L)
+  expect_false(out %in% c("tryCatchList", "tryCatchOne", "doTryCatch"))
 })
