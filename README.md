@@ -903,9 +903,9 @@ describe each in full.
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
 | TaxaMatch   | 30                 | 22         | Yes      |
-| TaxaLikely  | 33                 | 39         | Yes      |
+| TaxaLikely  | 33                 | 40         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 14                 | 23         | Yes      |
+| TaxaAssign  | 14                 | 24         | Yes      |
 | TaxaFlag    | 16                 | 19         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
