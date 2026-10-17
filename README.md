@@ -905,7 +905,7 @@ describe each in full.
 | TaxaMatch   | 30                 | 22         | Yes      |
 | TaxaLikely  | 33                 | 39         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 14                 | 22         | Yes      |
+| TaxaAssign  | 14                 | 23         | Yes      |
 | TaxaFlag    | 16                 | 19         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
