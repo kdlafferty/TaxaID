@@ -23,14 +23,19 @@
 )
 
 #' @noRd
-.get_llm_caller <- function() {
-  calls <- sys.calls()
+.get_llm_caller <- function(calls = sys.calls()) {
   # Walk from the outermost frame inward; return the first user-visible name
   for (i in seq_along(calls)) {
-    fn <- tryCatch(deparse(calls[[i]][[1L]]), error = function(e) "")
-    fn <- trimws(fn)
-    if (nzchar(fn) && !startsWith(fn, ".") && !fn %in% .skip_fns &&
-      !grepl("^\\$|^::|\\[", fn)) {
+    f <- calls[[i]][[1L]]
+    # Only a name (or pkg::name) labels a caller. do.call(fun_object, ...)
+    # puts the closure itself in this slot, and deparsing a closure gives its
+    # whole source -- a long vector that made `&&` below error after the API
+    # reply had already returned.
+    if (!is.symbol(f) && !is.call(f)) next
+    fn <- tryCatch(deparse(f, nlines = 1L)[1L], error = function(e) "")
+    fn <- trimws(fn %||% "")
+    if (length(fn) == 1L && !is.na(fn) && nzchar(fn) && !startsWith(fn, ".") &&
+      !fn %in% .skip_fns && !grepl("^\\$|^::|\\[", fn)) {
       return(fn)
     }
   }
