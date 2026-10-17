@@ -829,9 +829,10 @@ review_assignments <- function(input_df,
     # Bump the version whenever the prompt text changes in a way that can
     # move a verdict: the key holds the inputs, not the prompt, so a cached
     # verdict from the old wording would otherwise be served as a hit.
-    # v3: the poor-absolute-fit guideline.
+    # v3: the poor-absolute-fit guideline. v4: the no-reference line is
+    # keyed on the reviewed label's own row type, not the call's.
     .shared <- paste(c(
-      "v3", target_group %||% "", marker %||% "", data_type,
+      "v4", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1293,48 +1294,64 @@ review_assignments <- function(input_df,
         })
       }
     }
-    # Where the CALL landed on an unreferenced row, no reference sequence
-    # exists for the named taxon: the sequence settled that an unreferenced
-    # relative beats every referenced candidate, and the NAME came from the
-    # occurrence records in that row's scope. Sibling named rows carry
-    # identical likelihoods, so the sequence cannot choose between them at
-    # all. The reviewer is told the scope and its RANK, because an
-    # order-rank scope is an elimination over a very wide clade, and whether
-    # the records offered one candidate or several, because several means the
-    # prior broke a tie rather than the sequence resolving one.
+    # "No reference sequence" is a claim about the NAMED taxon the reviewer
+    # sees -- the label -- not about the row the call landed on. The two
+    # differ: a unit called at a family ring can carry a referenced species as
+    # its label (the first plausible taxon), and units sharing one label are
+    # reviewed together. Keying the line on consensus_hypothesis_type alone
+    # told the reviewer a referenced species had no reference (Mugu: Carassius
+    # auratus, 76 12S references, rated geographically "unlikely" on it).
+    #
+    # So the label's own row type is read where it is known: from
+    # consensus_hypothesis_type when the label IS consensus_taxon, from
+    # winner_hypothesis_type when the label is the first plausible taxon (the
+    # winner row). Only a NAMED unreferenced species qualifies: a generic ring
+    # ("Salmo", "Cottus") carries a clade's name, and the clade may well have
+    # references that the read simply did not match. A label shown as
+    # referenced in any unit of the group gets no line; a label whose type
+    # cannot be read gets none either.
     if (has_prov) {
-      ht <- input_df[["consensus_hypothesis_type"]][rows]
-      # `startsWith` rather than the exact ring-type ladder, which lives in
-      # TaxaAssign and is not reachable from here. Over-inclusion is the right
-      # direction for a caution signal (see the note above), and it cannot
-      # silently miss a rank added to that ladder later.
-      unref <- !is.na(ht) & startsWith(ht, "unreferenced_")
-      if (any(unref)) {
+      lab <- label_vec[rows]
+      ct <- if ("consensus_taxon" %in% names(input_df)) as.character(input_df[["consensus_taxon"]][rows]) else rep(NA_character_, length(rows))
+      cht <- as.character(input_df[["consensus_hypothesis_type"]][rows])
+      wht <- if ("winner_hypothesis_type" %in% names(input_df)) as.character(input_df[["winner_hypothesis_type"]][rows]) else rep(NA_character_, length(rows))
+      first_pl <- if ("plausible_taxa" %in% names(input_df) && is.list(input_df[["plausible_taxa"]])) {
+        vapply(input_df[["plausible_taxa"]][rows], function(v) if (length(v)) as.character(v[[1L]]) else NA_character_, character(1))
+      } else {
+        rep(NA_character_, length(rows))
+      }
+      sc_all <- if (has_scope) as.character(input_df[["consensus_unreferenced_scope"]][rows]) else rep(NA_character_, length(rows))
+      # Without a consensus_taxon column the label is taken to be the call.
+      is_call <- if ("consensus_taxon" %in% names(input_df)) !is.na(ct) & lab == ct else rep(TRUE, length(rows))
+      is_first <- !is_call & !is.na(first_pl) & lab == first_pl
+      lab_type <- ifelse(is_call, cht, ifelse(is_first, wht, NA_character_))
+      binomial <- grepl(" ", lab, fixed = TRUE)
+      named_unref <- !is.na(lab_type) & lab_type == "unreferenced_species" & binomial &
+        (!is_call | is.na(sc_all) | sc_all != lab)
+      shown_referenced <- !is.na(lab_type) & !startsWith(lab_type, "unreferenced_")
+      if (any(named_unref) && !any(shown_referenced)) {
         msg <- "named taxon has NO reference sequence"
-        if (has_scope) {
-          sc <- input_df[["consensus_unreferenced_scope"]][rows][unref]
-          scr <- input_df[["consensus_unreferenced_scope_rank"]][rows][unref]
-          k <- which(!is.na(sc))[1L]
-          if (!is.na(k)) {
-            nn <- if ("consensus_scope_n_named" %in% names(input_df)) {
-              suppressWarnings(max(
-                input_df[["consensus_scope_n_named"]][rows][unref], na.rm = TRUE
-              ))
-            } else {
-              NA_real_
-            }
-            how <- if (!is.finite(nn) || is.na(nn)) {
-              ""
-            } else if (nn <= 1) {
-              "; the only such species recorded in that scope"
-            } else {
-              sprintf("; chosen by occurrence records among %d recorded there", as.integer(nn))
-            }
-            msg <- sprintf(
-              "%s -- name supplied by the occurrence records for %s (%s)%s",
-              msg, sc[k], scr[k], how
-            )
+        k <- which(named_unref & is_call & !is.na(sc_all))[1L]
+        if (has_scope && !is.na(k)) {
+          scr <- as.character(input_df[["consensus_unreferenced_scope_rank"]][rows])
+          nn <- if ("consensus_scope_n_named" %in% names(input_df)) {
+            suppressWarnings(max(
+              input_df[["consensus_scope_n_named"]][rows][named_unref & is_call], na.rm = TRUE
+            ))
+          } else {
+            NA_real_
           }
+          how <- if (!is.finite(nn) || is.na(nn)) {
+            ""
+          } else if (nn <= 1) {
+            "; the only such species recorded in that scope"
+          } else {
+            sprintf("; chosen by occurrence records among %d recorded there", as.integer(nn))
+          }
+          msg <- sprintf(
+            "%s -- name supplied by the occurrence records for %s (%s)%s",
+            msg, sc_all[k], scr[k], how
+          )
         }
         parts <- c(parts, msg)
       }
