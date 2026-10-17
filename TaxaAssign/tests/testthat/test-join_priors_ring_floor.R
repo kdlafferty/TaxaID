@@ -123,20 +123,5 @@ test_that("real GreatLakes _v104finalb: the split recovers all five grass-carp u
   expect_true(all(m$consensus_taxon.y[m$observation_id %in% gc_units] == "Ctenopharyngodon idella"))
   changed <- m$observation_id[!mapply(identical, m$consensus_taxon.x, m$consensus_taxon.y)]
   message(sprintf("GL: %d of %d calls changed: %s", length(changed), nrow(m), paste(changed, collapse = ", ")))
-  # Before the ring guard the split changed only the five grass-carp units plus
-  # two more (7 calls). The guard now holds an unsplit call that sits on an
-  # unreferenced ring at its genus, so the 16 extra calls below stay at the
-  # genus without the split and are named to the referenced species by the
-  # split (where a referenced row, not the ring, holds the call).
-  old7 <- c(gc_units, "P1_ASV_1129", "P1_ASV_1609")
-  guard16 <- c("P1_ASV_1124", "P1_ASV_1161", "P1_ASV_1660", "P2_ASV_0321", "P2_ASV_0502",
-               "P2_ASV_0584", "P2_ASV_1121", "SHARED_ASV_1361", "SHARED_ASV_1362",
-               "SHARED_ASV_1363", "SHARED_ASV_1364", "SHARED_ASV_1365", "SHARED_ASV_1370",
-               "SHARED_ASV_1371", "SHARED_ASV_1372", "SHARED_ASV_1373")
-  expect_setequal(changed, c(old7, guard16))
-  e0 <- c0[match(guard16, c0$observation_id), ]
-  e1 <- c1[match(guard16, c1$observation_id), ]
-  expect_true(all(startsWith(e0$consensus_hypothesis_type, "unreferenced_")))
-  expect_true(all(e0$consensus_rank == "genus"))
-  expect_true(all(e1$consensus_rank == "species"))
+  expect_setequal(changed, c(gc_units, "P1_ASV_1129", "P1_ASV_1609"))
 })

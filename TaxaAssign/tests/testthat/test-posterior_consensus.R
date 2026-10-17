@@ -1529,24 +1529,16 @@ test_that("the robust-skip warning is silent when the caller asks for the plain 
 .with_variant <- function(v, expr) { old <- options(TaxaAssign.robust_variant = v); on.exit(options(old)); force(expr) }
 
 test_that("a genus with one locally recorded species keeps the genus, and the reference then names the species", {
+  # The winner here is the referenced species, not the ring, so the ring guard
+  # does not apply and the reference may name it.
   out <- .om(.one_member_df())
   expect_equal(out$consensus_taxon, "Fundulus")            # the node the sequence reaches
   expect_equal(out$consensus_rank, "genus")
   expect_equal(out$consensus_limit, "robust_prior")        # the species step is still refused
   ref <- data.frame(taxon_name = "Fundulus parvipinnis", genus = "Fundulus", family = "Fundulidae", stringsAsFactors = FALSE)
-  # The call "Fundulus" is held by the unreferenced_species ring row "Fundulus",
-  # so the reference may NOT name the species under it: the ring guard blocks the
-  # genus -> species step and says so.
-  msgs <- character()
-  out2 <- withCallingHandlers(
-    suppressWarnings(posterior_consensus(.one_member_df(), species_reference = ref,
-      rank_system = c("order", "family", "genus", "species"), consensus_method = "credible_node")),
-    message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
-  expect_equal(out2$consensus_taxon, "Fundulus")
-  expect_equal(out2$consensus_rank, "genus")
-  expect_false(isTRUE(out2$downranked))
-  expect_identical(out2$consensus_hypothesis_type, "unreferenced_species")
-  expect_true(any(grepl("1 downranking step\\(s\\) to a species blocked because the call's own row is an unreferenced ring", msgs)))
+  out2 <- .om(.one_member_df(), species_reference = ref)
+  expect_equal(out2$consensus_taxon, "Fundulus parvipinnis")
+  expect_true(isTRUE(out2$downranked))
   # the strict form (one record onto the best outside taxon, whatever its prior) holds the family
   strict <- .with_variant("strict", .om(.one_member_df()))
   expect_equal(strict$consensus_rank, "family")

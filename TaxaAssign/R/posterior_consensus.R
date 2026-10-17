@@ -280,11 +280,12 @@
 #'   `min_posterior = 0`. `FALSE` disables both checks, so the reference alone
 #'   decides.
 #'
-#'   Independently of this argument, a call whose own row is an unreferenced
-#'   ring is never downranked to a species: the ring holds the call because
-#'   the read did not match the clade's referenced species, so naming one of
-#'   them would contradict it. A coarser narrowing (family to genus) is still
-#'   taken. The blocked steps are counted in a message.
+#'   Independently of this argument, a call whose winning hypothesis (its
+#'   highest-posterior row, `winner_hypothesis_type`) is unreferenced is never
+#'   downranked to a species: the read fitted an unreferenced relative better
+#'   than any referenced candidate, so naming a referenced species would
+#'   contradict it. A coarser narrowing (family to genus) is still taken. The
+#'   blocked steps are counted in a message.
 #'
 #'   Why membership alone is not enough: `plausible_taxa` is PADDED whenever
 #'   `tail_pooled` is `TRUE`, because the tail block then joins the plausible
@@ -1164,20 +1165,17 @@ posterior_consensus <- function(posterior_df,
       .pre_taxon <- result$consensus_taxon
       .pre_rank <- result$consensus_rank
       .pre_resolved <- result$is_resolved
-      # Ring guard. A call whose own row is an unreferenced ring says the read
-      # did NOT match the referenced species of that clade, so narrowing it to
-      # one of them contradicts the call (CalIntertidal: genus Cottus, held by
-      # its ring, downranked to the referenced Cottus asper). Read from the
-      # same lookup that later reports consensus_hypothesis_type, on the call
-      # as it stands before downranking.
-      .pre_type <- .add_consensus_row_provenance(
-        result[, c("observation_id", "consensus_taxon"), drop = FALSE], posterior_df
-      )$consensus_hypothesis_type
-      result$.ring_call <- if (is.null(.pre_type)) {
-        rep(FALSE, nrow(result))
-      } else {
-        !is.na(.pre_type) & startsWith(ifelse(is.na(.pre_type), "", .pre_type), "unreferenced_")
-      }
+      # Ring guard. When the call's WINNER -- its highest-posterior hypothesis --
+      # is an unreferenced row, the read fitted "an unreferenced relative"
+      # better than any referenced candidate, so narrowing the call to a
+      # referenced species contradicts it (CalIntertidal: genus Cottus, won by
+      # its ring at 0.85, downranked to the referenced Cottus asper). Keyed on
+      # the winner, not on the row named like the call: a genus node always
+      # shares its name with its genus ring, though a referenced species may
+      # hold most of its mass (GreatLakes: Percina, won by the referenced and
+      # Lamar-corroborated P. maculata at 0.71, ring 0.24).
+      .wt <- if ("winner_hypothesis_type" %in% names(result)) as.character(result$winner_hypothesis_type) else rep(NA_character_, nrow(result))
+      result$.ring_call <- !is.na(.wt) & startsWith(ifelse(is.na(.wt), "", .wt), "unreferenced_")
       result <- .downrank_consensus(
         result, species_ref, rank_system_eff,
         require_candidate = downrank_requires_candidate,
@@ -2748,7 +2746,7 @@ posterior_consensus <- function(posterior_df,
         }
       }
 
-      # Never onto a species from a call its ring holds (see the ring guard in
+      # Never onto a species when the call's winner is unreferenced (see the ring guard in
       # posterior_consensus()); a coarser narrowing, family -> genus, stays.
       if (identical(finer_rank, finest_rank) && isTRUE(consensus_df$.ring_call[i])) {
         n_blocked_ring <- n_blocked_ring + 1L
@@ -2777,8 +2775,8 @@ posterior_consensus <- function(posterior_df,
   if (n_blocked_ring > 0L) {
     cli::cli_inform(paste0(
       "posterior_consensus: {n_blocked_ring} downranking step(s) to a species ",
-      "blocked because the call's own row is an unreferenced ring: the read did ",
-      "not match the clade's referenced species."
+      "blocked because the call's winning hypothesis is an unreferenced row: the ",
+      "read fitted an unreferenced relative better than any referenced candidate."
     ))
   }
   if (n_blocked_support > 0L) {

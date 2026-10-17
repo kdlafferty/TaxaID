@@ -125,7 +125,7 @@ test_that("a referenced specific_candidate row passes through unchanged", {
   out
 }
 .og_blocked_msg <- function(out, n = 1L) {
-  any(grepl(sprintf("%d downranking step\\(s\\) to a species blocked because the call's own row is an unreferenced ring", n),
+  any(grepl(sprintf("%d downranking step\\(s\\) to a species blocked because the call's winning hypothesis is an unreferenced row", n),
     attr(out, "msgs")))
 }
 .og_cottus_df <- function() data.frame(
@@ -264,3 +264,24 @@ for (sh in names(.og_shapes)) {
     })
   })
 }
+
+test_that("Percina shape: a genus node WON by a referenced species still downranks", {
+  # GreatLakes P1_ASV_0314: the genus node "Percina" shares its name with the
+  # Percina ring, but the winner is the referenced (and Lamar-corroborated)
+  # P. maculata at 0.71, the ring at 0.24. Keying the guard on the row named
+  # like the call blocked 8 such calls; it is keyed on the winner.
+  df <- data.frame(
+    observation_id = "E1",
+    taxon_name = c("Percina maculata", "Percina", "Percidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
+    family = "Percidae", genus = c("Percina", "Percina", NA),
+    species = c("Percina maculata", NA, NA),
+    posterior_point_est = c(0.71, 0.24, 0.05), stringsAsFactors = FALSE)
+  ref <- data.frame(taxon_name = "Percina maculata", genus = "Percina", family = "Percidae",
+    stringsAsFactors = FALSE)
+  out <- .og_call(df, ref)
+  expect_identical(out$consensus_taxon, "Percina maculata")
+  expect_true(isTRUE(out$downranked))
+  expect_false(.og_blocked_msg(out))
+})
