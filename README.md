@@ -903,10 +903,10 @@ describe each in full.
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
 | TaxaMatch   | 30                 | 22         | Yes      |
-| TaxaLikely  | 33                 | 37         | Yes      |
+| TaxaLikely  | 33                 | 39         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 14                 | 20         | Yes      |
-| TaxaFlag    | 16                 | 18         | Yes      |
+| TaxaAssign  | 14                 | 22         | Yes      |
+| TaxaFlag    | 16                 | 19         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 # U.S. Geological Survey Disclaimer
