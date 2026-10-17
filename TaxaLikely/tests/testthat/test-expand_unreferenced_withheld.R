@@ -1,7 +1,7 @@
-# Withheld rows of expand_unreferenced_hypotheses(): a species of a genus that
-# has references for this marker (a specific_candidate row ANYWHERE in
-# likelihood_df) is never named from a FAMILY ring; it is still named from its
-# genus ring. Fixtures are offline and mirror real Mugu units (numbers
+# Withheld rows of expand_unreferenced_hypotheses(): a species is never named from a FAMILY ring, whether or not its genus has references
+# (a specific_candidate row ANYWHERE in likelihood_df); it is named only from
+# its own genus ring, and every species so withheld is listed with a reason.
+# Fixtures are offline and mirror real Mugu units (numbers
 # simplified, shapes exact).
 
 .wh_lik <- function(obs, name, rank, type, score) {
@@ -37,7 +37,7 @@
   )
 }
 
-test_that("ASV_595: a species of a referenced genus is withheld from the family ring", {
+test_that("ASV_595: species of referenced and unreferenced genera are both withheld from the family ring", {
   unref <- .wh_unref(
     c("Menidia audens", "Leuresthes tenuis"),
     c("Menidia", "Leuresthes"), c("Atherinopsidae", "Atherinopsidae")
@@ -48,11 +48,10 @@ test_that("ASV_595: a species of a referenced genus is withheld from the family 
   )
   o <- out[out$observation_id == "ASV_595", ]
   expect_false("Menidia audens" %in% o$taxon_name)
-  # a genus with no references anywhere still borrows the family ring
-  leu <- o[o$taxon_name == "Leuresthes tenuis", ]
-  expect_equal(nrow(leu), 1L)
-  expect_equal(leu$hypothesis_type, "unreferenced_genus")
-  expect_equal(leu$score_likelihood, 1.0)
+  # a genus with no references anywhere is NOT named from the family ring
+  # either: it has no ring of its own in this unit
+  expect_false("Leuresthes tenuis" %in% o$taxon_name)
+  expect_equal(sum(o$hypothesis_type == "unreferenced_genus" & o$taxon_name_rank == "species"), 0L)
   # the generic family row is kept
   fam <- o[o$taxon_name == "Atherinopsidae", ]
   expect_equal(nrow(fam), 1L)
@@ -60,12 +59,12 @@ test_that("ASV_595: a species of a referenced genus is withheld from the family 
   w <- attr(out, "unreferenced_withheld")
   expect_s3_class(w, "data.frame")
   expect_identical(names(w), .wh_cols)
-  expect_equal(nrow(w), 1L)
-  expect_equal(w$observation_id, "ASV_595")
-  expect_equal(w$taxon_name, "Menidia audens")
-  expect_equal(w$genus, "Menidia")
-  expect_equal(w$family, "Atherinopsidae")
-  expect_equal(w$reason, "genus_referenced_unmatched")
+  expect_equal(nrow(w), 2L)
+  expect_equal(w$observation_id, c("ASV_595", "ASV_595"))
+  expect_equal(w$taxon_name, c("Menidia audens", "Leuresthes tenuis"))
+  expect_equal(w$genus, c("Menidia", "Leuresthes"))
+  expect_equal(w$family, c("Atherinopsidae", "Atherinopsidae"))
+  expect_equal(w$reason, c("genus_referenced_unmatched", "no_own_genus_ring"))
 })
 
 test_that("ASV_494: the genus-ring copy of a referenced-genus species stays", {
@@ -119,6 +118,7 @@ test_that("ASV_606: three referenced-genus species withheld; generic and genus r
   expect_setequal(w$taxon_name, sp)
   expect_equal(nrow(w), 3L)
   expect_true(all(w$observation_id == "ASV_606"))
+  expect_true(all(w$reason == "genus_referenced_unmatched"))
   expect_true(all(w$family == "Blenniidae"))
   expect_equal(sum(out$taxon_name == "Blenniidae" & out$hypothesis_type == "unreferenced_genus"), 1L)
   pb <- out[out$taxon_name == "Parablennius", ]
@@ -127,7 +127,7 @@ test_that("ASV_606: three referenced-genus species withheld; generic and genus r
   expect_equal(pb$score_likelihood, 0.59)
 })
 
-test_that("degenerate input: no specific_candidate anywhere warns once; family copy happens as before", {
+test_that("degenerate input: no specific_candidate anywhere raises no warning; family species are withheld as no_own_genus_ring", {
   lik <- rbind(
     .wh_lik("U1", "Fundulus", "genus", "unreferenced_species", 0.31),
     .wh_lik("U1", "Fundulidae", "family", "unreferenced_genus", 0.04)
@@ -144,15 +144,24 @@ test_that("degenerate input: no specific_candidate anywhere warns once; family c
       invokeRestart("muffleWarning")
     }
   )
-  expect_equal(sum(grepl("no specific_candidate rows", w_seen)), 1L)
-  expect_error(suppressMessages(suppressWarnings(
-    expand_unreferenced_hypotheses(lik, unref))), NA)
-  # With no genus known to have references nothing can be withheld, so the
-  # family ring is copied exactly as before this rule existed.
-  expect_equal(out$score_likelihood[out$taxon_name == "Lucania parva"], 0.04)
-  expect_equal(out$hypothesis_type[out$taxon_name == "Lucania parva"], "unreferenced_genus")
+  expect_length(w_seen, 0L)
+  expect_no_warning(suppressMessages(expand_unreferenced_hypotheses(lik, unref)))
+  # Lucania has no ring of its own: never named from the family ring
+  expect_false("Lucania parva" %in% out$taxon_name)
+  expect_equal(sum(out$hypothesis_type == "unreferenced_genus" & out$taxon_name_rank == "species"), 0L)
+  # Fundulus has its own genus ring and is still named from it
   expect_equal(out$score_likelihood[out$taxon_name == "Fundulus parvipinnis"], 0.31)
-  expect_equal(nrow(attr(out, "unreferenced_withheld")), 0L)
+  expect_equal(out$hypothesis_type[out$taxon_name == "Fundulus parvipinnis"], "unreferenced_species")
+  w <- attr(out, "unreferenced_withheld")
+  expect_equal(nrow(w), 1L)
+  expect_equal(w$taxon_name, "Lucania parva")
+  expect_equal(w$genus, "Lucania")
+  expect_equal(w$family, "Fundulidae")
+  expect_equal(w$observation_id, "U1")
+  expect_equal(w$reason, "no_own_genus_ring")
+  # the generic rows are kept
+  expect_equal(sum(out$taxon_name == "Fundulidae" & out$hypothesis_type == "unreferenced_genus"), 1L)
+  expect_equal(sum(out$taxon_name == "Fundulus" & out$hypothesis_type == "unreferenced_species"), 1L)
 })
 
 test_that("observation-scoped unreferenced row is withheld there and does not touch another unit", {
@@ -172,7 +181,7 @@ test_that("observation-scoped unreferenced row is withheld there and does not to
   expect_equal(sum(out$observation_id == "U1"), 2L)
 })
 
-test_that("the withheld attribute is present and empty, with its five columns, when nothing is withheld", {
+test_that("the withheld attribute has its five columns; a species of an unreferenced genus is withheld, not named", {
   lik <- rbind(
     .wh_lik("ESV_001", "Atherinops affinis", "species", "specific_candidate", 0.95),
     .wh_lik("ESV_001", "Fundulus", "genus", "unreferenced_species", 0.31),
@@ -183,9 +192,23 @@ test_that("the withheld attribute is present and empty, with its five columns, w
   w <- attr(out, "unreferenced_withheld")
   expect_s3_class(w, "data.frame")
   expect_identical(names(w), .wh_cols)
+  expect_equal(nrow(w), 1L)
+  expect_equal(w$taxon_name, "Lucania parva")
+  expect_equal(w$reason, "no_own_genus_ring")
+  expect_equal(sum(out$hypothesis_type == "unreferenced_genus" &
+    out$taxon_name_rank == "species"), 0L)
+})
+
+test_that("the withheld attribute is present and empty, with its five columns, when no family ring holds a local species", {
+  lik <- rbind(
+    .wh_lik("ESV_001", "Atherinops affinis", "species", "specific_candidate", 0.95),
+    .wh_lik("ESV_001", "Fundulidae", "family", "unreferenced_genus", 0.04)
+  )
+  out <- .wh_run(lik, .wh_unref("Cottus bairdii", "Cottus", "Cottidae"))
+  w <- attr(out, "unreferenced_withheld")
+  expect_s3_class(w, "data.frame")
+  expect_identical(names(w), .wh_cols)
   expect_equal(nrow(w), 0L)
-  expect_equal(out$taxon_name[out$hypothesis_type == "unreferenced_genus" &
-    out$taxon_name_rank == "species"], "Lucania parva")
 })
 
 # ---- input-shape grid --------------------------------------------------------
@@ -217,17 +240,19 @@ test_that("the withheld attribute is present and empty, with its five columns, w
   rbind(base, extra)
 }
 
-# Expected named species rows, by hand. Fundulus is never referenced here (the
-# only candidate is Atherinops), so nothing is withheld. Named rows exist only
-# where a ring exists; NA names are never emitted; duplicates collapse.
+# Expected rows, by hand. Fundulus is never referenced here (the only candidate
+# is Atherinops). A species is named only from its own genus ring (Fundulus,
+# when present); no family-ring species is ever named. Every species the family
+# ring would have named is withheld as no_own_genus_ring. NA names are never
+# emitted; duplicates collapse.
 .wh_grid_expect <- function(u, l) {
   has_genus <- l %in% c("with_genus_ring", "without_family_ring", "no_candidates")
   has_fam <- l %in% c("with_genus_ring", "without_genus_ring", "no_candidates")
   h2 <- if (has_genus) c("Fundulus parvipinnis", "Fundulus zebrinus") else character(0)
   fam_sp <- c("Lucania parva", if (u == "na_genus") "Gambusia affinis")
   fam_sp <- c(fam_sp, if (!has_genus) c("Fundulus parvipinnis", "Fundulus zebrinus"))
-  h3 <- if (has_fam) fam_sp else character(0)
-  list(h2 = sort(h2), h3 = sort(h3))
+  withheld <- if (has_fam) fam_sp else character(0)
+  list(h2 = sort(h2), h3 = character(0), withheld = sort(withheld))
 }
 
 for (u in c("plain", "duplicate_species", "na_genus", "na_species", "empty_family")) {
@@ -253,6 +278,9 @@ for (u in c("plain", "duplicate_species", "na_genus", "na_species", "empty_famil
         w <- attr(out, "unreferenced_withheld")
         expect_s3_class(w, "data.frame")
         expect_identical(names(w), .wh_cols)
+        expect_equal(sort(w$taxon_name), exp$withheld)
+        expect_true(all(w$reason == "no_own_genus_ring"))
+        expect_false(any(w$taxon_name %in% named$taxon_name))
       })
     })
   }
