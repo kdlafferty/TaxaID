@@ -947,6 +947,7 @@ update_prior_from_consensus <- function(result,
   ]
 
   updated_rows <- compute_posterior(unresolved_rows, n_sims = n_sims)
+  pooled_new <- attr(updated_rows, "pooled_rows", exact = TRUE)
 
   # --- Species guard (G6) ----------------------------------------------------------
   # Round 2 may not create a species call the likelihood alone does not make:
@@ -972,6 +973,11 @@ update_prior_from_consensus <- function(result,
       for (cc in g6_had) unresolved_rows[[cc]][rv] <- g6_orig[[cc]][rv]
       for (cc in setdiff(intersect(g6_cols, names(unresolved_rows)), g6_had)) unresolved_rows[[cc]][rv] <- NA
       redo <- compute_posterior(unresolved_rows[rv, , drop = FALSE], n_sims = n_sims)
+      # the reverted observations' pooled rows are those of the recompute
+      pooled_new <- rbind(
+        pooled_new[!(as.character(pooled_new$observation_id) %in% g6_reverted), , drop = FALSE],
+        attr(redo, "pooled_rows", exact = TRUE)
+      )
       updated_rows <- dplyr::bind_rows(
         updated_rows[!(as.character(updated_rows$observation_id) %in% g6_reverted), , drop = FALSE],
         redo
@@ -1009,6 +1015,17 @@ update_prior_from_consensus <- function(result,
       max_raise_factor            = max_raise_factor
     )
   )
+  # compute_posterior() pools negligible named unreferenced rows; keep the
+  # record for the recomputed observations and for the untouched ones.
+  pooled_old <- attr(result, "pooled_rows", exact = TRUE)
+  if (!is.null(pooled_new)) {
+    keep_old <- if (is.null(pooled_old)) NULL else {
+      pooled_old[as.character(pooled_old$observation_id) %in%
+        as.character(resolved_rows$observation_id), , drop = FALSE]
+    }
+    attr(out, "pooled_rows") <- rbind(keep_old, pooled_new)
+    attr(out, "pooled_min_posterior") <- attr(updated_rows, "pooled_min_posterior", exact = TRUE) %||% .POOL_MIN_POSTERIOR
+  }
   attr(out, "prior_update_groups") <- group_report
   attr(out, "round2_species_guard") <- g6_reverted
   out

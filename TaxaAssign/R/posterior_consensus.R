@@ -906,6 +906,16 @@ posterior_consensus <- function(posterior_df,
     min_posterior < 0 || min_posterior >= 1) {
     cli::cli_abort("{.arg min_posterior} must be a single number in [0, 1).")
   }
+  pooled_floor <- attr(posterior_df, "pooled_min_posterior", exact = TRUE)
+  pooled_rows <- attr(posterior_df, "pooled_rows", exact = TRUE)
+  if (is.numeric(pooled_floor) && length(pooled_floor) == 1L && min_posterior < pooled_floor &&
+    (!is.data.frame(pooled_rows) || nrow(pooled_rows) > 0L)) {
+    cli::cli_warn(
+      "{.arg min_posterior} ({min_posterior}) is below the pooling threshold \
+      ({pooled_floor}) of {.fn compute_posterior}: pooled rows below that \
+      threshold are not individually represented in {.arg posterior_df}."
+    )
+  }
   if (!is.null(species_reference) &&
     !is.data.frame(species_reference) &&
     !inherits(species_reference, "unreferenced_species_result")) {
