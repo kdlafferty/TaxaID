@@ -24,6 +24,16 @@ Takes the full PASTA catalog (from 'harvest_dataone_catalog') and a target bound
 
 **Value:** An object of classes 'c("geo_prompt", "llm_prompt")', a named list with elements: prompts List of prompt strings, one per chunk. chunks List of character vectors of descriptions, one per chunk. n_chunks Integer. n_items Integer. Number of unique descriptions sent to the LLM. descriptions Character vector. All unique descriptions submitted (in order matching the LLM index column). desc_to_ids Named list. Keys are descriptions, values are character vectors of dataset IDs that share that description. shortcut_accepted Character vector of dataset IDs pre-accepted via scope shortcut (bbox overlap confirmed without LLM). shortcut_rejected Character vector of dataset IDs pre-rejected via scope shortcut (bbox overlap impossible without LLM). catalog The full input catalog, for joining results back. bbox The input bbox.
 
+#### Details
+
+Returns a geo_prompt S3 object (also inheriting llm_prompt) that can be passed directly to prompt_api or prompt_manual.
+
+Scope shortcut: When scope_lookup is supplied, packages whose scope column starts with a listed prefix are pre-decided by comparing the scope's known bounding box against the query bbox. This avoids LLM calls for scopes you already know are in or out of range. The shortcut is entirely user-controlled -- no geographic knowledge is hardcoded in the package.
+
+Deduplication: Many datasets share identical geographicdescription values. Deduplication means the LLM sees each unique description exactly once; parse_geo_screening_response then fans the result back to all datasets sharing that description.
+
+NA descriptions: Datasets with NA or blank geographicdescription are excluded from LLM screening and recorded in $shortcut_rejected.
+
 ### build_pdf_extract_prompt(pdf_structure, single_site_coords = NULL, dpi = 150L, chunk_pages = FALSE, verbose = TRUE)
 
 Build a Stage 3 extraction prompt from a characterised PDF
@@ -57,6 +67,18 @@ Takes a geo-screened candidate tibble (or any catalog subset) and a plain- langu
 
 **Value:** An object of classes 'c("taxon_prompt", "llm_prompt")', a named list with elements: prompts List of prompt strings, one per chunk. chunks List of character vectors of dataset IDs, one per chunk. n_chunks Integer. n_items Integer. Number of datasets submitted to the LLM. ids Character vector. All dataset IDs submitted (in order matching the LLM index column). skipped_ids Character vector. Dataset IDs excluded because title, abstract, and keywords are all missing. taxon_scope The 'taxon_scope' string as supplied. geo_scope The 'geo_scope' string, or 'NULL'. catalog The input catalog, for joining results back.
 
+#### Details
+
+The LLM is given each dataset's title, abstract (truncated), and keywords as evidence. Datasets with none of these fields populated are excluded from LLM screening and flagged in $skipped_ids.
+
+Returns a taxon_prompt S3 object (also inheriting llm_prompt) that can be passed directly to prompt_api or prompt_manual.
+
+Evidence used: The prompt includes title, truncated abstract, and keywords for each dataset. This is more informative than geographicdescription alone for taxonomic inference. Column names are matched case-insensitively; missing columns are silently treated as blank.
+
+Bias towards inclusion: As with geographic screening, the prompt instructs the LLM to answer YES when uncertain. The intent is to avoid discarding datasets that have relevant records but vague metadata -- the EML screening and preview stages downstream will apply stricter filters.
+
+No deduplication: Unlike geographic screening, title + abstract content is usually unique per dataset, so deduplication is not applied.
+
 ### call_api_pdf(prompt, pdf_path, sections = c("methods", "results", "appendix"), page_map = NULL, dpi = 150L, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 4000L, api_key = NULL, base_url = NULL, verbose = TRUE)
 
 Send Selected PDF Pages to an LLM Vision API
@@ -79,6 +101,22 @@ Renders selected pages of a PDF as PNG images and sends them to a vision-capable
 | verbose | no | TRUE | Logical. Report page counts and section selection. Default TRUE. |
 
 **Value:** Character string. The raw text response from the model, suitable for passing directly to 'parse_pdf_extract_response' or 'screen_pdf_structure'. The '"model"' and '"provider"' attributes from 'call_api' are preserved on the return value.
+
+#### Details
+
+This is the Stage 3 engine for the PDF occurrence pipeline. Stages 1 and 2 use extract_pdf_text (text only, no API call). Stage 3 uses this function to send the methods and results pages as images, giving the model full visual fidelity on tables and layout.
+
+Dispatches via call_api, so the provider is resolved from options("TaxaID.provider") by default. Any vision-capable provider works: Anthropic (Claude Sonnet/Opus), Gemini (2.5 Flash/Pro), OpenAI (GPT-4o), or a local Ollama vision model such as llava-llama3.
+
+Page selection: Only pages belonging to the requested sections (as determined by .detect_pdf_sections) are rendered and sent. For a typical 15-page methods paper this reduces the page count from ~15 to ~5, saving approximately 15,000 input tokens per call.
+
+Page ordering: Pages are sent in document order regardless of section order, so the model sees a coherent reading sequence.
+
+No-header fallback: If section headers were not detected (has_headers = FALSE), all pages are sent regardless of the sections argument, and a warning is issued.
+
+Token cost estimate: At 150 dpi, each page image is approximately 1,500-2,000 input tokens. A 5-page targeted send costs roughly 8,000-10,000 input tokens plus the prompt.
+
+Provider and model selection: The function dispatches through call_api, so provider resolution, model tier lookup, and API key reading follow the same rules as all other TaxaID LLM calls. Set options(TaxaID.provider = "gemini") to switch providers session-wide, or pass provider explicitly for a single call.
 
 ### check_geographic_outliers(local_occurrences, min_local_n = 5L, min_occs = 7L, method = "distance", tdi = 1000, mltpl = 5, year_range = .gbif_default_year_range(), cache_dir = tools::R_user_dir("TaxaFetch", "cache"), candidate_taxa = NULL, candidate_scope = c("genus", "species", "all"), verdict_cache = TRUE, verbose = FALSE)
 
@@ -103,6 +141,14 @@ A bbox-scoped GBIF search (see 'get_gbif_occurrences') can return a single occur
 
 **Value:** 'local_occurrences' with three columns added: 'local_n' Number of records for this species in 'local_occurrences'. 'global_n_unique' Number of geographically unique global records found for this species. 'NA' for species never checked ('local_n >= min_local_n'). 'outlier_status' One of '"not_tested_sufficient_local_data"' (local_n >= min_local_n, never checked), '"insufficient_global_data"' (checked, but fewer than 'min_occs' unique global points - cannot compute a reliable dispersion statistic), '"outlier"' (flagged by 'cc_outl()'), or '"consistent"' (checked, not flagged). Never a bare logical - "not tested" and "tested and passed" are kept distinct throughout, mirroring 'check_inat_range''s 'range_status' convention. *Edge case:* a row whose 'species' is 'NA' can never match 'rare_species' ('NA %in% x' is always 'FALSE'), so it is left at its initial '"not_tested_sufficient_local_data"' value - the same status a genuinely well-supported species gets. It means "unknown identity, never checked" here, not "checked and fine"; treat it as untestable for a different reason than a rare species, not as a passed check.
 
+#### Details
+
+Why this needs a global fetch at all: local_occurrences comes from a bbox-scoped GBIF search, so a species with one local record has nothing else in the same dataset to compare it against -- cc_outl() needs a real distribution, not one point. The global fetch is gated to only the species below min_local_n, since a well-supported local species needs no such check and the global fetch is the expensive step. This is a targeted, per-species-rare extension of fetch_gbif_occurrences (geometry = NULL) -- see that function for rate-limit/retry/checkpoint behavior, all inherited unchanged here.
+
+min_occs is a real floor, not a formality: a species with too few unique global points (even after the global fetch) simply cannot support a reliable outlier test -- cc_outl() itself passes such species by default rather than testing them. This function makes that distinction explicit via "insufficient_global_data" rather than folding it into "consistent", so a downstream consumer never mistakes "we couldn't check" for "we checked and it's fine."
+
+cc_outl() is called once per species, not once for the whole batch: confirmed on real production data that its "distance" method silently switches EVERY species in a single call to a coarser raster approximation whenever ANY ONE species in that call has 10,000 or more records. A species rare in the local bbox can still be globally common, so calling cc_outl() once across every rare species let one common species silently degrade every other species' precision -- this cleared a real, obvious ~9,000 km outlier (a Mugu Pseudotolithus epipercus record) on first live use. Per-species calls scope that raster decision to each species' own record count, where it belongs; the extra R-level call overhead is negligible next to the GBIF fetch itself.
+
 ### check_inat_range(taxon_names, lat, lng, api_token = Sys.getenv("INAT_API_TOKEN"), cache_dir = NULL, verbose = FALSE)
 
 Check whether taxa fall within iNaturalist range polygons
@@ -119,6 +165,10 @@ For each taxon name, resolves the iNaturalist taxon ID, downloads the correspond
 | verbose | no | FALSE | Logical. If TRUE, prints progress for each taxon. Default FALSE. |
 
 **Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'name_match' (does the resolved iNat name equal the query, case-insensitively - FALSE flags a fuzzy-match resolution to a DIFFERENT taxon, which must never drive a prior elevation), 'rank', 'iconic_taxon_name', 'inat_kingdom', 'n_observations', 'in_range', 'range_status'. 'inat_kingdom' is derived from 'iconic_taxon_name' via a fixed lookup (no additional API call); compare against your own occurrence-database kingdom to detect taxon name collisions (e.g. a clam name matching a fungal genus).
+
+#### Details
+
+Intended for use on the dark diversity set: taxa detected by any method but absent from the regional occurrence database (i.e. lacking a TaxaExpect prior). Evidence is asymmetric: in_range = TRUE warrants a prior boost; in_range = FALSE should not suppress priors (false negatives are common for aquatic taxa due to low iNaturalist observer effort in marine systems). Use n_observations to gate the boost -- geomodel reliability scales with observation count. in_range = NA (no polygon exists) is neutral.
 
 ### dedupe_occurrences(occurrence_data, collapse_duplicate_occasions = TRUE, taxon_col = "scientificName", date_col = "eventDate", lat_col = "decimalLatitude", lon_col = "decimalLongitude", coord_precision = 3L)
 
@@ -137,6 +187,22 @@ Removes duplicate occurrence records from a single data frame via two independen
 | coord_precision | no | 3L | Integer. Decimal places lat_col/lon_col are rounded to before matching in collapse_duplicate_occasions. Default 3 (~111 m at the equator). Ignored if collapse_duplicate_occasions = FALSE. |
 
 **Value:** 'occurrence_data' as a tibble with duplicate rows removed. If a 'report_params' attribute is present (as attached by 'stack_occurrences'), its 'n_records' entry is refreshed to the post-dedup row count and a 'n_duplicates_removed' entry is added.
+
+#### Details
+
+gbifID deduplication: If occurrence_data has a gbifID column, rows with a duplicated non-NA gbifID are dropped (first occurrence kept). This is defense-in-depth against the same GBIF record being counted twice -- e.g. two queries with overlapping search geometry, or one call querying overlapping taxon keys -- since neither get_gbif_occurrences nor filter_gbif_quality dedupe records themselves. Sources without a gbifID column (e.g. literature or DataONE occurrences) are unaffected.
+
+Duplicate detection occasions (collapse_duplicate_occasions): a different problem than the gbifID check above. That check catches the identical GBIF record entering twice; this one catches different records -- often from different platforms and observers -- that describe the same underlying detection event. GBIF aggregates eBird, iNaturalist, Observation.org, OBIS, and museum collections (see get_gbif_occurrences's own Details), and citizen-science platforms routinely produce many independent reports of one detection (dozens of eBird checklists for one rare bird; a dozen iNaturalist uploads from one bioblitz). Each is a distinct gbifID, so the check above does not touch them, but not a distinct occasion on which the species was documented. This can all happen inside one get_gbif_occurrences() call, so a caller with only one data source is not exempt.
+
+This matters beyond bookkeeping: TaxaExpect::prepare_model_dataframe() counts raw records (dplyr::n()) as both n_species (the binomial numerator for a taxon at a site) and n_total_at_site (the shared effort denominator across every taxon at that site). Uncollapsed repeat reports of one individual therefore inflate that species' modeled relative detection frequency directly. Collapsing to one row per unique combination of taxon_col (case-insensitive), date_col (or year/month/day when date_col is absent), and lat_col/lon_col rounded to coord_precision answers the occupancy-modeling question this ecosystem actually wants: was the species documented here, on this occasion -- not how many people documented it.
+
+Only rows with a non-missing value for every key component participate -- a row missing taxon_col, both date_col and year/month/day, or either coordinate (including a present column holding NA for that row) is always kept, never dropped on incomplete information. This is a content-based match, not an exact-ID match like gbifID -- it can only ever produce false negatives (a real duplicate occasion missed, e.g. differing date precision or coordinate rounding across platforms), never false positives, since two records agreeing on species, date, and location to ~100 m are extremely unlikely to be genuinely independent occasions. Set collapse_duplicate_occasions = FALSE to keep one row per raw report instead (e.g. if you deliberately want observer-effort/reporting-volume as your own signal, rather than TaxaExpect's occupancy framing).
+
+Missing columns: occurrence_data is a data table, and a missing key column is a data problem, not something to silently paper over. The two checks differ in what counts as "missing":
+
+- gbifID is genuinely optional -- sources without it (e.g. literature or DataONE occurrences) are expected, so when it is absent that check is simply skipped, with no message.
+
+- When collapse_duplicate_occasions = TRUE (the default), taxon_col, date_col (or a full year/month/day triple), lat_col, and lon_col are all required as columns -- they are named parameters with documented defaults, not optional metadata. If any is absent from occurrence_data, the function stop()s immediately, naming the missing column(s) and the columns actually present, rather than silently skipping the step. Set collapse_duplicate_occasions = FALSE to skip this step entirely on a source that genuinely lacks these columns.
 
 ### download_gbif_occurrences(keys, geometry, year_range = .gbif_default_year_range(), limit = NULL, on_cap = c("warn", "error"), cache_dir = tools::R_user_dir("TaxaFetch", "cache"), overwrite = FALSE, pending_max_age_days = 30, submit_attempts = 4L, submit_wait = c(15, 30, 60), on_submit_failure = c("use_cache", "error"), prompt_mb = 50, cache_prompt_mb = 5120, allow_prompts = FALSE, keep_zip = TRUE, status_ping = 15, exclude_absent = TRUE, basis_keep = NULL, select_cols = c("kingdom", "phylum", "class", "order", "family", "genus", "species",      "infraspecificEpithet", "taxonRank", "scientificName", "taxonKey",      "speciesKey", "decimalLatitude", "decimalLongitude", "coordinateUncertaintyInMeters",      "countryCode", "stateProvince", "year", "month", "day", "basisOfRecord",      "issue", "occurrenceStatus", "samplingProtocol", "occurrenceRemarks",      "preparations", "gbifID", "datasetKey", "license"), gbif_user = Sys.getenv("GBIF_USER"), gbif_pwd = Sys.getenv("GBIF_PWD"), gbif_email = Sys.getenv("GBIF_EMAIL"), beep = FALSE)
 
@@ -159,7 +225,7 @@ Submits a bulk download request to GBIF, polls until the file is ready, download
 | on_submit_failure | no | c("use_cache", "error") | "use_cache" (default) or "error". What to do when every submission attempt -- or every attempt to fetch the prepared file (curl timeouts, resets, truncated transfers) -- fails AND a verified cached zip for this exact query exists (only possible with overwrite = TRUE, since the default already reuses such a zip without asking GBIF at all). "use_cache" imports that zip with a loud warning() naming the failure, the cache date and the download key, and sets attr(result, "served_from_cache_after_failure") = TRUE; the cached zip is kept as the live cache. "error" raises the failure instead. With no usable cached zip the function always errors. |
 | prompt_mb | no | 50 | Numeric. In an INTERACTIVE session, a prepared download at least this many MB triggers a summary (size, record count, whether a zip for this exact query is already cached, what the cache holds now and will hold afterwards) and a choice: use the cache, download and replace it, or abort to narrow the query first. Smaller downloads proceed silently, and a NON-interactive session never blocks -- it reports the same facts and continues. Default 50; Inf disables the prompt entirely. The summary is placed before any bytes are transferred, because GBIF reports a prepared download's size and record count at that point, which is the only moment the information can still change the decision. |
 | cache_prompt_mb | no | 5120 | Numeric. After a run, if the cache directory exceeds this many MB, an interactive session is offered a choice to free space (leave it; remove OTHER downloads but keep this query's zip; remove everything). A non-interactive session only reports. Default 5120 (5 GB); Inf disables the prompt while keeping the size report. |
-| allow_prompts | no | FALSE | Logical, default FALSE. Whether this function may BLOCK on an interactive utils::menu(). Off by default because a blocking prompt inside a function that is called from a script is unsafe: when RStudio runs or sources a script it queues the remaining lines as console input, and menu() consumes those lines as answers -- re-prompting on each one, and, far worse, SILENTLY SWALLOWING them so they never execute. This package already documents the same hazard for readline() in TaxaMatch::group_observations_by_bbox(); there the advice is "run this call on its own", which is not available to a function called mid-workflow. With FALSE every decision is REPORTED with the exact command to act on it, and nothing blocks. Set TRUE only when calling this function by hand at the console. |
+| allow_prompts | no | FALSE | Logical, default FALSE. Whether this function may BLOCK on an interactive utils::menu(). Off by default because a blocking prompt inside a function that is called from a script is unsafe: when RStudio runs or sources a script it queues the remaining lines as console input, and menu() consumes those lines as answers -- re-prompting on each one, and, far worse, SILENTLY SWALLOWING them so they never execute. With FALSE every decision is REPORTED with the exact command to act on it, and nothing blocks. Set TRUE only when calling this function by hand at the console. |
 | keep_zip | no | TRUE | Logical, default TRUE. Whether to retain the downloaded zip in cache_dir after a successful import. The zip is pure redundancy once imported -- its only value is avoiding a re-download -- and it is by far the largest thing this package writes: on one real machine 38 zips accounted for 17 GB of a 17.05 GB cache, while every .rds checkpoint together came to 52 MB. With FALSE the zip is deleted after import and the small metadata file is KEPT, so a later identical call re-fetches the SAME prepared GBIF key -- no new request, no queue wait, just the transfer. Set FALSE when the caller persists the imported data itself (every workflow in this ecosystem saves a _raw_gbif.rds checkpoint, which makes the zip doubly redundant). |
 | status_ping | no | 15 | Numeric. Seconds between download-status polls while waiting for GBIF to prepare the file. Default 15. Minimum enforced by rgbif is 3. |
 | exclude_absent | no | TRUE | Logical. When TRUE (default), adds a server-side occurrenceStatus = PRESENT predicate, excluding explicit absence records before the file is built by GBIF. Systematic surveys (e.g., eBird, iNaturalist) can contribute large numbers of ABSENT rows that inflate the download size without providing presence data. Set to FALSE only if you need absence records. Changing this parameter changes the cache key and triggers a fresh download. |
@@ -171,6 +237,49 @@ Submits a bulk download request to GBIF, polls until the file is ready, download
 | beep | no | FALSE | Logical. If TRUE and the beepr package is available, plays a sound on completion. Falls back to a system bell character if beepr is absent. Default FALSE. |
 
 **Value:** A tibble of occurrence records. Column structure matches 'fetch_gbif_occurrences' for downstream compatibility with 'filter_gbif_quality' and 'stack_occurrences'. The 'bibliographicCitation' column contains the GBIF download DOI (or the download key if DOI lookup fails). A 'download_key' attribute stores the GBIF download key for citation purposes.
+
+#### Details
+
+When to use this function vs fetch_gbif_occurrences:
+
+- Use download_gbif_occurrences for large taxon lists (roughly 50 or more keys), for any run where completeness matters (no per-key record cap), or when fetch_gbif_occurrences hits HTTP 429 rate-limit errors. Downloads are processed server-side so no per-key API calls are made from the client. A GBIF account is required.
+
+- Use fetch_gbif_occurrences for small exploratory queries (fewer than roughly 50 keys), when you want immediate per-key progress feedback, or when you do not have a GBIF account.
+
+GBIF account setup: Register for a free account at https://www.gbif.org/user/profile. Then add your credentials to ~/.Renviron (run usethis::edit_r_environ() to open the file):
+
+
+```
+
+GBIF_USER=your_username GBIF_PWD=your_password GBIF_EMAIL=your@email.com ```
+
+Save the file and restart R. Verify with Sys.getenv("GBIF_USER"). You only need to do this once; the variables are loaded automatically at the start of every R session.
+
+Caching: The zip file returned by GBIF is saved to cache_dir using a filename that encodes the call signature (key count, key checksum, geometry length, year range, and basis_keep). Changing any of these parameters automatically triggers a fresh download. The cached zip is permanent and survives R sessions -- delete it manually or set overwrite = TRUE to refresh. A small companion metadata file (_meta.rds) stores the GBIF download key and timestamp. select_cols is applied at import time and does not affect the cache key; the same zip can be re-imported with different column sets.
+
+Rank-specific predicates: Unlike the occurrence search API (occ_data), the download API's taxonKey predicate is an exact match, not a hierarchical search. Querying by a family key returns only records where the occurrence's accepted taxon IS that family (i.e., identified only to family level), not records of species within it. download_gbif_occurrences avoids this by using an OR across familyKey, genusKey, speciesKey, and taxonKey, so records at all ranks within the queried taxa are returned.
+
+Hierarchy validation: Each returned record is checked to confirm that one of its rank-specific key columns (taxonKey, familyKey, genusKey, speciesKey, etc.) matches one of the requested keys. Off-target records are dropped with a diagnostic message.
+
+GBIF outages: GBIF's API can return a 5xx during an outage. A production run that re-requests its occurrences on every run (overwrite = TRUE) would otherwise die at this step even with a verified zip for the identical query already on disk. Instead the request is retried with backoff (submit_attempts/submit_wait), and if GBIF is still refusing, on_submit_failure = "use_cache" falls back to that zip -- with a warning, never silently -- so the run completes on data that differ from a fresh pull only if GBIF's holdings changed since the cache was written. The status poll and the file fetch retry the same way. When a key has been issued but the poll or fetch still fails and there is no cache to fall back on, the key is recorded in the cache metadata as pending, and the next call re-fetches that prepared download instead of submitting a new request.
+
+Dead pending keys: a pending record is cleared automatically once it can no longer be honoured (a key GBIF has killed, cancelled, failed, or purged server-side). Two mechanisms, both automatic: (1) a pending key older than pending_max_age_days is abandoned unpolled and a fresh request is submitted instead (see that parameter); (2) when the poll on a still-fresh pending key fails non-transiently, the dead record is cleared (the whole metadata file is removed when its zip was never obtained, the common case; otherwise the record is kept but marked no longer pending, so the real local zip is still served as an ordinary cache hit) and a fresh request is submitted automatically, in the same call -- no manual intervention needed. A brand-new key that itself fails to poll non-transiently is unaffected by this: that is still raised as an immediate error, since a first-time failure of that kind is a real problem.
+
+Concurrent download limits: GBIF limits accounts to 3 concurrent downloads (fewer for accounts with many prior downloads). If a request is rejected, cancel in-progress downloads at https://www.gbif.org/user/download and retry.
+
+#### Why nothing here blocks by default
+
+A utils::menu() inside a function called from a sourced workflow script is dangerous: it can consume the ENTIRE remainder of the script as its answers -- every remaining line rejected as an invalid selection, each therefore never executed, even after the GBIF download itself has succeeded. RStudio queues the rest of a script as pending console input, and menu()/readline() read exactly that queue, so interactive() being TRUE says nothing about whether a human is waiting to type. Every decision here is therefore REPORTED, with the command to act on it, unless allow_prompts = TRUE is passed deliberately.
+
+#### Attributes
+
+Beyond download_key, the returned tibble always carries:
+
+- report_params -- a list recording the call's own parameterization for downstream reporting: source (always "GBIF (async download)"), n_keys, n_records, doi (the download's DOI URL, or NA if lookup failed), geometry, and year_range.
+
+- served_from_cache_after_failure -- logical, TRUE when every submission/fetch/poll attempt failed and a verified cached zip for this exact query was imported instead (see the on_submit_failure parameter); FALSE otherwise.
+
+- capped_keys -- integer vector of taxon keys limit actually truncated (see the on_cap parameter); integer(0) when nothing was capped.
 
 ### download_literature_pdfs(catalog, output_dir, overwrite = FALSE, max_papers = NULL, pause_s = 0.5, verbose = TRUE)
 
@@ -206,6 +315,16 @@ Uses 'pdftools' to extract plain text from a PDF, detects section boundaries usi
 
 **Value:** A named list with elements: sections Named list of character strings, one per requested section. Each string is the concatenated text of all pages in that section. Sections not detected in the document are absent. page_map Named list mapping section labels to integer vectors of page numbers (1-based). has_headers Logical. TRUE if section headers were detected. FALSE means the document has no explicit section structure and all pages were returned under "document". n_pages Integer. Total pages in the document. pdf_path The input path, for passing to downstream functions without re-specifying.
 
+#### Details
+
+Token management: This function performs no API calls. It is designed to be called once per PDF; its output is passed to screen_pdf_structure() (Stage 2), and call_api_pdf() (Stage 3) so the PDF is parsed only once.
+
+No headers fallback: If no section headers are detected the entire document is returned under the key "document" and has_headers is FALSE. Downstream functions handle this gracefully by treating the full text as equivalent to the abstract + methods + results sections combined.
+
+Relationship to DataONE pipeline: Analogous to fetch_dataone_eml(), which reads EML document structure to identify what content is present before committing to a full download. Here we read PDF structure to identify which pages contain which sections before committing to API image calls in Stage 3.
+
+Dependencies: Requires the pdftools package (install.packages("pdftools")). The package is listed in Suggests, not Imports, because it is only needed for the PDF pipeline.
+
 ### fetch_dataone_occurrences(dataset_ids, bbox, extra_dwc_map = NULL, timeout = 120L, site_lookup = NULL, odm_variable = "DENSITY", verbose = TRUE)
 
 Download and Standardize Occurrence Records from DataONE / EDI
@@ -223,6 +342,16 @@ Given a vector of EDI PASTA dataset identifiers (from 'search_dataone'), fetches
 | verbose | no | TRUE | Logical. Print per-dataset and per-entity progress messages. Default TRUE. |
 
 **Value:** A tibble with standardized Darwin Core columns, or 'NULL' invisibly if no records survive all filters. Column order: 'occurrenceID', 'datasetID', 'datasetName', 'institutionCode', 'basisOfRecord', 'eventDate', 'year', 'month', 'day', 'decimalLatitude', 'decimalLongitude', 'coordinateUncertaintyInMeters', 'scientificName', 'genus', 'family', 'specificEpithet', 'vernacularName', 'individualCount', 'recordedBy', 'locality', 'habitat'; followed by any unmapped source columns.
+
+#### Details
+
+EML parsing: EML is fetched from the PASTA metadata endpoint. Entity data URLs are extracted from <dataTable> and <otherEntity> nodes. Only entities whose EML attribute names map to both a latitude and longitude column are downloaded. Namespaces are stripped before XPath queries to handle both EML 2.1 and 2.2.
+
+Column mapping: Raw column names are matched case-insensitively against the pattern column using first-match-wins regex. Unmapped columns are retained at the end of the tibble. Use extra_dwc_map to handle non-standard names without modifying package internals.
+
+Date standardization: Existing eventDate columns are normalized to ISO 8601 (YYYY-MM-DD). If absent but year/month/day are present, eventDate is constructed from them.
+
+Cross-source deduplication: this function does not dedupe against GBIF itself. If you combine this output with GBIF occurrences (e.g. via get_gbif_occurrences), pass both to stack_occurrences, whose collapse_duplicate_occasions (default TRUE) collapses records describing the same species x date x location detection occasion across sources -- see that function's Details for the full rationale.
 
 ### fetch_gbif_occurrence_counts(keys, site_lat, site_lon, geometry = NULL, lambda_km = NULL, breaks_km = NULL, year_range = .gbif_default_year_range(), basis_of_record = NULL, key_batch_size = 150L, resolve_names = TRUE, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), max_active = 4L, base_url = "https://api.gbif.org/v1")
 
@@ -248,6 +377,18 @@ The count-only counterpart of 'download_gbif_occurrences()': same taxon keys, sa
 
 **Value:** A tibble with one row per species x band holding records: 'taxon_name' (GBIF canonical species name), 'speciesKey', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'band', 'band_lo_km', 'band_hi_km', 'n'. Attributes: 'query' (the arguments), 'n_requests', 'n_species_lookups' (uncached classification lookups made by this call), 'total_records' (all species-level records counted), 'timing' (seconds), 'fetched_at'.
 
+#### Details
+
+Cost is set by the number of bands and key batches, not by the number of records: every band is one request per batch of key_batch_size taxon keys, however many millions of records fall inside it. The one cost that does grow with the pool is naming it -- GBIF facets return species KEYS, so each distinct species key is looked up once (/v1/species/{key}) and kept in cache_dir for every later call.
+
+#### What the counts do and don't carry
+
+Only records resolved to species level are counted (the facet counts records by speciesKey), which is also what the kernel path keeps after filter_gbif_quality(require_species = TRUE). The server-side filters are occurrenceStatus = PRESENT, hasCoordinate = TRUE, hasGeospatialIssue = FALSE, plus year_range/basis_of_record. The record-level screens in filter_gbif_quality() (coordinate precision, coordinate uncertainty, institution proximity) and every per-record step downstream of it (habitat assignment by location, spatial review, a depth covariate) have no count-only equivalent and are not applied.
+
+#### Bands
+
+Band k holds the records whose distance to the site lies in (breaks_km[k-1], breaks_km[k]], obtained by differencing cumulative geoDistance counts. When geometry is supplied every band is ALSO clipped to it (GBIF combines the two filters with AND), and one extra band (band_hi_km = Inf) holds the rest of the polygon beyond the last break -- so summed over bands, each species' count equals its count in the polygon, which is the pool the kernel path's regional back-off uses. Default breaks, given lambda_km: lambda_km * c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 9). They include 3 * lambda_km, the kernel's default neighborhood-support radius (support_weight = exp(-3)), so singleton and doubleton counts are exact at that radius, and 6 * lambda_km, the kernel's fetch-radius check.
+
 ### fetch_gbif_occurrences(keys, geometry, year_range = .gbif_default_year_range(), limit = 10000L, chunk_size = 20L, pause_seconds = 2, pause_between_keys = 0.5, max_retries = 4L, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), beep = FALSE)
 
 Fetch GBIF Occurrence Records for a Set of Taxon Keys
@@ -269,6 +410,22 @@ Downloads occurrence records from GBIF for a vector of taxon usage keys, process
 
 **Value:** A tibble of occurrence records with GBIF's standard columns. Only records where the query key appears somewhere in the returned record's taxonomic hierarchy are retained (see Details). Returns an empty tibble with a warning if no records pass.
 
+#### Details
+
+Hierarchy validation: GBIF sometimes returns records for synonyms or higher-rank ancestors of the queried key. Each returned record is checked to confirm that the query key appears somewhere in its taxonomic hierarchy columns (taxonKey, speciesKey, genusKey, familyKey, orderKey, classKey, phylumKey, kingdomKey, acceptedTaxonKey). Records that fail this check are silently dropped. This prevents off-target taxa from entering the dataset when searching at family or order level.
+
+When to use this function vs download_gbif_occurrences:
+
+- Use fetch_gbif_occurrences for small exploratory queries (fewer than roughly 50 keys), when you want immediate per-key progress feedback, or when you do not have a GBIF account.
+
+- Use download_gbif_occurrences for large taxon lists (roughly 50 or more keys), when completeness matters (no per-key record cap), or when this function hits HTTP 429 rate-limit errors. The async download API processes requests server-side with no per-key rate limits. A free GBIF account is required.
+
+Rate limiting and transient errors: HTTP 429 (rate limit) errors trigger exponential backoff with waits of 30, 60, 120, and 240 seconds per key. HTTP 503 (Service Unavailable) errors are retried with shorter waits (5, 10, 20, 40 seconds). If any key exhausts all retries, the function stops immediately to avoid returning an incomplete, session-inconsistent result. Progress is saved so re-running resumes from the last successful key. To test your connection interactively, run rgbif::occ_data(taxonKey = 1, limit = 1). If you see HTTP 429 errors frequently, increase pause_seconds or reduce chunk_size, or switch to download_gbif_occurrences.
+
+Checkpoint / resume: Progress is saved after each completed chunk to cache_dir. The checkpoint file name encodes the call signature (number of keys, key sum, geometry length, year range, limit), so changing any parameter automatically starts a fresh fetch rather than loading a stale checkpoint. To force a fresh fetch with the same parameters, delete the checkpoint file (path is printed when a fetch is interrupted) or set cache_dir = NULL.
+
+rgbif dependency: This function requires the rgbif package, listed under Suggests rather than Imports because downstream modeling functions do not require it. Install with install.packages("rgbif").
+
 ### fetch_inat_occurrence_counts(taxon_names, lat, lng, radius_km = 50, captive = c("any", "true", "false"), quality_grade = c("any", "casual", "needs_id", "research"), api_token = Sys.getenv("INAT_API_TOKEN"), retry_attempts = 4L, retry_wait = c(15, 30, 60), verbose = FALSE)
 
 Fetch local iNaturalist observation counts, including casual-grade records
@@ -289,6 +446,16 @@ For each taxon name, resolves the iNaturalist taxon ID and counts observations w
 | verbose | no | FALSE | Logical. If TRUE, prints progress for each taxon. Default FALSE. |
 
 **Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'inat_kingdom' (derived from iNaturalist's own 'iconic_taxon_name' via the same fixed lookup 'check_inat_range' uses - compare against your own candidate's kingdom before trusting a result: iNaturalist resolves names against its own curated taxonomy, not NCBI's or GBIF's, so a name that matches an unrelated homonym in a different kingdom is possible, if rare; a kingdom mismatch is a strong signal to discard the result rather than act on it), 'n_observations_local', 'query_status' ('"ok"' or '"taxon_not_found"'), 'radius_km', 'captive', 'quality_grade'.
+
+#### Details
+
+Intended as a non-GBIF occurrence source for domestic/commensal/food species (see TaxaExpect::generate_domestic_food_priors()), where GBIF's own occurrence indexing under-counts exactly the organisms this function is meant to detect. Set quality_grade = "research" and captive = "false" to reproduce something closer to GBIF-style filtering for comparison.
+
+This function counts observations only -- it does not download individual records. The iNaturalist API returns total_results on every search response regardless of per_page, so a single lightweight request (per_page = 1) is sufficient per taxon.
+
+Retry/backoff: a 429 (rate limit) or 5xx (server error) response from the observation-count request is retried up to 4 attempts total, honouring a server-sent Retry-After header when present and falling back to a 15/30/60 s backoff otherwise. Once every attempt is exhausted, that taxon's row still gets query_status = "request_failed" -- retrying only reduces how often a transient rate-limit/outage produces that outcome, it does not change what a persistent failure looks like to the caller.
+
+Omission implements "any": captive = "any" and quality_grade = "any" are implemented by OMITTING the corresponding query parameter from the /v1/observations request entirely (see .inat_observation_count()), not by sending an explicit captive=any/quality_grade=any value. Verified against the live API (Turdus migratorius, per_page = 1, so only total_results was compared): both parameters omitted returns total_results = 470344; adding quality_grade=research returns 434444 (omission is the strict superset, as "any" should be); and sending captive=any explicitly, with quality_grade still omitted, also returns 470344 -- identical to leaving captive out altogether. Omitting a parameter and sending it explicitly as "any" are the same query.
 
 ### filter_gbif_quality(data, basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION", "LIVING_SPECIMEN",      "PRESERVED_SPECIMEN"), exclude_edna = TRUE, exclude_absent = TRUE, bad_issues = c("COORDINATE_OUT_OF_RANGE", "COUNTRY_COORDINATE_MISMATCH", "COORDINATE_INVALID",      "ZERO_COORDINATE", "COORDINATE_PRECISION_INVALID"), max_coord_uncertainty = 500, max_coord_decimal_places = NULL, require_species = FALSE, exclude_equal_coords = TRUE, exclude_near_zero = TRUE, near_zero_buffer_m = 5000, exclude_near_gbif_hq = TRUE, exclude_country_centroid = TRUE, exclude_capital = TRUE, flag_institution = TRUE)
 
@@ -315,6 +482,23 @@ Removes low-quality rows from a raw GBIF occurrence download. Applies up to twel
 | flag_institution | no | TRUE | Logical. If TRUE (default), records near a biodiversity institution (museum, zoo, herbarium, university) are flagged, not removed (CoordinateCleaner::cc_inst()), using that function's own default buffer and bundled ~10,000-location reference table. Unlike every other CoordinateCleaner check in this function, proximity to an institution is not treated as an unambiguous error: field stations and marine labs are frequently sited exactly where good habitat is, so a nearby record may be a genuine wild observation, not an archived/captive specimen -- that judgment call needs a human (and often a map), not a silent drop. Adds six columns to the retained data (see Value): institution_flag, institution_name, institution_type, institution_dist_m, institution_lon, institution_lat (the matched institution's own location, distinct from the record's own coordinates -- lets a downstream map-review tool plot both together). Skipped with a message if CoordinateCleaner is not installed. |
 
 **Value:** The input data frame with low-quality rows removed. Column structure is unchanged. A summary message reports the number of records retained. Every removed record is also preserved, not just counted: 'attr(result, "removed_records")' is a data frame with the same columns as the input plus 'filter_reason', one row per removed record (always present, possibly zero rows - never 'NULL', so it can be inspected unconditionally). 'filter_reason' identifies which filter removed the record: '"missing_coordinates"', '"absent_occurrence"', '"basis_of_record"', '"flagged_issue_code:<code>"' (the specific 'bad_issues' code that matched, not just that one did), '"coordinate_uncertainty"', '"coordinate_decimal_precision"', '"edna_keyword"', '"no_species_id"', or one or more of '"equal_coordinates"' / '"near_zero"' / '"near_gbif_hq"' / '"country_centroid"' / '"capital"' joined with '";"' when a 'CoordinateCleaner' record was flagged by more than one of those five checks at once. A record is removed by exactly the filter that catches it first (filters run sequentially - see Details), except within the 'CoordinateCleaner' removal step itself, where several checks run against the same surviving data and any that flag a given record are all recorded together. Institution proximity is deliberately never a 'filter_reason' value - see the next paragraph. Separately, the *retained* data frame itself gains six columns when 'flag_institution = TRUE' (the default): 'institution_flag' (logical), 'institution_name', 'institution_type', 'institution_dist_m' (metres, to the nearest match), and 'institution_lon'/'institution_lat' (that institution's own coordinates). Unlike everything in 'removed_records', these rows are never removed - proximity to a biodiversity institution is flagged for human review, not treated as an automatic error. See 'flag_institution''s own documentation below for why.
+
+#### Details
+
+Filter order: Coordinates -> absent occurrences -> basis of record -> issue codes -> coordinate uncertainty -> coordinate decimal-place precision -> eDNA -> species-level requirement -> CoordinateCleaner removal checks (equal coordinates / near-zero / near GBIF HQ / near a country or province centroid / near a national capital) -> institution flagging (retained, not removed). Applying cheaper filters first reduces unnecessary string operations on large datasets.
+
+Why keep the removed records at all: two users who ran this function with different arguments (a different max_coord_uncertainty, a different bad_issues set, CoordinateCleaner installed or not) can otherwise get silently different results with no way to compare notes. attr(result, "removed_records") makes that difference inspectable rather than invisible, and doubles as a direct list of candidate real GBIF data-quality problems (mislabelled coordinates, institution/centroid-snapped georeferencing) worth reporting back to the original data provider -- every original column, including gbifID and datasetKey, is preserved on each removed record for exactly that purpose.
+
+CoordinateCleaner checks use that package's own defaults: this function deliberately does not hard-code any of cc_zero()'s, cc_gbif()'s, cc_cen()'s, cc_cap()'s, or cc_inst()'s buffers, reference coordinates, or reference data itself -- all are called directly with only lon/lat/ value supplied (cc_cen()/cc_cap()/cc_inst() resolve their own ref = NULL default to that package's bundled countryref/institutions data automatically, with no network call), so any future correction to those defaults in CoordinateCleaner is inherited automatically rather than silently diverging from a hand-copied constant.
+
+Verifying issue codes in your data:
+
+
+```
+
+sort(table(unlist(strsplit(na.omit(your_data$issues), ";"))), decreasing = TRUE) ```
+
+Decimal-place precision (OR logic): A record is retained if either its latitude or its longitude has at least max_coord_decimal_places decimal places. This avoids discarding records on coastlines or grid boundaries where one coordinate may be rounded while the other is precise.
 
 ### get_gbif_occurrences(keys, geometry, year_range = .gbif_default_year_range(), limit = NULL, key_threshold = 50L, rank_filter = "species", columns = "standard", cache_dir = tools::R_user_dir("TaxaFetch", "cache"), overwrite = FALSE, exclude_absent = TRUE, basis_keep = NULL, status_ping = 15, gbif_user = Sys.getenv("GBIF_USER"), gbif_pwd = Sys.getenv("GBIF_PWD"), gbif_email = Sys.getenv("GBIF_EMAIL"), chunk_size = 20L, pause_seconds = 2, pause_between_keys = 0.5, max_retries = 4L, on_cap = c("warn", "escalate", "error"), beep = FALSE)
 
@@ -348,6 +532,20 @@ Picks between 'fetch_gbif_occurrences' (direct API, small queries) and 'download
 
 **Value:** A tibble. When 'columns != "all"', the column set and order are identical regardless of which backend produced the data (missing columns are 'NA'-filled, not dropped) - see Details for the two backend fields that are always 'NA' on the download path specifically. Compatible with 'filter_gbif_quality' and 'stack_occurrences'.
 
+#### Details
+
+Why GBIF, and not a separate fetcher per citizen-science/museum platform: GBIF is an aggregator, not just one more data source among many -- it already ingests and republishes records from eBird, iNaturalist, Observation.org, OBIS, and most natural history museum/ herbarium collections, each as its own registered dataset/publisher, alongside data GBIF itself mobilizes directly. Any record from those platforms that has been published to GBIF already arrives through this one function with no extra code -- writing a dedicated fetcher for one of those platforms would just re-fetch a subset of what this call already returns. A separate, platform-specific function is only justified when that platform has data GBIF genuinely does not carry -- e.g. check_inat_range calls iNaturalist's own geomodel API for range polygons, a data type no GBIF occurrence record includes at all, rather than duplicating iNaturalist's occurrence records themselves (already available here via GBIF).
+
+Why a wrapper, not one merged function: the two backends have genuinely different execution models. fetch_gbif_occurrences is client-paced with per-key retries and needs no GBIF account; its cost grows roughly with key count and carries real rate-limit (HTTP 429) risk at high key counts. download_gbif_occurrences is server-side and account-gated, with a largely fixed queue/prep overhead that does not scale down -- a poor trade for a handful of keys, the right one for hundreds. Their parameter sets barely overlap (one has exclude_absent/basis_keep/GBIF credentials; the other has chunk_size/pause_seconds/max_retries). Rather than carry both sets in one function with half silently unused depending on path, this wrapper forwards the relevant subset to whichever backend actually runs and leaves both functions untouched.
+
+Why the rank filter is always post-fetch: neither GBIF's download predicate API nor occ_data's search parameters expose a taxonomic-rank field (confirmed against rgbif's own predicate key vocabulary) -- there is no server-side lever to send. The filter is therefore always applied here, after the data comes back, identically regardless of which backend produced it. It reduces R-side memory/size, not GBIF's query cost.
+
+Column standardization and a known, unfixable asymmetry: the "standard" column list (see TaxaFetch:::.gbif_standard_columns()) is aligned across both backends. download_gbif_occurrences already renames the download path's SIMPLE_CSV quality-issue column from issue (singular) to issues (plural, matching the search API used by fetch_gbif_occurrences and what filter_gbif_quality checks for) before returning -- this wrapper only translates the requested issues column name back to issue when building select_cols for the download path, since select_cols is matched against the SIMPLE_CSV's native column names at import time, before that rename happens. One asymmetry remains and is not fixable here:
+
+- familyKey/genusKey are NA on the download path. GBIF's SIMPLE_CSV format does not include these fields at all (they are DWCA-only), so there is nothing to rename or select -- they are genuinely absent upstream. fetch_gbif_occurrences output has them populated.
+
+- Similarly, samplingProtocol/occurrenceRemarks/ preparations (used by filter_gbif_quality(exclude_edna = TRUE)) are not present in GBIF's SIMPLE_CSV export either, and so are NA on the download path; they are included when present on the fetch path.
+
 ### get_keys_from_context(hierarchy_df)
 
 Fetch GBIF Taxon Keys Using Full Taxonomic Context
@@ -359,6 +557,16 @@ Resolves a dataframe of scientific names to GBIF usage keys by supplying the ful
 | hierarchy_df | yes |  | A dataframe. Each row is one taxon. Columns should be named for Linnaean ranks (case-insensitive): kingdom, phylum, class, order, family, genus, species. Not all ranks need to be present. For each row, the most specific rank provided is used as the lookup target; higher ranks are passed as disambiguation context. |
 
 **Value:** The input dataframe with three columns appended: usageKey Integer. GBIF usage key for the matched name, or 'NA' if no match was found. matchType Character. GBIF match quality: '"EXACT"', '"FUZZY"', '"HIGHERRANK"', '"LOOKUP_RECOVERED"' (a '"HIGHERRANK"' result recovered via a secondary 'name_lookup()' call - see '@details'), '"NONE"', '"NO_DATA"' (no rank columns present in this row), or '"ERROR"' (API call failed). gbif_rank Character. The rank GBIF assigned to the matched record, or 'NA' if no match.
+
+#### Details
+
+Homonym prevention: Many scientific names are valid in multiple kingdoms (e.g., Alaria is both a brown alga and a trematode worm). Supplying the full hierarchy ensures GBIF resolves the name to the correct lineage. Rows that provide only a species name with no higher-rank context may return incorrect matches for homonyms.
+
+Target rank selection: For each row the function identifies the most specific non-empty rank (species > genus > family > order > class > phylum > kingdom) and treats it as the lookup target. Column names are matched case-insensitively, so Kingdom, KINGDOM, and kingdom all work.
+
+Errors and missing matches: API failures for individual rows produce a warning and return matchType = "ERROR" for that row rather than stopping the entire run. Review rows with matchType %in% c("NONE", "FUZZY", "ERROR", "LOOKUP_RECOVERED") before downstream use -- "LOOKUP_RECOVERED" rows were resolved by a secondary, less-precise lookup (narrowed by kingdom when available, but not guaranteed correct for homonyms; see the Homonym prevention section above) and deserve the same scrutiny as a "FUZZY" match.
+
+rgbif: This function requires the rgbif package, listed under Suggests because it is only needed for the data-ingest portion of the pipeline. Install with install.packages("rgbif").
 
 ### harvest_dataone_catalog(cache_file = "pasta_catalog.rds", max_age_days = 7, max_rows = Inf, page_size = 500L, exclude_noise = TRUE, pause_seconds = 0.5, verbose = TRUE)
 
@@ -378,6 +586,21 @@ Downloads metadata for all non-noise packages from the PASTA Solr endpoint and r
 
 **Value:** A tibble with one row per PASTA package and columns: 'id', 'scope', 'title', 'site', 'pubdate', 'geographicdescription', 'taxonomic', 'abstract', 'keywords_str', 'authors', 'doi', 'begindate', 'enddate', 'has_taxonomic', 'is_candidate'. 'is_candidate' is 'TRUE' for packages that have a non-empty 'taxonomic' field and are therefore worth geographic screening.
 
+#### Details
+
+"PASTA" (the endpoint queried here, pasta.lternet.edu) is the data repository infrastructure operated by the https://edirepository.orgEnvironmental Data Initiative (EDI) -- not itself a dataset. Every package harvested here was published through EDI, and its terms of use ask that data be cited (a doi column is included below for this purpose) and that data providers be contacted before use in a publication; see https://edirepository.orgedirepository.org for the current policy. This function does not enforce or verify citation/contact compliance -- that remains the caller's responsibility.
+
+This is the first step in the DataONE supplemental occurrence pipeline:
+
+
+```
+
+catalog <- harvest_dataone_catalog(cache_file = "pasta_catalog.rds") geo_prompt <- build_geo_prompt(catalog, bbox) llm_output <- prompt_api(geo_prompt) candidates <- parse_geo_screening_response(llm_output, geo_prompt) ```
+
+Cache invalidation: Delete or rename the cache file to force a full re-download. The cache stores the raw tibble -- no further processing is done at cache-read time.
+
+PASTA coordinates field: The Solr coordinates field is indexed but unreliably populated for most packages. Spatial filtering is handled downstream via screen_eml_columns (EML <boundingCoordinates>) and record-level bbox filtering in fetch_dataone_occurrences.
+
 ### make_bbox_wkt(lat, lon, radius_deg)
 
 Create a WKT Bounding Box Around a Central Point
@@ -392,6 +615,14 @@ Generates a Well-Known Text (WKT) POLYGON string representing a square bounding 
 
 **Value:** A length-1 character vector: a WKT POLYGON string with vertices ordered counter-clockwise and the first and last vertex identical (closed ring), as required by the GBIF occurrence API.
 
+#### Details
+
+Square vs. irregular polygons: This function always produces a square bounding box. For an irregular boundary (coastline, watershed, administrative region) use define_search_polygon to draw a custom polygon interactively, or construct a WKT string manually and pass it directly to fetch_gbif_occurrences(geometry = ...).
+
+Coordinate clamping: If the box would extend beyond the poles (lat +/- radius_deg outside [-90, 90]) or the antimeridian (lon +/- radius_deg outside [-180, 180]), the function stops with an informative error. Queries spanning the antimeridian are not supported by this helper; split them into two overlapping queries instead.
+
+WKT coordinate order: WKT uses (longitude latitude) order -- i.e., X before Y -- which is the opposite of the common (lat, lon) convention. This function handles the swap internally; callers supply (lat, lon) as is conventional in this package.
+
 ### parse_geo_screening_response(raw_text, geo_prompt)
 
 Parse an LLM Geographic Screening Response
@@ -404,6 +635,14 @@ Parses the raw text returned by an LLM in response to a 'build_geo_prompt' promp
 | geo_prompt | yes |  | A geo_prompt object from build_geo_prompt. |
 
 **Value:** A tibble with all columns from the input catalog plus: geo_match Logical. 'TRUE' = LLM said YES (or shortcut accepted); 'FALSE' = LLM said NO (or shortcut rejected). geo_source Character. One of '"llm_yes"', '"llm_no"', '"shortcut_accepted"', '"shortcut_rejected"', '"no_description"', '"llm_no_response"'. The tibble includes ALL candidate packages - filter on 'geo_match == TRUE' to obtain the candidate list for 'screen_eml_columns'.
+
+#### Details
+
+Expected LLM output format: A CSV with columns index and match, where index is the integer row number from the prompt and match is YES or NO. Markdown fences and preamble text are stripped automatically.
+
+Shortcut packages (pre-accepted or pre-rejected by build_geo_prompt) are added back to the tibble automatically with appropriate geo_source values.
+
+Non-candidate packages (those where is_candidate == FALSE in the catalog) are excluded from the return value -- use the original catalog to recover them.
 
 ### parse_pdf_extract_response(raw_text, extract_prompt)
 
@@ -431,6 +670,12 @@ Parses the raw text returned by an LLM in response to a 'build_taxon_screen_prom
 
 **Value:** A tibble with all columns from the input catalog plus: taxon_match Logical. 'TRUE' = LLM said YES for taxon; 'FALSE' = LLM said NO or no response received. taxon_source Character. One of '"llm_yes"', '"llm_no"', '"skipped"' (no metadata available), '"llm_no_response"' (index missing from LLM output). geo_match Logical. Only present when 'taxon_prompt' was built with a 'geo_scope' argument. 'TRUE' = LLM said YES for geographic relevance. Includes ALL input datasets - filter on 'taxon_match == TRUE' to obtain candidates for 'screen_eml_columns'.
 
+#### Details
+
+Expected LLM output format: A CSV with columns index and match, where index is the integer row number from the prompt and match is YES or NO. Markdown fences and preamble text are stripped automatically. Duplicate header rows from multi-chunk responses are handled automatically.
+
+Skipped datasets (those in taxon_prompt$skipped_ids) are added back with taxon_match = FALSE and taxon_source = "skipped".
+
 ### plan_gbif_fetch(keys, geometry = NULL, lambda_km = NULL, breaks_km = NULL, year_range = .gbif_default_year_range(), basis_of_record = NULL, key_batch_size = 150L, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), ram_gb = NULL, ram_fraction = 0.5, max_records = 5e+06, rates = list(), max_active = 4L, base_url = "https://api.gbif.org/v1")
 
 Plan a GBIF fetch: price the records path against the counts path
@@ -456,6 +701,14 @@ Asks GBIF, with a handful of count-only requests, how big the occurrence pull fo
 
 **Value:** A one-row tibble: 'n_records' (rows the records path would download), 'n_species_records' (of those, resolved to species), 'n_species', 'n_species_uncached', 'records_download_mb', 'records_queue_min', 'records_process_min', 'records_peak_gb', 'counts_requests', 'counts_min', 'ram_gb', 'recommended' ('"records"' or '"counts"') and 'reason'.
 
+#### Which path
+
+Choose by what the prior needs first and by size second. The records path is the only one that supports record-level habitat assignment, a covariate kernel (e.g. depth), bandwidth calibration (TaxaExpect::calibrate_kernel_bandwidth()), spatial review of individual records, and merging non-GBIF records (local surveys) into the same pool; if the analysis needs any of them, use it whenever it fits in memory. Otherwise the counts path gives the same kernel prior to within an order of magnitude for the species that matter, in seconds to minutes, and it is the only feasible path once the pool runs to many millions of records. The recommendation returned here applies that rule: counts when the records path's estimated peak memory exceeds ram_fraction of ram_gb or the pool exceeds max_records, records path otherwise.
+
+#### Rates behind the estimates
+
+Measured on the PtConception 18S pool (1.72 million records, Apple silicon laptop) and exposed as rates so they can be re-measured: download_bytes_per_record 410 (the zip), filter_sec_per_million 240 (filter_gbif_quality(), the dominant automated per-record step; habitat assignment and resolution together took under 10 s per 300,000 records), filter_gb_per_million 4 (peak R memory of filter_gbif_quality()), counts_sec_per_request 0.25 and name_lookups_per_sec 28 (the counts path's band requests and uncached species-name lookups), and download_queue_min 10 (GBIF's server-side preparation time; it varies with GBIF load and is the least predictable term). Not priced for either path: LLM habitat lookups per taxon (the same per-taxon cost on both paths, and cached) and, on the records path, interactive spatial review, which is paid in reviewer time per flagged point.
+
 ### preview_dataone_occurrences(dataset_ids, bbox, n_rows = 20L, large_mb = 50, assume_mbps = 5, extra_dwc_map = NULL, verbose = TRUE)
 
 Preview DataONE/EDI Datasets Before Full Download
@@ -474,6 +727,14 @@ For each PASTA dataset ID, fetches EML metadata (fast), issues HEAD requests to 
 
 **Value:** A tibble of class 'c("dataone_preview", "tbl_df", "tbl", "data.frame")' with one row per entity (or joinable pair) and columns: dataset_id PASTA identifier, e.g. '"edi.653.8"'. dataset_title Full dataset title (not truncated). entity_name Entity (table) name; for joinable pairs formatted as '"entity_A + entity_B"'. status One of '"ready"', '"large"', '"skip"', '"join_ready"', or '"join_large"'. The 'join_*' values indicate that 'fetch_dataone_occurrences' will join two tables automatically. skip_reason Reason string; 'NA' unless 'status == "skip"'. file_mb File size in MB from 'Content-Length' header. For join pairs, the sum of both entity sizes. 'NA' for chunked responses. est_min Estimated download time in minutes. 'NA' when 'file_mb' is 'NA'. coord_source '"columns"', '"eml_sites"', or 'NA'. n_bbox Preview rows within 'bbox'. 'NA' for 'eml_sites' rows (bbox already confirmed by 'screen_eml_columns'). join_key Join column description for 'join_*' rows, e.g. '"shared id"' or '"event$id <-> occ$eventID"'. 'NA' for single-entity rows. first_taxon Scientific name from the first non-NA sample row. 'NA' when no usable rows were streamed. large_mb The 'large_mb' threshold used (stored for the print method). sample List-column of small preview tibbles (up to 'n_rows' rows, DWC-renamed). For join pairs, the joined sample. Inspect with 'prev$sample[[i]]'.
 
+#### Details
+
+Returns a tibble classed "dataone_preview" with one row per entity or joinable pair. The S3 print method groups rows into three sections -- READY, LARGE, SKIPPED -- and within each section groups by dataset, printing the full dataset title as a sub-header.
+
+No full download required: sizes come from HTTP HEAD requests; only n_rows lines are streamed per entity.
+
+Join detection: when a dataset has both a spatial-only and a species-only entity, the function attempts to identify a join key from the sample rows using the same strategies as fetch_dataone_occurrences. Detection may fail for sparse samples; fetch_dataone_occurrences will still attempt the join on the full data regardless.
+
 ### read_biotime_study(local_path = NULL, study_id = NULL, verbose = TRUE)
 
 Read and DwC-map a downloaded BioTime study CSV
@@ -487,6 +748,40 @@ Reads a single-study occurrence CSV downloaded from the BioTime database and ret
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
 
 **Value:** A tibble with Darwin Core columns plus BioTime-specific passthroughs, compatible with 'stack_occurrences()': 'scientificName' Character. From 'valid_name'. 'decimalLatitude' Numeric. 'decimalLongitude' Numeric. 'year' Integer. 'month' Integer or NA. 'day' Integer or NA. 'occurrenceStatus' Character. '"present"', '"absent"', or 'NA' (neither 'ABUNDANCE' nor 'BIOMAS' parsed to a number for this row). 'organismQuantity' Numeric. ABUNDANCE value. 'organismQuantityType' Character. '"abundance"'. 'eventID' Character. BioTime SAMPLE_DESC value. 'datasetID' Character. '"biotime:<study_id>"'. 'basisOfRecord' Character. '"HumanObservation"'. 'biotime_biomass' Numeric. BIOMAS value (passthrough).
+
+#### Obtaining BioTime data
+
+BioTime (https://biotime.st-andrews.ac.uk) is a global database of biodiversity time-series assembled from published studies. Data are provided as per-study CSVs -- one file per study -- and are not available via a query API. To download a study:
+
+- Go to https://biotime.st-andrews.ac.uk/home.php and register for a free account.
+
+- Browse or search the study list to find studies relevant to your taxon and region. Each study has a numeric STUDY_ID (e.g. 595).
+
+- On the study page, click Download data to save the CSV (typically named raw_data_<STUDY_ID>.csv).
+
+- Note the STUDY_ID -- pass it to the study_id argument so that datasetID is populated correctly in the output.
+
+Citation: BioTime requires that you cite both the database and the original study. The DOI for the BioTime database is 10.1111/geb.12729 (Dornelas et al. 2018, Global Ecology and Biogeography). Per-study citations are shown on each study's BioTime page.
+
+#### Column mapping
+
+BioTime per-study CSVs use the following columns, which are mapped to Darwin Core:
+
+- valid_name: -> scientificName
+
+- LATITUDE: -> decimalLatitude
+
+- LONGITUDE: -> decimalLongitude
+
+- ABUNDANCE: -> organismQuantity; organismQuantityType set to "abundance"
+
+- BIOMAS: -> biotime_biomass (non-DwC passthrough; note the one-s spelling in BioTime source files)
+
+- DAY, MONTH, YEAR: -> day, month, year
+
+- SAMPLE_DESC: -> eventID (BioTime sample identifier)
+
+occurrenceStatus is set to "present" when ABUNDANCE > 0 or BIOMAS > 0; "absent" when at least one of the two is a valid, explicit zero; and NA when neither ABUNDANCE nor BIOMAS parses to a number at all (missing or malformed in the source CSV) -- an unparseable value is not treated as a confirmed non-detection. Explicit zero records are retained; filter with dplyr::filter(occurrenceStatus == "present") if absences (and unknowns) are not needed.
 
 ### report_fetch(occurrences, study_area = NULL, verbose = FALSE)
 
@@ -517,6 +812,20 @@ For each candidate dataset ID (typically the output of 'parse_geo_screening_resp
 
 **Value:** A tibble with one row per input ID and columns: id Original dataset ID as supplied (2-part, e.g. '"edi.1835"'). Use this column to join back to 'accepted'. resolved_id Fully-qualified 3-part PASTA ID (e.g. '"edi.1835.3"'). Use this column when calling 'fetch_dataone_eml' or 'fetch_dataone_occurrences' directly. eml_bbox_ok Logical. 'TRUE' = EML bbox overlaps query; 'NA' = no bbox in EML (dataset retained); 'FALSE' = bbox confirmed outside query. has_lat Logical. A likely latitude column was found in the data tables. has_lon Logical. A likely longitude column was found in the data tables. has_coords Logical. 'TRUE' if the dataset has usable coordinates by EITHER route: a detected 'lat_col' AND 'lon_col' pair, OR at least one EML point site ('has_eml_sites'). This is the column 'eml_status'/ 'eml_pass' actually key off; 'has_lat'/'has_lon' alone are not sufficient on their own since a dataset with EML point sites can have usable coordinates with both 'FALSE'. has_species Logical. A likely species/taxon column was found. has_eml_sites Logical. At least one EML point site was found in '<geographicCoverage>' (bounding box where west==east and north==south). Datasets with EML point sites pass coordinate screening even when 'has_lat' and 'has_lon' are 'FALSE' - Pass 5 of 'fetch_dataone_occurrences' will inject the coordinates. lat_col Character. Detected latitude column name, or 'NA'. lon_col Character. Detected longitude column name, or 'NA'. species_col Character. Detected species column name, or 'NA'. n_tables Integer. Number of EML '<dataTable>' elements - the EML element type describing one rectangular data file within the dataset (a dataset package can bundle more than one data table). eml_status Character. One of '"pass"', '"fetch_failed"', '"no_bbox_overlap"', '"no_coords"' (no lat/lon columns AND no EML point sites), '"no_species"', '"no_eml_bbox"'. eml_pass Logical. 'TRUE' if 'eml_status == "pass"' or '"no_eml_bbox"' and coordinates + species columns detected. Use this column to filter before downloading.
 
+#### Details
+
+This is the step between geographic LLM screening and the expensive data-file download in fetch_dataone_occurrences.
+
+Column detection uses case-insensitive pattern matching against the EML <attributeName> values across all <dataTable> elements. Patterns:
+
+- Latitude: lat, latitude, decimallatitude, y_coord, northing, yloc
+
+- Longitude: lon, long, longitude, decimallongitude, x_coord, easting, xloc
+
+- Species: species, taxon, scientific, organism, genus, sp_name, common_name, accepted_name, vernacular
+
+Bbox note: Many EML documents lack <boundingCoordinates> even when the data are geographically specific. These are flagged eml_bbox_ok = NA and retained if column detection passes -- the record-level filter in fetch_dataone_occurrences will handle the final spatial check.
+
 ### screen_pdf_structure(pdf_content, use_llm = TRUE, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), model = "claude-sonnet-4-6", max_tokens = 400L, api_key = Sys.getenv("ANTHROPIC_API_KEY"), verbose = TRUE)
 
 Characterize a PDF Paper on Five Axes for Occurrence Extraction
@@ -534,6 +843,28 @@ Stage 2 of the PDF occurrence pipeline. Reads section texts from a 'extract_pdf_
 | verbose | no | TRUE | Logical. Report progress. Default TRUE. |
 
 **Value:** An S3 object of class 'c("pdf_structure", "list")' with elements: observation_type Character. One of: '"field_survey"', '"compilation_review"', '"experimental_lab"', '"monitoring_time_series"', '"prevalence_abundance"'. 'NA' if classification failed. location_structure Character. One of: '"explicit_latlon"', '"named_localities"', '"split_tables"', '"single_site"'. 'NA' if classification failed. data_density Character. One of: '"tabular"', '"prose_dense"', '"prose_sparse"', '"supplementary"'. 'NA' if classification failed. taxonomic_scope Character. One of: '"single_species"', '"few_species"', '"community_survey"'. 'NA' if classification failed. contamination_risk Character. One of: '"high"', '"low"'. 'NA' if classification failed. page_table Data frame with columns 'page' (integer), 'section' (character), 'content_type' (character: '"prose"', '"table"', '"figure"', '"mixed"', '"other"'), 'legend_text' (character, 'NA' if none), 'send_image' (logical). abbreviation_inventory Named character vector. Names are abbreviated binomials (e.g. '"E. newberryi"'); values are the corresponding full binomials (e.g. '"Eucyclogobius newberryi"'). Zero-length if none detected. has_supplementary Logical. 'TRUE' if the document contains an appendix or supplementary section. single_site_rule Logical. 'TRUE' if 'location_structure == "single_site"', meaning Stage 3 should inject a single set of coordinates for all extracted records rather than expecting per-record locality fields.
+
+#### Details
+
+No PDF page images are sent in this stage. The LLM call (if enabled) receives only plain text (abstract + methods + results), keeping token cost low.
+
+Extraction decisions driven by axis values:
+
+- observation_type == "experimental_lab" or "prevalence_abundance" -> consider skipping extraction entirely (no DwC occurrence records expected).
+
+- data_density == "tabular" -> Stage 3 should prioritise table pages (send_image = TRUE rows where content_type == "table").
+
+- data_density == "prose_dense" -> Stage 3 must read narrative text pages as images (species account style, like Swift et al. 1993).
+
+- contamination_risk == "high" -> extraction prompt should explicitly instruct the model to skip Introduction and Discussion species mentions.
+
+- single_site_rule == TRUE -> extraction prompt should note the single study site and inject its coordinates.
+
+Page table and send_image logic: Pages in discussion, acknowledgements, funding, and references sections are always send_image = FALSE. Figure pages are scored by legend keyword matching against an occurrence vocabulary; figures without occurrence-relevant legends are skipped. Table pages in core sections are always sent. Appendix pages are sent only when has_supplementary = TRUE.
+
+No LLM fallback: When use_llm = FALSE, all five axis values are NA. There is no heuristic classifier. This mode is intended for pipeline testing and batch triage where cost must be minimised and imprecise characterization is acceptable.
+
+Provider note: Only call_anthropic_api is provided as a built-in llm_fn. Support for additional providers (OpenAI, Ollama, etc.) is a planned future addition to llm_api_utils.R. In the meantime, any function matching the (prompt_str, model, max_tokens, api_key, ...) signature can be passed as llm_fn.
 
 ### search_dataone(bbox, keywords = NULL, max_rows = 500L, exclude_noise = TRUE, min_bio_score = 1L, verbose = TRUE)
 
@@ -585,6 +916,18 @@ Row-binds one or more occurrence data frames and adds a 'point_id' column constr
 | lon_col | no | "decimalLongitude" | Character. Name of the longitude column. Default "decimalLongitude". |
 
 **Value:** A single tibble containing all rows from every input frame with an additional 'point_id' column appended, formed by pasting 'lat_col' and 'lon_col' separated by '"_"'. No rows are removed - the row count is always the sum of the input frames' row counts.
+
+#### Details
+
+This function only combines and labels rows -- it does not remove, filter, or aggregate anything, including duplicate records. Call dedupe_occurrences afterward (or on a single, unstacked source -- deduplication is relevant even without combining anything, see that function's Details) to remove duplicate/redundant records.
+
+Single-frame input: When only one data frame is supplied (or a list with one element), it is returned directly with point_id added and a message reporting the record count. This avoids errors when the upstream pipeline produced only one successful result.
+
+List input: The workflow scripts pass a named list such as pdf_occ_list_clean directly. stack_occurrences detects this and unpacks the list automatically -- no need to call do.call(stack_occurrences, list) manually.
+
+Column alignment: dplyr::bind_rows matches columns by name. Rename columns to a common convention with rename_cols before calling this function so that latitude, longitude, taxon name, and date columns align correctly across sources.
+
+point_id: If a point_id column already exists in any input frame it will be overwritten in the combined output so that all rows use a consistent format.
 
 ### taxafetch_clear_cache(cache_dir = tools::R_user_dir("TaxaFetch", "cache"), older_than_days = NULL, orphans_only = FALSE, zips_only = FALSE, dry_run = FALSE, force = FALSE)
 

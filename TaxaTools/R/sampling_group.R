@@ -357,66 +357,54 @@ default_sampling_scheme <- function() {
 #' missing" rather than as a fragile \code{class != ""} check.
 #'
 #' @section Backbone-mismatch detection (\code{harmonise = FALSE}):
-#' When \code{harmonise = FALSE}, this function does two cheap, static checks
-#' for signs the input taxonomy is NOT in the scheme's expected GBIF
-#' vocabulary, and emits ONE warning (naming what it saw) if either fires:
-#' (1) a \code{taxonomy_backbone} attribute on \code{taxonomy} that does not
-#' look like GBIF/backbone 11; (2) presence of a class value GBIF's backbone
-#' is confirmed NOT to carry --
-#' \code{"Thalassiosirophyceae"}/\code{"Bigyra"}/\code{"Phytomastigophora"}.
-#' \strong{\code{"Copepoda"} is deliberately NOT used as a mismatch signal},
-#' even though it is a genuinely NCBI-flavoured class name: it is also found
-#' live in real GBIF-backbone occurrence data, not only in NCBI match
-#' objects, so it is handled directly in the zooplankton rule (see
-#' \code{\link{default_sampling_scheme}}) rather than treated as a mismatch
-#' symptom, which would produce a false warning on perfectly correct GBIF
-#' input. Silent misclassification from an unnoticed backbone mismatch is
-#' the exact failure class this function exists to guard against, so this
-#' check errs toward naming what it saw rather than staying silent -- but it
-#' is a heuristic, not exhaustive, and passing \code{harmonise = TRUE} (or
-#' verifying the input's backbone directly) is the reliable fix, not a
-#' substitute for reading the warning.
+#' When \code{harmonise = FALSE}, this function makes two cheap, static checks
+#' for signs the input taxonomy is NOT in the scheme's expected GBIF vocabulary,
+#' and emits ONE warning (naming what it saw) if either fires: (1) a
+#' \code{taxonomy_backbone} attribute on \code{taxonomy} that does not look like
+#' GBIF/backbone 11; (2) a class value GBIF's backbone is known NOT to carry:
+#' \code{"Thalassiosirophyceae"}, \code{"Bigyra"} or \code{"Phytomastigophora"}.
+#' \strong{\code{"Copepoda"} is deliberately NOT used as a mismatch signal}:
+#' although NCBI-flavoured, it also occurs in GBIF-backbone occurrence data, so
+#' it is handled directly in the zooplankton rule (see
+#' \code{\link{default_sampling_scheme}}), and treating it as a symptom would
+#' warn falsely on correct GBIF input. The check is a heuristic, not
+#' exhaustive, and it errs toward naming what it saw. Passing
+#' \code{harmonise = TRUE} (or verifying the input's backbone directly) is the
+#' reliable fix, not a substitute for reading the warning.
 #'
 #' @section Rank agreement (\code{harmonise = TRUE}):
 #' The harmoniser resolves each row's finest available rank NAME and then
 #' overwrites \code{kingdom}/\code{phylum}/\code{class}/\code{order} from the
-#' lineage the backbone returns. That is only safe if the backbone's answer is
-#' about the SAME TAXON the probe column named, so a resolution is accepted
-#' only when one of two things holds:
+#' lineage the backbone returns. That is safe only if the backbone's answer is
+#' about the SAME TAXON the probe column named, so a resolution is accepted only
+#' when one of two things holds:
 #' \enumerate{
 #'   \item \code{\link{verify_taxon_names}}'s \code{matched_rank} equals the
-#'     rank of the probe column. This is the ordinary case, and it is also what
-#'     keeps SYNONYM resolution working -- an outdated spelling resolves to the
-#'     backbone's accepted name, which is by definition not the name that was
-#'     asked about, so only the rank can vouch for it.
+#'     rank of the probe column. This is the ordinary case, and it keeps
+#'     SYNONYM resolution working: an outdated spelling resolves to the
+#'     backbone's accepted name, which is not the name that was asked about, so
+#'     only the rank can vouch for it.
 #'   \item The rank differs, but the returned lineage carries the probe name
 #'     ITSELF at the probe's own rank. That is a same-clade duplication rather
 #'     than a homonym: GBIF holds a genus \emph{Spionidae} inside family
 #'     Spionidae and a genus \emph{Arthropoda} inside phylum Arthropoda, so the
-#'     terminal match is a genus while every rank above it is exactly the
-#'     lineage the row already had.
+#'     terminal match is a genus while every rank above it is the lineage the
+#'     row already had.
 #' }
-#' A row failing both keeps its ORIGINAL taxonomy -- the same fallback an
-#' unresolved name gets -- and is named in a warning. Measured on a real 18S
-#' dataset: of 97 resolved names, 90 agree on rank outright and 6 have no GBIF
-#' match; the gate rejects the one remaining name (the fly genus below) and
-#' recovers 7 taxa (17 rows) as macroinvertebrates.
+#' A row failing both keeps its ORIGINAL taxonomy, the same fallback an
+#' unresolved name gets, and is named in a warning.
 #'
-#' The case that forced this: GBIF's backbone contains a tachinid \strong{fly
-#' genus} named \emph{Polychaeta}
-#' (\code{Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta}, verified
-#' live). Without the gate, a row whose \code{class} column reads
-#' \code{"Polychaeta"} -- the annelid class, correct in NCBI -- would be
-#' matched against that genus and have its whole lineage overwritten
-#' (\code{Annelida} -> \code{Arthropoda}, \code{Polychaeta} ->
-#' \code{Insecta}, and a fabricated \code{order = "Diptera"}), grouping it as
-#' \code{terrestrial_arthropods} and -- because a downstream marine filter
-#' reads the harmonised phylum/class -- silently dropping it from the
-#' species list entirely.
-#'
-#' \strong{And \emph{Polychaeta} is not alone.} Scanning real NCBI-side
-#' taxonomy against GBIF turns up other genuine cross-lineage homonyms that
-#' would each rewrite a whole lineage into an unrelated one:
+#' The gate exists because of cross-lineage homonyms, which would otherwise
+#' rewrite a whole lineage into an unrelated one. For example, GBIF's backbone
+#' contains a tachinid \strong{fly genus} named \emph{Polychaeta}
+#' (\code{Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta}). Without
+#' the gate, a row whose \code{class} reads \code{"Polychaeta"} (the annelid
+#' class, correct in NCBI) would match that genus and have its lineage
+#' overwritten (\code{Annelida} -> \code{Arthropoda}, \code{Polychaeta} ->
+#' \code{Insecta}, and a fabricated \code{order = "Diptera"}), be grouped as
+#' \code{terrestrial_arthropods}, and, because a downstream marine filter reads
+#' the harmonised phylum/class, be silently dropped from the species list.
+#' Other NCBI-side names with the same hazard:
 #' \tabular{lll}{
 #'   \strong{name} \tab \strong{column rank} \tab \strong{what GBIF matched} \cr
 #'   Polychaeta \tab class \tab a tachinid fly genus (Insecta|Diptera) \cr
@@ -425,26 +413,15 @@ default_sampling_scheme <- function() {
 #'   Appendicularia \tab class \tab a flowering-plant genus (Plantae|Myrtales) \cr
 #'   Pilidiophora \tab class \tab a gregarine genus (Chromista|Myzozoa) \cr
 #' }
-#' A corrupted lineage that stays marine is silent -- only a dropped taxon
-#' tends to get noticed. Some rank disagreements are NOT homonyms:
-#' \code{"Bacillariophyta"} (NCBI phylum, GBIF class
-#' \code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum)
-#' are genuine NCBI-vs-GBIF rank-assignment differences for the same clade.
-#' Rejecting them is harmless: the row keeps its NCBI value, and the diatom
-#' rule in \code{\link{default_sampling_scheme}} is class-level by design.
+#' Some rank disagreements are NOT homonyms: \code{"Bacillariophyta"} (NCBI
+#' phylum, GBIF class \code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class,
+#' GBIF phylum) are genuine NCBI-vs-GBIF rank-assignment differences for the
+#' same clade. Rejecting them is harmless: the row keeps its NCBI value, and
+#' the diatom rule in \code{\link{default_sampling_scheme}} is class-level by
+#' design.
 #'
-#' A looser third rule -- accept a rank-mismatched match whose lineage contains
-#' ANY of the row's original rank values -- was considered and rejected. It
-#' rescues nothing rule 2 does not (NCBI gives diatoms no \code{kingdom} at
-#' all, so a bare \code{"Bacillariophyta"} row has no other value to test), and
-#' letting a \code{kingdom} match carry the test would re-admit
-#' \emph{Polychaeta} for any caller whose input already says
-#' \code{"Animalia"} rather than NCBI's \code{"Metazoa"}.
-#'
-#' Because a cache written before this gate existed carries no
-#' \code{matched_rank} and so cannot be checked, such a cache is discarded and
-#' re-resolved rather than trusted -- reusing an old \code{cache_dir} is
-#' exactly when a silent re-admission would be least likely to be noticed.
+#' A cache written before this gate existed carries no \code{matched_rank} and
+#' cannot be checked, so it is discarded and re-resolved rather than trusted.
 #'
 #' @seealso \code{\link{default_sampling_scheme}}
 #' @export

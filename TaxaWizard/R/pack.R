@@ -379,6 +379,14 @@
     if (!is.null(fn$value) && nzchar(fn$value)) {
       lines <- c(lines, sprintf("**Value:** %s", fn$value), "")
     }
+    # \details and the titled sections, in full. Headings at #### (and
+    # ##### for a subsection) so the ### count stays one per function.
+    if (!is.null(fn$details) && nzchar(fn$details)) {
+      lines <- c(lines, "#### Details", "", fn$details, "")
+    }
+    for (sec in fn$sections %||% list()) {
+      lines <- c(lines, sprintf("#### %s", sec$title), "", sec$body, "")
+    }
   }
 
   quick_start <- .pack_read_quick_start(pkg)
@@ -574,7 +582,9 @@
 #'     lines.}
 #'   \item{\code{CONTEXT_<Package>.md}}{One per TaxaID package: its
 #'     DESCRIPTION Title/Description, every exported function with its
-#'     signature/title/description/params table/value, and its README's
+#'     signature/title/description/params table/value, then its full
+#'     \\details and every titled \\section (headings at four hashes,
+#'     subsections at five), and its README's
 #'     Quick Start section when one exists and the source repo is reachable
 #'     (see \code{TAXAID_ROOT} in Details).}
 #'   \item{\code{SETUP_REPORT.md}}{\code{\link{workflow_check}}'s report for

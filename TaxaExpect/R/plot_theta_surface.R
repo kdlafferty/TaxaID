@@ -55,41 +55,28 @@
 #' one that this map OMITS, or it has one held at a stated value -- is written
 #' onto the rendered map itself (a subtitle on the static plot, a caption on
 #' the interactive one) alongside the habitat stratum, and printed by
-#' `print()`. The conditions therefore travel with a screenshot. They are
-#' shown as three visually distinct states on purpose: a fit that has a
-#' covariate but is drawn without it says so affirmatively, because rendering
-#' that case as silence would read as \"this model has no covariate\", which
-#' is a different and false claim. To see a different habitat or a different
-#' covariate value, re-fit: both are choices made in
-#' [estimate_kernel_priors()], not view settings on an existing fit.
+#' `print()`, so the conditions travel with a screenshot. A fit that has a
+#' covariate but is drawn without it says so affirmatively, because silence
+#' would read as "this model has no covariate", a different and false claim.
+#' To see a different habitat or covariate value, re-fit: both are choices
+#' made in [estimate_kernel_priors()], not view settings on an existing fit.
 #'
 #' The optional latitude factor
 #' `exp(-111 * ||lat_r| - |lat_x|| / lambda_latitude)` is folded into the
 #' SAME lattice kernel using signed `lat_x - lat_r` (translation-invariant,
 #' so it convolves in one FFT pass together with the geographic factor).
 #' This is mathematically EXACT whenever the site, the lattice, and every
-#' contributing record share the same hemisphere sign (the case for every
-#' real deployment of this package -- Great Lakes, Point Conception, Mugu --
-#' none of which are within a bandwidth of the equator); see `@section
-#' Limitations` for the general case.
+#' contributing record share the same hemisphere sign (any site not within a
+#' bandwidth of the equator); see `@section Limitations` for the general case.
 #'
 #' @section Why no opacity fade:
-#' An earlier version of this function offered `alpha_by_n_eff`, fading each
-#' taxon's own panel toward transparent where support was low -- removed
-#' entirely, not just defaulted off, after the `support_panel` mechanism made
-#' it clearly the wrong default and, on reflection, not worth keeping as an
-#' option either. Three reasons, not one: (1) `n_eff` is SCALE-INVARIANT (see
-#' `support_field` above) -- a confidently opaque cell can be pure
-#' far-field extrapolation, so opacity-as-confidence is actively misleading,
-#' not just imprecise; (2) support is per-LOCATION, not per-taxon, so in any
-#' facet of more than one taxon the identical fade was multiplied into every
-#' panel -- it could never discriminate between taxa, only cost legibility of
-#' the comparison the facet exists to support; (3) fading toward `bg` reads
-#' differently depending on `palette`'s own direction (a pale-low palette like
-#' the default `"YlOrRd"` fades a low-support cell toward something that can
-#' look like a genuinely low-theta cell -- two different claims collapsing
-#' into similar colours). `support_panel` says the same thing once, as its
-#' own labelled quantity, and never confounds it with theta's own colour.
+#' Every taxon panel always renders at full opacity; support is shown in its
+#' own `support_panel` instead of as a fade toward transparent. `n_eff` is
+#' SCALE-INVARIANT (see `support_field`), so a confidently opaque cell can be
+#' pure far-field extrapolation. Support is also per-LOCATION, not per-taxon,
+#' so a fade would be multiplied into every facet panel without discriminating
+#' between taxa. And fading toward `bg` can look like a genuinely low-theta
+#' cell, collapsing two different claims into similar colours.
 #'
 #' @section Limitations:
 #' If the lattice or the stratified records span BOTH hemispheres (some
@@ -97,17 +84,15 @@
 #' the single-kernel-pass latitude factor above can differ from
 #' [estimate_kernel_priors()]'s exact `||lat_r| - |lat_x||` formula for
 #' cross-equatorial record/point pairs (the general form requires a second,
-#' hemisphere-mirrored convolution pass that this function does not
-#' perform). A message is emitted when this condition is detected. It never
-#' affects the site-identity invariant for a site that (like every current
-#' deployment) sits comfortably outside the equatorial band.
+#' hemisphere-mirrored convolution pass that this function does not perform).
+#' A message is emitted when this condition is detected. It does not affect
+#' the site-identity invariant for a site outside the equatorial band.
 #'
 #' A `kernel_fit` built with `sampling_group_col` is REFUSED with an error.
 #' That argument makes [estimate_kernel_priors()] compute `n_eff` and the
 #' regional back-off separately within each sampling group; this function has
 #' no equivalent split and would silently draw the pooled, ungrouped field.
-#' Map one group at a time by fitting it on its own record subset (the shape
-#' the 18S workflow already uses) rather than passing a grouped fit here.
+#' Map one group at a time by fitting it on its own record subset.
 #'
 #' @param kernel_fit A `taxaexpect_kernel_priors` object from
 #'   A fit built with `habitat_levels`/`habitat_weights` (see

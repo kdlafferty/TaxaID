@@ -325,3 +325,111 @@ test_that("the root README's Software Inventory table matches the tree", {
     expect_equal(stated_tests, n_tests, info = sprintf("%s test files in README.md vs tests/testthat", pkg))
   }
 })
+
+
+# ==============================================================================
+# \details and titled \section text reach the CONTEXT files, in full
+# ==============================================================================
+
+test_that("every CONTEXT_<pkg>.md carries a known sentence from a named function's \\details and from a titled \\section", {
+  # POSITIVE checks: a registry that silently dropped \details or \section
+  # would still pass every structural test above (the headings, the params
+  # tables, the Value lines are all there). So each package names one
+  # function and one sentence its help page states in \details, and one
+  # titled \section with a sentence from its body, and both must appear
+  # inside that function's own block (between its ### heading and the next).
+  # The sentences are operative rules, not narrative, so a documentation
+  # pass that trims repetition must leave them in place.
+  expected <- list(
+    TaxaTools = list(
+      details = c("fetch_worms_attributes", "Why this is not the habitat lookup you already have"),
+      section = c("assign_sampling_group", "Empty-string normalisation",
+                  "is normalised to NA across every present rank_cols column")
+    ),
+    TaxaFetch = list(
+      details = c("dedupe_occurrences", "rows with a duplicated non-NA gbifID are dropped"),
+      section = c("download_gbif_occurrences", "Why nothing here blocks by default",
+                  "can consume the ENTIRE remainder of the script")
+    ),
+    TaxaHabitat = list(
+      details = c("parse_hierarchical_habitat_response", "duplicate header rows are stripped automatically"),
+      section = c("apply_spatial_review_decisions", "Old-format decisions files (no taxon_name)",
+                  "has no way to say which taxon a decision was for")
+    ),
+    TaxaMatch = list(
+      details = c("blast_sequences", "Rather than a flat top-N cutoff, hits are filtered per query"),
+      section = c("check_marker_mismatch", "Why this exists", "AY850362")
+    ),
+    TaxaLikely = list(
+      details = c("evaluate_likelihoods", "takes the median score across references"),
+      section = c("apply_coverage_constraints", "Census confidence",
+                  "reflects what an NCBI taxonomy-tree query returned for the genus")
+    ),
+    TaxaExpect = list(
+      details = c("generate_uncertain_habitat_evidence", "The gap this closes"),
+      section = c("apply_undetected_evidence", "Why one shared function, not one per evidence source",
+                  "independently constructed and appended its own finished Beta")
+    ),
+    TaxaAssign = list(
+      details = c("compute_posterior", "Two computation paths are available"),
+      section = c("add_unreferenced_prior_mass", "What is added",
+                  "the added mass is the sum")
+    ),
+    TaxaFlag = list(
+      details = c("flag_contaminant", "depth-weighted detection rate per taxon in field samples"),
+      section = c("add_posthoc_assessment", "Why no rank-based short-circuit",
+                  "would need a fallback for any row")
+    )
+  )
+
+  dir <- tempfile("pack_details_")
+  workflow_export_prompts(dir, placeholder_setup_report = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+
+  block_of <- function(lines, fn) {
+    starts <- grep("^### ", lines)
+    i <- starts[grepl(sprintf("^### %s\\(", fn), lines[starts])]
+    expect_length(i, 1L)
+    nxt <- starts[starts > i]
+    end <- if (length(nxt) > 0L) nxt[1L] - 1L else length(lines)
+    paste(lines[i:end], collapse = "\n")
+  }
+
+  for (pkg in names(expected)) {
+    f <- file.path(dir, sprintf("CONTEXT_%s.md", pkg))
+    if (!file.exists(f)) skip(sprintf("%s not installed", pkg))
+    lines <- readLines(f, warn = FALSE)
+    ex <- expected[[pkg]]
+
+    blk <- block_of(lines, ex$details[1L])
+    expect_true(grepl("\n#### Details\n", blk, fixed = TRUE), info = paste(pkg, ex$details[1L], "has a Details heading"))
+    expect_true(grepl(ex$details[2L], blk, fixed = TRUE), info = paste(pkg, ex$details[1L], "details sentence"))
+
+    blk <- block_of(lines, ex$section[1L])
+    expect_true(grepl(sprintf("\n#### %s\n", ex$section[2L]), blk, fixed = TRUE), info = paste(pkg, ex$section[1L], "section heading"))
+    expect_true(grepl(ex$section[3L], blk, fixed = TRUE), info = paste(pkg, ex$section[1L], "section sentence"))
+
+    # Headings inside a block are never at ### (that level is the function
+    # signature the structural test counts) and never shallower.
+    inner <- grep("^#{1,3} ", strsplit(blk, "\n", fixed = TRUE)[[1L]][-1L], value = TRUE)
+    expect_length(inner, 0L)
+  }
+})
+
+test_that("a registry entry's details keep paragraph breaks and list items", {
+  # Build an Rd page in memory and read it the way the registry does.
+  rd <- tools::parse_Rd(textConnection(c(
+    "\\name{zz}", "\\title{Zz}", "\\description{One.}",
+    "\\details{First paragraph.", "", "Second paragraph with \\code{x}.",
+    "\\itemize{\\item first item \\item second item}",
+    "\\preformatted{a <- 1", "b <- 2}", "}",
+    "\\section{Why it exists}{Because.", "", "\\subsection{Sub}{Deeper.}}"
+  )))
+  s <- TaxaWizard:::.rd_sections(rd)
+  expect_true(grepl("First paragraph.\n\nSecond paragraph with x.", s$details, fixed = TRUE))
+  expect_true(grepl("\n\n- first item\n\n- second item", s$details, fixed = TRUE))
+  expect_true(grepl("```\na <- 1\nb <- 2\n```", s$details, fixed = TRUE))
+  expect_length(s$sections, 1L)
+  expect_identical(s$sections[[1L]]$title, "Why it exists")
+  expect_true(grepl("Because.\n\n##### Sub\n\nDeeper.", s$sections[[1L]]$body, fixed = TRUE))
+})

@@ -35,6 +35,32 @@ Appends two independent, orthogonal diagnostic axes to a 'TaxaAssign::posterior_
 
 **Value:** 'consensus_df' with five columns appended: 'primary_plausibility', 'consensus_plausibility' Character. Occurrence plausibility (Axis 1) of 'primary_taxon' and of 'consensus_taxon': '"expected"', '"unexpected"', '"unprecedented"', or '"not_modeled"' when nothing is computable - including when 'consensus_rank' has no matching entry in 'expected_theta_threshold'. 'NA' when the required source columns are absent from 'consensus_df'. 'primary_discrimination', 'consensus_discrimination' Character. Discrimination (Axis 2) of 'primary_taxon' and of 'consensus_taxon': '"discriminating"', '"weak"', '"indistinguishable"', or '"not_modeled"' when the source confusion-risk column is absent or 'NA'. See '@section Discrimination (Axis 2)' above. 'domestic_prior_caveat' Logical. 'TRUE' when the winning taxon is in 'domestic_taxa', 'domestic_prior_source = "wild"', the ID itself is trustworthy ('winner_likelihood_col' '>= likelihood_threshold'), and 'primary_plausibility' is '"unexpected"' or '"unprecedented"' - i.e. the occurrence plausibility flag for this row is a likely database-coverage artifact, not a genuine surprise. 'FALSE' otherwise, including when 'domestic_taxa' is 'NULL' (the feature is disabled). See @section Domestic/synanthropic species caveat above. 'domestic_caveat_type' Character. 'NA' unless 'domestic_prior_caveat' is 'TRUE', then one of: '"no_local_records"' ('primary_plausibility' was '"unprecedented"' - the species has never been reported locally, so the classic food/domestic-contamination reading is the leading hypothesis) or '"local_records"' ('primary_plausibility' was '"unexpected"' - the species HAS real local occurrence records, just at an implausibly low modelled rate, typically because those records sit in a different habitat than the survey's. For that case a genuine allochthonous detection - DNA transported across habitats, e.g. terrestrial pigs or coyotes reaching beach eDNA samples via runoff and tides - is at least as plausible as food contamination, and a reviewer should not read the row as a plain food label.)
 
+#### Why no rank-based short-circuit
+
+A single combined design that cross-tabulates sequence-match evidence against a taxon-tier lookup into one 9-category column would need a fallback for any row whose consensus_rank is coarser than species -- and a short-circuit value such as "vague_rank", returned for EVERY such row, stops classification entirely rather than reporting a coarser-but-still-informative answer. Axis 1 and Axis 2 avoid this because both are computed at whatever rank the data actually resolved to, reported alongside each other, with no rank at which classification simply stops.
+
+#### Domestic/synanthropic species caveat
+
+GBIF- and iNaturalist-derived occurrence priors structurally under-index captive/domestic organisms (pets, livestock) -- a data-curation property of those sources, not a modelling choice. A domestic species can therefore show primary_plausibility = "unexpected"/"unprecedented" (an artificially low occurrence share) even when the sequence-match or image/acoustic evidence for it is strong, looking like a suspicious call when it is really just a database gap. Passing domestic_taxa flags exactly this combination (strong likelihood + low occurrence plausibility) via the domestic_prior_caveat column, so a reviewer sees "trust the ID, question the rarity" rather than treating the occurrence-implausibility flag at face value. This is deliberately conservative: it only fires when the prior is expected to be an under-count (see domestic_prior_source), never invents or elevates a prior itself, and is its own small additive column. If your prior pipeline already augments occurrence data with known local domestic/synanthropic presence (rather than relying on raw GBIF/iNat), set domestic_prior_source = "augmented" to disable this flag, since primary_plausibility is then informative on its own.
+
+#### Discrimination (Axis 2) (primary_discrimination/consensus_discrimination)
+
+A confusion-risk value (TaxaLikely::evaluate_likelihoods()'s species_confusion_risk/genus_confusion_risk/ family_confusion_risk, passed through by posterior_consensus()) is a model-independent, score-ONLY diagnostic: given the winning candidate's own raw match score, how often would a REAL congener/confamilial/cross-family pair score this high or higher? HIGHER values mean MORE confusable, i.e. WEAKER evidence for the resolved rank -- a genuine risk-style metric (high=concern), unlike score_likelihood/posterior_mean/confidence_score elsewhere in this ecosystem, which are all high=good -- see evaluate_likelihoods()'s own @section Confusion risk for the full interpretation.
+
+primary_discrimination/consensus_discrimination tier that raw value into three ordinal bands (plus "not_modeled" when the source column is absent or NA): "discriminating" (< 0.05), "weak" (0.05-0.5), "indistinguishable" (>= 0.5). Both breaks are interpretable statements about a genuine one-sided tail probability rather than fitted cutoffs.
+
+These are reported alongside primary_plausibility/ consensus_plausibility (Axis 1) rather than combined with them -- Axis 1 asks whether the taxon is expected to be here at all; Axis 2 asks whether the evidence could discriminate it from a plausible relative. Neither substitutes for the other, and neither recomputes or overrides any other column.
+
+#### Occurrence plausibility (primary_plausibility/consensus_plausibility)
+
+An ordinal answer to "how expected is this taxon here?", reported for primary_taxon and consensus_taxon separately and computed at whatever rank the data actually resolved to -- never short-circuited for a coarser rank; see Why no rank-based short-circuit above for the failure mode this avoids.
+
+"unprecedented" is driven by RECORD PRESENCE, never by a low value. A never-reported taxon and a genuine singleton can carry the same numeric value -- both land on the dark-diversity floor -- while meaning opposite things, so no threshold on the value can separate them.
+
+Reads theta_mean, not prior_mean. prior_mean can be substantially inflated by TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation boost, which has no gate on occurrence-record presence -- so an expected call built on prior_mean would mean "confirmed elsewhere in this dataset", not "expected here on occurrence grounds". theta_mean (TaxaExpect::prepare_model_dataframe()'s raw occurrence-model share, a compositional share of local records -- see TaxaAssign::update_prior_from_consensus()'s own "Rescaling onto the occurrence scale" section) is immune to that boost by construction, since the boost only ever modifies prior_mean.
+
+A single absolute threshold, such as 0.5 on the prior_mean scale, is also a unit mismatch on the theta_mean scale: theta_mean is a share of local records, not a presence probability, so comparing it to "50/50 odds" is not a meaningful comparison. Beyond that, a SINGLE threshold applied at every rank is itself biased: a genus/family-level consensus_prior (the SUM of theta_mean across every locally modelled group member, from TaxaAssign::posterior_consensus(group_priors = ...)) is mechanically larger than any one species' own share just from summing more terms, not because it is more locally expected. expected_theta_threshold is therefore a RANK-MATCHED vector: primary_plausibility (always the winning candidate's own species-level share) is compared against the "species" entry; consensus_plausibility is compared against whichever entry matches that row's own consensus_rank_col value. A consensus_rank with no matching entry (e.g. a coarser rank the caller didn't supply a threshold for) gets "not_modeled" rather than being compared against the wrong rank's threshold.
+
 ### check_gbif_tile_range(taxon_key, query_lat, query_lon, zoom = 6L, buffer_px = 512L, escalate = TRUE, min_zoom = 0L, base_url = "https://api.gbif.org/v2/map/occurrence/density", cache_dir = NULL)
 
 Spatial-isolation signal for a taxon from GBIF's occurrence-density map tiles
@@ -54,6 +80,36 @@ Downloads the GBIF occurrence-density PNG tile(s) covering a query point and a s
 | cache_dir | no | NULL | Character or NULL (default). Directory for a persistent, per-key on-disk cache -- see Caching below. NULL disables caching entirely. |
 
 **Value:** A one-row data frame: taxon_key, query_lat, query_lon As supplied. zoom_requested The 'zoom' argument, as supplied. zoom_used The zoom level the reported values were actually computed at - 'zoom_requested' unless escalation stepped down to find something. 'NA' when 'escalate = TRUE' (the default) and nothing was found anywhere from 'zoom' down to 'min_zoom' (nothing was ever "used"). When 'escalate = FALSE', this is always 'zoom_requested', even if nothing was found there - the single attempted zoom is still reported, for reference. escalated Logical. 'TRUE' when 'zoom_used != zoom_requested' - the answer came from a coarser search than requested. tile_size Pixel width/height of one fetched tile (512, GBIF's @1x.png size). n_tiles_fetched Total tiles downloaded across every zoom level attempted - transparency on the real cost of the call, including any escalation. resolution_km_per_px Real-world ground distance per pixel at 'query_lat'/'zoom_used' (Web Mercator distorts by latitude and zoom) - the unit 'patch_size_px'/'patch_area_km2' are derived from. point_occupied Logical. Does the query point's own cell (at 'zoom_used') have at least one occurrence? dist_nearest_occupied_km Distance from the query point to the nearest occupied cell found. '0' when 'point_occupied'. 'NA' when 'beyond_buffer'. patch_size_px Size (in cells, at 'zoom_used') of the occupied blob nearest the point (8-connected), grown from that nearest cell. Growth is capped at a small fixed number of iterations for bounded latency (see 'patch_size_capped'), so this is exact for a small/isolated patch (the case this function is for) but only a lower bound once a patch is large enough to hit the cap. 'NA' when 'beyond_buffer'. patch_size_capped Logical. 'TRUE' when patch growth hit the iteration cap before converging - 'patch_size_px'/'patch_area_km2' are then a lower bound, not exact. In practice this itself is informative: a capped patch is, by construction, one that already covers a wide area at 'zoom_used', i.e. clearly not an isolated report. 'NA' when 'beyond_buffer'. patch_area_km2 'patch_size_px * resolution_km_per_px^2' - the pixel count converted to real-world area, since a raw pixel count is only interpretable alongside the zoom it was measured at. A lower bound when 'patch_size_capped'. 'NA' when 'beyond_buffer'. patch_diameter_km 'sqrt(patch_size_px) * resolution_km_per_px' - a rough linear length scale for the same patch, in the same units as 'dist_nearest_occupied_km', meant for eyeballing the two against each other (e.g. "the isolated point is 340 km from a patch about 15 km across"). A lower bound when 'patch_size_capped'. 'NA' when 'beyond_buffer'. beyond_buffer Logical. With 'escalate = TRUE' (default): 'TRUE' only when no occupied cell was found anywhere from 'zoom' down to 'min_zoom' - with the default 'min_zoom = 0', this means the species has no occurrence anywhere in GBIF's density map at all (a real, decisive finding, not just "outside this window"). With 'escalate = FALSE': 'TRUE' when nothing was found within the single requested 'zoom'/'buffer_px' window.
+
+#### Details
+
+This is the cheap, global, approximate complement to compute_local_occurrence_distance()'s free, local, exact view: the local function can only speak to whatever bounding box a study's own GBIF fetch covered, while this one gives the missing global context (is a species that is novel to this study also far from its known range everywhere, or is it novel here simply because no one sampled here before) for the cost of a handful of small tile downloads, regardless of how many occurrence records exist worldwide.
+
+#### What the PNG can and can't tell you
+
+GBIF's density tiles encode density as a colour ramp, which is not a reliable source for exact counts. This function only ever reads the alpha channel (transparent = zero occurrences in that cell, any non-zero alpha = at least one) -- a presence/absence signal, not a decoded density value. patch_size_px/patch_area_km2 are weak, resolution-limited proxies for how much local support an isolated detection has (a bigger blob suggests more than one independent nearby report), not an exact record count; for that, follow up with a targeted GBIF occurrence query at just the flagged point.
+
+#### What isolation does and doesn't mean
+
+A point far from the nearest occupied cell is equally consistent with a genuine rarity/vagrancy report and with a misidentified or mis-georeferenced record -- this function cannot distinguish the two on geometry alone. Error screening against implausible occurrences belongs to TaxaFetch::check_geographic_outliers(); this function is for a downstream, different question -- for a detection already judged plausible, how far outside the species' main range does it sit.
+
+#### Zoom escalation
+
+A fixed zoom/buffer_px only ever covers a bounded window (e.g. the default is roughly continental scale) -- a species genuinely absent from that window could be just outside it, or on another continent, and a flat "not found" (NA distance) can't tell those apart. When escalate = TRUE (the default) and nothing is found at zoom, the same buffer_px window is re-tried one zoom level coarser (each step downward roughly doubles the real-world ground the same pixel buffer covers), continuing down to min_zoom (default 0L -- the whole world in a single tile) until an occupied cell is found or min_zoom is exhausted. This is cheap in the common case: escalation only fires for calls that would otherwise return NA, each step costs the same handful of tiles as the original call, and it terminates as soon as anything is found. Set escalate = FALSE to restore the original single-zoom, bounded-latency behaviour, where beyond_buffer means only "not within this one window." resolution_km_per_px/dist_nearest_occupied_km/patch_size_px etc. are always reported at zoom_used (whichever level actually found something, or the originally requested zoom if nothing was found at any level) -- compare against zoom_used, not zoom, when judging precision.
+
+#### Caching
+
+check_gbif_tile_range() is called once per zero-record taxon by TaxaExpect::generate_regional_proximity_evidence()'s Stage 1 gate -- cheap per call, but re-paid in full on every re-run of a workflow against otherwise-unchanged data. When cache_dir is supplied, a hit is read from disk with no HTTP request at all and a miss is fetched normally and then written.
+
+Cache key (order shown; joined into one string and hashed for the filename): taxon_key, query_lat/query_lon each rounded to 4 decimal places (about 11m of ground resolution at the equator, so rounding only collapses floating-point noise), buffer_px, zoom, escalate, min_zoom, base_url. The full, unhashed key is stored inside the cache file and re-checked on every read -- a filename hash collision therefore costs one extra re-fetch, and can never hand back a different taxon/location's verdict. Each file also stores fetched_at (a POSIXct), which is how staleness is surfaced (see below) without a TTL.
+
+No expiry, by design. A hit is always used, however old -- there is no automatic re-fetch. If you want fresher verdicts (GBIF's density map is refreshed with new occurrence submissions over time), you must deliberately clear the cache with taxaflag_clear_cache(); this function will never do it for you.
+
+No year dimension in the key. GBIF's density tile API has no year filter at all -- a tile request always reflects GBIF's current full-history density map for that taxon, so the tiles cannot answer a time-scoped question.
+
+What is and isn't cached. Every value this function can return once the fetch itself succeeds -- including beyond_buffer = TRUE -- is a real, decisive verdict (see @return below) and is cached. Nothing here is ever cached on a thrown error (a missing httr2/png package, a malformed GBIF tile, or any other condition that stops this function before it can construct a result) -- an error always propagates to the caller with no cache read or write, so a transient failure is retried plainly on the next call rather than being frozen as "unknown."
+
+A verdict built on a tile GBIF did not return (HTTP status other than 200 or 204, e.g. a 5xx under load) is reported for the call with attr(out, "tile_fetch_failed") = TRUE and is never cached, because its "no occurrences" reading is what a server error looks like, not what it means. The returned data frame carries attr(out, "cache_age_days"): the age in days of the cached verdict on a hit, or NA on a miss/uncached call -- lets a caller report how stale the tile checks behind a run were, rather than that staleness being silent.
 
 ### classify_sample_identity(input_df, library_col = "event_id", sample_col = "sample_id", marker_col = "marker", run_col = "run", count_col = "count", taxon_col = "taxon_name", control_samples = NULL, failed_libraries = NULL, taxon_label_col = NULL, diversity_blank_max = 0.5, composition_share = 0.5, artifact_fraction = 0.9, spike_taxa = NULL, untested_policy = c("admit", "hold_blanks", "block"), accept_llm_roles = FALSE, decisions_path = NULL, on_pending = c("warn", "error", "ignore"), verbose = TRUE)
 
@@ -83,7 +139,85 @@ Classifies every sample x marker x run (a "unit": one tube amplified with one ma
 | on_pending | no | c("warn", "error", "ignore") | "warn" (default), "error" or "ignore": what to do when units are held back awaiting an identity decision. A production workflow should pass "error". |
 | verbose | no | TRUE | Logical. Print a summary. Default TRUE. |
 
-**Value:** 'input_df' in its original order with these columns added: 'identity_label' '"blank"' or '"sample"', as labelled. 'identity_appearance' '"valid_blank"', '"valid_sample"', '"neither"' or '"not_assessed"'. 'identity_status' '"concordant"', '"discordant"', '"suspect"', '"inconclusive"' or '"untested"'. 'identity_status_reason' See Status. 'admit_as' '"control"', '"sample"', '"positive_control"' or 'NA' (not admitted); reflects any reassignment. 'control_usability', 'sample_viability' Per marker; see Decision scopes. 'admit' Logical. The gate. Filter on this and read 'admit_as' for the role; the original 'control_samples' vector is no longer the control set. Attribute '"units"': one row per sample x marker x run with the evidence ('depth', 'richness', 'diversity_n1', 'diversity_ratio', 'composition_share_other', 'n_libraries_assessable', 'composition_power', 'library_status', 'run_status', 'n_markers_flagged', 'n_markers_assessable', 'top_taxa', and 'top_taxon' with 'top_taxon_share': the single most abundant feature and its share of the unit's reads, with run-wide artifacts and declared spikes set aside. Dominance is reported as evidence for a reviewer and never acted on: a blank that is 96\ number needs no taxonomy, habitat or scope), the verdict columns, 'identity_status_reason', 'issue_type', 'tube_flagged', 'hold_reason', 'confidence', 'reason', 'disposition', 'disposition_source', 'pending_review', 'excluded_library_issue', 'control_usability' (for units whose role is control: '"usable"', '"contaminated_in_marker"', '"kept_by_decision"' or '"excluded_by_decision"'), 'sample_viability' (for units whose role is sample: '"viable"', '"thin"' or '"non_viable"'), 'admit_as' and 'admit'. Attribute '"review_queue"': the units that need a person, in decision-record shape. Attribute '"runs"': one row per run x marker, with admitted control and sample counts, 'control_status' ('"ok"', '"no_admitted_control"' or '"no_controls_labelled"') and the field 'top_taxa', 'run_wide_artifacts' and 'declared_spikes' (see Run-wide artifacts). Attribute '"failed_libraries"': the 'flag_failed_libraries()' result used.
+**Value:** 'input_df' in its original order with these columns added: 'identity_label' '"blank"' or '"sample"', as labelled. 'identity_appearance' '"valid_blank"', '"valid_sample"', '"neither"' or '"not_assessed"'. 'identity_status' '"concordant"', '"discordant"', '"suspect"', '"inconclusive"' or '"untested"'. 'identity_status_reason' See Status. 'admit_as' '"control"', '"sample"', '"positive_control"' or 'NA' (not admitted); reflects any reassignment. 'control_usability', 'sample_viability' Per marker; see Decision scopes. 'admit' Logical. The gate. Filter on this and read 'admit_as' for the role; the original 'control_samples' vector is no longer the control set. Attribute '"units"': one row per sample x marker x run with the evidence ('depth', 'richness', 'diversity_n1', 'diversity_ratio', 'composition_share_other', 'n_libraries_assessable', 'composition_power', 'library_status', 'run_status', 'n_markers_flagged', 'n_markers_assessable', 'top_taxa', and 'top_taxon' with 'top_taxon_share': the single most abundant feature and its share of the unit's reads, with run-wide artifacts and declared spikes set aside. Dominance is reported as evidence for a reviewer and never acted on: a blank that is 96\ verdict columns, 'identity_status_reason', 'issue_type', 'tube_flagged', 'hold_reason', 'confidence', 'reason', 'disposition', 'disposition_source', 'pending_review', 'excluded_library_issue', 'control_usability' (for units whose role is control: '"usable"', '"contaminated_in_marker"', '"kept_by_decision"' or '"excluded_by_decision"'), 'sample_viability' (for units whose role is sample: '"viable"', '"thin"' or '"non_viable"'), 'admit_as' and 'admit'. Attribute '"review_queue"': the units that need a person, in decision-record shape. Attribute '"runs"': one row per run x marker, with admitted control and sample counts, 'control_status' ('"ok"', '"no_admitted_control"' or '"no_controls_labelled"') and the field 'top_taxa', 'run_wide_artifacts' and 'declared_spikes' (see Run-wide artifacts). Attribute '"failed_libraries"': the 'flag_failed_libraries()' result used.
+
+#### The matrix
+
+llll labelled \ looks like valid blank valid sample neither blank concordant: control DISCORDANT suspect sample DISCORDANT concordant: admit suspect
+
+#### Status
+
+what was found, and why nothing could be: identity_status separates a finding from the absence of one, and identity_status_reason names the evidence or the reason:
+
+- concordant, discordant, suspect: A test ran and answered (reason: "composition", "diversity", "library_failed", ...).
+
+- inconclusive: A test ran but could not discriminate ("no_power": validate_controls() reported a null too wide to separate anything, or no headroom).
+
+- untested: No test ran: "no_blanks" (nothing to compare a sample with), "unreplicated" (too few field units on the run), or "uncomparable" (the run's field libraries failed, so a blank has nothing valid to be compared with).
+
+An untested or inconclusive unit shows no evidence of a problem, which is not evidence of its absence. Many studies are thin, and they should still be analysed, cautiously: by default (untested_policy = "admit") such units are admitted with their status carried through. "hold_blanks" keeps untested/inconclusive blanks out of the control set (a dirty blank corrupts contaminant verdicts in the permissive direction); "block" holds every such unit for review.
+
+#### Order of operations
+
+Yield is assessed first, with flag_failed_libraries. A failed library looks like a sparse sample, and a failed run leaves nothing for a blank to be compared with, so identity is judged only where yield held.
+
+- A labelled SAMPLE whose libraries all failed looks like "neither" (issue type "library").
+
+- A labelled BLANK on a failed run is "untested" ("uncomparable"). Its low reads and low diversity are what a failed library would show whether or not it was clean. The one exception: a blank that still reaches sample-level diversity on a failed run is "neither", because failure only ever lowers diversity.
+
+#### What "looks like a valid blank" means
+
+No single scalar works across markers (a plankton-filled blank can be out of analytical scope but not out of the ENVIRONMENT). The axis that matters is environmental versus laboratory, so this function uses two scope-free signals:
+
+- Composition (validate_controls, run on each run's libraries): does the blank look like the field samples it was sequenced with? A blank is sample-like when at least composition_share of its assessable replicate libraries are "RESEMBLES_SAMPLE". This catches a blank carrying the samples' own community (a mislabel, or carry-over).
+
+- Effective diversity (Hill number of order 1, the exponential of Shannon entropy) relative to the marker's REFERENCE field diversity: the median, over runs, of each run's median field unit. The reference comes from outside the run, so a run whose samples all failed cannot make its blanks look rich by comparison. A blank at or above diversity_blank_max of the reference carries an environmental community. Hill N1 is barely moved by the many one- and two-read features that index hopping spreads into blanks.
+
+The second signal is what the first cannot see. A blank holding a DIFFERENT environmental community -- seawater plankton in a benthic study -- is compositionally disjoint from the samples, and validate_controls() reads disjoint as clean.
+
+A blank is "valid_sample" when it is sample-like in composition, "neither" when it has sample-level diversity without resembling the samples, and "valid_blank" otherwise. That includes an EMPTY blank: for a blank, few reads is the healthy state, and low yield never counts against it. confidence is "low" when the composition test had no power (validate_controls() power other than "ok"). The verdict then rests on diversity alone, and the low confidence says so.
+
+A diverse blank is flagged "suspect", not condemned: a blank's own medium can carry a community (tap water carries its source water's freshwater organisms). Whether the community is consistent with the blank medium or with handling is a judgement about what the taxa are, which review_sample_identity makes when told the medium.
+
+#### What "looks like a valid sample" means
+
+A labelled sample is "valid_sample" unless:
+
+- its libraries failed ("neither"); or
+
+- at least composition_share of its assessable libraries "RESEMBLES_CONTROL" ("valid_blank").
+
+A sample with low_yield libraries (low in every marker, which is genuine low biomass) is a valid sample. The identity test for a sample is whether it resembles the run's blanks; when that test cannot run or cannot discriminate the sample is "untested" or "inconclusive", not concordant.
+
+#### Run-wide artifacts and declared spikes
+
+A feature in at least artifact_fraction of a run's field libraries that also holds the majority of reads in at least half of the run's blanks is in every tube whatever the tube is: a spike the user added, a provider's positive control reaching every library, or cross-contamination. It carries no identity information, so it is set aside from composition and diversity. Both conditions are needed: common environmental taxa can be in nearly every field library, but they do not dominate the blanks. Unless declared in spike_taxa, such a feature is REPORTED as a run-wide artifact with a warning, because its cause is a question for the user or the provider. It stays visible in top_taxa. Judged per run, since one archive can mix runs with and without it.
+
+#### Two kinds of decision, two scopes
+
+- Identity -- what is this tube?: A property of the SAMPLE (barcode), across every marker: a tube cannot be a blank in one marker and a sample in another. Dispositions "confirm_blank", "confirm_sample", "reassign_to_blank", "reassign_to_sample", "reassign_to_positive_control" and "exclude_tube" apply to all of the sample's units. A positive control recorded as a field blank must not stay in the negative control set: it inflates the control rate of every spiked taxon, which makes flag_contaminant() more permissive. Re-roled, it is admitted with admit_as = "positive_control".
+
+- Library validity -- did this assay work?: A property of the UNIT. Dispositions "exclude_library" and "keep_library" apply to that unit only, so a library that failed in one marker does not take the same tube's good libraries in other markers with it. "keep_library" also lifts flag_failed_libraries()'s exclusion for that unit.
+
+Each flagged unit has an issue_type ("identity" or "library") saying which kind of disposition resolves it.
+
+- An identity flag holds the whole tube. A discordant or suspect identity in ANY marker holds every unit of that sample, including markers where it looked concordant (tube_flagged). Such a unit keeps its own identity_status (it is not itself evidence of anything), and hold_reason says why it is held: "own_evidence", "tube", "untested" or "inconclusive". An untested unit holds only itself: a failed library says nothing about the tube's other markers.
+
+- Identity is per tube; usability is per marker. A blank whose own evidence in one marker looks contaminated (discordant or suspect in that marker) is not admitted as a control IN THAT MARKER, even after the tube is confirmed as a blank: control_usability reads "contaminated_in_marker", and "keep_library" on that unit overrides it. Its other markers are judged on their own evidence: contamination a marker cannot amplify cannot bias that marker. The inference runs one way only. A clean result in an insensitive marker (12S cannot amplify protists or algae) never clears a sensitive one.
+
+- Sample viability is per marker. sample_viability combines yield with appearance: "viable" (libraries passed), "thin" (low yield but a normal-looking composition: a genuinely small sample, not a broken one) or "non_viable" (no library yielded). Depth alone cannot tell thin from broken. Below some depth the composition test has nothing to compare, so only depth speaks; that is the inconclusive/no_power state.
+
+- Identity questions block; library failures do not. A unit held for identity is pending_review until the tube has a disposition. A unit whose libraries failed is excluded (excluded_library_issue) but not pending: excluding it is already the conservative outcome, flag_failed_libraries() reports it loudly, and a queue that makes a person sign off every failed library invites rubber-stamping. It stays in the decision record, so "keep_library" can reverse it.
+
+- Individually failed replicate libraries inside an admitted unit stay excluded at row level (admit is FALSE for their rows) unless the unit is kept explicitly.
+
+#### The decision record
+
+decisions_path names a CSV the user edits. Each call reads it and applies the dispositions. It then writes it back with every unit that currently needs review, preserving everything the user entered and adding new rows. Rows are keyed by sample, marker and run. Each row carries the status and appearance the gate reported when the row was written. If the evidence has since changed, the disposition is still applied, and a warning names the rows so they can be looked at again. review_sample_identity adds llm_ columns to the same file, including llm_role (blank, sample, positive_control, exclude or unknown). By default these are advice. With accept_llm_roles = TRUE, llm_role stands in for an identity disposition wherever no person has recorded one, and disposition_source says which it was ("user" or "llm"). A person's disposition always wins.
+
+#### Cross-marker agreement
+
+Each unit reports n_markers_flagged and n_markers_assessable for its sample, counting identity flags only: a blank flagged in two independent markers is better supported than one flagged in one.
 
 ### compute_local_occurrence_distance(taxon_names, query_lat, query_lon, occurrence_data, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", date_col = NULL)
 
@@ -104,6 +238,10 @@ For each taxon in 'taxon_names', finds the nearest record of that taxon already 
 
 **Value:** A data frame, one row per unique entry in 'taxon_names': taxon_name As supplied. n_local_records Count of 'occurrence_data' rows for this taxon with non-missing coordinates. '0' for a taxon with no local record at all - for a genuinely unprecedented taxon this IS the answer, not a failure to find one. dist_nearest_km Geodesic (great-circle) distance in km from the query point to the nearest such record. 'NA' when 'n_local_records == 0'. nearest_lat, nearest_lon Coordinates of that nearest record. 'NA' when 'n_local_records == 0'. nearest_date The nearest record's raw 'date_col' value. Only present when 'date_col' is supplied and found in 'occurrence_data'. 'NA' when 'n_local_records == 0' or the nearest record's own 'date_col' value is missing.
 
+#### Details
+
+Designed as the free, local, exact complement to check_gbif_tile_range()'s cheap, global, approximate view: a taxon with n_local_records = 0 here is, by construction, exactly the situation that produces TaxaAssign::compute_group_priors()'s consensus_has_occurrence_record = FALSE (an "unprecedented" call from add_posthoc_assessment()), so this answers why that flag fired using data the pipeline already paid for, rather than re-querying GBIF. Because occurrence_data is whatever bounding box a study's own GBIF fetch used, this function can only speak to that regional extent -- a taxon absent here may still occur well outside it; check_gbif_tile_range() is the tool for that wider question.
+
 ### flag_backbone_conflicts(consensus, taxonomy, rank_system = NULL, observation_col = "observation_id", posterior_col = NULL, placeholder_rank_count = 3L)
 
 Flag Taxa Whose Backbone Placement Disagrees With Itself
@@ -120,6 +258,26 @@ Asks whether a name in the taxonomy actually denotes one place in the tree. Two 
 | placeholder_rank_count | no | 3L | Integer >= 2. Number of distinct ranks at which a name is labelled "placeholder" rather than "cross_rank". Default 3: a real homonym occupies two ranks, while a control or placeholder string occupies as many as it is written into. Presentation only -- it changes category, never the flag. |
 
 **Value:** 'consensus' with these columns added (existing columns of the same name are overwritten, with a warning): 'backbone_conflict' Logical. 'TRUE' when any candidate row of the observation carries a conflicted name at any rank. 'backbone_conflict_kind' '"cross_rank"', '"multi_parent"', '"both"', '"placeholder"', or 'NA' when not flagged. '"placeholder"' wins over the others. 'backbone_conflict_names' Semicolon-separated conflicted names found in the observation, or 'NA'. 'backbone_conflict_mass' Share of the observation's candidate mass sitting on rows that carry a conflicted name, or 'NA' when no posterior column is available. A small share is a weaker concern than a large one. 'cross_phylum_conflicted' Logical or 'NA'. For rows whose 'consensus_limit' is '"cross_phylum"', whether the withholding involves a name that is ALSO used as a phylum elsewhere in 'taxonomy' - i.e. whether the phyla the rule compared may be two names for one lineage. 'NA' where 'consensus_limit' is absent or not '"cross_phylum"'. The conflict table itself is attached as attribute '"backbone_conflicts"': one row per conflicted name with 'name', 'kind', 'category', 'n_ranks', 'ranks', 'parents', 'candidate_rows' and 'observations'. Attribute '"backbone_conflict_params"' records the arguments used. Both survive row subsetting and are dropped by column subsetting ('d[, cols]'), 'merge()' and 'dplyr::summarise()'.
+
+#### What this CANNOT see
+
+Both detected failures are ONE NAME in more than one place. The inverse -- MANY NAMES for one organism, i.e. synonymy -- is invisible here, and not as an implementation gap: a synonym pair sits consistently at one rank under one parent on each of its two names, so there is no conflict to find. Where a reference database holds Eisenia arborea and an occurrence pool lists Ecklonia arborea, this function reports nothing, by construction. It therefore cannot be used as evidence that a name set is free of duplicate organisms, and a report of zero conflicts says nothing about synonymy.
+
+That matters because a name absent from a reference set becomes an unreferenced local species downstream, and TaxaAssign::add_unreferenced_prior_mass(named_rows = TRUE) can then name it in a call -- so a synonym of a referenced taxon could be reported as having no reference sequence. The designed defence is the NCBI-to-GBIF crosswalk, not this function.
+
+Measured on one real multi-marker study, in two independent ways, and it found no instance of that failure. First, the 35 record-named taxa behind its 410 such calls produced 97 shared-epithet pairs against the reference sets and EVERY one was in a different family -- homonymous epithets across unrelated groups (Fucus / Pleurophycus / Pyropia gardneri) rather than synonyms. Second, all 34 distinct names among them resolve at species rank to THEMSELVES on the backbone the priors use, none flagged as a synonym, and none of their accepted names appears in the same marker's reference set; the reverse direction, resolving all 318 reference species sharing a family with any of the 35, likewise returned nothing. So the limitation is a measured absence there rather than an untested assumption -- but it IS only that backbone's taxonomic opinion. A pair that another authority treats as synonymous while this backbone keeps it separate would not show, and a synonym the backbone places in a DIFFERENT family would escape the reverse check (though that would itself be a conflict of the kind this function does detect). The limitation stands regardless of the result.
+
+#### Why this is not a data-cleaning nicety
+
+Any rule that compares taxonomy by NAME is wrong wherever a name is not a key. TaxaAssign::posterior_consensus()'s cross_phylum_eps rule withholds a call that rests on a choice between phyla, and it compares the phylum column by name; where one lineage carries two names at different ranks, that comparison sees two phyla where biology has one, and no value of the tolerance distinguishes the two cases. The same applies to anything that groups, pools or counts by a rank column. This function does not fix the taxonomy -- the fix is upstream, in making the backbone placement consistent -- it tells the reader which calls stand on a name that cannot be trusted as a key.
+
+#### What the two kinds look like
+
+On one real multi-marker study (CalIntertidal, 6.13M candidate rows, 49,346 observations) 18 of 28,610 distinct names were carried at more than one rank. Four of them were used as a phylum somewhere, and those four touched 1,054 of the 24,739 observations whose calls the cross-phylum rule can reach. The largest was a chromist class also carried as a phylum (606 observations), not the case that prompted the check (37). One name was a textbook homonym: a phylum of comb jellies reused as a crane-fly genus. Separately, 33 or more name/rank combinations sat under two parents, and three of those were ONE inconsistent placement showing up at three consecutive ranks, which is the argument for fixing the backbone rather than each rank.
+
+#### Placeholders are found by the same rule, and kept visible
+
+Control and placeholder names ("PositiveControl", "None" and the like) are genuinely carried at many ranks, so a detector learned from the data finds them. They are reported in their own category, never silently dropped: a control name occupying a phylum column is itself worth a reader's attention. In the study above the placeholders sat at four and six ranks while every genuine homonym sat at exactly two, which is what placeholder_rank_count is set from. The FLAG does not depend on that argument; only the label does.
 
 ### flag_contaminant(input_df, event_col = "event_id", taxon_col = "taxon_name", count_col = "count", control_samples = NULL, sample_type_col = NULL, control_types = NULL, exclude_samples = NULL, contaminant_type = "lab_contaminant", score_thresholds = c(0.5, 0.9), prior_weight = 20, require_control_evidence = FALSE, site_col = NULL, min_sites_systemic = 2L, min_control_obs = 2L, verbose = TRUE)
 
@@ -148,6 +306,51 @@ Compares detection proportions between field samples and control samples (negati
 
 **Value:** A data frame with one row per taxon, sorted by 'observation_validity' (most likely contaminants first). Columns: '{taxon_col}' Taxon identifier (from input). 'observation_validity' Numeric 0-1. Empirical Bayes-shrunk ratio of the depth-weighted field rate to the total (field + control) rate. Higher = more likely a real, genuine detection; lower = more likely a contaminant. Approaches, but does not reach, 1.0 for taxa absent from controls - see Details. A ranked screening statistic, not a calibrated probability. 'validity_flag' Character. '"invalid_{contaminant_type}"' (probable contaminant), '"questionable_{contaminant_type}"' (uncertain), or '"valid"' (likely genuine detection) - see '@section Unified validity schema' above. Fixed column name across every TaxaFlag flag_*() mechanism; the specific type of concern lives in the value, not the column name. 'validity_reason' Character. Plain-English explanation including depth-weighted rates and control detection counts. 'mean_prop_field' Informational only, does not drive the score: unweighted mean of within-sample proportions in field samples. 'mean_prop_control' Informational only, does not drive the score: unweighted mean of within-sample proportions in control samples. 'field_rate' Depth-weighted detection rate in field samples (taxon reads / total field sequencing depth), before shrinkage. 'control_rate' Depth-weighted detection rate in control samples, before shrinkage. 'n_field_present' Number of field samples in which the taxon was detected. Informational only - does not drive the shrinkage weight (see 'n_reads_total'). 'n_controls_present' Number of controls in which the taxon was detected. Informational only. 'n_controls_total' Total number of controls. 'n_reads_total' Total reads for this taxon across field + control samples combined. This, not sample count, is what the shrinkage weight ('prior_weight') is measured against - see '.compute_contaminant_scores()' for why.
 
+#### Details
+
+The algorithm computes a depth-weighted detection rate per taxon in field samples vs. controls, then an Empirical Bayes-shrunk score comparing them (.compute_contaminant_scores()'s own internal documentation has the full mechanism and the real-data motivation for it). Taxa with a higher rate in controls than field samples receive low scores (likely contaminants); taxa strongly favoring field samples receive scores approaching, but not reaching, 1.0 -- shrinkage means no taxon gets an absolute 0 or 1 score purely from having little total read support (shrinkage strength is measured in reads, not samples; see .compute_contaminant_scores()'s documentation).
+
+This score is a ranked screening statistic, not a calibrated probability: no generative model of contamination is fit, and the score is not validated against known-true contamination status. Use it to rank taxa for review against score_thresholds, not as a literal posterior probability.
+
+For positive controls, the interpretation is inverted: taxa from the positive control appearing in field samples indicate cross-contamination.
+
+#### Unified validity schema
+
+Output column NAMES are fixed (observation_validity/ validity_flag/validity_reason) rather than parameterized by contaminant_type -- every TaxaFlag flag_*() mechanism (see also flag_handler) shares this one schema, matching the "one column, type-qualified values" pattern. The contaminant_type string appears in validity_flag's VALUES ("invalid_{contaminant_type}"/"questionable_ {contaminant_type}") instead of in a column name. report_flags() auto-detects this schema by inspecting validity_flag's values, since the column name alone does not identify which check produced it.
+
+#### DO NOT FILTER ON validity_flag != "valid"
+
+This was always a fragile idiom and require_control_evidence = TRUE makes it catastrophic. Under the gate the honest-unknown state "no_control_evidence" is not "valid", and it is normally the overwhelming majority (often more than nine in ten taxa). A downstream validity_flag != "valid" filter would therefore delete nearly the whole dataset.
+
+"not_control_enriched" and "single_site_enriched" are also not "valid", and they are the states that exist precisely to say DO NOT REMOVE THIS. Neither is "insufficient_control_evidence", which means the question was not answerable on the evidence available.
+
+The removal predicate is the invalid_ prefix, never the negation of "valid":
+
+
+```
+
+# correct to_remove <- startsWith(flagged$validity_flag, "invalid_") # also correct, if you want one named type to_remove <- flagged$validity_flag == "invalid_lab_contaminant" # WRONG, and much worse under require_control_evidence = TRUE to_remove <- flagged$validity_flag != "valid" ```
+
+Anything filtering on the negation of "valid" sweeps the whole middle tier in.
+
+#### Evidence-gated states (require_control_evidence = TRUE)
+
+validity_flag takes these values instead of the score bands:
+
+- "no_control_evidence" -- never detected in any control, so no assessment is possible. An honest unknown, and expected to be the large majority.
+
+- "invalid_{contaminant_type}" -- control rate above sample rate. The name is kept so existing downstream filters on invalid_* keep working.
+
+- "not_control_enriched" -- present in a control but at or below its sample rate. Signal leaking sample -> control, the OPPOSITE direction of travel. Must not be filtered; this is the state the score-band design could not express, and it is what made abundant local taxa look like contaminants. Named for what was measured rather than for a mechanism: a rate comparison alone cannot establish a direction of travel, so the label states only that the taxon is not enriched in controls.
+
+- "insufficient_control_evidence" -- seen in at least one control but fewer than min_control_obs. Not assessable, because a rate built on one observation is not comparable to a rate built on hundreds.
+
+- "single_site_enriched" -- control-enriched, but confined to one site whose samples also carry it. Local, not a systemic source. Distinct from "not_control_enriched": this taxon IS enriched in controls, so the two labels make opposite claims and must not share a name.
+
+- "questionable_{contaminant_type}" -- present in a control with rates that do not separate.
+
+With site_col, three columns are added -- site_breadth_control, site_breadth_sample, control_sites_shared -- and a control-enriched taxon confined to ONE site whose samples also carry it is downgraded to "single_site_enriched".
+
 ### flag_failed_libraries(input_df, library_col = "event_id", sample_col = "sample_id", marker_col = "marker", run_col = "run", count_col = "count", taxon_col = "taxon_name", control_samples = NULL, expected_libraries = NULL, fold_threshold = 10, run_fail_fraction = 0.5, min_reference_runs = 3L, reference_depth = NULL, control_contrast_max = 0.5, cleared_runs = NULL, verbose = TRUE)
 
 Flag Sequencing Libraries and Runs That Failed
@@ -175,6 +378,56 @@ Asks, before anything else is computed from a run, whether each library actually
 
 **Value:** 'input_df' in its original row order with these columns added: 'library_status' '"failed"', '"low_yield"', '"low_yield_undetermined"', '"pass"' or 'NA' (control, not assessed); see The test. 'library_reason' Plain-English explanation with the numbers. 'run_status' The run verdict; see Two granularities. 'exclude_library' Logical. TRUE for a failed library and for every library of a failed, uncleared run. The workflow should drop these rows from richness, occupancy and read-share summaries and say so in its output. Attribute '"libraries"': one row per library with 'depth', 'richness', 'role', 'own_dev' and 'cross_resid' (log10), 'n_other_markers', 'library_status', 'failure_scope' ('"run"' or '"library"') and 'exclude_library'. Attribute '"runs"': one row per run x marker with library counts by status, 'median_depth', 'reference_depth', 'fold_below_reference', 'median_cross_resid', 'reference_basis' ('"runs"', '"supplied"' or '"too_few_runs"'), 'n_runs_marker', 'failure_basis' ('"cross_marker"', '"single_marker"' or 'NA' when the run did not fail), the control contrast columns, 'n_absent', 'run_status', 'cleared' and 'reason'. Attribute '"libraries_absent"': sample x marker x run combinations with no library although the sample has libraries in another marker of that run. A warning names every failed run and library that is excluded and not cleared: those rows should not be analysed until a person has looked.
 
+#### Why failure is not "few reads"
+
+A genuinely low-biomass sample can yield few reads, so a read-count floor cannot tell a failed library from a sparse but valid sample. The evidence that separates them is the SAME extract sequenced with OTHER markers. If a sample yields 59,000 reads for one marker and 580 for another, the extract was fine and the second library failed. If it is low in every marker, the sample itself is sparse, which is a result, not a failure.
+
+#### Taxonomically narrow markers
+
+Cross-marker evidence shows that the EXTRACT was fine, not that the marker's target taxa were present in it. For a marker that amplifies a narrow group (12S for vertebrates, say), a sample with no such DNA looks exactly like a failed library: low for its marker, fine in the others. On such a marker read "failed" as "failed, or target absent". Agreement among a sample's replicate libraries of the same marker is the evidence that separates the two; this function does not use it, so check it before acting on a scattered failure in a narrow marker.
+
+#### The test
+
+Depths are compared on a log10 scale. For each marker, the reference depth is the median, over runs, of each run's median field-library depth; a median of run medians, so one failed or unusually deep run does not define normal. Each field library then gets two deviations:
+
+- own-marker deviation: its depth relative to its marker's reference.
+
+- cross-marker residual: its own-marker deviation minus the median own-marker deviation of the same sample's libraries in the OTHER markers. It is how far below this sample's other markers the library fell. Libraries judged failed in a first pass are left out of the second pass as predictors for the sample's other markers.
+
+With T = \log_{10}(fold_threshold), a field library is:
+
+- "failed" when BOTH deviations are at or below -T: it is low for its marker AND low relative to its own sample's other markers. Requiring both guards against a run on which the other markers were simply sequenced unusually deep.
+
+- "low_yield" when it is low for its marker but the sample's other markers are comparably low: a sample-level cause (low biomass, poor extraction), not a library failure. Not excluded.
+
+- "low_yield_undetermined" when it is low for its marker and the sample has no other marker to compare with. A single-marker rule cannot tell failure from low biomass, and this says so rather than guess. Not excluded, but reported.
+
+- "pass" otherwise.
+
+- NA (not assessed) for control libraries.
+
+#### Two granularities
+
+A run fails as a whole when a fault hits the library pool (chemistry, loading, a demultiplexing error): every library on it is low. Reporting that as dozens of individual failures would hide the single cause, so each run (run x marker) also gets a verdict, in attr(, "runs"):
+
+- "failed": at least run_fail_fraction of its field libraries failed (failure_basis = "cross_marker"), OR, in a single-marker study or for samples with no other marker, at least run_fail_fraction are low for the marker with no cross-marker evidence against it (failure_basis = "single_marker"): those libraries outnumber any whose other markers are comparably low. A whole run this far below the marker's other runs is taken as a run fault. Needs min_reference_runs runs of the marker or a reference_depth. Every library on the run, controls included, is excluded, and failure_scope is "run".
+
+- "low_yield": at least run_fail_fraction of its field libraries are low for the marker, but the samples' other markers are comparably low. The whole run is weak and the data cannot say whether the libraries or the samples are the cause. Not excluded; read it.
+
+- "pass": neither. Individual failed libraries may still be present (n_failed); they are excluded one by one.
+
+- "not_testable": the marker has fewer than min_reference_runs runs and no reference_depth, so its reference IS this run and a whole-run failure cannot be seen. Individual libraries are still tested against the run. This is a distinct outcome from "pass".
+
+#### Controls
+
+Blanks on a failed run are usually as depth-starved as the field libraries and can be as rich or richer, and control-based tests then have no contrast to work with. Each run reports control_depth_ratio and control_richness_ratio (median control over median field library) and control_contrast: "collapsed" when the richness ratio is at least control_contrast_max, "informative" below it, "no_controls" when the run has none. Richness, not depth, is the informative ratio: sequencing providers often pool libraries to equal depth, so a clean blank can carry as many reads as a field sample while holding a fraction of its features. A collapsed contrast can also occur on a run that sequenced normally, when its blanks carry field-like reads; it is reported, never used to exclude anything.
+
+#### What to pass in
+
+Pass every marker of the study in one table: the cross-marker comparison is the point, and it cannot be made one marker at a time. Include control libraries and samples you do not intend to analyse. sample_col must identify the physical extract that every marker was amplified from, so that the same value appears under each marker.
+
+A library that sequenced nothing has no rows in a long table that keeps only positive counts. Give it one zero-count row, or list it in expected_libraries; otherwise it is invisible. Samples that have libraries in some markers of a run but none at all in another marker of the same run are listed in attr(, "libraries_absent"); they are not given a verdict because the table cannot say whether the library was ever made.
+
 ### flag_handler(input_df, datetime_col = "datetime", taxon_col = "taxon_name", group_col = NULL, interval_minutes = 30, handler_taxa = NULL, station_metadata = NULL, deploy_col = "deploy_time", retrieve_col = "retrieve_time", verbose = TRUE)
 
 Flag Detections Near Start or End of a Sampling Period
@@ -195,6 +448,18 @@ Identifies detections that occur within a user-specified time interval of the ea
 | verbose | no | TRUE | Logical. Print summary messages. Default TRUE. |
 
 **Value:** The input data frame with four columns appended: 'validity_flag' Character. '"valid"' (genuine detection), '"questionable_handling"', or '"invalid_handling"' (probable handler artifact). Fixed column name across every TaxaFlag flag_*() mechanism - see '@section Unified validity schema' above. 'observation_validity' Numeric 0-1. 1.0 for detections outside the interval; decreasing toward 0 as the detection approaches the min/max timestamp. Higher = more likely genuine, lower = more likely a handler artifact. 'validity_reason' Character. Plain-English explanation. 'edge_anchor_source' Character. '"station_metadata"' (real deploy/retrieve times used) or '"detection_data_fallback"' (data-derived min/max used - see "Edge anchoring" above).
+
+#### Details
+
+This is a placeholder implementation for camera trap and similar time-stamped detection data. The datetime column is auto-parsed using as.POSIXct with common format guessing.
+
+#### Edge anchoring
+
+By default (station_metadata = NULL), "deployment edges" are the detection data's own per-group minimum and maximum timestamps -- NOT true setup/pickup times. This means the very first and last GENUINE wildlife detection at a station is always exactly at the edge (minutes_to_edge = 0) and scores maximally suspect, purely as an artifact of how the edge is defined, regardless of whether a handler was ever actually present. Supply station_metadata (one row per group_col value, with real deploy/retrieve timestamps -- the same "external attribute lookup table keyed by a sample/event identifier" pattern already used elsewhere in this ecosystem, e.g. TaxaMatch::join_event_site_metadata()) to anchor edges on the actual deployment window instead. A group present in input_df but absent from station_metadata (or with an unparseable timestamp) falls back to the data-derived min/max for that group only, with a warning() naming it -- this is a real weakening of that group's flag, not a silent one. The output edge_anchor_source column records, per row, whether "station_metadata" or "detection_data_fallback" was used, so a caller can filter or discount rows accordingly. When station_metadata is not supplied at all, every row is fallback -- handler_taxa remains the primary real protection in that case, since it already restricts flagging to a caller-nominated taxon list regardless of edge-anchor quality.
+
+#### Unified validity schema
+
+Output column NAMES are fixed (observation_validity/ validity_flag/validity_reason), matching flag_contaminant's own schema, so every TaxaFlag flag_*() mechanism shares one schema (the "one column, type-qualified values" pattern add_posthoc_assessment uses). report_flags() auto-detects this schema by inspecting validity_flag's values, not just the column's presence, since the column name alone does not identify which check produced it.
 
 ### flag_hopped_detections(input_df, event_col = "event_id", taxon_col = "taxon_name", count_col = "count", run_col = NULL, control_samples = NULL, spike_taxa = NULL, spike_samples = NULL, receiver_share = c("equal", "depth"), alpha = 0.01, max_rate = 0.05, verbose = TRUE)
 
@@ -219,6 +484,58 @@ Flags individual detections (one feature in one sample) whose read count is no l
 
 **Value:** 'input_df' in its original row order with these columns added: 'observation_validity' Numeric 0-1, x / (x + E): the share of the detection's reads that expected spillover does not account for. Higher = more likely genuine. A ranked screening statistic, not a probability. 'NA' where not assessed. 'validity_flag' '"invalid_index_hop"', '"questionable_index_hop"', '"valid"' or 'NA' - see Verdicts. Shares TaxaFlag's unified validity schema, so 'report_flags' picks it up. 'validity_reason' Plain-English explanation, including why a row was not assessed. 'hop_source_reads' S_{ij}. 'hop_receiver_share' w_j. 'hop_expected', 'hop_expected_upper' E at \hat r and at r_{up}. 'hop_p_spill' P(X >= x) at \hat r. 'hop_basis' '"spike"' or '"controls"'. Attribute '"run_rates"': one row per run with 'n_samples', 'n_controls', 'n_spike_samples', 'control_reads', the evidence used ('basis'), k ('spill_reads'), M ('exposure'), 'rate', 'rate_upper', the separate 'rate_controls'/'rate_spike' estimates, 'n_control_excess', 'hop_signature' (Spearman correlation, across features, between control reads and source reads after exclusion: positive is the spillover signature, near zero means the control reads look like something else) and 'evidence': '"estimated"', '"bound_only"' (no spilled reads observed), '"implausible_rate"' (above 'max_rate'; not assessed) or '"none"' (nothing to estimate from). Also 'dispersion' (the negative-binomial size of the spillover counts; 'Inf' = Poisson) and 'rate_untrimmed' (the naive control-read rate before contamination was excluded, for comparison). Attribute '"control_excess"': the run x feature pairs excluded as contamination, with their control reads, source reads and implied rate. Attribute '"controls_absent"': 'control_samples' with no rows in 'input_df'.
 
+#### Why a flat read threshold does not work
+
+Spilled reads scale with how abundant a feature is ELSEWHERE on the run, not with a constant. A floor of, say, 100 reads is simultaneously too lax for a feature carrying millions of reads on the run (it can spill hundreds into every sample) and too strict for a genuinely rare feature (which spills essentially nothing, so its 30-read detection is real). This function therefore compares each detection with its OWN expected spillover.
+
+#### The model
+
+For feature i and receiving sample j on one run, E_{ij} = r \times S_{ij} \times w_j where S_{ij} is the feature's reads in every OTHER sample on the run (the source), w_j is sample j's share of what spills, and r is the run's spillover rate: the fraction of a feature's reads that end up credited to some other sample. A sample that holds all of a feature's reads on the run has no source and can never be flagged.
+
+receiver_share = "equal" (the default) gives every other sample on the run the same share, 1/(n-1). "depth" makes the share proportional to the sample's reads. "depth" CANNOT be estimated from negative controls: a blank holding nothing but spilled reads has a depth made of those same reads, so its share is caused by the spillover it is meant to measure and the estimated rate comes out near 1 whatever the truth. It is only meaningful with a spike, whose receivers are field samples with their own DNA; with a spike, fit both and compare.
+
+r is ESTIMATED PER RUN from the data, never assumed, from one of two kinds of evidence:
+
+- A non-native spike (spike_taxa in spike_samples). Every spike read outside its positive control is spillover, with nothing else that can explain it, and every other sample on the run is a receiver. This is the better estimator and is used whenever a run has one.
+
+- Negative controls (control_samples). A control's reads of a feature are spillover or contamination, and the two are separated by shape: spillover is proportional to the feature's source, so all spilling features share one rate, whereas a contaminant carries far more control reads than its source can explain. The rate is fitted, every feature whose control reads are improbably high under it (one-sided Poisson, alpha) is excluded, and the rate is refitted until no further feature is excluded. Excluded features are reported in attr(, "control_excess") as reagent contamination candidates -- a different problem, for flag_contaminant. Low-level contamination by a feature that is also common in the field cannot be told apart from spillover and inflates r, which errs toward flagging more.
+
+The estimate is \hat r = k / M, with k the spilled reads observed and M their expected count at r = 1 (the exposure): the Poisson maximum likelihood estimate. The upper bound r_{up} is the exact one-sided Poisson upper confidence limit on k at level 1 - alpha, divided by M.
+
+#### Verdicts
+
+A detection with x reads is compared with a Poisson count of mean E. It is:
+
+- "invalid_index_hop" when P(X \ge x) > alpha at \hat r: the estimated rate alone explains it. Requires k > 0, i.e. spillover was actually observed on that run.
+
+- "questionable_index_hop" when it is explained only at the upper bound r_{up}. On a run whose controls held NO spilled reads (k = 0) this is the only tier available, and how much it flags depends on how much the controls could have caught: a clean run with many controls and abundant sources bounds r tightly and flags little. The reason string says which case applies.
+
+- "valid" otherwise.
+
+- NA (not assessed) for control and spike samples, zero-count rows, and every row of a run with no usable evidence. A run without evidence is reported, never given a verdict: see attr(, "run_rates").
+
+Any read of a spike feature outside spike_samples is "invalid_index_hop" regardless of the test, because a non-native spike cannot be genuinely present in a field sample.
+
+Spillover counts are over-dispersed relative to a Poisson; this under-flags at the invalid tier, which the questionable tier partly offsets. The flags are a screening statistic; the workflow decides what to drop.
+
+#### What to pass in
+
+Pass the WHOLE run table, including controls, every feature and samples you do not intend to analyse: sources S_{ij} and sample counts are computed from it, and a pre-filtered table understates both. Pass one marker/assay at a time. run_col must identify the physical pool that was sequenced together, which is not necessarily a field trip or collection event.
+
+A clean control must still be present. A long table that keeps only positive counts has no row at all for a control that sequenced nothing, and that control then counts for nothing: its run can read as having no evidence when it in fact has the best evidence there is. Give each such control one zero-count row carrying its run_col. A control listed in control_samples but absent from input_df is reported in attr(, "controls_absent").
+
+#### Before trusting a negative result
+
+"Nothing flagged" on a run whose evidence is "bound_only" means the test had limited power, not that there was no spillover. Read rate_upper: it is the largest rate the controls cannot exclude.
+
+#### What "not spillover" does not mean
+
+This function answers one question: is this detection no larger than what the SAME feature's abundance elsewhere on the run would spill into this sample? A clean verdict is therefore evidence about spillover and about nothing else. In particular it does not mean the detection is real.
+
+A detection far ABOVE the run's spillover bound is correctly left unflagged, and that is exactly the shape of the artefacts this test cannot see: well-to-well or reagent carry-over, which does not scale with a feature's run-wide abundance; a mislabelled reference sequence; a genuinely sequenced but non-local organism, such as food, bait or wastewater DNA. A feature can be correctly judged "not spillover" and still not be plausible biology.
+
+So read a clean verdict as narrowing the explanations, not as clearing the detection, and pair it with flag_contaminant for control-based contamination and with range or habitat evidence for whether the organism belongs where it was found.
+
 ### flag_watch_candidates(consensus_df, match_df, watch_taxa, observation_col = "observation_id", taxon_col = "taxon_name", score_col = "score_original", winner_col = "primary_taxon", score_margin = 0)
 
 Flag observations where a watch-list species outscores the consensus winner
@@ -237,6 +554,14 @@ This function implements the likelihood-side half of the watch-list surveillance
 | score_margin | no | 0 | Numeric >= 0. Flag when the best watch score is within this many score units of the reference score (0 = must tie or exceed). Default 0. |
 
 **Value:** 'consensus_df' with four added columns: watch_flag Logical. TRUE when a watch-list species scored within 'score_margin' of the winner's own best score. watch_taxon The best-scoring watch-list species for this observation (NA when no watch candidate exists). watch_score That species' best raw score (NA likewise). watch_reference_score The reference score the comparison used (winner's own best match, or best non-watch score).
+
+#### Why this exists
+
+A watch-list species' occurrence prior should be a small, honest probability of local presence (the GreatLakes2023 calibration adopted w = 0.05) -- which correctly stops such species from vetoing the species- level resolution of genuinely observed natives, but also means a watch species will rarely surface in the posterior-driven consensus at all. The surveillance requirement ("if a watch species matches this observation well, a reviewer must see that, every time") cannot be honored through the posterior without breaking the prior's honesty -- Bayes correctly down-weights an unobserved species against an abundant native at any likelihood ratio short of overwhelming. So the guarantee is honored on the LIKELIHOOD side instead: this function compares raw match scores only -- no priors, no likelihood model -- and flags every observation where a watch-list species scored at least as well as (within score_margin of) the consensus winner's own best match. The flag is purely informational: it never changes consensus_taxon/consensus_rank, matching this package's additive-column convention.
+
+#### How the comparison works
+
+Per observation: the best raw score among watch-list candidates is compared against a reference score -- the winner's (winner_col, default primary_taxon) own best match score in match_df, or, when the winner has no match row of its own (an unreferenced or rank-expanded winner), the best score among non-watch candidates. The observation is flagged when watch_score >= reference_score - score_margin. An observation whose winner IS itself a watch-list species is never flagged (surveillance already succeeded through the front door). Observations with no watch-list candidate rows at all get watch_flag = FALSE with NA detail columns.
 
 ### report_flags(flagged_data, verbose = FALSE)
 
@@ -287,11 +612,53 @@ Sends unique taxa from a consensus table to an LLM for structured expert review.
 | max_tokens | no | NULL | Integer or NULL. Maximum response tokens requested from llm_fn (forwarded as llm_fn(prompt, max_tokens = max_tokens) whenever supplied). Default NULL -- does not pass max_tokens at all, so llm_fn's own default applies (16000L for TaxaTools::call_api()). Raise this if max_retries alone isn't resolving truncation warnings for your data -- e.g. a long, multi-marker marker string can inflate per-taxon response length enough that even the smallest retry sub-batch still truncates. |
 | max_retries | no | 2L | Integer. The per-batch retry budget, shared by two mechanisms. (1) When a batch's LLM response is truncated, empty, or unparseable, the batch is automatically split in half and retried -- a smaller batch requests a proportionally shorter response, directly relieving token-budget pressure. (2) When a response parses cleanly and is the right shape but simply OMITS specific taxa, those taxa (and only those) are re-asked in a follow-up call. The second case is not truncation, so the halving retry never fires for it -- see @section Unreviewed rows for how omitted taxa are recovered instead. Both stop after max_retries attempts and fall back to NA defaults for whatever is still missing. Neither applies to a hard llm_fn error (e.g. network/auth failure): a smaller or narrower batch can't fix that, so it is reported immediately without retrying. 0L disables both mechanisms, meaning exactly one call per batch. Default 2L. |
 | pause_seconds | no | 1 | Numeric. Seconds to pause between LLM calls. Default 1. |
-| cache_dir | no | NULL | Character or NULL (default). Directory for the per-taxon review cache. NULL disables caching entirely. Supplying a directory makes a re-run REPRODUCIBLE and stops it re-paying for verdicts already obtained: the review is a judgement, and two GreatLakes runs 50 minutes apart on identical input disagreed about Pimephales vigilax ("possible" then "unlikely"), putting it in one species list and not the other. One small .rds per reviewed taxon, keyed on everything that can move a verdict -- the taxon label and rank, its attached pipeline/weight/spatial notes, context, target_group, marker, data_type and the candidate-set path -- so changing any of them is correctly a miss. Manage it with taxaflag_clear_cache(), which uses the same TaxaTools::list_cache_files() engine as the other packages' cache helpers, so it does not accumulate unmanaged. |
+| cache_dir | no | NULL | Character or NULL (default). Directory for the per-taxon review cache. NULL disables caching entirely. Supplying a directory makes a re-run REPRODUCIBLE and stops it re-paying for verdicts already obtained: the review is a judgement, and two runs on identical input can disagree. One small .rds per reviewed taxon, keyed on everything that can move a verdict -- the taxon label and rank, its attached pipeline/weight/spatial notes, context, target_group, marker, data_type and the candidate-set path -- so changing any of them is correctly a miss. Manage it with taxaflag_clear_cache(), which uses the same TaxaTools::list_cache_files() engine as the other packages' cache helpers, so it does not accumulate unmanaged. |
 | on_unreviewed | no | c("warn", "error", "ignore") | Character. What to do when taxa still have no verdict after the re-asks: "warn" (default) reports them and continues, "error" stops the run, "ignore" is silent. The residue is recorded on the result either way (see @section Unreviewed rows). Production workflows pass "error": an unreviewed row is dropped by the usual export filters, so a run with residue produces a species list that is silently short. |
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
 
 **Value:** The input data frame with 8 or 9 columns appended: 'llm_habitat_plausibility' likely / possible / unlikely. See '@section Column naming' below for why this and the next three columns carry an 'llm_' prefix. 'llm_geographic_plausibility' likely / possible / unlikely. 'llm_scope_plausibility' likely / possible / unlikely, or 'NA' if 'target_group' not supplied. 'llm_contamination_risk' high / moderate / low. 'review_alternatives' Comma-separated plausible alternatives, or 'NA' 'review_lower_hypotheses' Comma-separated finer-rank taxa, or 'NA'. Always 'NA' when 'plausible_taxa_col' is supplied (candidates already known). 'review_confidence' high / moderate / low 'review_comment' Free-text note, or 'NA' 'geographic_disagreement_basis' 'NA' (no disagreement, or the pipeline columns needed to check were unavailable), or one of '"unprecedented"'/'"indistinguishable"'/ '"unprecedented+indistinguishable"' - *deterministic*, code-computed, not an LLM output: fires whenever 'llm_geographic_plausibility %in% c("likely","possible")' despite 'consensus_plausibility_col == "unprecedented"' and/or 'consensus_discrimination_col == "indistinguishable"'. See '@section Skepticism gate' below for why this exists as a deterministic column rather than relying on 'review_comment' alone. Also carries '"unreviewed_taxa"' (character vector, possibly empty - the taxon/candidate-set labels the LLM never returned a verdict for) and '"n_unreviewed_rows"' (integer - input rows left with 'NA' in every 'llm_' column) attributes; both are ALWAYS present. See '@section Unreviewed rows'. Attributes do not survive a 'dplyr' verb, so read them immediately after the call. Also carries an '"llm_prompts"' attribute - a named list of the exact prompt string sent for each LLM call (named by batch number, with an '"a"'/'"b"' suffix per retry sub-batch split, e.g. '"2b"'). Inspect via 'attr(reviewed, "llm_prompts")' to see precisely what the LLM was asked, e.g. before trusting an unexpected result or when tuning 'context'/'target_group'/'marker'.
+
+#### Details
+
+When plausible_taxa_col is supplied, the function deduplicates on candidate sets rather than consensus_taxon. Each unique combination of plausible species becomes one LLM query, giving the LLM full species-level context rather than only the upranked LCA name. This is especially useful when multiple observations share the same genus-level consensus but differ in which specific candidates they contain.
+
+Works with any data frame containing a taxon column -- not restricted to TaxaAssign output. Context (geography, habitat) can be supplied as a build_context() object from TaxaAssign, or as a simple named list.
+
+#### Candidate-set join key
+
+On the candidate-aware path, review results are joined back to input rows by the SORTED candidate set, not by the display label. The label (consensus_OTU) is ordered by posterior so the most-supported taxon reads first, which means one biological unit can carry "A/B" on one observation and "B/A" on another; joining on the label would leave one of them unmatched and therefore unscored. Sets are also deduplicated canonically, so each unit is reviewed exactly once regardless of which ordering appears in the data. Display labels are unchanged.
+
+#### Unreviewed rows
+
+An LLM response can parse cleanly, be the right length, and still leave specific taxa out -- consistently the long compound slash labels, i.e. the hardest rows, not random ones. That is not truncation, so the halving retry alone would not catch it. Without a dedicated safeguard those taxa would be filled with NA in all four llm_ columns, and because export chains filter with != "unlikely", which discards NA, an unreviewed observation would be silently removed from the final species list.
+
+Three mechanisms close this. (1) Omitted taxa are re-asked, alone, up to max_retries times; the cost is pay-per-failure, and the re-asking stops early when a re-ask recovers nothing. (2) An unreviewed taxon is never cached -- a cached entry holding no verdict is treated as a MISS, so an existing cache heals itself. (3) Whatever residue survives is loud: named in attr(result, "unreviewed_taxa"), counted in attr(result, "n_unreviewed_rows"), and escalated per on_unreviewed.
+
+The export filters themselves are deliberately UNCHANGED (still != "unlikely", still dropping NA). Keeping an unreviewed row in a species list would put an unvetted taxon in the output distinguishable only by its NAs; stopping the run instead makes the decision per-run and explicit.
+
+#### Column naming
+
+The four independent LLM judgments (llm_habitat_plausibility/ llm_geographic_plausibility/llm_scope_plausibility/ llm_contamination_risk) carry the llm_ prefix because they are independent LLM judgments -- by design NOT derived from or gated by any pipeline-computed value (see @section Pipeline context below). An unprefixed name would read as pipeline output. The LLM's own JSON response schema (what .build_review_prompt() asks for and .parse_review_response() parses) uses the bare names internally -- only the final output column names carry the prefix.
+
+#### Skepticism gate
+
+An LLM can rate a taxon llm_geographic_plausibility = "likely" despite the pipeline recording ZERO local occurrence records for it and a near-total inability to discriminate it from a confusable relative on score alone, explaining itself only with a general species-level range description. A stronger prompt instruction alone is not sufficient, since an LLM cannot be trusted to reliably self-flag its own uncertainty, so there are two responses:
+
+- A GUIDELINES bullet (only added when at least one taxon in a batch actually carries the flag -- see consensus_plausibility_col/consensus_discrimination_col) requires the LLM to default to "unlikely" for a taxon flagged "unprecedented" (no local record) and/or "indistinguishable" (a confusable relative could score equally well) UNLESS it can cite SPECIFIC evidence for a real population at or near the study site -- a general species-level range description is explicitly declared insufficient. This is stated as a HARD requirement, the one deliberate exception to this function's own "the bracket informs, never overrides your judgment" rule for every other pipeline signal.
+
+- Prompt compliance is never guaranteed, so the deterministic geographic_disagreement_basis output column (see @return above) is computed in R, independent of whether the LLM actually mentioned the disagreement anywhere. Filter/sort on it directly to FIND every such row rather than reading every review_comment.
+
+#### Pipeline context
+
+When consensus_posterior_col/winner_prior_col/ winner_rank_expanded_col/plausible_posteriors_col match real columns in input_df (the defaults match TaxaAssign:: posterior_consensus()'s own output names), a compact "[...]" annotation is appended to each taxon's line in the LLM prompt -- the pipeline's own median statistical confidence/occurrence prior for that taxon, a note when the winning call was resolved by occurrence-prior tie-break alone (no direct sequence evidence), and, for multi-candidate sets, each candidate's averaged posterior weight. This lets the LLM's free-text review_comment flag a disagreement between the pipeline's own confidence and its ecological judgment. It is purely additive: it never changes which rows are reviewed, the dedup key, or any output column. Set any of the four params to NULL to disable; all four are silently skipped (not an error) when the named column is absent from input_df.
+
+#### Spatial context
+
+When dist_nearest_occupied_km_col/patch_diameter_km_col/ beyond_buffer_col (matching check_gbif_tile_range()'s own output) and/or inat_in_range_col/inat_n_observations_col/ inat_matched_name_col (matching TaxaFetch::check_inat_range()'s own output) match real columns in input_df -- typically joined onto it by taxon name before calling this function, since both source functions operate per-taxon at a query point, not per-row -- the same "[...]" bracket used for pipeline context also carries a compact GBIF/iNat summary (e.g. "[GBIF: nearest occurrence ~41km away, patch ~2.1km across; iNat: in range, 1275 obs]"). This matters because the same "unprecedented" flag can have very different explanations: a genuine regional native not yet recorded at this exact site, or a species thousands of km from any GBIF-mapped occurrence.
+
+The per-taxon bracket is facts-only: no plausibility judgment is pre-computed (as for winner_rank_expanded's note above). Two caveats about how to weigh these facts are added as a GUIDELINES bullet instead (only when a batch has at least one such note), for the LLM to apply per case: (1) GBIF's density map is raw, unfiltered global data -- an occurrence found far away, especially in a small (1-2 cell) patch, may itself be a single bad or mis-georeferenced GBIF record rather than a real population; a small isolated patch is weaker evidence than a large one. (2) When iNat's matched_name differs from the taxon under review, its in_range verdict may describe a different, often more common, species due to a fuzzy name-search match (e.g. a query for the European Gasterosteus gymnurus can resolve to Gasterosteus aculeatus, returning a misleading in_range = TRUE). matched_name is surfaced so a reviewer (human or LLM) can catch this.
+
+Purely additive, as for "Pipeline context": never changes which rows are reviewed, the dedup key, or any output column. Set any of the six params to NULL to disable; all six are silently skipped when the named column is absent from input_df.
 
 ### review_sample_identity(identity, context, blank_medium = NULL, target_groups = NULL, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), model_label = NULL, tubes_per_call = 4L, max_tokens = NULL, max_retries = 2L, cache_dir = NULL, decisions_path = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
 
@@ -316,6 +683,18 @@ Sends each tube held back by 'classify_sample_identity' for an identity question
 | verbose | no | TRUE | Logical. Default TRUE. |
 
 **Value:** The review queue ('attr(identity, "review_queue")') with 'llm_verdict' (one of '"clean_blank"', '"contaminated_blank"', '"sample_labelled_as_blank"', '"positive_control_labelled_as_blank"', '"blank_labelled_as_sample"', '"valid_sample"', '"uncertain"'), 'llm_role' ('"blank"', '"sample"', '"positive_control"', '"exclude"' or '"unknown"': how the tube should be used; 'classify_sample_identity(accept_llm_roles = TRUE)' admits on it; a contaminated blank is still role '"blank"'), 'llm_suggested_disposition', 'llm_confidence' (high/moderate/low) and 'llm_rationale' added per sample, and 'llm_marker_unusable' per unit: 'TRUE' where the model judged this marker's result contaminated. Identity is per tube, usability per marker. With 'accept_llm_roles = TRUE' it can only EXCLUDE a marker, never keep one the gate excluded. Attributes '"unreviewed_samples"' (always present) and '"llm_prompts"'.
+
+#### Why an LLM here
+
+The judgement that settles these cases is a plausibility argument over a taxon list, which the statistics cannot make. "A field blank containing three bloom-forming dinoflagellates and a copepod community is implausible" needs knowledge of what those taxa are and where they live. So does its counterpart: a blank holding a human, a few soil fungi and one hopped read is a clean blank however many features it has. The deterministic evidence (composition, diversity, cross-marker agreement) is given to the model as well, so that a disagreement between the two is visible.
+
+#### One question per tube
+
+Identity is a property of the tube, not of a library, so the model is asked once per sample and shown every marker together, including markers where the tube looked concordant. Library failures (issue_type == "library") are not sent: they are a yield question, and flag_failed_libraries has already answered it.
+
+#### Unreviewed tubes
+
+A tube the model does not answer is re-asked, alone, up to max_retries times. Omissions come mostly from a batch that ran out of output tokens: a reasoning model can spend a whole max_tokens budget thinking about four tubes and return no text. On one real study, 13 of 44 tubes went unanswered at 4 tubes per call and 4000 tokens; asked singly, all but two were answered. Raise max_tokens before raising tubes_per_call. It is never cached, and it is listed in attr(, "unreviewed_samples"). Because an LLM verdict never admits anything, an unreviewed tube is not lost: it simply has no advice. The on_unreviewed argument controls how loudly that is reported.
 
 ### review_spatial_context(input_df, query_lat, query_lon, taxon_col = "primary_taxon", plausibility_col = "primary_plausibility", occurrence_data = NULL, excluded_occurrence_data = NULL, occurrence_taxon_col = "taxon_name", occurrence_lat_col = "decimalLatitude", occurrence_lon_col = "decimalLongitude", inat_range = NULL, inat_taxon_col = "taxon_name", live_inat_check = TRUE, inat_cache_dir = NULL, inat_radius_km = 500, context = NULL, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), tile = "CartoDB.Positron", gbif_style = "classic.point", gbif_bin_size = 256L, gbif_year_range = NULL)
 
@@ -351,6 +730,14 @@ Opens a Shiny gadget for scrolling through consensus taxa - grouped by plausibil
 | gbif_year_range | no | NULL | Character or NULL. GBIF map API year query parameter (e.g. "1995,2025"), display-only -- affects only the visual tile layer, NOT check_gbif_tile_range()'s own distance/patch numbers (which deliberately stay all-time/global, the right question for "is this plausible anywhere, ever" rather than "within our exact study window"). Worth knowing: the density map is all-time and worldwide by default, which is often a much LARGER pool of records than a study's own date- and quality-filtered GBIF fetch -- confirmed directly against the real GBIF tile API that a narrower year range genuinely reduces what's rendered (a real, working filter, not a cosmetic one). NULL (default) shows GBIF's full all-time record, matching GBIF's own default map view. |
 
 **Value:** 'NULL' invisibly. The gadget is for interactive exploration only.
+
+#### Details
+
+The map itself renders GBIF's live density tiles directly (leaflet::addTiles() with the density-tile URL template) rather than a static snapshot -- the reviewer can pan and zoom the actual tile layer, at any resolution, the same way GBIF's own map viewer works. This is a genuinely different (and free) consumer of the same GBIF tile API check_gbif_tile_range() uses for its own alpha-channel analysis -- one renders raw tiles client-side for a human to look at, the other decodes pixels server-side for a number. Selecting a taxon triggers both: the visual tile layer updates, and the sidebar's numeric context (check_gbif_tile_range()/compute_local_occurrence_distance(), plus a pre-supplied inat_range lookup if given) recomputes.
+
+#### Cost
+
+Selecting a taxon triggers real, but free/cheap, network calls (GBIF name resolution + check_gbif_tile_range()'s tile fetches, a few seconds). The "Run AI Review" button is the one exception -- a real, BILLED LLM call via review_assignments() -- and is deliberately never triggered automatically; it only fires on an explicit click, and only appears at all when context is supplied.
 
 ### taxaflag_clear_cache(cache_dir = tools::R_user_dir("TaxaFlag", "cache"), older_than_days = NULL, dry_run = FALSE, force = FALSE)
 
@@ -388,6 +775,22 @@ Tests whether each column labelled a control is compositionally consistent with 
 | verbose | no | TRUE | Logical. Print a summary. Default TRUE. |
 
 **Value:** A data frame, one row per sequenced column, with the column id, its site, its label, 'n_taxa', 'n_reads', the test statistic 'd_to_samples', the site null ('null_median', 'null_threshold', 'null_n_pairs'), a 'power' verdict and a 'verdict'. Attribute '"site_power"' carries the per-site table. 'verdict' takes: '"consistent_with_control"', '"RESEMBLES_SAMPLE"' (a control that may be a mislabelled sample), '"consistent_with_sample"', '"RESEMBLES_CONTROL"' (a sample that may be a mislabelled control), '"untestable"' (no null available), '"untestable_no_headroom"' (the null reaches the metric's ceiling), or '"no_detections"' (every read for this column is 0 or NA, so it has no composition to compare against anything - 'd_to_samples'/ 'd_to_controls' are 'NA', 'power' reads '"none_no_detections"'). 'confidence' is '"low"' wherever the site's power is not '"ok"'; filter on it, because a verdict from a wide null is weak evidence and must not read like one from a tight null. A column with no positive reads at all still gets its own row here - the "one row per sequenced column" contract above holds even for it - rather than silently disappearing because there was nothing to compute a distance from. *A site with two samples and a site with twenty both return "nothing flagged".* Only one of those is evidence. 'power', 'null_n_pairs' and 'confidence' are what separate them, and the function says so on the console as well as here.
+
+#### The principle
+
+A control is defined by what it LACKS, not by what it contains. Whatever the medium -- tapwater, sterilised seawater, molecular-grade water, air -- a control's defining property is that its composition is not drawn from the sampled habitat. Everything here follows from that, which is why the test needs no taxonomy, no habitat model, no marker-specific tuning and no assumption about what the blank medium is.
+
+#### Why the reference must come from the data
+
+The test statistic is each control's median compositional distance to the FIELD SAMPLES IT SITS WITH, compared against the null distribution of sample-to-sample distance at that same site. A fixed cutoff cannot work: measured on one real COI study, the within-site sample-vs-sample median ranged from 0.145 to 0.890 ACROSS SITES IN THAT ONE DATASET. A threshold of 0.8 would have called every control at the tight site a blank and every control at the heterogeneous site a sample, on data where both were in fact fine. Drawing the null from each site's own samples self-calibrates to marker diversity, habitat and sampling design.
+
+#### Power is reported, not assumed
+
+Two situations both produce "nothing flagged", for opposite reasons, and this function refuses to let them look alike: a site with many samples and a tight null gives a real negative result; a site with two samples, or a null spanning most of the range, has no power to detect anything. Every site gets an explicit power verdict and the null's own spread, so a clean result can be distinguished from an untested one.
+
+#### Before trusting a negative result
+
+Prove both directions on your own data, as with any guard: relabel a known field sample as a control and confirm it is flagged, and confirm a clean control set stays silent. A check demonstrated only in the flagging direction is half-tested, and the untested half is the one that matters when it reports nothing.
 
 ## Quick Start
 
