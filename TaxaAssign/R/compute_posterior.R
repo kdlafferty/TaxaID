@@ -4,8 +4,10 @@
 #' Compute Bayesian Posterior Probabilities
 #'
 #' Performs the Bayesian update: Posterior ~ Likelihood * Prior.
-#' Adds posterior columns to the input dataframe and returns the full dataframe,
-#' so all existing columns (e.g., taxon name, hypothesis type, rank) are preserved.
+#' Adds posterior columns to the input dataframe and returns it with all existing
+#' columns (e.g., taxon name, hypothesis type, rank) preserved. The output can
+#' have fewer rows than the input: named unreferenced rows with a negligible
+#' posterior are pooled into their ring row (see "Pooled unreferenced rows").
 #'
 #' Two computation paths are available:
 #' - **Point estimate path** (fast): uses `score_likelihood` and `prior_mean`
@@ -67,11 +69,54 @@
 #' @param n_sims Integer. Number of Monte Carlo simulations. Default 1000.
 #'   Set to 0 to skip simulation and return point estimates only.
 #'
-#' @return The input dataframe with four new columns added:
+#' @return The input dataframe with four new columns added, possibly with fewer
+#'   rows (pooled rows are removed):
 #'   - `posterior_point_est`: deterministic posterior from point estimates
 #'   - `posterior_mean`: mean posterior across Monte Carlo simulations
 #'   - `posterior_sd`: SD of posterior across Monte Carlo simulations
 #'   - `confidence_score`: fraction of simulations in which this hypothesis won
+#'
+#'   Three columns that are always present, whether or not anything was
+#'   pooled (a fixed schema, so per-marker tables bind and a data dictionary
+#'   holds): `pooled_n` (integer),
+#'   `pooled_prior_mass` (numeric) and `pooled_taxa` (character, names joined
+#'   by `"; "`). They are `NA` on rows that are not rings; a ring that pooled
+#'   nothing has `pooled_n` 0, `pooled_prior_mass` 0 and `pooled_taxa` `NA`.
+#'   The attribute `pooled_rows` is a data frame (`observation_id`,
+#'   `ring_taxon`, `taxon_name`, `prior_mean`, `posterior_point_est`) of every
+#'   pooled row, and `pooled_min_posterior` is the threshold used (0.05); both
+#'   are present, the first with zero rows, when nothing was pooled.
+#'
+#' @section Pooled unreferenced rows:
+#' A \emph{named} row is a species-rank row of hypothesis type
+#' \code{"unreferenced_species"} or \code{"unreferenced_genus"}: a local
+#' species with no reference for the marker, carrying the likelihood of its
+#' \emph{ring} (the generic \code{"unreferenced_*"} row above species whose
+#' scope contains it) and its own prior. Before simulation, within each
+#' observation, a named row whose point posterior is below 0.05 is removed and
+#' its prior mass is added to its ring row. The ring is the row named by
+#' \code{unreferenced_scope} (with \code{unreferenced_scope_rank}) when those
+#' columns exist; otherwise the \code{"unreferenced_species"} ring of the
+#' row's genus, or the \code{"unreferenced_genus"} ring of its family. A named
+#' row with no such ring row, a different likelihood from its ring's (beyond
+#' 1e-12), or a presence-mixture prior is kept, and a ring with a presence
+#' mixture takes none.
+#'
+#' Because a pooled row and its ring share one likelihood, the ring's point
+#' posterior after pooling is exactly the sum of its own and the pooled rows'
+#' point posteriors before, and no other row's changes; this is checked
+#' internally (to 1e-12). The ring's \code{prior_alpha} and \code{prior_beta}
+#' are moment-matched to the summed mean and the summed Beta variances
+#' (independence assumed).
+#'
+#' Second pass: where the ring is coarser than genus, the pooled candidates
+#' are grouped by genus, and a genus whose pooled rows' posteriors sum to 0.05
+#' or more keeps all of them unpooled, since a node below the ring could then
+#' be called. The members of each ring are in \code{pooled_taxa}, and every
+#' pooled row is in \code{attr(, "pooled_rows")}. A table that already holds
+#' \code{pooled_*} columns accumulates onto them. A consumer that reads the
+#' output with a \code{min_posterior} below 0.05 sees the pooled rows only
+#' through their ring ([posterior_consensus()] warns).
 #'
 #' @details
 #' \strong{Bayesian framework:}
@@ -157,6 +202,14 @@
 #'
 #' @export
 compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
+  out <- .compute_posterior_impl(likelihood_w_prior, n_sims = n_sims, pool = TRUE)
+  .ensure_pooled_schema(out)
+}
+
+# The body of compute_posterior(). `pool = FALSE` skips the pooling of named
+# unreferenced rows; kept only so tests can compare the two paths.
+#' @noRd
+.compute_posterior_impl <- function(likelihood_w_prior, n_sims = 1000, pool = TRUE) {
   # --- Input validation ---
   required_cols <- c(
     "observation_id", "score_likelihood", "score_likelihood_mean",
@@ -204,6 +257,21 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   if (na_lik_sd > 0) {
     cli::cli_warn("{na_lik_sd} NA value(s) in {.field score_likelihood_sd} replaced with 0.")
     likelihood_w_prior$score_likelihood_sd[is.na(likelihood_w_prior$score_likelihood_sd)] <- 0
+  }
+
+  # --- Pool named unreferenced rows into their ring ----------------------
+  pooled_info <- NULL
+  if (pool && !dplyr::is_grouped_df(likelihood_w_prior)) {
+    pl <- .pool_unreferenced_rows(likelihood_w_prior, use_beta_prior)
+    pooled_info <- pl$pooled
+    if (nrow(pooled_info) > 0L) {
+      likelihood_w_prior <- pl$df
+      pool_floor <- .POOL_MIN_POSTERIOR
+      cli::cli_inform(
+        "Pooled {nrow(pooled_info)} named unreferenced row(s) (point posterior below \
+        {pool_floor}) into their ring rows."
+      )
+    }
   }
 
   # --- Detect presence-mixture rows -------------------------------------
@@ -539,5 +607,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   out <- dplyr::arrange(out, .data$observation_id, dplyr::desc(.data$posterior_mean))
 
   attr(out, "report_params") <- list(n_sims = n_sims)
+  if (!is.null(pooled_info)) {
+    attr(out, "pooled_rows") <- pooled_info
+    attr(out, "pooled_min_posterior") <- .POOL_MIN_POSTERIOR
+  }
   out
 }

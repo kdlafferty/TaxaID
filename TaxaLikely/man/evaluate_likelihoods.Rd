@@ -160,7 +160,11 @@ below this marker's own median" sidesteps that),
 (\code{"genus_specific"} or \code{"global_fallback"} for
 \code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
 \code{specific_candidate} rows), plus the \verb{*_confusion_risk} columns
-described under \strong{Confusion risk} below.}
+described under \strong{Confusion risk} below, plus the unit-level
+\code{best_identity} (numeric, percent), \code{best_identity_rank} (character)
+and \code{poor_absolute_fit} (logical) flag columns described under
+\strong{Absolute fit}. The thresholds used are in
+\verb{attr($likelihoods, "rank_thresholds_used")} (named numeric).}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to
 a second call of \code{evaluate_likelihoods()} with a coarser
@@ -196,11 +200,29 @@ shifts the H1 score distribution downward (by \code{H2$delta} logit
 units, or by a genus-specific shrunk delta from
 \code{model_params$H2_Lookup} when the anchor candidate's genus has
 real congener data -- see \code{h2_delta_source} below) to predict
-what a sister-species match looks like.
+what a sister-species match looks like. There is one such row per
+distinct genus among the unit's candidates, named by the genus.
 \item \strong{H3 (unreferenced_genus):} The query comes from a genus not in
 the reference database at all. The score distribution is shifted further
-downward (by \code{H3$delta}).
+downward (by \code{H3$delta}). There is one such row per distinct family
+among the unit's candidates, named by the family.
 }
+
+\strong{Ring anchors:} Every unreferenced row is valued and named at the
+same anchor candidate. The anchor of a set of candidates is the one with the
+highest transformed score; ties (within 1e-9) are broken by a real
+reference hit over a restored row, then by the highest H1 density, then by
+the highest raw identity; only a final exact tie keeps the first candidate
+in the table, and that is the only order-dependent step. Each genus ring
+(H2) is anchored on the best candidate of that genus and uses that genus's
+own H2 delta, variance and identical-barcode weight; each family ring (H3)
+is anchored on the best candidate of that family, so a unit whose
+candidates span several families gets one family ring per family, each at
+its own family's anchor. The coarser rings (order and above) stay one per
+unit, anchored on the best candidate of the whole unit. Only candidates with
+a usable genus (not missing, blank or a placeholder such as
+"unclassified") are eligible; a unit with none keeps a single ring per tier
+anchored over all its candidates and named by the nearest real rank.
 
 \strong{Features:}
 \itemize{
@@ -278,7 +300,7 @@ density. For singleton (1D) queries the gate is exact.
 \strong{Genus-specific H2/H3 delta (\code{h2_delta_source}):}
 \code{H2$delta}/\code{H3$delta} are single values pooled across every genus seen
 during training. When \code{train_likelihood_model()} found at least one real
-congener pair for the query's best-matching candidate's genus,
+congener pair for a ring's anchor candidate's genus,
 \code{evaluate_likelihoods()} instead uses a genus-specific delta
 (\code{model_params$H2_Lookup}, shrunk toward the pooled value by how many
 congener pairs were available) and marks the row
@@ -294,7 +316,7 @@ mimicry/convergence) is not its nearest phylogenetic relative -- see
 \code{inst/TaxaLikely_supplemental_methods.md}.
 
 \strong{H2/H3 mean anchor and genus-specific variance:} H2's mean is
-\verb{(anchor candidate's own resolved species mean) - delta}, not
+\verb{(that ring's anchor candidate's own resolved species mean) - delta}, not
 \code{H1_Global_Mu - delta}: a referenced species whose own trained mean sits
 above or below the population average is real information about how
 conserved or variable that lineage is, and an unreferenced sister species
@@ -373,6 +395,34 @@ so \code{species_confusion_risk} is always \code{NA} there). See
 \code{TaxaAssign::posterior_consensus()}'s \verb{winner_*_confusion_risk} and
 \code{winner_own_rank_confusion_risk} pass-through for how a downstream
 consumer reads these off the winning row.
+}
+
+\section{Absolute fit}{
+
+\code{best_identity}, \code{best_identity_rank} and \code{poor_absolute_fit} are a flag
+only: they never change a likelihood or which hypothesis wins.
+\code{score_likelihood} is normalised to the unit's maximum, so the best
+hypothesis always scores 1 however poor the match itself is (an 86\%
+identity alignment can be called at 0.998 when it is the best of a bad
+set). These columns report the match on its own, absolute scale.
+
+\code{best_identity} is the unit's best raw match identity among its
+\code{specific_candidate} rows: the maximum of the per-taxon median scores
+computed for the likelihoods, on the percent scale (0-100, whether the
+input scores were 0-100 or 0-1). \code{best_identity_rank} is the finest rank
+(species, then genus, then family) whose marker-specific identity
+threshold \code{best_identity} reaches (\code{>=}), \code{NA} when it reaches none.
+\code{poor_absolute_fit} is \code{TRUE} when \code{best_identity} reaches no rank
+threshold and \code{FALSE} when it reaches at least one. The thresholds are the
+per-rank Youden's J values of \code{\link[=compute_rank_thresholds]{compute_rank_thresholds()}}, derived from
+\code{model_params$Confusion_Risk_Curves}, and are recorded in
+\code{attr(result$likelihoods, "rank_thresholds_used")}.
+
+All three are unit-level, repeated on every row of the unit's table. All
+three are \code{NA} for a unit with no \code{specific_candidate} row. If the model's
+stored curves cannot give thresholds (a model object from before they were
+stored), \code{best_identity_rank} and \code{poor_absolute_fit} are \code{NA} for every
+unit and one message says so.
 }
 
 \section{Pair-coverage check}{

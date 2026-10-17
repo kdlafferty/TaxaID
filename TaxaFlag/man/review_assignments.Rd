@@ -35,7 +35,9 @@ review_assignments(
   pause_seconds = 1,
   cache_dir = NULL,
   on_unreviewed = c("warn", "error", "ignore"),
-  verbose = TRUE
+  verbose = TRUE,
+  poor_absolute_fit_col = "poor_absolute_fit",
+  best_identity_col = "best_identity"
 )
 }
 \arguments{
@@ -290,6 +292,24 @@ by the usual export filters, so a run with residue produces a species
 list that is silently short.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
+
+\item{poor_absolute_fit_col}{Character or \code{NULL}. Column name for
+\code{TaxaLikely::evaluate_likelihoods()}'s \code{poor_absolute_fit}, as
+passed through by \code{posterior_consensus()}: \code{TRUE} when the
+unit's best raw match identity reaches no rank threshold for the marker.
+Likelihoods are normalised to the unit maximum, so such a call can still
+carry a high posterior. When \code{TRUE} for any row sharing a label, one
+fact line (e.g. "best match identity 86.1\% is below every rank threshold
+for this marker (poor absolute fit)") is added to that taxon's pipeline
+notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
+of what is reviewed, a change in the flag changes the cache key. Silently
+skipped when absent. Default \code{"poor_absolute_fit"}. Set to
+\code{NULL} to disable.}
+
+\item{best_identity_col}{Character or \code{NULL}. Column name for the
+\code{best_identity} (percent) quoted in that note. Silently skipped when
+absent (the note then omits the number). Default \code{"best_identity"}.
+Set to \code{NULL} to disable.}
 }
 \value{
 The input data frame with 8 or 9 columns appended:

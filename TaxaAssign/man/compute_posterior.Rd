@@ -24,18 +24,32 @@ TaxaExpect priors) always supply both columns.}
 Set to 0 to skip simulation and return point estimates only.}
 }
 \value{
-The input dataframe with four new columns added:
+The input dataframe with four new columns added, possibly with fewer
+rows (pooled rows are removed):
 \itemize{
 \item \code{posterior_point_est}: deterministic posterior from point estimates
 \item \code{posterior_mean}: mean posterior across Monte Carlo simulations
 \item \code{posterior_sd}: SD of posterior across Monte Carlo simulations
 \item \code{confidence_score}: fraction of simulations in which this hypothesis won
 }
+
+Three columns that are always present, whether or not anything was
+pooled (a fixed schema, so per-marker tables bind and a data dictionary
+holds): \code{pooled_n} (integer),
+\code{pooled_prior_mass} (numeric) and \code{pooled_taxa} (character, names joined
+by \code{"; "}). They are \code{NA} on rows that are not rings; a ring that pooled
+nothing has \code{pooled_n} 0, \code{pooled_prior_mass} 0 and \code{pooled_taxa} \code{NA}.
+The attribute \code{pooled_rows} is a data frame (\code{observation_id},
+\code{ring_taxon}, \code{taxon_name}, \code{prior_mean}, \code{posterior_point_est}) of every
+pooled row, and \code{pooled_min_posterior} is the threshold used (0.05); both
+are present, the first with zero rows, when nothing was pooled.
 }
 \description{
 Performs the Bayesian update: Posterior ~ Likelihood * Prior.
-Adds posterior columns to the input dataframe and returns the full dataframe,
-so all existing columns (e.g., taxon name, hypothesis type, rank) are preserved.
+Adds posterior columns to the input dataframe and returns it with all existing
+columns (e.g., taxon name, hypothesis type, rank) preserved. The output can
+have fewer rows than the input: named unreferenced rows with a negligible
+posterior are pooled into their ring row (see "Pooled unreferenced rows").
 }
 \details{
 Two computation paths are available:
@@ -149,6 +163,39 @@ genus (from \code{apply_coverage_constraints()}); its posterior is
 passed to the genus's referenced members, see above.
 }
 }
+\section{Pooled unreferenced rows}{
+
+A \emph{named} row is a species-rank row of hypothesis type
+\code{"unreferenced_species"} or \code{"unreferenced_genus"}: a local
+species with no reference for the marker, carrying the likelihood of its
+\emph{ring} (the generic \code{"unreferenced_*"} row above species whose
+scope contains it) and its own prior. Before simulation, within each
+observation, a named row whose point posterior is below 0.05 is removed and
+its prior mass is added to its ring row. The ring is the row named by
+\code{unreferenced_scope} (with \code{unreferenced_scope_rank}) when those
+columns exist; otherwise the \code{"unreferenced_species"} ring of the
+row's genus, or the \code{"unreferenced_genus"} ring of its family. A named
+row with no such ring row, a different likelihood from its ring's (beyond
+1e-12), or a presence-mixture prior is kept, and a ring with a presence
+mixture takes none.
+
+Because a pooled row and its ring share one likelihood, the ring's point
+posterior after pooling is exactly the sum of its own and the pooled rows'
+point posteriors before, and no other row's changes; this is checked
+internally (to 1e-12). The ring's \code{prior_alpha} and \code{prior_beta}
+are moment-matched to the summed mean and the summed Beta variances
+(independence assumed).
+
+Second pass: where the ring is coarser than genus, the pooled candidates
+are grouped by genus, and a genus whose pooled rows' posteriors sum to 0.05
+or more keeps all of them unpooled, since a node below the ring could then
+be called. The members of each ring are in \code{pooled_taxa}, and every
+pooled row is in \code{attr(, "pooled_rows")}. A table that already holds
+\code{pooled_*} columns accumulates onto them. A consumer that reads the
+output with a \code{min_posterior} below 0.05 sees the pooled rows only
+through their ring (\code{\link[=posterior_consensus]{posterior_consensus()}} warns).
+}
+
 \examples{
 likelihood_w_prior <- data.frame(
   observation_id = c("S1", "S1", "S1"),

@@ -249,6 +249,22 @@
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
+#' @param poor_absolute_fit_col Character or \code{NULL}. Column name for
+#'   \code{TaxaLikely::evaluate_likelihoods()}'s \code{poor_absolute_fit}, as
+#'   passed through by \code{posterior_consensus()}: \code{TRUE} when the
+#'   unit's best raw match identity reaches no rank threshold for the marker.
+#'   Likelihoods are normalised to the unit maximum, so such a call can still
+#'   carry a high posterior. When \code{TRUE} for any row sharing a label, one
+#'   fact line (e.g. "best match identity 86.1% is below every rank threshold
+#'   for this marker (poor absolute fit)") is added to that taxon's pipeline
+#'   notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
+#'   of what is reviewed, a change in the flag changes the cache key. Silently
+#'   skipped when absent. Default \code{"poor_absolute_fit"}. Set to
+#'   \code{NULL} to disable.
+#' @param best_identity_col Character or \code{NULL}. Column name for the
+#'   \code{best_identity} (percent) quoted in that note. Silently skipped when
+#'   absent (the note then omits the number). Default \code{"best_identity"}.
+#'   Set to \code{NULL} to disable.
 #' @return The input data frame with 8 or 9 columns appended:
 #' \describe{
 #'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
@@ -466,7 +482,9 @@ review_assignments <- function(input_df,
                                pause_seconds = 1,
                                cache_dir = NULL,
                                on_unreviewed = c("warn", "error", "ignore"),
-                               verbose = TRUE) {
+                               verbose = TRUE,
+                               poor_absolute_fit_col = "poor_absolute_fit",
+                               best_identity_col = "best_identity") {
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -500,7 +518,8 @@ review_assignments <- function(input_df,
     dist_nearest_occupied_km_col, patch_diameter_km_col,
     beyond_buffer_col, inat_in_range_col,
     inat_n_observations_col, inat_matched_name_col,
-    consensus_plausibility_col, consensus_discrimination_col
+    consensus_plausibility_col, consensus_discrimination_col,
+    poor_absolute_fit_col, best_identity_col
   )) {
     if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L)) {
       stop(paste(
@@ -509,7 +528,8 @@ review_assignments <- function(input_df,
         "'dist_nearest_occupied_km_col', 'patch_diameter_km_col',",
         "'beyond_buffer_col', 'inat_in_range_col',",
         "'inat_n_observations_col', 'inat_matched_name_col',",
-        "'consensus_plausibility_col', and 'consensus_discrimination_col' must",
+        "'consensus_plausibility_col', 'consensus_discrimination_col',",
+        "'poor_absolute_fit_col', and 'best_identity_col' must",
         "each be a single character string or NULL."
       ), call. = FALSE)
     }
@@ -680,7 +700,9 @@ review_assignments <- function(input_df,
   pipeline_ctx <- .summarise_pipeline_context(
     label_vec_full, input_df, consensus_posterior_col, winner_prior_col,
     winner_rank_expanded_col, consensus_plausibility_col, consensus_discrimination_col,
-    consensus_provenance = consensus_provenance
+    consensus_provenance = consensus_provenance,
+    poor_absolute_fit_col = poor_absolute_fit_col,
+    best_identity_col = best_identity_col
   )
   weight_ctx <- if (use_candidates && !is.null(plausible_posteriors_col) &&
     plausible_posteriors_col %in% names(input_df)) {
@@ -1194,12 +1216,16 @@ review_assignments <- function(input_df,
                                         winner_prior_col, winner_rank_expanded_col,
                                         consensus_plausibility_col = NULL,
                                         consensus_discrimination_col = NULL,
-                                        consensus_provenance = TRUE) {
+                                        consensus_provenance = TRUE,
+                                        poor_absolute_fit_col = NULL,
+                                        best_identity_col = NULL) {
   has_post <- !is.null(consensus_posterior_col) && consensus_posterior_col %in% names(input_df)
   has_prior <- !is.null(winner_prior_col) && winner_prior_col %in% names(input_df)
   has_rexp <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
   has_plaus <- !is.null(consensus_plausibility_col) && consensus_plausibility_col %in% names(input_df)
   has_disc <- !is.null(consensus_discrimination_col) && consensus_discrimination_col %in% names(input_df)
+  has_poorfit <- !is.null(poor_absolute_fit_col) && poor_absolute_fit_col %in% names(input_df)
+  has_ident <- !is.null(best_identity_col) && best_identity_col %in% names(input_df)
   # The four provenance columns are emitted together by
   # posterior_consensus(), so they are read by their canonical names rather
   # than through four separate `_col` arguments.
@@ -1208,7 +1234,8 @@ review_assignments <- function(input_df,
   has_scope <- has_prov &&
     all(c("consensus_unreferenced_scope", "consensus_unreferenced_scope_rank") %in%
       names(input_df))
-  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc && !has_prov) {
+  if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc && !has_prov &&
+    !has_poorfit) {
     return(NULL)
   }
 
@@ -1236,6 +1263,31 @@ review_assignments <- function(input_df,
         "species-level ID from occurrence-prior tie-break, ",
         "no direct sequence discrimination"
       ))
+    }
+    # Absolute fit: the likelihood is normalised to the unit maximum, so the
+    # best of a poor set reads as a confident call. Only a TRUE flag adds a
+    # line; FALSE and NA add nothing. Any row sharing the label flagging it
+    # counts, as for winner_rank_expanded.
+    if (has_poorfit) {
+      pf <- input_df[[poor_absolute_fit_col]][rows]
+      if (isTRUE(any(pf, na.rm = TRUE))) {
+        idv <- if (has_ident) {
+          suppressWarnings(stats::median(
+            as.numeric(input_df[[best_identity_col]][rows][pf %in% TRUE]),
+            na.rm = TRUE
+          ))
+        } else {
+          NA_real_
+        }
+        parts <- c(parts, if (is.finite(idv)) {
+          sprintf(
+            "best match identity %.1f%% is below every rank threshold for this marker (poor absolute fit)",
+            idv
+          )
+        } else {
+          "best match identity is below every rank threshold for this marker (poor absolute fit)"
+        })
+      }
     }
     # Where the CALL landed on an unreferenced row, no reference sequence
     # exists for the named taxon: the sequence settled that an unreferenced

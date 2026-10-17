@@ -424,6 +424,53 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
   .interp(pooled_df$threshold, pooled_col, observed_pct)
 }
 
+#' Per-rank Youden's J thresholds from stored or freshly computed curves
+#'
+#' The single Youden's J code path shared by `compute_rank_thresholds()` (curves
+#' just computed from a sequence matrix) and `evaluate_likelihoods()` (curves
+#' stored in `model_params$Confusion_Risk_Curves`). For each tier present, the
+#' threshold maximising `tpr - fpr` over the raw `pooled_rate` curves, on the
+#' percent-identity grid the curves were built on.
+#'
+#' @param curves List shaped like `.compute_rank_score_curves()`'s value, or
+#'   `NULL`.
+#' @return Named numeric, a subset of `c(species=, genus=, family=)`, in that
+#'   order. A tier that is absent, or whose curves lack a `threshold` column or
+#'   `pooled_rate` columns (a model object from before they existed), is
+#'   omitted; a tier whose curves share no threshold returns `NA`. Empty
+#'   (`numeric(0)`) when nothing is usable.
+#' @noRd
+.rank_thresholds_from_curves <- function(curves) {
+  .youden_best <- function(tier) {
+    if (is.null(tier)) {
+      return(NULL)
+    }
+    tpr <- tier$tpr_pooled
+    fpr <- tier$fpr_pooled
+    if (!is.data.frame(tpr) || !is.data.frame(fpr) ||
+      !all(c("threshold", "pooled_rate") %in% names(tpr)) ||
+      !all(c("threshold", "pooled_rate") %in% names(fpr))) {
+      return(NULL)
+    }
+    merged <- merge(tpr, fpr, by = "threshold", suffixes = c("_tpr", "_fpr"))
+    if (nrow(merged) == 0L) {
+      return(NA_real_)
+    }
+    j <- merged$pooled_rate_tpr - merged$pooled_rate_fpr
+    merged$threshold[[which.max(j)]]
+  }
+
+  out <- numeric(0)
+  if (!is.list(curves)) {
+    return(out)
+  }
+  for (rk in c("species", "genus", "family")) {
+    v <- .youden_best(curves[[rk]])
+    if (!is.null(v)) out[rk] <- v
+  }
+  out
+}
+
 #' Derive marker-specific rank_thresholds via per-rank Youden's J
 #'
 #' A real, exported, marker-agnostic version of
@@ -518,25 +565,7 @@ compute_rank_thresholds <- function(seq_matrix,
     ), call. = FALSE)
   }
 
-  .youden_best <- function(tier) {
-    if (is.null(tier)) {
-      return(NA_real_)
-    }
-    merged <- merge(tier$tpr_pooled, tier$fpr_pooled,
-      by = "threshold",
-      suffixes = c("_tpr", "_fpr")
-    )
-    if (nrow(merged) == 0L) {
-      return(NA_real_)
-    }
-    j <- merged$pooled_rate_tpr - merged$pooled_rate_fpr
-    merged$threshold[[which.max(j)]]
-  }
-
-  out <- numeric(0)
-  if (!is.null(curves$species)) out["species"] <- .youden_best(curves$species)
-  if (!is.null(curves$genus)) out["genus"] <- .youden_best(curves$genus)
-  if (!is.null(curves$family)) out["family"] <- .youden_best(curves$family)
+  out <- .rank_thresholds_from_curves(curves)
 
   if (length(out) == 0L) {
     stop("compute_rank_thresholds: no rank tier was computable from this seq_matrix.", call. = FALSE)
