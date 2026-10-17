@@ -66,7 +66,8 @@ test_that("a named row with no ring row in its unit is kept", {
   o <- suppressMessages(compute_posterior(d, n_sims = 0))
   expect_equal(nrow(o), nrow(d))
   expect_equal(nrow(attr(o, "pooled_rows")), 0L)
-  expect_false("pooled_n" %in% names(o))
+  # fixed schema: the column is present, NA on these non-ring rows
+  expect_true(all(is.na(o$pooled_n)))
 })
 
 test_that("a named row whose likelihood differs from its ring's is kept", {
@@ -109,8 +110,12 @@ test_that("nothing to pool: identical to the unpooled path, attributes present",
   d <- .pool_df(c(0.3, 0.3), ring_prior = 0.1)
   o <- suppressMessages(compute_posterior(d, n_sims = 0))
   b <- suppressMessages(.compute_posterior_impl(d, n_sims = 0, pool = FALSE))
-  expect_identical(o, b[, names(o)] |> `attr<-`("pooled_rows", attr(o, "pooled_rows")) |>
-    `attr<-`("pooled_min_posterior", 0.05))
+  pc <- c("pooled_n", "pooled_prior_mass", "pooled_taxa")
+  expect_true(all(pc %in% names(o)))
+  core <- setdiff(names(o), pc)
+  expect_identical(
+    as.data.frame(o)[, core], as.data.frame(b)[, core]
+  )
   expect_equal(nrow(attr(o, "pooled_rows")), 0L)
   expect_equal(attr(o, "pooled_min_posterior"), 0.05)
 })
@@ -224,3 +229,35 @@ for (nm in names(.real_cases)) {
     })
   })
 }
+
+
+test_that("fixed schema: a nothing-to-pool table still carries the three pooled columns", {
+  # A unit with a candidate, a genus ring and NO named rows: nothing can pool.
+  d <- data.frame(
+    observation_id = "u1",
+    taxon_name = c("Atherinops affinis", "Atherinops"),
+    taxon_name_rank = c("species", "genus"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species"),
+    genus = "Atherinops", family = "Atherinopsidae",
+    score_likelihood = c(1, 0.5), score_likelihood_mean = c(1, 0.5),
+    score_likelihood_sd = 0, prior_mean = c(0.01, 1e-6),
+    prior_alpha = c(1, 1e-3), prior_beta = c(99, 999),
+    stringsAsFactors = FALSE
+  )
+  o <- suppressMessages(compute_posterior(d, n_sims = 0))
+  expect_true(all(c("pooled_n", "pooled_prior_mass", "pooled_taxa") %in% names(o)))
+  ring <- o$hypothesis_type == "unreferenced_species"
+  expect_identical(o$pooled_n[ring], 0L)
+  expect_identical(o$pooled_prior_mass[ring], 0)
+  expect_true(is.na(o$pooled_taxa[ring]))
+  expect_true(is.na(o$pooled_n[!ring]) && is.na(o$pooled_prior_mass[!ring]))
+  expect_s3_class(attr(o, "pooled_rows"), "data.frame")
+  expect_equal(nrow(attr(o, "pooled_rows")), 0L)
+  expect_equal(attr(o, "pooled_min_posterior"), 0.05)
+  # Two such tables bind with the same columns as a pooled one would carry.
+  b2 <- dplyr::bind_rows(o, o)
+  expect_identical(names(b2), names(o))
+  # Grouped input (pooling skipped) also carries the schema.
+  g <- suppressMessages(compute_posterior(dplyr::group_by(d, observation_id), n_sims = 0))
+  expect_true(all(c("pooled_n", "pooled_prior_mass", "pooled_taxa") %in% names(g)))
+})

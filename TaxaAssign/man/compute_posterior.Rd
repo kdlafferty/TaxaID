@@ -33,7 +33,9 @@ rows (pooled rows are removed):
 \item \code{confidence_score}: fraction of simulations in which this hypothesis won
 }
 
-When rows were pooled, three more columns: \code{pooled_n} (integer),
+Three columns that are always present, whether or not anything was
+pooled (a fixed schema, so per-marker tables bind and a data dictionary
+holds): \code{pooled_n} (integer),
 \code{pooled_prior_mass} (numeric) and \code{pooled_taxa} (character, names joined
 by \code{"; "}). They are \code{NA} on rows that are not rings; a ring that pooled
 nothing has \code{pooled_n} 0, \code{pooled_prior_mass} 0 and \code{pooled_taxa} \code{NA}.

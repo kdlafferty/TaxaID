@@ -76,7 +76,9 @@
 #'   - `posterior_sd`: SD of posterior across Monte Carlo simulations
 #'   - `confidence_score`: fraction of simulations in which this hypothesis won
 #'
-#'   When rows were pooled, three more columns: `pooled_n` (integer),
+#'   Three columns that are always present, whether or not anything was
+#'   pooled (a fixed schema, so per-marker tables bind and a data dictionary
+#'   holds): `pooled_n` (integer),
 #'   `pooled_prior_mass` (numeric) and `pooled_taxa` (character, names joined
 #'   by `"; "`). They are `NA` on rows that are not rings; a ring that pooled
 #'   nothing has `pooled_n` 0, `pooled_prior_mass` 0 and `pooled_taxa` `NA`.
@@ -200,7 +202,8 @@
 #'
 #' @export
 compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
-  .compute_posterior_impl(likelihood_w_prior, n_sims = n_sims, pool = TRUE)
+  out <- .compute_posterior_impl(likelihood_w_prior, n_sims = n_sims, pool = TRUE)
+  .ensure_pooled_schema(out)
 }
 
 # The body of compute_posterior(). `pool = FALSE` skips the pooling of named

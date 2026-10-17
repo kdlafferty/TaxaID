@@ -236,3 +236,37 @@
   }
   list(df = out, pooled = pooled)
 }
+
+
+#' Give a compute_posterior() result its fixed pooled-row schema
+#'
+#' Adds `pooled_n`, `pooled_prior_mass` and `pooled_taxa` when absent: `0`,
+#' `0` and `NA` on a ring row (a generic unreferenced row above species, the
+#' only rows that can pool), `NA` on every other row. Existing values are
+#' kept. Also guarantees the `pooled_rows` (possibly 0-row) and
+#' `pooled_min_posterior` attributes.
+#' @noRd
+.ensure_pooled_schema <- function(out) {
+  n <- nrow(out)
+  ring <- if (all(c("hypothesis_type", "taxon_name_rank", "taxon_name") %in% names(out))) {
+    rk <- as.character(out$taxon_name_rank)
+    .is_unreferenced_type(as.character(out$hypothesis_type)) &
+      !(rk %in% "species") & !is.na(rk) & !is.na(out$taxon_name)
+  } else {
+    rep(FALSE, n)
+  }
+  if (!"pooled_n" %in% names(out)) out$pooled_n <- ifelse(ring, 0L, NA_integer_)
+  if (!"pooled_prior_mass" %in% names(out)) out$pooled_prior_mass <- ifelse(ring, 0, NA_real_)
+  if (!"pooled_taxa" %in% names(out)) out$pooled_taxa <- rep(NA_character_, n)
+  if (is.null(attr(out, "pooled_rows"))) {
+    attr(out, "pooled_rows") <- data.frame(
+      observation_id = character(0), ring_taxon = character(0),
+      taxon_name = character(0), prior_mean = numeric(0),
+      posterior_point_est = numeric(0), stringsAsFactors = FALSE
+    )
+  }
+  if (is.null(attr(out, "pooled_min_posterior"))) {
+    attr(out, "pooled_min_posterior") <- .POOL_MIN_POSTERIOR
+  }
+  out
+}
