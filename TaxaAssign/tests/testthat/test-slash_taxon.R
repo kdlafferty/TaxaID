@@ -217,3 +217,35 @@ test_that("shuffling every set leaves irreducible_consensus unchanged (invariant
     add_slash_taxon(d2)$irreducible_consensus
   )
 })
+
+
+# A ring (genus/family) in the plausible set is a whole one-word taxon.
+test_that(".make_slash_name keeps one-word names whole (no doubled genus)", {
+  f <- TaxaAssign:::.make_slash_name
+  # The real Mugu 16S/12S shape (ASV_382): genus rings ranked first.
+  expect_identical(f(c("Atractoscion", "Umbrina", "Sciaena umbra")),
+                   "Atractoscion + Umbrina + Sciaena umbra")
+  expect_identical(f(c("Atractoscion", "Atractoscion atelodus")),
+                   "Atractoscion + Atractoscion atelodus")
+  expect_identical(f(c("Sciaenidae", "Pseudotolithus")), "Sciaenidae + Pseudotolithus")
+  # binomial behaviour unchanged
+  expect_identical(f(c("Homo sapiens", "Homo heidelbergensis")), "Homo sapiens/heidelbergensis")
+  expect_identical(f(c("Bos javanicus", "Bison bonasus", "Bos primigenius")),
+                   "Bos javanicus/primigenius + Bison bonasus")
+  expect_identical(f(c("Bos grunniens x Bos taurus", "Bos indicus")),
+                   "Bos grunniens x Bos taurus/indicus")
+  # never a repeated word anywhere
+  out <- f(c("Atractoscion", "Umbrina", "Pseudotolithus", "Sciaenidae", "Sciaena umbra"))
+  expect_false(grepl("\\b([A-Z][a-z]+) \\1\\b", out, perl = TRUE))
+})
+
+test_that("add_slash_taxon: a ring at the top gives a one-word primary_taxon, not a doubled genus", {
+  cdf <- data.frame(observation_id = "ASV_382", consensus_taxon = "Sciaenidae",
+                    consensus_rank = "family", stringsAsFactors = FALSE)
+  cdf$plausible_taxa <- list(c("Atractoscion", "Umbrina", "Sciaena umbra"))
+  cdf$plausible_posteriors <- list(c(Atractoscion = 0.245, Umbrina = 0.201, `Sciaena umbra` = 0.199))
+  out <- add_slash_taxon(cdf)
+  expect_identical(out$slash_taxon_name, "Atractoscion + Umbrina + Sciaena umbra")
+  expect_identical(out$primary_taxon, "Atractoscion")
+  expect_false(grepl("Atractoscion Atractoscion", out$consensus_OTU, fixed = TRUE))
+})
