@@ -826,8 +826,12 @@ review_assignments <- function(input_df,
       )
     }
 
+    # Bump the version whenever the prompt text changes in a way that can
+    # move a verdict: the key holds the inputs, not the prompt, so a cached
+    # verdict from the old wording would otherwise be served as a hit.
+    # v3: the poor-absolute-fit guideline.
     .shared <- paste(c(
-      "v2", target_group %||% "", marker %||% "", data_type,
+      "v3", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1750,6 +1754,23 @@ review_assignments <- function(input_df,
     NULL
   }
 
+  # --- Absolute-fit guidance (only when a taxon line carries the note) ---
+  # The fact line says the best reference match is weak. That is evidence
+  # about the NAME, not the ecology: one real review rated three Gobiidae
+  # family rows geographically "unlikely" citing an 89.6% match alone.
+  has_poorfit_note <- "pipeline_note" %in% names(taxa_batch) &&
+    any(grepl("(poor absolute fit)", taxa_batch$pipeline_note, fixed = TRUE))
+  poorfit_guideline <- if (has_poorfit_note) {
+    paste0(
+      '- A "(poor absolute fit)" note means the best reference match is weak, ',
+      "so the NAME at the called rank is uncertain. It says nothing about ",
+      "whether that group is ecologically or geographically plausible here: ",
+      'it must not by itself justify "unlikely" habitat, geography or scope.\n'
+    )
+  } else {
+    NULL
+  }
+
   example_comment <- switch(data_type,
     eDNA     = "Common lab contaminant in eDNA studies",
     acoustic = "Human vocalization detected near recording equipment",
@@ -1791,6 +1812,7 @@ review_assignments <- function(input_df,
     '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
     if (!is.null(skepticism_guideline)) skepticism_guideline else "",
     if (!is.null(spatial_guideline)) spatial_guideline else "",
+    if (!is.null(poorfit_guideline)) poorfit_guideline else "",
     '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
     "pipeline's OWN confidence for this call (posterior/occurrence prior/candidate ",
     "weights), not your input. Use it to flag disagreement between the pipeline's ",

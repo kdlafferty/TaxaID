@@ -18,7 +18,8 @@
 # Functions to skip when attributing a token record to a caller
 .skip_fns <- c(
   "call_api", "do.call", "lapply", "sapply", "vapply", "Map", "mapply",
-  "tryCatch", "withCallingHandlers", "try", "force", "local",
+  "tryCatch", "tryCatchList", "tryCatchOne", "doTryCatch",
+  "withCallingHandlers", "try", "force", "local",
   "eval", "evalq", "match.arg", "switch"
 )
 
@@ -27,11 +28,14 @@
   # Walk from the outermost frame inward; return the first user-visible name
   for (i in seq_along(calls)) {
     f <- calls[[i]][[1L]]
-    # Only a name (or pkg::name) labels a caller. do.call(fun_object, ...)
-    # puts the closure itself in this slot, and deparsing a closure gives its
-    # whole source -- a long vector that made `&&` below error after the API
-    # reply had already returned.
-    if (!is.symbol(f) && !is.call(f)) next
+    # Only a name, or a pkg::name / pkg:::name call, labels a caller.
+    # do.call(fun_object, ...) puts the closure itself in this slot, and an
+    # anonymous call such as (function(x) {...})(1) puts a call that deparses
+    # to several lines there. Deparsing either gave a long vector, which made
+    # `&&` below error after the API reply had already returned.
+    is_ns_call <- is.call(f) && length(f) == 3L &&
+      (identical(f[[1L]], as.name("::")) || identical(f[[1L]], as.name(":::")))
+    if (!is.symbol(f) && !is_ns_call) next
     fn <- tryCatch(deparse(f, nlines = 1L)[1L], error = function(e) "")
     fn <- trimws(fn %||% "")
     if (length(fn) == 1L && !is.na(fn) && nzchar(fn) && !startsWith(fn, ".") &&
