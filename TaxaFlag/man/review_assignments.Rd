@@ -194,7 +194,7 @@ passed through by \code{posterior_consensus()}: \code{TRUE} when the
 unit's best raw match identity reaches no rank threshold for the marker.
 Likelihoods are normalised to the unit maximum, so such a call can still
 carry a high posterior. When \code{TRUE} for any row sharing a label, one
-fact line (e.g. "best match identity 86.1\\% is below every rank threshold
+fact line (e.g. "best match identity 86.1\% is below every rank threshold
 for this marker (poor absolute fit)") is added to that taxon's pipeline
 notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
 of what is reviewed, a change in the flag changes the cache key. Silently
