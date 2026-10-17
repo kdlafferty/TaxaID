@@ -89,22 +89,6 @@
 #'   much weight the identification itself deserves. Silently skipped when
 #'   absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
 #'   disable.
-#' @param poor_absolute_fit_col Character or \code{NULL}. Column name for
-#'   \code{TaxaLikely::evaluate_likelihoods()}'s \code{poor_absolute_fit}, as
-#'   passed through by \code{posterior_consensus()}: \code{TRUE} when the
-#'   unit's best raw match identity reaches no rank threshold for the marker.
-#'   Likelihoods are normalised to the unit maximum, so such a call can still
-#'   carry a high posterior. When \code{TRUE} for any row sharing a label, one
-#'   fact line (e.g. "best match identity 86.1% is below every rank threshold
-#'   for this marker (poor absolute fit)") is added to that taxon's pipeline
-#'   notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
-#'   of what is reviewed, a change in the flag changes the cache key. Silently
-#'   skipped when absent. Default \code{"poor_absolute_fit"}. Set to
-#'   \code{NULL} to disable.
-#' @param best_identity_col Character or \code{NULL}. Column name for the
-#'   \code{best_identity} (percent) quoted in that note. Silently skipped when
-#'   absent (the note then omits the number). Default \code{"best_identity"}.
-#'   Set to \code{NULL} to disable.
 #' @param consensus_provenance Logical (default \code{TRUE}). When
 #'   \code{TRUE} and \code{input_df} carries
 #'   \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
@@ -265,6 +249,22 @@
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
+#' @param poor_absolute_fit_col Character or \code{NULL}. Column name for
+#'   \code{TaxaLikely::evaluate_likelihoods()}'s \code{poor_absolute_fit}, as
+#'   passed through by \code{posterior_consensus()}: \code{TRUE} when the
+#'   unit's best raw match identity reaches no rank threshold for the marker.
+#'   Likelihoods are normalised to the unit maximum, so such a call can still
+#'   carry a high posterior. When \code{TRUE} for any row sharing a label, one
+#'   fact line (e.g. "best match identity 86.1% is below every rank threshold
+#'   for this marker (poor absolute fit)") is added to that taxon's pipeline
+#'   notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
+#'   of what is reviewed, a change in the flag changes the cache key. Silently
+#'   skipped when absent. Default \code{"poor_absolute_fit"}. Set to
+#'   \code{NULL} to disable.
+#' @param best_identity_col Character or \code{NULL}. Column name for the
+#'   \code{best_identity} (percent) quoted in that note. Silently skipped when
+#'   absent (the note then omits the number). Default \code{"best_identity"}.
+#'   Set to \code{NULL} to disable.
 #' @return The input data frame with 8 or 9 columns appended:
 #' \describe{
 #'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
@@ -470,8 +470,6 @@ review_assignments <- function(input_df,
                                inat_in_range_col = "in_range",
                                inat_n_observations_col = "n_observations",
                                inat_matched_name_col = "matched_name",
-                               poor_absolute_fit_col = "poor_absolute_fit",
-                               best_identity_col = "best_identity",
                                context,
                                target_group = NULL,
                                marker = NULL,
@@ -484,7 +482,9 @@ review_assignments <- function(input_df,
                                pause_seconds = 1,
                                cache_dir = NULL,
                                on_unreviewed = c("warn", "error", "ignore"),
-                               verbose = TRUE) {
+                               verbose = TRUE,
+                               poor_absolute_fit_col = "poor_absolute_fit",
+                               best_identity_col = "best_identity") {
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
