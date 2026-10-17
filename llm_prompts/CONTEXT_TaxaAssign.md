@@ -382,6 +382,10 @@ After the join, rows are deduplicated on observation_id x taxon_name x taxon_nam
 
 A modelled species whose prior at the focal habitat falls below the singleton-mirror mean is promoted up to that mean -- but only when the low value is habitat EXTRAPOLATION (observed_in_habitat is FALSE: the species was never recorded in this habitat during training, so the habitat-conditional estimate is model extrapolation rather than data). A genuinely low in-habitat estimate is real rarity signal and is left alone. Named evidence-derived rows (undetected_type == "evidence_blend", model_tier "tier_undetected_evidence"/"tier_domestic_food") are never promoted under any condition: their sub-singleton theta is the deliberate output of a graded evidence blend (TaxaExpect::apply_undetected_evidence()) or ESS-based domestic scale, and promotion would silently erase that gradation. When taxaexpect_priors carries no observed_in_habitat column, every modelled row below the singleton-mirror mean is promoted -- the extrapolation check requires that column.
 
+#### Ring rows share one global floor per unit
+
+A ring row (unreferenced_* above species: an unsequenced relative named by its genus or family) has no occurrence prior of its own. Where its clade has a dark-diversity budget it carries that clade's remaining missing-species mass; otherwise it falls back to the global floor, the prior that the detected taxon is one arbitrary unrecorded taxon. A unit detects one taxon, so the floor-priced rings of one observation (at one site) share a single floor: each of the k such rings gets floor / k, with the floor's concentration kept. Without this the unreferenced prior mass of a unit would grow with the number of candidate genera, with no regional evidence behind it. A unit with one floor-priced ring, and a ring priced by a clade budget, are unchanged.
+
 #### Coarse-rank expansion
 
 When a likelihood row has taxon_name_rank coarser than species (e.g. "family" or "genus"), the primary species-level join finds no match and the row would otherwise fall back to the global floor prior, ignoring all species-level prior information within that taxon.
