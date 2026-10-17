@@ -88,7 +88,10 @@
 #'   occurrence prior, and leaves the ring row's prior as it was (the
 #'   unrecorded part). The species can then be reported by name when the
 #'   prior concentrates on it; the total prior in each scope is the same
-#'   either way.
+#'   either way. Only a species claimed by its OWN genus ring is named: a
+#'   family, order, class or phylum ring stands for "some unreferenced taxon
+#'   of this clade", so the species it claims add their prior to that ring
+#'   row unnamed, exactly as with `FALSE`.
 #'
 #' @return `joined` with `prior_mean`, `prior_alpha` and `prior_beta` updated
 #'   on rows that gained mass, plus `prior_mean_floor` (the prior before this
@@ -328,6 +331,21 @@ add_unreferenced_prior_mass <- function(joined,
 
   n_changed <- 0L
   n_named <- 0L
+  # Only a species's OWN genus ring may name it. A family, order, class or
+  # phylum ring means "some unreferenced taxon of this clade", whose local
+  # members can number in the dozens; naming one is the prior's choice, not
+  # the read's (CalIntertidal: Taonia lennebackerae named from a Dictyotaceae
+  # ring in 186 units, over a class ring the read fit better). Members claimed
+  # by a coarser ring keep their prior mass, added to that ring row unnamed.
+  mem_mass <- NULL
+  mem_all <- mem
+  if (named_rows && !is.null(mem) && nrow(mem) > 0L) {
+    coarse <- mem$rank != "genus"
+    if (any(coarse)) {
+      mem_mass <- mem[coarse, , drop = FALSE]
+      mem <- mem[!coarse, , drop = FALSE]
+    }
+  }
   if (named_rows && !is.null(mem) && nrow(mem) > 0L) {
     # One named row per recorded unreferenced local species, carrying the
     # likelihood of the ring whose scope contains it and its own prior. The
@@ -358,10 +376,13 @@ add_unreferenced_prior_mass <- function(joined,
     }
     n_named <- nrow(new)
     out <- rbind(out, new)
-  } else if (!is.null(mem) && nrow(mem) > 0L) {
-    mass <- tapply(mem$theta_mean, mem$row, sum)
-    varm <- tapply(mem$var, mem$row, sum)
-    nsp <- tapply(mem$taxon_name, mem$row, length)
+  }
+  mem_m <- if (named_rows) mem_mass else mem
+  if (!is.null(mem_m) && nrow(mem_m) > 0L) {
+    mem_k <- mem_m
+    mass <- tapply(mem_k$theta_mean, mem_k$row, sum)
+    varm <- tapply(mem_k$var, mem_k$row, sum)
+    nsp <- tapply(mem_k$taxon_name, mem_k$row, length)
     rows <- as.integer(names(mass))
     out$unreferenced_mass[rows] <- as.numeric(mass)
     out$unreferenced_n_species[rows] <- as.integer(nsp)
@@ -426,10 +447,10 @@ add_unreferenced_prior_mass <- function(joined,
   }
   attr(out, "unreferenced_withheld") <- withheld_df
   attr(out, "unreferenced_mass_check") <- check
-  attr(out, "unreferenced_scope_members") <- if (!is.null(mem) && nrow(mem) > 0L) {
+  attr(out, "unreferenced_scope_members") <- if (!is.null(mem_all) && nrow(mem_all) > 0L) {
     data.frame(
-      row = mem$row, observation_id = mem$observation_id, scope = mem$scope,
-      scope_rank = mem$rank, taxon_name = mem$taxon_name, theta_mean = mem$theta_mean,
+      row = mem_all$row, observation_id = mem_all$observation_id, scope = mem_all$scope,
+      scope_rank = mem_all$rank, taxon_name = mem_all$taxon_name, theta_mean = mem_all$theta_mean,
       stringsAsFactors = FALSE, row.names = NULL
     )
   } else {

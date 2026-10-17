@@ -129,6 +129,12 @@ the mass half is skipped when \code{plausible_posteriors} is absent or
 \code{min_posterior = 0}. \code{FALSE} disables both checks, so the reference alone
 decides.
 
+Independently of this argument, a call whose own row is an unreferenced
+ring is never downranked to a species: the ring holds the call because
+the read did not match the clade's referenced species, so naming one of
+them would contradict it. A coarser narrowing (family to genus) is still
+taken. The blocked steps are counted in a message.
+
 Why membership alone is not enough: \code{plausible_taxa} is PADDED whenever
 \code{tail_pooled} is \code{TRUE}, because the tail block then joins the plausible
 set -- so a hypothesis far below \code{min_posterior} becomes a member and

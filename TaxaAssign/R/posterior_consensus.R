@@ -280,6 +280,12 @@
 #'   `min_posterior = 0`. `FALSE` disables both checks, so the reference alone
 #'   decides.
 #'
+#'   Independently of this argument, a call whose own row is an unreferenced
+#'   ring is never downranked to a species: the ring holds the call because
+#'   the read did not match the clade's referenced species, so naming one of
+#'   them would contradict it. A coarser narrowing (family to genus) is still
+#'   taken. The blocked steps are counted in a message.
+#'
 #'   Why membership alone is not enough: `plausible_taxa` is PADDED whenever
 #'   `tail_pooled` is `TRUE`, because the tail block then joins the plausible
 #'   set -- so a hypothesis far below `min_posterior` becomes a member and
@@ -1158,11 +1164,26 @@ posterior_consensus <- function(posterior_df,
       .pre_taxon <- result$consensus_taxon
       .pre_rank <- result$consensus_rank
       .pre_resolved <- result$is_resolved
+      # Ring guard. A call whose own row is an unreferenced ring says the read
+      # did NOT match the referenced species of that clade, so narrowing it to
+      # one of them contradicts the call (CalIntertidal: genus Cottus, held by
+      # its ring, downranked to the referenced Cottus asper). Read from the
+      # same lookup that later reports consensus_hypothesis_type, on the call
+      # as it stands before downranking.
+      .pre_type <- .add_consensus_row_provenance(
+        result[, c("observation_id", "consensus_taxon"), drop = FALSE], posterior_df
+      )$consensus_hypothesis_type
+      result$.ring_call <- if (is.null(.pre_type)) {
+        rep(FALSE, nrow(result))
+      } else {
+        !is.na(.pre_type) & startsWith(ifelse(is.na(.pre_type), "", .pre_type), "unreferenced_")
+      }
       result <- .downrank_consensus(
         result, species_ref, rank_system_eff,
         require_candidate = downrank_requires_candidate,
         min_posterior = min_posterior
       )
+      result$.ring_call <- NULL
       # Cross-phylum, second half: a call that sat AT phylum with a runner-up
       # phylum over cross_phylum_eps was flagged, not withheld, because the
       # amendment lets a phylum call stand. If downranking has now moved it
@@ -2616,6 +2637,7 @@ posterior_consensus <- function(posterior_df,
     !is.na(min_posterior) && min_posterior > 0
   n_blocked <- 0L
   n_blocked_support <- 0L
+  n_blocked_ring <- 0L
 
   consensus_df$downranked <- FALSE
 
@@ -2726,6 +2748,12 @@ posterior_consensus <- function(posterior_df,
         }
       }
 
+      # Never onto a species from a call its ring holds (see the ring guard in
+      # posterior_consensus()); a coarser narrowing, family -> genus, stays.
+      if (identical(finer_rank, finest_rank) && isTRUE(consensus_df$.ring_call[i])) {
+        n_blocked_ring <- n_blocked_ring + 1L
+        break
+      }
       cur_rank <- finer_rank
       cur_taxon <- finer_vals[[1L]]
       changed <- TRUE
@@ -2744,6 +2772,13 @@ posterior_consensus <- function(posterior_df,
       "posterior_consensus: {n_blocked} downranking step(s) blocked because the ",
       "reference's only finer taxon was not among the observation's own ",
       "candidates (see {.arg downrank_requires_candidate})."
+    ))
+  }
+  if (n_blocked_ring > 0L) {
+    cli::cli_inform(paste0(
+      "posterior_consensus: {n_blocked_ring} downranking step(s) to a species ",
+      "blocked because the call's own row is an unreferenced ring: the read did ",
+      "not match the clade's referenced species."
     ))
   }
   if (n_blocked_support > 0L) {

@@ -55,7 +55,10 @@ named at species rank) carrying the ring row's likelihood and its own
 occurrence prior, and leaves the ring row's prior as it was (the
 unrecorded part). The species can then be reported by name when the
 prior concentrates on it; the total prior in each scope is the same
-either way.}
+either way. Only a species claimed by its OWN genus ring is named: a
+family, order, class or phylum ring stands for "some unreferenced taxon
+of this clade", so the species it claims add their prior to that ring
+row unnamed, exactly as with \code{FALSE}.}
 }
 \value{
 \code{joined} with \code{prior_mean}, \code{prior_alpha} and \code{prior_beta} updated
