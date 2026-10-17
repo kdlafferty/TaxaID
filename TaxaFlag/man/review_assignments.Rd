@@ -23,6 +23,8 @@ review_assignments(
   inat_in_range_col = "in_range",
   inat_n_observations_col = "n_observations",
   inat_matched_name_col = "matched_name",
+  poor_absolute_fit_col = "poor_absolute_fit",
+  best_identity_col = "best_identity",
   context,
   target_group = NULL,
   marker = NULL,
@@ -185,6 +187,24 @@ flagged in the prompt as \code{"matched to '...' (name differs from
 query)"} -- a plain factual annotation, not a judgment (see "Spatial
 context" below). Default \code{"matched_name"}. Set to \code{NULL} to
 disable.}
+
+\item{poor_absolute_fit_col}{Character or \code{NULL}. Column name for
+\code{TaxaLikely::evaluate_likelihoods()}'s \code{poor_absolute_fit}, as
+passed through by \code{posterior_consensus()}: \code{TRUE} when the
+unit's best raw match identity reaches no rank threshold for the marker.
+Likelihoods are normalised to the unit maximum, so such a call can still
+carry a high posterior. When \code{TRUE} for any row sharing a label, one
+fact line (e.g. "best match identity 86.1\\% is below every rank threshold
+for this marker (poor absolute fit)") is added to that taxon's pipeline
+notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
+of what is reviewed, a change in the flag changes the cache key. Silently
+skipped when absent. Default \code{"poor_absolute_fit"}. Set to
+\code{NULL} to disable.}
+
+\item{best_identity_col}{Character or \code{NULL}. Column name for the
+\code{best_identity} (percent) quoted in that note. Silently skipped when
+absent (the note then omits the number). Default \code{"best_identity"}.
+Set to \code{NULL} to disable.}
 
 \item{context}{Named list or data frame describing the study context.
 Recognised fields: \code{geography}, \code{habitat} (or

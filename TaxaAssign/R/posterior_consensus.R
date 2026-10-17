@@ -662,6 +662,18 @@
 #'       column is absent from `posterior_df` (e.g. any upstream call
 #'       predating these columns) or when `consensus_taxon` is `NA`. Purely
 #'       informational -- never changes `consensus_taxon`/`consensus_rank`.}
+#'     \item{`best_identity`, `best_identity_rank`,
+#'       `poor_absolute_fit`}{Numeric (percent), character, logical. The
+#'       unit-level absolute-fit flag from
+#'       `TaxaLikely::evaluate_likelihoods()` (see its `@section Absolute
+#'       fit`), read from the unit's rows: the best raw match identity among
+#'       its specific candidates, the finest rank whose marker-specific
+#'       identity threshold it reaches, and whether it reaches none
+#'       (`TRUE`). Needed because likelihoods are normalised to the unit
+#'       maximum, so a poor best match can still be called confidently. `NA`
+#'       when the columns are absent from `posterior_df` or the unit has no
+#'       specific candidate. A flag only; never changes `consensus_taxon`/
+#'       `consensus_rank`.}
 #'     \item{`consensus_confusion_risk`}{Numeric. The same confusion-risk
 #'       quantity, but rank-matched to `consensus_rank` rather than to
 #'       `primary_taxon`'s own rank (which is what
@@ -1760,6 +1772,17 @@ posterior_consensus <- function(posterior_df,
   if (col %in% names(row)) row[[col]][[1L]] else default
 }
 
+#' First non-NA value of a unit-level column across the unit's rows
+#' @noRd
+.unit_col_or <- function(chunk, col, default = NA_real_) {
+  if (!col %in% names(chunk)) {
+    return(default)
+  }
+  v <- chunk[[col]]
+  v <- v[!is.na(v)]
+  if (length(v) == 0L) default else v[[1L]]
+}
+
 #' Compute consensus for one observation
 #' @noRd
 .consensus_one_observation <- function(chunk, sid, rank_system,
@@ -1913,6 +1936,15 @@ posterior_consensus <- function(posterior_df,
   winner_genus_confusion_risk <- .row_col_or(winner_row, "genus_confusion_risk")
   winner_family_confusion_risk <- .row_col_or(winner_row, "family_confusion_risk")
   winner_own_rank_confusion_risk <- .row_col_or(winner_row, "own_rank_confusion_risk")
+
+  # Absolute-fit pass-through (TaxaLikely::evaluate_likelihoods()'s
+  # best_identity/best_identity_rank/poor_absolute_fit): unit-level values
+  # repeated on every row of the unit, so read from the unit's rows rather than
+  # the winner row (an expanded or ring winner may not carry them). NA when
+  # absent. A flag only; never changes consensus_taxon/consensus_rank.
+  best_identity <- .unit_col_or(chunk, "best_identity", NA_real_)
+  best_identity_rank <- as.character(.unit_col_or(chunk, "best_identity_rank", NA_character_))
+  poor_absolute_fit <- as.logical(.unit_col_or(chunk, "poor_absolute_fit", NA))
 
   # winner_rank_expanded: TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
@@ -2229,6 +2261,9 @@ posterior_consensus <- function(posterior_df,
     winner_genus_confusion_risk = winner_genus_confusion_risk,
     winner_family_confusion_risk = winner_family_confusion_risk,
     winner_own_rank_confusion_risk = winner_own_rank_confusion_risk,
+    best_identity = best_identity,
+    best_identity_rank = best_identity_rank,
+    poor_absolute_fit = poor_absolute_fit,
     consensus_confusion_risk = consensus_confusion_risk,
     primary_n_plausible_competitors = primary_n_plausible_competitors,
     consensus_n_plausible_competitors = consensus_n_plausible_competitors,
@@ -2416,6 +2451,9 @@ posterior_consensus <- function(posterior_df,
     winner_genus_confusion_risk = NA_real_,
     winner_family_confusion_risk = NA_real_,
     winner_own_rank_confusion_risk = NA_real_,
+    best_identity = NA_real_,
+    best_identity_rank = NA_character_,
+    poor_absolute_fit = NA,
     consensus_confusion_risk = NA_real_,
     primary_n_plausible_competitors = NA_integer_,
     consensus_n_plausible_competitors = NA_integer_,

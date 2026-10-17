@@ -226,6 +226,7 @@ utils::globalVariables(c(
       genus_confusion_risk = numeric(0),
       family_confusion_risk = numeric(0),
       own_rank_confusion_risk = numeric(0),
+      best_identity = numeric(0),
       stringsAsFactors = FALSE
     ))
   }
@@ -893,6 +894,9 @@ utils::globalVariables(c(
       species_confusion_risk = dplyr::first(species_confusion_risk),
       genus_confusion_risk = dplyr::first(genus_confusion_risk),
       family_confusion_risk = dplyr::first(family_confusion_risk),
+      # Anchor/own score on the percent scale; read back below for the unit's
+      # best raw identity (specific_candidate rows only).
+      .p_med_pct = dplyr::first(p_med) * 100,
       # NA for specific_candidate rows (only H2/H3 rows carry this);
       # each unreferenced_species/unreferenced_genus group has a
       # single row, so first() is unambiguous.
@@ -1102,6 +1106,13 @@ utils::globalVariables(c(
       hypothesis_type != "specific_candidate"
   )
 
+  # Unit-level best raw identity (percent scale): the maximum of the
+  # per-taxon median scores (p_med) over the specific_candidate rows that
+  # survive; NA when none do. Repeated on every row.
+  spec_pct <- res_agg$.p_med_pct[res_agg$hypothesis_type == "specific_candidate"]
+  spec_pct <- spec_pct[is.finite(spec_pct)]
+  res_agg$best_identity <- if (length(spec_pct) > 0L) max(spec_pct) else NA_real_
+
   res_agg |>
     dplyr::select(
       hypothesis_type, taxon_name, taxon_name_rank,
@@ -1109,9 +1120,41 @@ utils::globalVariables(c(
       score_likelihood, score_likelihood_mean, score_likelihood_sd,
       score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
       species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-      own_rank_confusion_risk
+      own_rank_confusion_risk, best_identity
     ) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
+}
+
+#' Absolute-fit columns for a vector of unit best identities
+#'
+#' @param best_identity Numeric, percent scale (one value per row).
+#' @param thresholds Named numeric (species/genus/family subset, NAs removed),
+#'   on the same percent scale.
+#' @return Data frame with `best_identity`, `best_identity_rank`,
+#'   `poor_absolute_fit`.
+#' @noRd
+.absolute_fit_columns <- function(best_identity, thresholds) {
+  n <- length(best_identity)
+  rank_out <- rep(NA_character_, n)
+  poor <- rep(NA, n)
+  if (length(thresholds) > 0L) {
+    tol <- 1e-8
+    # finest first
+    ord <- intersect(c("species", "genus", "family"), names(thresholds))
+    for (i in seq_len(n)) {
+      b <- best_identity[i]
+      if (is.na(b)) next
+      hit <- ord[b >= thresholds[ord] - tol]
+      rank_out[i] <- if (length(hit) > 0L) hit[[1L]] else NA_character_
+      poor[i] <- length(hit) == 0L
+    }
+  }
+  data.frame(
+    best_identity = best_identity,
+    best_identity_rank = rank_out,
+    poor_absolute_fit = as.logical(poor),
+    stringsAsFactors = FALSE
+  )
 }
 
 #' Truncate a character vector of observation_ids for a warning message
@@ -1276,7 +1319,11 @@ utils::globalVariables(c(
 #'       (`"genus_specific"` or `"global_fallback"` for
 #'       `unreferenced_species`/`unreferenced_genus` rows; `NA` for
 #'       `specific_candidate` rows), plus the `*_confusion_risk` columns
-#'       described under \strong{Confusion risk} below.}
+#'       described under \strong{Confusion risk} below, plus the unit-level
+#'       `best_identity` (numeric, percent), `best_identity_rank` (character)
+#'       and `poor_absolute_fit` (logical) flag columns described under
+#'       \strong{Absolute fit}. The thresholds used are in
+#'       `attr($likelihoods, "rank_thresholds_used")` (named numeric).}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
 #'       produced no usable likelihoods (empty data frame if none).  Pass to
 #'       a second call of `evaluate_likelihoods()` with a coarser
@@ -1485,6 +1532,32 @@ utils::globalVariables(c(
 #' `TaxaAssign::posterior_consensus()`'s `winner_*_confusion_risk` and
 #' `winner_own_rank_confusion_risk` pass-through for how a downstream
 #' consumer reads these off the winning row.
+#'
+#' @section Absolute fit:
+#' `best_identity`, `best_identity_rank` and `poor_absolute_fit` are a flag
+#' only: they never change a likelihood or which hypothesis wins.
+#' `score_likelihood` is normalised to the unit's maximum, so the best
+#' hypothesis always scores 1 however poor the match itself is (an 86%
+#' identity alignment can be called at 0.998 when it is the best of a bad
+#' set). These columns report the match on its own, absolute scale.
+#'
+#' `best_identity` is the unit's best raw match identity among its
+#' `specific_candidate` rows: the maximum of the per-taxon median scores
+#' computed for the likelihoods, on the percent scale (0-100, whether the
+#' input scores were 0-100 or 0-1). `best_identity_rank` is the finest rank
+#' (species, then genus, then family) whose marker-specific identity
+#' threshold `best_identity` reaches (`>=`), `NA` when it reaches none.
+#' `poor_absolute_fit` is `TRUE` when `best_identity` reaches no rank
+#' threshold and `FALSE` when it reaches at least one. The thresholds are the
+#' per-rank Youden's J values of [compute_rank_thresholds()], derived from
+#' `model_params$Confusion_Risk_Curves`, and are recorded in
+#' `attr(result$likelihoods, "rank_thresholds_used")`.
+#'
+#' All three are unit-level, repeated on every row of the unit's table. All
+#' three are `NA` for a unit with no `specific_candidate` row. If the model's
+#' stored curves cannot give thresholds (a model object from before they were
+#' stored), `best_identity_rank` and `poor_absolute_fit` are `NA` for every
+#' unit and one message says so.
 #'
 #' @section Pair-coverage check:
 #' On every call, `.check_pair_coverage_floor()` compares `match_df`'s own
@@ -1787,6 +1860,7 @@ evaluate_likelihoods <- function(match_df,
       genus_confusion_risk = numeric(0L),
       family_confusion_risk = numeric(0L),
       own_rank_confusion_risk = numeric(0L),
+      best_identity = numeric(0L),
       stringsAsFactors = FALSE
     )
   }
@@ -1840,8 +1914,27 @@ evaluate_likelihoods <- function(match_df,
     score_likelihood_cov, score_likelihood_evidence,
     h2_delta_source,
     species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-    own_rank_confusion_risk
+    own_rank_confusion_risk, best_identity
   )
+
+  # ---- ABSOLUTE-FIT COLUMNS ---------------------------------------------------
+  # best_identity (unit-level, set per unit above) is compared with the
+  # per-rank Youden's J thresholds from the stored curves; see @section
+  # "Absolute fit". Flag only: no likelihood is touched.
+  rank_thr <- .rank_thresholds_from_curves(model_params$Confusion_Risk_Curves)
+  rank_thr <- rank_thr[!is.na(rank_thr)]
+  if (length(rank_thr) == 0L) {
+    message(
+      "evaluate_likelihoods: model_params$Confusion_Risk_Curves has no usable ",
+      "true/false-positive curves (model trained before they were stored, or ",
+      "too few ranks); best_identity_rank and poor_absolute_fit are NA."
+    )
+  }
+  likelihoods <- cbind(
+    likelihoods[, setdiff(names(likelihoods), "best_identity"), drop = FALSE],
+    .absolute_fit_columns(likelihoods$best_identity, rank_thr)
+  )
+  attr(likelihoods, "rank_thresholds_used") <- rank_thr
 
   # Propagate is_restored from match_df when present.
   # For each (observation_id, taxon_name), is_restored = TRUE only when ALL
