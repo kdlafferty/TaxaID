@@ -160,7 +160,11 @@ below this marker's own median" sidesteps that),
 (\code{"genus_specific"} or \code{"global_fallback"} for
 \code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
 \code{specific_candidate} rows), plus the \verb{*_confusion_risk} columns
-described under \strong{Confusion risk} below.}
+described under \strong{Confusion risk} below, plus the unit-level
+\code{best_identity} (numeric, percent), \code{best_identity_rank} (character)
+and \code{poor_absolute_fit} (logical) flag columns described under
+\strong{Absolute fit}. The thresholds used are in
+\verb{attr($likelihoods, "rank_thresholds_used")} (named numeric).}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to
 a second call of \code{evaluate_likelihoods()} with a coarser
@@ -391,6 +395,34 @@ so \code{species_confusion_risk} is always \code{NA} there). See
 \code{TaxaAssign::posterior_consensus()}'s \verb{winner_*_confusion_risk} and
 \code{winner_own_rank_confusion_risk} pass-through for how a downstream
 consumer reads these off the winning row.
+}
+
+\section{Absolute fit}{
+
+\code{best_identity}, \code{best_identity_rank} and \code{poor_absolute_fit} are a flag
+only: they never change a likelihood or which hypothesis wins.
+\code{score_likelihood} is normalised to the unit's maximum, so the best
+hypothesis always scores 1 however poor the match itself is (an 86\%
+identity alignment can be called at 0.998 when it is the best of a bad
+set). These columns report the match on its own, absolute scale.
+
+\code{best_identity} is the unit's best raw match identity among its
+\code{specific_candidate} rows: the maximum of the per-taxon median scores
+computed for the likelihoods, on the percent scale (0-100, whether the
+input scores were 0-100 or 0-1). \code{best_identity_rank} is the finest rank
+(species, then genus, then family) whose marker-specific identity
+threshold \code{best_identity} reaches (\code{>=}), \code{NA} when it reaches none.
+\code{poor_absolute_fit} is \code{TRUE} when \code{best_identity} reaches no rank
+threshold and \code{FALSE} when it reaches at least one. The thresholds are the
+per-rank Youden's J values of \code{\link[=compute_rank_thresholds]{compute_rank_thresholds()}}, derived from
+\code{model_params$Confusion_Risk_Curves}, and are recorded in
+\code{attr(result$likelihoods, "rank_thresholds_used")}.
+
+All three are unit-level, repeated on every row of the unit's table. All
+three are \code{NA} for a unit with no \code{specific_candidate} row. If the model's
+stored curves cannot give thresholds (a model object from before they were
+stored), \code{best_identity_rank} and \code{poor_absolute_fit} are \code{NA} for every
+unit and one message says so.
 }
 
 \section{Pair-coverage check}{

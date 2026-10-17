@@ -547,6 +547,17 @@ matches the winner's own resolved rank. \code{NA} when the source
 column is absent from \code{posterior_df} (e.g. any upstream call
 predating these columns) or when \code{consensus_taxon} is \code{NA}. Purely
 informational -- never changes \code{consensus_taxon}/\code{consensus_rank}.}
+\item{\code{best_identity}, \code{best_identity_rank},
+\code{poor_absolute_fit}}{Numeric (percent), character, logical. The
+unit-level absolute-fit flag from
+\code{TaxaLikely::evaluate_likelihoods()} (see its \verb{@section Absolute fit}), read from the unit's rows: the best raw match identity among
+its specific candidates, the finest rank whose marker-specific
+identity threshold it reaches, and whether it reaches none
+(\code{TRUE}). Needed because likelihoods are normalised to the unit
+maximum, so a poor best match can still be called confidently. \code{NA}
+when the columns are absent from \code{posterior_df} or the unit has no
+specific candidate. A flag only; never changes \code{consensus_taxon}/
+\code{consensus_rank}.}
 \item{\code{consensus_confusion_risk}}{Numeric. The same confusion-risk
 quantity, but rank-matched to \code{consensus_rank} rather than to
 \code{primary_taxon}'s own rank (which is what
