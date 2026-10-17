@@ -240,12 +240,18 @@ test_that("named_rows = TRUE adds one row per recorded unreferenced species with
   expect_equal(k$taxon_name_rank, "species")
   expect_equal(k$score_likelihood, 0.3) # the genus ring's likelihood
   expect_equal(k$prior_mean, 4e-3)
-  lac <- out[out$taxon_name %in% c("Lacuna vincta", "Lacuna unifasciata"), ]
-  expect_equal(nrow(lac), 2L)
-  expect_true(all(lac$score_likelihood == 0.05)) # the family ring's likelihood
-  # ring rows keep their floor priors
+  # Lacuna is claimed by the FAMILY ring, which never names a species: no named
+  # row, and the thetas (1e-3 + 5e-4) are added to the family ring unnamed
+  expect_equal(nrow(out[out$taxon_name %in% c("Lacuna vincta", "Lacuna unifasciata"), ]), 0L)
+  fam <- out[out$taxon_name == "Littorinidae", ]
+  expect_equal(fam$unreferenced_mass, 1e-3 + 5e-4)
+  expect_equal(fam$unreferenced_n_species, 2L)
+  expect_equal(fam$prior_mean, 3e-6 + 1.5e-3)
+  # the genus ring keeps its floor prior (the named row carries keenae's own)
   expect_equal(out$prior_mean[out$taxon_name == "Littorina"], 3e-6)
-  expect_equal(out$prior_mean[out$taxon_name == "Littorinidae"], 3e-6)
+  # every claimed species, named or not, is still listed as a scope member
+  mem <- attr(out, "unreferenced_scope_members")
+  expect_setequal(mem$taxon_name, c("Littorina keenae", "Lacuna vincta", "Lacuna unifasciata"))
 })
 
 test_that("named rows let a local unreferenced species be called by name", {
