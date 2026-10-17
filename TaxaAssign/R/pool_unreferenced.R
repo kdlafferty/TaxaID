@@ -225,11 +225,19 @@
   add <- tapply(pt$post[ci], ri, sum)
   expect[as.integer(names(add))] <- expect[as.integer(names(add))] + as.vector(add)
   expect <- expect[keep]
-  if (!isTRUE(all(abs(pt2$post - expect) <= 1e-12))) {
+  # Units whose point posterior is not defined (a row with a non-finite
+  # likelihood or prior, or a zero sum) are never pooled, and their NA
+  # posteriors are the same before and after; the check covers the units
+  # where the arithmetic is defined, and requires the NA pattern to match.
+  defined <- !pt$unit_bad[keep] & !pt2$unit_bad
+  d <- abs(pt2$post[defined] - expect[defined])
+  same_na <- identical(is.na(pt2$post[!defined]), is.na(expect[!defined]))
+  if (!same_na || !isTRUE(all(d <= 1e-12))) {
     stop(
       "Internal error in pooling unreferenced rows: a point posterior changed ",
       "by more than 1e-12 (max difference ",
-      format(max(abs(pt2$post - expect), na.rm = TRUE)),
+      format(if (length(d)) max(d, na.rm = TRUE) else NA_real_),
+      if (!same_na) "; the pattern of undefined posteriors changed" else "",
       "). Please report this.",
       call. = FALSE
     )
