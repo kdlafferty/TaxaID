@@ -39,7 +39,7 @@ test_that("a poor-fit taxon gets the fact line; a good one does not", {
   pr <- new.env()
   .af_review(.af_input(), pr)
   txt <- paste(pr$p, collapse = "\n")
-  expect_equal(lengths(regmatches(txt, gregexpr("poor absolute fit", txt))), 1L)
+  expect_equal(lengths(regmatches(txt, gregexpr("is below every rank threshold", txt))), 1L)
   expect_match(txt, "best match identity 86.1% is below every rank threshold for this marker (poor absolute fit)", fixed = TRUE)
   expect_false(grepl("99.4%", txt, fixed = TRUE))
 })
@@ -100,5 +100,51 @@ test_that("a change in poor_absolute_fit is a cache miss", {
   run(.af_input())
   expect_equal(n, 1L) # identical input: all hits
   run(.af_input(poor = c(FALSE, FALSE))) # Hypsoblennius's note vanished
+  expect_equal(n, 2L)
+})
+
+test_that("a batch with a poor-fit note gets the name-not-ecology guideline", {
+  pr <- new.env()
+  .af_review(.af_input(), pr)
+  txt <- paste(pr$p, collapse = "\n")
+  guide <- sub("TAXA TO REVIEW.*", "", txt)
+  expect_match(guide, 'A "(poor absolute fit)" note means the best reference match is weak', fixed = TRUE)
+  expect_match(guide, 'must not by itself justify "unlikely" habitat, geography or scope', fixed = TRUE)
+})
+
+test_that("a batch without a poor-fit note gets no such guideline", {
+  for (v in list(c(FALSE, FALSE), c(NA, NA))) {
+    pr <- new.env()
+    .af_review(.af_input(poor = v), pr)
+    expect_false(grepl("the NAME at the called rank", paste(pr$p, collapse = "\n"), fixed = TRUE))
+  }
+})
+
+test_that("verdicts cached under the old prompt version are a miss", {
+  cd <- tempfile("afv3")
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  n <- 0L
+  fn <- function(prompt_str, ...) {
+    n <<- n + 1L
+    .af_json(c("Hypsoblennius", "Gobiosoma bosc"))
+  }
+  run <- function() {
+    review_assignments(
+      data_type = "eDNA", input_df = .af_input(), taxon_col = "consensus_taxon",
+      context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
+      llm_fn = fn, cache_dir = cd, verbose = FALSE
+    )
+  }
+  run()
+  expect_equal(n, 1L)
+  # Re-key every cached file as if written under "v2": same verdicts, old key.
+  for (f in list.files(cd, full.names = TRUE)) {
+    e <- readRDS(f)
+    if (is.list(e) && !is.null(e$key)) {
+      e$key <- sub("v3", "v2", e$key, fixed = TRUE)
+      saveRDS(e, f)
+    }
+  }
+  run()
   expect_equal(n, 2L)
 })
