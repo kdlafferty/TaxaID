@@ -129,6 +129,13 @@ the mass half is skipped when \code{plausible_posteriors} is absent or
 \code{min_posterior = 0}. \code{FALSE} disables both checks, so the reference alone
 decides.
 
+Independently of this argument, a call whose winning hypothesis (its
+highest-posterior row, \code{winner_hypothesis_type}) is unreferenced is never
+downranked to a species: the read fitted an unreferenced relative better
+than any referenced candidate, so naming a referenced species would
+contradict it. A coarser narrowing (family to genus) is still taken. The
+blocked steps are counted in a message.
+
 Why membership alone is not enough: \code{plausible_taxa} is PADDED whenever
 \code{tail_pooled} is \code{TRUE}, because the tail block then joins the plausible
 set -- so a hypothesis far below \code{min_posterior} becomes a member and

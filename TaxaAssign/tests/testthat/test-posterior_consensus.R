@@ -1529,6 +1529,8 @@ test_that("the robust-skip warning is silent when the caller asks for the plain 
 .with_variant <- function(v, expr) { old <- options(TaxaAssign.robust_variant = v); on.exit(options(old)); force(expr) }
 
 test_that("a genus with one locally recorded species keeps the genus, and the reference then names the species", {
+  # The winner here is the referenced species, not the ring, so the ring guard
+  # does not apply and the reference may name it.
   out <- .om(.one_member_df())
   expect_equal(out$consensus_taxon, "Fundulus")            # the node the sequence reaches
   expect_equal(out$consensus_rank, "genus")

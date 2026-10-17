@@ -25,8 +25,8 @@ utils::globalVariables(c("hypothesis_type"))
 #' ## Expansion rules (applied per `observation_id`)
 #' [evaluate_likelihoods()] builds one `"unreferenced_species"` (H2) row per
 #' genus and one `"unreferenced_genus"` (H3) row per family among the
-#' observation's candidates. Three tiers of unreferenced species result (the
-#' last item concerns the generic rows):
+#' observation's candidates. A species is named only from its own genus's
+#' ring (the last item concerns the generic rows):
 #' \enumerate{
 #'   \item A genus with a candidate in the observation has its own genus
 #'     ring, and its unreferenced species take that ring (each genus ring is
@@ -36,15 +36,13 @@ utils::globalVariables(c("hypothesis_type"))
 #'     Exception: when an H1 `specific_candidate` row is genus-rank
 #'     (`taxon_name_rank == "genus"`), the entire genus is suppressed -- the
 #'     genus is already represented with its own calibrated score.
-#'   \item A referenced genus with no candidate in the observation (it has a
-#'     `specific_candidate` row elsewhere in `likelihood_df`) has no genus
-#'     ring and is withheld from the family ring: its references were compared
-#'     with the read and did not match, so "an unreferenced genus of this
-#'     family" cannot be it.
-#'   \item A genus with no reference for the marker at all borrows the family
-#'     ring: each `"unreferenced_genus"` row is copied onto the unreferenced
-#'     species of its own family that are not already a species-level H1
-#'     `specific_candidate` (or covered by a genus-rank H1).
+#'   \item A species whose genus has no ring in the observation is never
+#'     named. A family ring means "some unreferenced genus of this family",
+#'     and its local species can number in the dozens, so naming one of them
+#'     would be the prior's choice rather than the read's. Such species are
+#'     listed as withheld (see below): a referenced genus whose references
+#'     did not match the read, or a genus with no reference for the marker.
+#'     The generic family row still stands for them.
 #'   \item The generic H2 and H3 rows are kept alongside the named rows.
 #'     The named rows cover unreferenced species recorded locally; the generic
 #'     row stands for species of that genus or family that are neither
@@ -106,9 +104,8 @@ utils::globalVariables(c("hypothesis_type"))
 #'   whose rejected congeners are returned in exactly this shape via
 #'   `attr(result, "regional_unreferenced")`.
 #'
-#' @return `likelihood_df` with generic `"unreferenced_species"` and
-#'   `"unreferenced_genus"` rows replaced by named species rows where matches
-#'   are found.  Column set is unchanged; new rows carry `NA` for most extra
+#' @return `likelihood_df` with named species rows added under each genus
+#'   ring where matches are found; generic rows are kept.  Column set is unchanged; new rows carry `NA` for most extra
 #'   columns in the input (e.g. `constraint_applied`, which is genuinely
 #'   row-specific), except `score_likelihood_cov`, `score_likelihood_evidence`,
 #'   and `h2_delta_source` when present -- these, like `score_likelihood`/
@@ -117,15 +114,14 @@ utils::globalVariables(c("hypothesis_type"))
 #'   row) rather than anything row-specific, so they are copied through too.
 #'
 #' @section Withheld rows:
-#'   A species whose genus has references for this marker (any genus with a
-#'   `specific_candidate` row anywhere in `likelihood_df`) is never named from
-#'   a FAMILY ring: its genus's references were compared with the read and
-#'   did not match within the reporting window, so "an unreferenced genus of
-#'   this family" cannot be it. It is still named from its genus ring when
-#'   that ring is present. The rows so withheld are listed in
-#'   `attr(result, "unreferenced_withheld")` (`observation_id`, `taxon_name`,
-#'   `genus`, `family`, `reason`) and counted in a message; the data frame is
-#'   present, possibly empty, on every return.
+#'   No species is named from a FAMILY ring. Every species a family ring would
+#'   otherwise have named is listed in `attr(result, "unreferenced_withheld")`
+#'   (`observation_id`, `taxon_name`, `genus`, `family`, `reason`) and counted
+#'   in a message. `reason` is `"genus_referenced_unmatched"` when the genus
+#'   has references for this marker (a `specific_candidate` row anywhere in
+#'   `likelihood_df`) that did not match the read, and `"no_own_genus_ring"`
+#'   when the genus has none. The data frame is present, possibly empty, on
+#'   every return.
 #' @seealso [TaxaAssign::compute_posterior()], [evaluate_likelihoods()],
 #'   [audit_barcode_coverage()], [apply_coverage_constraints()],
 #'   [restore_suppressed_candidates()] for the `check_regional_overlap`
@@ -223,21 +219,13 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
 
   # Which genera HAVE references for this marker: every genus that matched any
   # read anywhere in this table (a candidate exists only because a reference
-  # does). A species of such a genus is never named from a FAMILY ring: the
-  # genus's own references were compared with the read and did not match
-  # within the reporting window, so "an unreferenced genus of this family"
-  # cannot be it. It is still named from its genus ring when that ring is
-  # present (the H2 block above), because that ring is built from its
-  # congeners' actual fit. Only a species whose genus has no reference at all
-  # borrows the family ring, which is what the ring is for.
+  # does). Used only to label why a species was withheld from a family ring:
+  # no species is ever named from one.
   referenced_genera_lc <- unique(tolower(trimws(c(
     sub(" .*$", "", h1_rows$taxon_name[h1_rows$taxon_name_rank != "genus"]),
     h1_rows$taxon_name[h1_rows$taxon_name_rank == "genus"]
   ))))
   referenced_genera_lc <- referenced_genera_lc[!is.na(referenced_genera_lc) & nzchar(referenced_genera_lc)]
-  if (length(referenced_genera_lc) == 0L && nrow(unref) > 0L) {
-    warning("expand_unreferenced_hypotheses: likelihood_df carries no specific_candidate rows, so no genus can be known to have references; every unreferenced species may borrow a family ring.", call. = FALSE)
-  }
   withheld <- list()
 
   observation_ids <- unique(likelihood_df$observation_id)
@@ -349,18 +337,21 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
           (is.na(unref$observation_id) | unref$observation_id == sid), ,
         drop = FALSE
       ]
-      # The narrow rule: a species of a REFERENCED genus gets no family-level
-      # row. Recorded per observation, never silent.
+      # A species is named ONLY from its own genus's ring. A family ring is
+      # "some unreferenced genus of this family"; naming one of its local
+      # species would be the prior's choice, not the read's. Every species it
+      # would have named is recorded instead, never silent: a referenced
+      # genus's references were compared and did not match; an unreferenced
+      # genus simply has no ring of its own in this unit.
       if (nrow(family_sp) > 0L) {
         ref_gen <- family_sp$genus_lc %in% referenced_genera_lc
-        if (any(ref_gen)) {
-          withheld[[length(withheld) + 1L]] <- data.frame(
-            observation_id = sid, taxon_name = family_sp$species[ref_gen],
-            genus = family_sp$genus[ref_gen], family = h3k$taxon_name[1L],
-            reason = "genus_referenced_unmatched", stringsAsFactors = FALSE
-          )
-          family_sp <- family_sp[!ref_gen, , drop = FALSE]
-        }
+        withheld[[length(withheld) + 1L]] <- data.frame(
+          observation_id = sid, taxon_name = family_sp$species,
+          genus = family_sp$genus, family = h3k$taxon_name[1L],
+          reason = ifelse(ref_gen, "genus_referenced_unmatched", "no_own_genus_ring"),
+          stringsAsFactors = FALSE
+        )
+        family_sp <- family_sp[0L, , drop = FALSE]
       }
 
       n_h3_covered <- n_h3_covered + sum(
@@ -404,7 +395,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   )
   if (nrow(withheld_df) > 0L) {
     message(sprintf(
-      "expand_unreferenced_hypotheses: %d species-named family-level row(s) withheld in %d observation(s): their genus has references for this marker that did not match the read (attr 'unreferenced_withheld' lists them).",
+      "expand_unreferenced_hypotheses: %d species-named family-level row(s) withheld in %d observation(s): a species is named only from its own genus's ring (attr 'unreferenced_withheld' lists them, with the reason).",
       nrow(withheld_df), length(unique(withheld_df$observation_id))
     ))
   }
