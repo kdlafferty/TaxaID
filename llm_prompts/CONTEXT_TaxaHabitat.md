@@ -406,7 +406,7 @@ Two decisions drive this gadget, and neither is visible from the map, so an Inst
 
 A point whose consensus reached no verdict (main_habitat NA) is not left as a single undifferentiated Unknown -- which would make every ambiguous point look like the same problem, resolvable only one click at a time.
 
-When occurrence_data carries a "habitat_proportions" attribute, such a point is labelled with the habitats actually in contention -- "Estuarine | Freshwater | Marine" -- and that label is a real category: its own colour, its own entry in the Habitats sidebar filter, and therefore selectable as a group. Filter to one signature, draw a polygon over a region, and reassign the lot to whichever habitat the location implies. Location disambiguates what the assemblage cannot. On the bundled PtConception demo this turns 646 "Unknown" points into 12 named groups, the largest holding 248.
+When occurrence_data carries a "habitat_proportions" attribute, such a point is labelled with the habitats actually in contention -- "Estuarine | Freshwater | Marine" -- and that label is a real category: its own colour, its own entry in the Habitats sidebar filter, and therefore selectable as a group. Filter to one signature, draw a polygon over a region, and reassign the lot to whichever habitat the location implies. Location disambiguates what the assemblage cannot.
 
 Members are sorted alphabetically, not by proportion, so the same candidate set always lands in the same group; ordering by proportion would split one category across several permutations. Per-point proportions still appear in the Reassign dropdown.
 
@@ -416,15 +416,15 @@ The label is a display category only. main_habitat stays NA in the returned data
 
 When occurrence_data carries a "habitat_proportions" attribute -- which assign_habitat_biological attaches and flag_habitat_inconsistencies preserves -- the Reassign Habitat dropdown offers what the point's own assemblage hypothesises, ordered by proportion and labelled with it, rather than the whole scheme. A point reading Freshwater 0.35 / Marine 0.30 / Estuarine 0.25 / Terrestrial 0.10 offers the first three at candidate_mass = 0.8.
 
-A cumulative-mass rule is used rather than a fixed proportion cutoff because a cutoff barely reduces anything in practice: the LLM emits round numbers, so the 5th percentile of non-zero proportions is already 0.10 and a 0.05 cutoff takes a 5-habitat scheme only to 3.98 candidates. Measured across the 31,383 unassigned PtConception 12S points, candidate_mass = 0.8 gives a mean of 2.91 candidates and a median of 3, with 90% of points landing on exactly three.
+The rule is cumulative mass rather than a fixed proportion cutoff, which barely reduces the list because the LLM emits round numbers.
 
-The point's current habitat is always offered, even when it falls outside the mass, so a reassignment can be undone by hand. Other (free text) is always offered. A Show all habitats checkbox restores the full scheme and names how many were hidden -- use it when the consensus itself is what you are disputing. With no attribute present the dropdown behaves exactly as before, offering everything.
+The point's current habitat is always offered, even when it falls outside the mass, so a reassignment can be undone by hand. Other (free text) is always offered. A Show all habitats checkbox restores the full scheme and names how many were hidden -- use it when the consensus itself is what you are disputing. With no attribute present the dropdown offers everything.
 
 #### Bulk selection (rectangle or polygon)
 
-The map's draw toolbar offers a rectangle and a polygon. Both select every visible point of the current view that falls inside the drawn shape; the polygon exists because real selection boundaries (a coastline, a lake shore, a basin) are rarely rectangular, and approximating one with repeated rectangles multiplies the number of review rounds. In Flag mode the shape applies immediately; in Reassign Habitat mode it selects, and Confirm applies.
+The map's draw toolbar offers a rectangle and a polygon. Both select every visible point of the current view that falls inside the drawn shape (the polygon suits non-rectangular boundaries such as a coastline or lake shore). In Flag mode the shape applies immediately; in Reassign Habitat mode it selects, and Confirm applies.
 
-Selection size is gated, never truncated -- a partially applied selection would leave the un-applied points scattered through the drawn shape and drawn identically to points that were never selected, which is invisible to the reviewer and indistinguishable in the output. Instead: at or below bulk_confirm_threshold the action applies straight away; above it a dialog reports the exact count and requires an explicit Apply; above bulk_max the action is refused with a message.
+Selection size is gated, never truncated, because a partially applied selection would be invisible to the reviewer and indistinguishable in the output. At or below bulk_confirm_threshold the action applies straight away; above it a dialog reports the exact count and requires an explicit Apply; above bulk_max the action is refused with a message.
 
 Each bulk action is recorded as ONE entry, so Undo Last reverses an entire selection in a single click.
 
@@ -432,7 +432,7 @@ The polygon test uses an even-odd ray cast in Web Mercator (matching the straigh
 
 #### Habitat filter
 
-The sidebar Habitats panel lists every habitat present in the dataset (plus any added mid-session via a habitat reassignment) as a colour-coded checkbox. Unchecking a habitat hides those points from the map and excludes them from shape selection and click actions. Each entry carries the number of points it currently holds in the view on screen, so a category's size is visible before it is ticked and an emptied one is obvious; a category reduced to zero by reassignment is greyed and struck through rather than removed, so the list does not jump and the evidence that the group existed is preserved. Use All / None to select or clear all at once.
+The sidebar Habitats panel lists every habitat present in the dataset (plus any added mid-session via a habitat reassignment) as a colour-coded checkbox. Unchecking a habitat hides those points from the map and excludes them from shape selection and click actions. Each entry carries the number of points it currently holds in the view on screen, so a category's size is visible before it is ticked and an emptied one is obvious; a category reduced to zero by reassignment is greyed and struck through rather than removed. Use All / None to select or clear all at once.
 
 #### Point Info panel
 
