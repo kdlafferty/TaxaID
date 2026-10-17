@@ -117,22 +117,31 @@ test_that("Punta Baja: the withheld species is not the call", {
   expect_identical(cons$consensus_taxon, "Clinocottus analis")
 })
 
-test_that("Punta Baja: the same inputs with Oligocottus UNreferenced name Oligocottus rubellio from the family ring", {
+test_that("Punta Baja: the same inputs with Oligocottus UNreferenced add their mass to the family ring unnamed", {
   out <- .pb_run("Clinocottus analis", named_rows = TRUE)
-  expect_true(all(c("Oligocottus rubellio", "Oligocottus rimensis") %in% out$taxon_name))
+  # a family ring never names a species
+  expect_false(any(c("Oligocottus rubellio", "Oligocottus rimensis") %in% out$taxon_name))
+  expect_equal(nrow(out), 2L)
   w <- attr(out, "unreferenced_withheld")
   expect_equal(nrow(w), 0L)
   expect_named(w, .wh_cols)
-  nr <- out[out$taxon_name %in% c("Oligocottus rubellio", "Oligocottus rimensis"), ]
-  expect_true(all(nr$score_likelihood == 1.0)) # the family ring's likelihood
-  expect_equal(out$unreferenced_n_species[out$taxon_name == "Cottidae"], 2L)
+  ring <- out[out$taxon_name == "Cottidae", ]
+  expect_equal(ring$unreferenced_n_species, 2L)
+  expect_equal(ring$unreferenced_mass, 0.025)
+  expect_equal(ring$prior_mean, 1e-6 + 0.025)
+  expect_equal(ring$score_likelihood, 1.0)
+  # both are still listed as scope members of the family ring
+  mem <- attr(out, "unreferenced_scope_members")
+  expect_setequal(mem$taxon_name, c("Oligocottus rubellio", "Oligocottus rimensis"))
+  expect_true(all(mem$scope == "Cottidae" & mem$scope_rank == "family"))
+  # identical to the named_rows = FALSE treatment
+  off <- .pb_run("Clinocottus analis", named_rows = FALSE)
+  expect_equal(ring$prior_mean, off$prior_mean[off$taxon_name == "Cottidae"])
   cons <- .pb_call(out)
-  # the family ring's likelihood (1.0) times the 0.02 / 0.005 priors beats the
-  # candidate, so the call is an Oligocottus; with two Oligocottus species
-  # sharing the mass the credible node is the genus, and the genus it names is
-  # exactly the one the rule withholds above.
-  expect_identical(cons$consensus_taxon, "Oligocottus")
-  expect_true(grepl("^Oligocottus", cons$consensus_taxon))
+  # the ring (likelihood 1.0, prior 0.025) now outweighs the candidate (0.3 x
+  # 1e-4); no species is available to the ring, so the call is the family
+  expect_identical(cons$consensus_taxon, "Cottidae")
+  expect_identical(cons$consensus_rank, "family")
 })
 
 test_that("Punta Baja: without named_rows the withheld thetas are also left out of the family ring mass", {
@@ -163,7 +172,7 @@ test_that("a species of a referenced genus is claimed by its genus ring, not wit
 
 # ---- 3. Coarser rings ---------------------------------------------------------
 
-test_that("a species of a referenced genus is withheld from the order and class rings; an unreferenced genus joins the finest", {
+test_that("a species of a referenced genus is withheld from the order and class rings; an unreferenced genus joins the finest ring unnamed", {
   base <- .wh_littorina_joined()[1, ]
   j <- rbind(base,
     transform(base, taxon_name = "Littorinimorpha", taxon_name_rank = "order",
@@ -184,16 +193,23 @@ test_that("a species of a referenced genus is withheld from the order and class 
   expect_identical(w$scope, "Littorinimorpha")
   expect_identical(w$scope_rank, "order")
   expect_false("Littorina keenae" %in% out$taxon_name)
-  # Lacuna (no reference in the genus): the finest ring containing it, the order
-  lac <- out[out$taxon_name %in% c("Lacuna vincta", "Lacuna unifasciata"), ]
-  expect_equal(nrow(lac), 2L)
-  expect_true(all(lac$unreferenced_scope == "Littorinimorpha"))
-  expect_true(all(lac$score_likelihood == 0.1))
-  # Tegula (Trochida, same class): only the class ring contains it
-  teg <- out[out$taxon_name == "Tegula funebralis", ]
-  expect_equal(nrow(teg), 1L)
-  expect_identical(teg$unreferenced_scope, "Gastropoda")
-  expect_equal(teg$score_likelihood, 0.02)
+  # Lacuna (no reference in the genus): the finest ring containing it is the
+  # order; an order ring never names a species, so its mass joins the ring
+  expect_false(any(c("Lacuna vincta", "Lacuna unifasciata") %in% out$taxon_name))
+  ord <- out[out$taxon_name == "Littorinimorpha", ]
+  expect_equal(ord$unreferenced_mass, 1.5e-3)
+  expect_equal(ord$unreferenced_n_species, 2L)
+  expect_equal(ord$prior_mean, 1e-5 + 1.5e-3)
+  # Tegula (Trochida, same class): only the class ring contains it, unnamed
+  expect_false("Tegula funebralis" %in% out$taxon_name)
+  cls <- out[out$taxon_name == "Gastropoda", ]
+  expect_equal(cls$unreferenced_mass, 0.02)
+  expect_equal(cls$unreferenced_n_species, 1L)
+  expect_equal(cls$prior_mean, 1e-5 + 0.02)
+  mem <- attr(out, "unreferenced_scope_members")
+  expect_setequal(mem$taxon_name, c("Lacuna vincta", "Lacuna unifasciata", "Tegula funebralis"))
+  expect_identical(mem$scope[mem$taxon_name == "Tegula funebralis"], "Gastropoda")
+  expect_equal(nrow(out), 3L)
 })
 
 test_that("a referenced-genus species not contained in a finer ring is withheld at the coarser ring that does contain it", {
