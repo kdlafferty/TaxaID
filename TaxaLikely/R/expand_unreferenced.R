@@ -23,21 +23,28 @@ utils::globalVariables(c("hypothesis_type"))
 #' priors from TaxaExpect.
 #'
 #' ## Expansion rules (applied per `observation_id`)
+#' [evaluate_likelihoods()] builds one `"unreferenced_species"` (H2) row per
+#' genus and one `"unreferenced_genus"` (H3) row per family among the
+#' observation's candidates. Three tiers of unreferenced species result (the
+#' last item concerns the generic rows):
 #' \enumerate{
-#'   \item The `"unreferenced_species"` (H2) row carries a genus label.
-#'     Species-level suppression: an unreferenced species in the H2 genus is
-#'     suppressed only if that exact species is already a `specific_candidate`
-#'     for this observation.  Other unreferenced congeners (e.g. F. parvipinnis
-#'     when F. lima is H1) are expanded normally and receive the H2
-#'     `score_likelihood` / `score_likelihood_mean` / `score_likelihood_sd`.
+#'   \item A genus with a candidate in the observation has its own genus
+#'     ring, and its unreferenced species take that ring (each genus ring is
+#'     copied onto the species of its own genus only). Species-level
+#'     suppression: an unreferenced species is suppressed only if that exact
+#'     species is already a `specific_candidate` for this observation.
 #'     Exception: when an H1 `specific_candidate` row is genus-rank
 #'     (`taxon_name_rank == "genus"`), the entire genus is suppressed -- the
 #'     genus is already represented with its own calibrated score.
-#'   \item The `"unreferenced_genus"` (H3) row carries a family label.
-#'     Unreferenced species whose family matches that label, whose genus
-#'     differs from the H2 genus, \emph{and} that are not already a
-#'     species-level H1 `specific_candidate` (or whose genus is covered by a
-#'     genus-rank H1), receive the H3 likelihood values.
+#'   \item A referenced genus with no candidate in the observation (it has a
+#'     `specific_candidate` row elsewhere in `likelihood_df`) has no genus
+#'     ring and is withheld from the family ring: its references were compared
+#'     with the read and did not match, so "an unreferenced genus of this
+#'     family" cannot be it.
+#'   \item A genus with no reference for the marker at all borrows the family
+#'     ring: each `"unreferenced_genus"` row is copied onto the unreferenced
+#'     species of its own family that are not already a species-level H1
+#'     `specific_candidate` (or covered by a genus-rank H1).
 #'   \item The generic H2 and H3 rows are kept alongside the named rows.
 #'     The named rows cover unreferenced species recorded locally; the generic
 #'     row stands for species of that genus or family that are neither
@@ -57,7 +64,7 @@ utils::globalVariables(c("hypothesis_type"))
 #' database).  The H3 likelihood is modelled from sister-genus matches.
 #' These are not borrowed from H1 rows -- they reflect the expected score
 #' distribution for an unreferenced congener or confamilial, respectively.
-#' All named species produced by expansion share the same H2 (or H3) likelihood;
+#' All named species expanded from one ring share that ring's H2 (or H3) likelihood;
 #' TaxaExpect priors differentiate among them geographically.
 #'
 #' ## Building `unreferenced_df`
@@ -249,7 +256,10 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     h2 <- h2_rows[h2_rows$observation_id == sid, , drop = FALSE]
     h3 <- h3_rows[h3_rows$observation_id == sid, , drop = FALSE]
 
-    new_rows <- vector("list", 4L)
+    named_h2 <- list()
+    named_h3 <- list()
+    generic_h2 <- list()
+    generic_h3 <- list()
 
     # Per-observation H1 coverage sets.
     # Species-level suppression: an unreferenced species is suppressed only if
@@ -265,9 +275,13 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
       h1_for_sid$taxon_name[h1_for_sid$taxon_name_rank != "genus"]
     )))
 
-    # ---- H2: unreferenced species in the best-match genus -------------------
-    if (nrow(h2) > 0L) {
-      h2_genus_lc <- tolower(trimws(h2$taxon_name[1L]))
+    # ---- H2: unreferenced species of each genus that has its own ring -------
+    # One ring per genus present among the unit's candidates; each is copied
+    # onto the unreferenced species of THAT genus only.
+    h2_genus_lc_all <- tolower(trimws(h2$taxon_name))
+    for (j in seq_len(nrow(h2))) {
+      h2_genus_lc <- h2_genus_lc_all[j]
+      h2j <- h2[j, , drop = FALSE]
 
       if (h2_genus_lc %in% h1_genus_rank_lc) {
         # Genus already covered by a genus-rank specific_candidate -- drop all.
@@ -279,7 +293,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         n_h2_covered <- n_h2_covered + max(nrow(genus_sp_all), 1L)
         n_h2_obs_covered <- n_h2_obs_covered + 1L
       } else {
-        new_rows[[3L]] <- h2[1L, , drop = FALSE] # generic H2 kept
+        generic_h2[[length(generic_h2) + 1L]] <- h2j # generic H2 kept
         n_h2_generic_kept <- n_h2_generic_kept + 1L
         genus_sp <- unref[
           unref$genus_lc %in% h2_genus_lc &
@@ -292,14 +306,14 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
           n_h2_covered <- n_h2_covered + sum(already_h1)
           genus_sp_keep <- genus_sp[!already_h1, , drop = FALSE]
           if (nrow(genus_sp_keep) > 0L) {
-            new_rows[[1L]] <- data.frame(
+            nr <- data.frame(
               observation_id        = sid,
               taxon_name            = genus_sp_keep$species,
               taxon_name_rank       = "species",
               hypothesis_type       = "unreferenced_species",
-              score_likelihood      = h2$score_likelihood[1L],
-              score_likelihood_mean = h2$score_likelihood_mean[1L],
-              score_likelihood_sd   = h2$score_likelihood_sd[1L],
+              score_likelihood      = h2j$score_likelihood[1L],
+              score_likelihood_mean = h2j$score_likelihood_mean[1L],
+              score_likelihood_sd   = h2j$score_likelihood_sd[1L],
               stringsAsFactors      = FALSE
             )
             # These, like the three likelihood columns above, are per-observation
@@ -307,8 +321,9 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
             # every expanded species, not row-specific like constraint_applied --
             # so they are copied through rather than left NA.
             for (.col in c("score_likelihood_cov", "score_likelihood_evidence", "h2_delta_source")) {
-              if (.col %in% names(h2)) new_rows[[1L]][[.col]] <- h2[[.col]][1L]
+              if (.col %in% names(h2j)) nr[[.col]] <- h2j[[.col]][1L]
             }
+            named_h2[[length(named_h2) + 1L]] <- nr
             n_h2_species <- n_h2_species + nrow(genus_sp_keep)
           } else {
             # All unreferenced species in genus already H1 -- no expansion for this obs.
@@ -318,13 +333,14 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
       }
     }
 
-    # ---- H3: unreferenced species in the best-match family, other genera ----
-    if (nrow(h3) > 0L) {
-      h3_family_lc <- tolower(trimws(h3$taxon_name[1L]))
-      h2_genus_lc <- if (nrow(h2) > 0L) tolower(trimws(h2$taxon_name[1L])) else character(0L)
+    # ---- H3: unreferenced species of each family ring, other genera ---------
+    for (k in seq_len(nrow(h3))) {
+      h3k <- h3[k, , drop = FALSE]
+      h3_family_lc <- tolower(trimws(h3k$taxon_name[1L]))
+      h2_genus_lc <- h2_genus_lc_all
 
-      # Exclude: H2 genus (handled above), species already H1, genera covered
-      # by genus-rank H1 rows.
+      # Exclude: every genus with its own ring (handled above), species already
+      # H1, genera covered by genus-rank H1 rows.
       family_sp <- unref[
         unref$family_lc %in% h3_family_lc &
           !unref$genus_lc %in% h2_genus_lc &
@@ -340,7 +356,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         if (any(ref_gen)) {
           withheld[[length(withheld) + 1L]] <- data.frame(
             observation_id = sid, taxon_name = family_sp$species[ref_gen],
-            genus = family_sp$genus[ref_gen], family = h3$taxon_name[1L],
+            genus = family_sp$genus[ref_gen], family = h3k$taxon_name[1L],
             reason = "genus_referenced_unmatched", stringsAsFactors = FALSE
           )
           family_sp <- family_sp[!ref_gen, , drop = FALSE]
@@ -356,29 +372,30 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         na.rm = TRUE
       )
 
-      new_rows[[4L]] <- h3[1L, , drop = FALSE] # generic H3 kept
+      generic_h3[[length(generic_h3) + 1L]] <- h3k # generic H3 kept
       n_h3_generic_kept <- n_h3_generic_kept + 1L
       if (nrow(family_sp) > 0L) {
-        new_rows[[2L]] <- data.frame(
+        nr <- data.frame(
           observation_id        = sid,
           taxon_name            = family_sp$species,
           taxon_name_rank       = "species",
           hypothesis_type       = "unreferenced_genus",
-          score_likelihood      = h3$score_likelihood[1L],
-          score_likelihood_mean = h3$score_likelihood_mean[1L],
-          score_likelihood_sd   = h3$score_likelihood_sd[1L],
+          score_likelihood      = h3k$score_likelihood[1L],
+          score_likelihood_mean = h3k$score_likelihood_mean[1L],
+          score_likelihood_sd   = h3k$score_likelihood_sd[1L],
           stringsAsFactors      = FALSE
         )
         # See the matching H2 comment above -- these are shared per-observation
         # diagnostics, not row-specific, so they are copied through too.
         for (.col in c("score_likelihood_cov", "score_likelihood_evidence", "h2_delta_source")) {
-          if (.col %in% names(h3)) new_rows[[2L]][[.col]] <- h3[[.col]][1L]
+          if (.col %in% names(h3k)) nr[[.col]] <- h3k[[.col]][1L]
         }
+        named_h3[[length(named_h3) + 1L]] <- nr
         n_h3_species <- n_h3_species + nrow(family_sp)
       }
     }
 
-    result_list[[i]] <- dplyr::bind_rows(new_rows)
+    result_list[[i]] <- dplyr::bind_rows(c(named_h2, named_h3, generic_h2, generic_h3))
   }
 
   withheld_df <- if (length(withheld)) do.call(rbind, withheld) else data.frame(

@@ -196,11 +196,29 @@ shifts the H1 score distribution downward (by \code{H2$delta} logit
 units, or by a genus-specific shrunk delta from
 \code{model_params$H2_Lookup} when the anchor candidate's genus has
 real congener data -- see \code{h2_delta_source} below) to predict
-what a sister-species match looks like.
+what a sister-species match looks like. There is one such row per
+distinct genus among the unit's candidates, named by the genus.
 \item \strong{H3 (unreferenced_genus):} The query comes from a genus not in
 the reference database at all. The score distribution is shifted further
-downward (by \code{H3$delta}).
+downward (by \code{H3$delta}). There is one such row per distinct family
+among the unit's candidates, named by the family.
 }
+
+\strong{Ring anchors:} Every unreferenced row is valued and named at the
+same anchor candidate. The anchor of a set of candidates is the one with the
+highest transformed score; ties (within 1e-9) are broken by a real
+reference hit over a restored row, then by the highest H1 density, then by
+the highest raw identity; only a final exact tie keeps the first candidate
+in the table, and that is the only order-dependent step. Each genus ring
+(H2) is anchored on the best candidate of that genus and uses that genus's
+own H2 delta, variance and identical-barcode weight; each family ring (H3)
+is anchored on the best candidate of that family, so a unit whose
+candidates span several families gets one family ring per family, each at
+its own family's anchor. The coarser rings (order and above) stay one per
+unit, anchored on the best candidate of the whole unit. Only candidates with
+a usable genus (not missing, blank or a placeholder such as
+"unclassified") are eligible; a unit with none keeps a single ring per tier
+anchored over all its candidates and named by the nearest real rank.
 
 \strong{Features:}
 \itemize{
@@ -278,7 +296,7 @@ density. For singleton (1D) queries the gate is exact.
 \strong{Genus-specific H2/H3 delta (\code{h2_delta_source}):}
 \code{H2$delta}/\code{H3$delta} are single values pooled across every genus seen
 during training. When \code{train_likelihood_model()} found at least one real
-congener pair for the query's best-matching candidate's genus,
+congener pair for a ring's anchor candidate's genus,
 \code{evaluate_likelihoods()} instead uses a genus-specific delta
 (\code{model_params$H2_Lookup}, shrunk toward the pooled value by how many
 congener pairs were available) and marks the row
@@ -294,7 +312,7 @@ mimicry/convergence) is not its nearest phylogenetic relative -- see
 \code{inst/TaxaLikely_supplemental_methods.md}.
 
 \strong{H2/H3 mean anchor and genus-specific variance:} H2's mean is
-\verb{(anchor candidate's own resolved species mean) - delta}, not
+\verb{(that ring's anchor candidate's own resolved species mean) - delta}, not
 \code{H1_Global_Mu - delta}: a referenced species whose own trained mean sits
 above or below the population average is real information about how
 conserved or variable that lineage is, and an unreferenced sister species

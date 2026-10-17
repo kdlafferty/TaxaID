@@ -406,3 +406,58 @@ test_that("expand_unreferenced_hypotheses: a genus-rank H1 still suppresses the 
   expect_equal(sum(out$hypothesis_type == "unreferenced_species"), 0L)
   expect_true("Fundulidae" %in% out$taxon_name)
 })
+
+# ---- several genus rings / several family rings per observation -------------
+
+.make_expand_lik_multi <- function() {
+  data.frame(
+    observation_id = "ESV_001",
+    taxon_name = c(
+      "Hypsoblennius sordidus", "Parablennius sanguinolentus", "Gobiesox maeandricus",
+      "Hypsoblennius", "Parablennius", "Blenniidae", "Gobiesocidae"
+    ),
+    taxon_name_rank = c("species", "species", "species", "genus", "genus", "family", "family"),
+    hypothesis_type = c(
+      "specific_candidate", "specific_candidate", "specific_candidate",
+      "unreferenced_species", "unreferenced_species",
+      "unreferenced_genus", "unreferenced_genus"
+    ),
+    score_likelihood = c(1, 0.9, 0.5, 0.3, 0.2, 0.04, 0.02),
+    score_likelihood_mean = c(1, 0.9, 0.5, 0.3, 0.2, 0.04, 0.02),
+    score_likelihood_sd = 0,
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("expand: two genus rings copy each onto its own genus; family ring tiers", {
+  unref <- data.frame(
+    species = c(
+      "Hypsoblennius hentz", "Parablennius incognitus", # genus rings
+      "Hypsoblennius_x_other", # not used
+      "Entomacrodus new", # genus with no reference, Blenniidae -> borrows family ring
+      "Gobiesox other", # referenced genus (candidate) but no ring? has ring? no: Gobiesox
+      "Scartichthys viridis" # Blenniidae, genus without reference
+    ),
+    genus = c("Hypsoblennius", "Parablennius", "Hypsoblennius", "Entomacrodus", "Gobiesox", "Scartichthys"),
+    family = c("Blenniidae", "Blenniidae", "Blenniidae", "Blenniidae", "Gobiesocidae", "Blenniidae"),
+    stringsAsFactors = FALSE
+  )
+  lik <- .make_expand_lik_multi()
+  out <- suppressMessages(expand_unreferenced_hypotheses(lik, unref))
+  sp <- out[out$taxon_name_rank == "species" & out$hypothesis_type == "unreferenced_species", ]
+  expect_equal(sp$score_likelihood[sp$taxon_name == "Hypsoblennius hentz"], 0.3)
+  expect_equal(sp$score_likelihood[sp$taxon_name == "Parablennius incognitus"], 0.2)
+  fam <- out[out$taxon_name_rank == "species" & out$hypothesis_type == "unreferenced_genus", ]
+  # genera with no reference for the marker borrow their own family's ring
+  expect_equal(sort(fam$taxon_name), c("Entomacrodus new", "Scartichthys viridis"))
+  expect_true(all(fam$score_likelihood == 0.04))
+  # a referenced genus (Gobiesox has a candidate, so a ring would exist in a
+  # real run; here none was built) is withheld from the family ring
+  expect_false("Gobiesox other" %in% out$taxon_name[out$hypothesis_type == "unreferenced_genus"])
+  w <- attr(out, "unreferenced_withheld")
+  expect_equal(w$taxon_name, "Gobiesox other")
+  expect_equal(names(w), c("observation_id", "taxon_name", "genus", "family", "reason"))
+  # all four generic rings kept
+  expect_equal(sum(out$taxon_name_rank %in% c("genus", "family") &
+    out$hypothesis_type != "specific_candidate"), 4L)
+})

@@ -131,8 +131,10 @@ test_that(".evaluate_one_query: n_sims > 0 produces non-zero sd", {
     n_sims = 20L
   )
   spec <- out[out$hypothesis_type == "specific_candidate", ]
-  # At least one specific candidate should have non-zero sd from simulation
-  expect_true(any(spec$score_likelihood_sd > 0))
+  # At least one row should have non-zero sd from simulation. (Per-genus rings:
+  # the lone surviving specific candidate is the unit maximum in every draw, so
+  # it normalises to 1; the resampled uncertainty shows on the ring rows.)
+  expect_true(any(out$score_likelihood_sd > 0))
 })
 
 test_that(".evaluate_one_query: n_sims sd reflects reference sample size (n_obs_species), not query resampling", {
@@ -771,7 +773,8 @@ test_that(".evaluate_one_query: uses genus-specific delta when anchor's genus is
     ratio_threshold = 0
   )
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
-  expect_equal(h2_row$h2_delta_source, "genus_specific")
+  expect_equal(h2_row$h2_delta_source[h2_row$taxon_name == "Hybognathus"], "genus_specific")
+  expect_true(all(h2_row$h2_delta_source[h2_row$taxon_name != "Hybognathus"] == "global_fallback"))
 })
 
 test_that(".evaluate_one_query: falls back to global delta when anchor's genus is absent from H2_Lookup", {
@@ -783,8 +786,8 @@ test_that(".evaluate_one_query: falls back to global delta when anchor's genus i
   )
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   h3_row <- out[out$hypothesis_type == "unreferenced_genus", ]
-  expect_equal(h2_row$h2_delta_source, "global_fallback")
-  expect_equal(h3_row$h2_delta_source, "global_fallback")
+  expect_true(all(h2_row$h2_delta_source == "global_fallback"))
+  expect_true(all(h3_row$h2_delta_source == "global_fallback"))
 })
 
 test_that(".evaluate_one_query: model_params without H2_Lookup slot falls back cleanly (backward compatibility)", {
@@ -796,7 +799,7 @@ test_that(".evaluate_one_query: model_params without H2_Lookup slot falls back c
     ratio_threshold = 0
   )
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
-  expect_equal(h2_row$h2_delta_source, "global_fallback")
+  expect_true(all(h2_row$h2_delta_source == "global_fallback"))
 })
 
 test_that(".evaluate_one_query: H2 sd reflects n_pairs behind its genus-specific delta (unreferenced taxa get more uncertainty)", {
@@ -822,8 +825,10 @@ test_that(".evaluate_one_query: H2 sd reflects n_pairs behind its genus-specific
     n_sims = 500L, ratio_threshold = 0
   )
 
-  sd_low <- out_low[out_low$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
-  sd_high <- out_high[out_high$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
+  sd_low <- out_low[out_low$hypothesis_type == "unreferenced_species" &
+    out_low$taxon_name == "Hybognathus", "score_likelihood_sd"]
+  sd_high <- out_high[out_high$hypothesis_type == "unreferenced_species" &
+    out_high$taxon_name == "Hybognathus", "score_likelihood_sd"]
   expect_true(sd_low > sd_high)
 })
 
@@ -856,8 +861,10 @@ test_that(".evaluate_one_query: a smaller genus-specific delta raises H2 likelih
     ratio_threshold = 0
   )
 
-  h2_global <- out_global$score_likelihood[out_global$hypothesis_type == "unreferenced_species"]
-  h2_local <- out_local$score_likelihood[out_local$hypothesis_type == "unreferenced_species"]
+  h2_global <- out_global$score_likelihood[out_global$hypothesis_type == "unreferenced_species" &
+    out_global$taxon_name == "Hybognathus"]
+  h2_local <- out_local$score_likelihood[out_local$hypothesis_type == "unreferenced_species" &
+    out_local$taxon_name == "Hybognathus"]
   expect_gt(h2_local, h2_global)
 })
 
@@ -885,8 +892,10 @@ test_that(".evaluate_one_query: H2 mean anchors on the ANCHOR SPECIES' own resol
     ratio_threshold = 0
   )
 
-  h2_near <- out_near$score_likelihood[out_near$hypothesis_type == "unreferenced_species"]
-  h2_far <- out_far$score_likelihood[out_far$hypothesis_type == "unreferenced_species"]
+  h2_near <- out_near$score_likelihood[out_near$hypothesis_type == "unreferenced_species" &
+    out_near$taxon_name == "Hybognathus"]
+  h2_far <- out_far$score_likelihood[out_far$hypothesis_type == "unreferenced_species" &
+    out_far$taxon_name == "Hybognathus"]
   # Both scenarios share the identical H1_Global_Mu -- a difference here can
   # only come from anchoring on the (deliberately varied) species mean.
   expect_false(isTRUE(all.equal(h2_near, h2_far)))
@@ -937,7 +946,10 @@ test_that("evaluate_likelihoods: q_identical = 1 makes H2 equal the anchor's H1 
   liks <- suppressWarnings(evaluate_likelihoods(.make_match_df(), p,
     c("family", "genus", "species"), n_sims = 0))$likelihoods
   h1_best <- max(liks$score_likelihood[liks$hypothesis_type == "specific_candidate"])
-  h2 <- liks$score_likelihood[liks$hypothesis_type == "unreferenced_species"]
+  # every genus ring equals its own anchor's H1 density; the best candidate's
+  # genus (Hybognathus) therefore equals the best H1.
+  h2 <- liks$score_likelihood[liks$hypothesis_type == "unreferenced_species" &
+    liks$taxon_name == "Hybognathus"]
   expect_equal(h2, h1_best, tolerance = 1e-8)
 })
 

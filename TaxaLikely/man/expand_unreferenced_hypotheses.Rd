@@ -59,21 +59,28 @@ unreferenced species next to those generic rows, enabling
 priors from TaxaExpect.
 \subsection{Expansion rules (applied per \code{observation_id})}{
 
+\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} builds one \code{"unreferenced_species"} (H2) row per
+genus and one \code{"unreferenced_genus"} (H3) row per family among the
+observation's candidates. Three tiers of unreferenced species result (the
+last item concerns the generic rows):
 \enumerate{
-\item The \code{"unreferenced_species"} (H2) row carries a genus label.
-Species-level suppression: an unreferenced species in the H2 genus is
-suppressed only if that exact species is already a \code{specific_candidate}
-for this observation.  Other unreferenced congeners (e.g. F. parvipinnis
-when F. lima is H1) are expanded normally and receive the H2
-\code{score_likelihood} / \code{score_likelihood_mean} / \code{score_likelihood_sd}.
+\item A genus with a candidate in the observation has its own genus
+ring, and its unreferenced species take that ring (each genus ring is
+copied onto the species of its own genus only). Species-level
+suppression: an unreferenced species is suppressed only if that exact
+species is already a \code{specific_candidate} for this observation.
 Exception: when an H1 \code{specific_candidate} row is genus-rank
 (\code{taxon_name_rank == "genus"}), the entire genus is suppressed -- the
 genus is already represented with its own calibrated score.
-\item The \code{"unreferenced_genus"} (H3) row carries a family label.
-Unreferenced species whose family matches that label, whose genus
-differs from the H2 genus, \emph{and} that are not already a
-species-level H1 \code{specific_candidate} (or whose genus is covered by a
-genus-rank H1), receive the H3 likelihood values.
+\item A referenced genus with no candidate in the observation (it has a
+\code{specific_candidate} row elsewhere in \code{likelihood_df}) has no genus
+ring and is withheld from the family ring: its references were compared
+with the read and did not match, so "an unreferenced genus of this
+family" cannot be it.
+\item A genus with no reference for the marker at all borrows the family
+ring: each \code{"unreferenced_genus"} row is copied onto the unreferenced
+species of its own family that are not already a species-level H1
+\code{specific_candidate} (or covered by a genus-rank H1).
 \item The generic H2 and H3 rows are kept alongside the named rows.
 The named rows cover unreferenced species recorded locally; the generic
 row stands for species of that genus or family that are neither
@@ -95,7 +102,7 @@ matches (cross-species matches within the same genus in the reference
 database).  The H3 likelihood is modelled from sister-genus matches.
 These are not borrowed from H1 rows -- they reflect the expected score
 distribution for an unreferenced congener or confamilial, respectively.
-All named species produced by expansion share the same H2 (or H3) likelihood;
+All named species expanded from one ring share that ring's H2 (or H3) likelihood;
 TaxaExpect priors differentiate among them geographically.
 }
 
