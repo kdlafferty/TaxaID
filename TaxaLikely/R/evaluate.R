@@ -1,5 +1,5 @@
 utils::globalVariables(c(
-  "p_med", "p_b", "score_logit", "gap_logit", "p_norm",
+  "p_med", "p_b", "best_identity", "score_logit", "gap_logit", "p_norm",
   "raw_likelihood", "raw_likelihood_cov", "raw_likelihood_evidence",
   "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
   "score_likelihood_cov", "score_likelihood_evidence",
