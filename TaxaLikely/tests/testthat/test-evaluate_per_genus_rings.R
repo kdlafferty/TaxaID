@@ -268,3 +268,32 @@ test_that(".pick_anchor tie-break order: score, real over restored, H1 density, 
   expect_equal(out$raw_likelihood[out$hypothesis_type == "unreferenced_species"],
     want, tolerance = 1e-9)
 })
+
+test_that("a genus whose lookup row has an NA delta, NA variance or zero variance falls back to pooled values; no NA or NaN reaches the unit", {
+  df <- .pg_asv606()
+  base <- .pg_eval(df, .pg_params(.pg_lookup()))
+  for (bad in list(
+    list(delta_shrunk = c(NA, 3.5)),
+    list(var_shrunk = c(NA_real_, 1.2)),
+    list(var_shrunk = c(0, 1.2)),
+    list(var_shrunk = c(-1, 1.2))
+  )) {
+    lk <- .pg_lookup()
+    if (is.null(lk$var_shrunk)) lk$var_shrunk <- c(1.1, 1.2)
+    for (nm in names(bad)) lk[[nm]] <- bad[[nm]]
+    out <- .pg_eval(df, .pg_params(lk))
+    expect_false(anyNA(out$score_likelihood), info = names(bad))
+    expect_true(all(is.finite(out$score_likelihood)), info = names(bad))
+    h <- out[out$taxon_name == "Hypsoblennius" & out$hypothesis_type == "unreferenced_species", ]
+    expect_identical(h$h2_delta_source, "global_fallback", info = names(bad))
+    # the healthy genus keeps its own genus-specific values
+    pr <- out[out$taxon_name == "Parablennius" & out$hypothesis_type == "unreferenced_species", ]
+    expect_identical(pr$h2_delta_source, "genus_specific", info = names(bad))
+  }
+  # a fully valid lookup is unchanged by the guard
+  lk <- .pg_lookup(); lk$var_shrunk <- c(1.1, 1.2)
+  ok1 <- .pg_eval(df, .pg_params(lk))
+  expect_true(all(is.finite(ok1$score_likelihood)))
+  expect_identical(ok1$h2_delta_source[ok1$hypothesis_type == "unreferenced_species"],
+                   rep("genus_specific", 2L))
+})

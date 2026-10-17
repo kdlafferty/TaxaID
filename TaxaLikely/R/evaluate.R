@@ -586,13 +586,21 @@ utils::globalVariables(c(
       lk <- model_params$H2_Lookup
       if (!is.null(genus_vec) && !is.null(lk) && nrow(lk) > 0L && !is.na(g)) {
         gi <- match(g, lk$genus)
+        # A lookup row whose delta is not finite, or whose variance is not a
+        # positive finite number, cannot value a ring (an NA gives an NA
+        # density; a zero variance an infinite one, which turns the unit's
+        # normalisation into NaN): such a genus falls back to the pooled values.
+        if (!is.na(gi) && (!is.finite(lk$delta_shrunk[gi]) ||
+          ("var_shrunk" %in% names(lk) && !(is.finite(lk$var_shrunk[gi]) && lk$var_shrunk[gi] > 0)))) {
+          gi <- NA_integer_
+        }
         if (!is.na(gi)) {
           d <- lk$delta_shrunk[gi]
           src <- "genus_specific"
           n_used <- lk$n_pairs[gi]
           matched <- TRUE
           if ("var_shrunk" %in% names(lk)) sg[1L, 1L] <- lk$var_shrunk[gi]
-          if ("q_identical" %in% names(lk) && !is.na(lk$q_identical[gi])) q_id <- lk$q_identical[gi]
+          if ("q_identical" %in% names(lk) && is.finite(lk$q_identical[gi])) q_id <- lk$q_identical[gi]
         }
       }
       tau <- if (has_n_info) {
