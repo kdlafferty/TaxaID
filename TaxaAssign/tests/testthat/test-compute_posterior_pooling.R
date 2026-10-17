@@ -285,3 +285,25 @@ test_that("a unit with an undefined point posterior (NA likelihood or prior) doe
   d2 <- rbind(ok, bad2)
   expect_no_error(suppressMessages(suppressWarnings(compute_posterior(d2, n_sims = 0))))
 })
+
+
+test_that("a ring whose own prior and every pooled prior are 0 keeps finite alpha/beta (no 0/0 in the moment match)", {
+  # Defence in depth, not a live defect: join_priors() never gives
+  # prior_mean 0 with a positive alpha, and compute_posterior() rejects
+  # alpha <= 0. This fixture pairs prior_mean 0 with alpha 0.5 to reach the
+  # moment match with M = 0 and vtot = 0; the ring must keep finite alpha/beta.
+  d <- .pool_df(c(0, 0, 0), ring_prior = 0)
+  d <- rbind(d, transform(.pool_df(c(0.01, 0.01), ring_prior = 0.1), observation_id = "U2"))
+  ring_before <- d[d$observation_id == "U1" & d$taxon_name == "Fam", c("prior_alpha", "prior_beta")]
+  o <- suppressMessages(suppressWarnings(compute_posterior(d, n_sims = 0)))
+  r1 <- o[o$observation_id == "U1" & o$taxon_name == "Fam", ]
+  expect_true(is.finite(r1$prior_alpha) && is.finite(r1$prior_beta))
+  expect_equal(r1$prior_alpha, ring_before$prior_alpha)
+  expect_equal(r1$prior_beta, ring_before$prior_beta)
+  # every ring row in the output has finite alpha/beta
+  rr <- o[o$hypothesis_type == "unreferenced_genus" & o$taxon_name_rank == "family", ]
+  expect_true(all(is.finite(rr$prior_alpha) & is.finite(rr$prior_beta)))
+  # and the Monte Carlo path runs on it
+  set.seed(1)
+  expect_no_error(suppressMessages(suppressWarnings(compute_posterior(d, n_sims = 50))))
+})

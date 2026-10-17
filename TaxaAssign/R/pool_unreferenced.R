@@ -184,8 +184,14 @@
     vsum <- v_row(uri)
     vadd <- tapply(v_row(ci), match(ri, uri), sum)
     vtot <- vsum + as.vector(vadd)
-    finite_in <- is.finite(vtot) & is.finite(a0[uri]) & is.finite(b0[uri])
-    phi <- pmax(M * (1 - M) / vtot - 1, 1e-6)
+    # Defence in depth: moment matching needs a positive variance and a mean
+    # strictly inside (0, 1). A prior_mean of 0 needs alpha 0, which
+    # compute_posterior() rejects before pooling, so a zero-mass ring cannot
+    # reach here from join_priors() output; if one ever did, 0/0 would make
+    # its alpha/beta NaN, so such a ring keeps its own.
+    finite_in <- is.finite(vtot) & vtot > 0 & is.finite(M) & M > 0 & M < 1 &
+      is.finite(a0[uri]) & is.finite(b0[uri])
+    phi <- ifelse(finite_in, pmax(M * (1 - M) / vtot - 1, 1e-6), NA_real_)
     new_alpha <- ifelse(finite_in, M * phi, a0[uri])
     new_beta <- ifelse(finite_in, (1 - M) * phi, b0[uri])
   }
