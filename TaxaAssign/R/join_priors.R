@@ -558,6 +558,19 @@ utils::globalVariables(c(
 #' modelled row below the singleton-mirror mean is promoted -- the
 #' extrapolation check requires that column.
 #'
+#' @section Ring rows share one global floor per unit:
+#' A ring row (`unreferenced_*` above species: an unsequenced relative named
+#' by its genus or family) has no occurrence prior of its own. Where its
+#' clade has a dark-diversity budget it carries that clade's remaining
+#' missing-species mass; otherwise it falls back to the global floor, the
+#' prior that the detected taxon is one arbitrary unrecorded taxon. A unit
+#' detects one taxon, so the floor-priced rings of one observation (at one
+#' site) share a single floor: each of the `k` such rings gets floor / `k`,
+#' with the floor's concentration kept. Without this the unreferenced
+#' prior mass of a unit would grow with the number of candidate genera, with
+#' no regional evidence behind it. A unit with one floor-priced ring, and a
+#' ring priced by a clade budget, are unchanged.
+#'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
 #' `"family"` or `"genus"`), the primary species-level join finds no match
@@ -1612,6 +1625,18 @@ join_priors <- function(likelihoods,
     kept$.jp_row <- NULL
     result <- kept
   }
+
+  # ---- one global floor per unit for floor-priced ring rows ----------------
+  # A ring row (an unsequenced relative named by its clade) that no clade
+  # budget priced still holds the flat global floor: the prior that the
+  # detected taxon is one arbitrary unrecorded taxon. A unit detects one
+  # taxon, and its rings are mutually exclusive versions of that one event,
+  # so together they carry the floor ONCE: each of the k floor-priced rings
+  # of a unit (per observation and site) gets floor / k, concentration kept.
+  # Rings priced by a clade budget keep their own mass; a unit with one
+  # floor-priced ring is unchanged. Runs after the dedup and the redundancy
+  # filter, so k counts only the rings that survive into the output.
+  result <- .split_ring_floor(result, gf_alpha, gf_beta)
 
   # Join rate per rank: how many distinct candidate taxa found a modelled
   # prior (alpha set by the join) against how many were offered. A wrong

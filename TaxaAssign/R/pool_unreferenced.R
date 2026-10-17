@@ -270,3 +270,39 @@
   }
   out
 }
+
+
+#' Split the global floor across a unit's floor-priced ring rows
+#'
+#' Ring rows (`unreferenced_*` hypothesis above species, named) whose prior
+#' is still exactly the global floor `Beta(gf_alpha, gf_beta)` share one
+#' floor per (observation_id, grid_id, main_habitat): each gets floor / k,
+#' alpha + beta kept. Rows priced otherwise are untouched.
+#' @noRd
+.split_ring_floor <- function(result, gf_alpha, gf_beta) {
+  need <- c("observation_id", "hypothesis_type", "taxon_name_rank", "taxon_name",
+            "prior_alpha", "prior_beta", "prior_mean")
+  if (!all(need %in% names(result)) || !is.finite(gf_alpha) || !is.finite(gf_beta) ||
+      gf_alpha <= 0 || gf_beta <= 0 || nrow(result) == 0L) {
+    return(result)
+  }
+  rk <- as.character(result$taxon_name_rank)
+  tol <- 1e-9 * (gf_alpha + gf_beta)
+  ring_floor <- .is_unreferenced_type(as.character(result$hypothesis_type)) &
+    !(rk %in% "species") & !is.na(rk) & !is.na(result$taxon_name) &
+    is.finite(result$prior_alpha) & is.finite(result$prior_beta) &
+    abs(result$prior_alpha - gf_alpha) <= tol & abs(result$prior_beta - gf_beta) <= tol
+  if (sum(ring_floor) < 2L) return(result)
+  site <- function(col) if (col %in% names(result)) as.character(result[[col]]) else rep("", nrow(result))
+  key <- paste(result$observation_id, site("grid_id"), site("main_habitat"), sep = "\r")
+  k <- stats::ave(as.numeric(ring_floor), key, FUN = sum)
+  rows <- which(ring_floor & k > 1)
+  if (!length(rows)) return(result)
+  phi <- gf_alpha + gf_beta
+  m <- (gf_alpha / phi) / k[rows]
+  result$prior_mean[rows] <- m
+  result$prior_alpha[rows] <- m * phi
+  result$prior_beta[rows] <- (1 - m) * phi
+  cli::cli_inform("join_priors: {length(rows)} ring row(s) in {length(unique(key[rows]))} unit(s) share one global floor per unit.")
+  result
+}

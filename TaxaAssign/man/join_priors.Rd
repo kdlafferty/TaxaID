@@ -225,6 +225,21 @@ modelled row below the singleton-mirror mean is promoted -- the
 extrapolation check requires that column.
 }
 
+\section{Ring rows share one global floor per unit}{
+
+A ring row (\verb{unreferenced_*} above species: an unsequenced relative named
+by its genus or family) has no occurrence prior of its own. Where its
+clade has a dark-diversity budget it carries that clade's remaining
+missing-species mass; otherwise it falls back to the global floor, the
+prior that the detected taxon is one arbitrary unrecorded taxon. A unit
+detects one taxon, so the floor-priced rings of one observation (at one
+site) share a single floor: each of the \code{k} such rings gets floor / \code{k},
+with the floor's concentration kept. Without this the unreferenced
+prior mass of a unit would grow with the number of candidate genera, with
+no regional evidence behind it. A unit with one floor-priced ring, and a
+ring priced by a clade budget, are unchanged.
+}
+
 \section{Coarse-rank expansion}{
 
 When a likelihood row has \code{taxon_name_rank} coarser than species (e.g.
