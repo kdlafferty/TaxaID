@@ -96,10 +96,17 @@ no \code{n_tubes} column or the count is missing.}
 The result also carries \code{attr(, "rule_counts")}, a data frame with one row
 per rule (I1, I2_relative, I2_review, I3_move_up, I3_flag_coarse,
 I3_exception, poor_fit_habitat_exclude, I4, blank_evidence) and \code{n_rows},
-the number of rows on which it fired (0 when none). Rules are exclusive per
-row except blank_evidence, which is counted in addition. A message reports
-the same counts and states how many rows the relative move (I2_relative,
-which depends on \code{relative_score_gap}) fired on.
+the number of rows on which it fired (0 when none). Rules are exclusive per row
+except blank_evidence, which is counted in addition. A message reports
+the same counts, zeros included, and states how many rows the relative move
+(I2_relative, which depends on \code{relative_score_gap}) fired on. \code{rule_counts}
+has a fixed row set and an \code{evaluated} column: a rule that ran and fired on
+nothing has \code{n_rows} 0 and \code{evaluated} TRUE; a rule that could not run has
+\code{n_rows} NA and \code{evaluated} FALSE (I2_relative without \code{posterior_df},
+I3_exception without a \code{winner_hypothesis_type} column,
+poor_fit_habitat_exclude without the habitat column, blank_evidence with
+\code{blank_flag_col = NULL}). Because \code{rule_counts} is an attribute, dplyr verbs
+drop it; read it straight off the value \code{screen_assignments()} returns.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table

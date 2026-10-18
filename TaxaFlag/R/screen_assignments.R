@@ -127,10 +127,17 @@
 #' The result also carries `attr(, "rule_counts")`, a data frame with one row
 #' per rule (I1, I2_relative, I2_review, I3_move_up, I3_flag_coarse,
 #' I3_exception, poor_fit_habitat_exclude, I4, blank_evidence) and `n_rows`,
-#' the number of rows on which it fired (0 when none). Rules are exclusive per
-#' row except blank_evidence, which is counted in addition. A message reports
-#' the same counts and states how many rows the relative move (I2_relative,
-#' which depends on `relative_score_gap`) fired on.
+#' the number of rows on which it fired (0 when none). Rules are exclusive per row
+#' except blank_evidence, which is counted in addition. A message reports
+#' the same counts, zeros included, and states how many rows the relative move
+#' (I2_relative, which depends on `relative_score_gap`) fired on. `rule_counts`
+#' has a fixed row set and an `evaluated` column: a rule that ran and fired on
+#' nothing has `n_rows` 0 and `evaluated` TRUE; a rule that could not run has
+#' `n_rows` NA and `evaluated` FALSE (I2_relative without `posterior_df`,
+#' I3_exception without a `winner_hypothesis_type` column,
+#' poor_fit_habitat_exclude without the habitat column, blank_evidence with
+#' `blank_flag_col = NULL`). Because `rule_counts` is an attribute, dplyr verbs
+#' drop it; read it straight off the value `screen_assignments()` returns.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -346,12 +353,19 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
 
   rule_names <- c("I1", "I2_relative", "I2_review", "I3_move_up", "I3_flag_coarse",
                   "I3_exception", "poor_fit_habitat_exclude", "I4", "blank_evidence")
+  evaluated <- c(I1 = TRUE, I2_relative = !is.null(posterior_df), I2_review = TRUE,
+                 I3_move_up = TRUE, I3_flag_coarse = TRUE,
+                 I3_exception = "winner_hypothesis_type" %in% names(reviewed_df),
+                 poor_fit_habitat_exclude = habitat_col %in% names(reviewed_df),
+                 I4 = TRUE, blank_evidence = !is.null(blank_flag_col))
   counts <- vapply(rule_names, function(r) if (r == "blank_evidence") sum(bl) else sum(rule %in% r), numeric(1))
+  counts[!evaluated] <- NA
   attr(d, "rule_counts") <- data.frame(rule = rule_names, n_rows = as.integer(counts),
-                                       stringsAsFactors = FALSE)
-  message("screen_assignments(): rows by rule: ",
-          paste0(rule_names, " = ", as.integer(counts), collapse = ", "), ". ",
-          "Relative move (relative_score_gap = ", relative_score_gap, ") fired on ",
-          as.integer(counts[["I2_relative"]]), " rows.")
+                                       evaluated = unname(evaluated), stringsAsFactors = FALSE)
+  shown <- ifelse(evaluated, as.character(as.integer(counts)), "not evaluated")
+  rel_txt <- if (evaluated[["I2_relative"]]) paste0("fired on ", as.integer(counts[["I2_relative"]]), " rows")
+             else "not evaluated (no posterior_df)"
+  message("screen_assignments(): rows by rule: ", paste0(rule_names, " = ", shown, collapse = ", "), ". ",
+          "Relative move (relative_score_gap = ", relative_score_gap, ") ", rel_txt, ".")
   d
 }
