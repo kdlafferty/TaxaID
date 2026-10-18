@@ -711,8 +711,13 @@ if (isTRUE(INCLUDE_DOMESTIC_PRIORS)) {
 # and a class-rank name can match a genus of another kingdom. With the rank
 # given, a name that resolves to several nodes is settled on the node of that
 # rank (NCBI backbone), and a match at another rank is gated on its lineage
-# (Global Names backbone). The rank comes from the priors' own
-# taxon_name_rank column; a table without one is read as species-level.
+# (Global Names backbone). The rank is read from each name's SHAPE, not from
+# the priors' taxon_name_rank column: that column is stamped "species" on every
+# row above because join_priors() needs a non-NA key, so it is not an
+# observation of rank, and asserting "species" for a genus-rank name would pick
+# a node and weaken the lineage gate. A plausible binomial is read as species;
+# anything else (a single genus name, "sp.", "cf.", an environmental label) as
+# genus. Pass your own ranks when your table records them.
 # lineage (a pipe-delimited string of ancestor names per name, e.g.
 # "Metazoa|Chordata") is the second disambiguator; the priors table carries
 # no lineage column, so it is left NULL here -- pass it when your table has one.
@@ -720,8 +725,8 @@ if (isTRUE(INCLUDE_DOMESTIC_PRIORS)) {
 taxon_verification <- TaxaTools::verify_taxon_names(
   name_list   = .prior_names$taxon_name,
   backbone_id = TARGET_BACKBONE_ID,
-  input_rank  = if ("taxon_name_rank" %in% names(.prior_names)) .prior_names$taxon_name_rank
-                else rep("species", nrow(.prior_names))
+  input_rank  = ifelse(TaxaTools::is_plausible_binomial(.prior_names$taxon_name),
+                       "species", "genus")
 )
 message(sprintf(
   "Taxon-name verification: %d of %d unique taxon name(s) did not verify against backbone %s",

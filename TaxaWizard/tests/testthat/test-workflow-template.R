@@ -129,6 +129,23 @@ test_that("every taxonomy lookup in the template passes input_rank", {
   expect_false(any(old), info = "fill_higher_ranks() argument was renamed fill_ranks")
 })
 
+test_that("input_rank is never read from the stamped taxon_name_rank column", {
+  # The priors' taxon_name_rank is stamped "species" on every row so that
+  # join_priors() has a non-NA key; it is not an observation of rank. Fed to
+  # input_rank it would assert species for a genus-rank name, which selects a
+  # homonym node without consulting decisions and weakens the lineage gate.
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+
+  calls <- .template_calls(f, "TaxaTools", c("verify_taxon_names", "fill_higher_ranks"))
+  reads_stamp <- vapply(calls, function(cl) {
+    arg <- as.list(cl)[["input_rank"]]
+    !is.null(arg) && "taxon_name_rank" %in% all.names(arg)
+  }, logical(1))
+  expect_false(any(reads_stamp),
+               info = paste(sum(reads_stamp), "lookup call(s) take input_rank from taxon_name_rank"))
+})
+
 test_that("every posterior_consensus() call in the template names its consensus_method", {
   f <- .tmpl_path()
   skip_if(is.null(f), "repo root or template not found")
