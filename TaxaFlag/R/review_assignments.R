@@ -203,11 +203,16 @@
 #'   every plausibility column comes back suspiciously uniform, pass
 #'   \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
 #'   provider = "anthropic")}.
-#'   On the default path (\code{llm_fn} not supplied and resolving to
-#'   \code{TaxaTools::call_api}) every call is made at \code{temperature = 0.2},
-#'   so a re-asked or re-run review agrees with itself more often; a supplied
-#'   \code{llm_fn} is used exactly as given, so pass the temperature in your
-#'   own wrapper if you want the same.
+#'   No sampling temperature is set here: the default path calls
+#'   \code{call_api()} with the provider's default. Some current models reject
+#'   the \code{temperature} parameter outright (HTTP 400, "temperature is
+#'   deprecated for this model"), so set one in your own \code{llm_fn} only for
+#'   a model that accepts it. The \code{cache_dir} key fingerprints the
+#'   deparsed SOURCE of \code{llm_fn}: a temperature, model or provider written
+#'   literally into it is covered, and changing it moves the key. One supplied
+#'   indirectly -- from a variable, an option or a closure over a value -- is
+#'   invisible to the key; after changing such a value, use a new
+#'   \code{cache_dir} or a new \code{model_label}.
 #' @param model_label Character or \code{NULL}. A name for the model behind
 #'   \code{llm_fn}, recorded in the cache key so a verdict obtained from one
 #'   model is never served to a call asking another. Default \code{NULL}
@@ -492,13 +497,6 @@ review_assignments <- function(input_df,
                                poor_absolute_fit_col = "poor_absolute_fit",
                                best_identity_col = "best_identity") {
   on_unreviewed <- match.arg(on_unreviewed)
-  # The default path samples at temperature 0.2: a review is a judgement that
-  # is cached and re-asked, and at the provider default the same prompt gave
-  # opposite verdicts on consecutive runs. A caller's own llm_fn (or a
-  # TaxaID.llm_fn option naming a different function) is used as given.
-  if (missing(llm_fn) && identical(llm_fn, TaxaTools::call_api)) {
-    llm_fn <- function(prompt_str, ...) TaxaTools::call_api(prompt_str, ..., temperature = 0.2)
-  }
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
@@ -844,8 +842,7 @@ review_assignments <- function(input_df,
     # verdict from the old wording would otherwise be served as a hit.
     # v3: the poor-absolute-fit guideline. v4: the no-reference line is
     # keyed on the reviewed label's own row type, not the call's. v5: the
-    # geography guidelines (a)/(b)/(f), ids on taxa lines, temperature 0.2 on
-    # the default llm_fn.
+    # geography guidelines (a)/(b)/(f), ids on taxa lines.
     .shared <- paste(c(
       "v5", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
@@ -1254,8 +1251,9 @@ review_assignments <- function(input_df,
   has_scope <- has_prov &&
     all(c("consensus_unreferenced_scope", "consensus_unreferenced_scope_rank") %in%
       names(input_df))
+  has_call <- all(c("consensus_taxon", "consensus_rank") %in% names(input_df))
   if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc && !has_prov &&
-    !has_poorfit) {
+    !has_poorfit && !has_call) {
     return(NULL)
   }
 
@@ -1895,7 +1893,7 @@ review_assignments <- function(input_df,
     "not let it override your independent plausibility assessment itself.\n\n",
     "EXAMPLE OUTPUT FORMAT:\n",
     "[\n",
-    '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
+    '  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
     '"geographic_plausibility": "likely", "scope_plausibility": "likely", ',
     '"contamination_risk": "low", "review_alternatives": null, ',
     '"review_lower_hypotheses": null, "review_confidence": "high", ',

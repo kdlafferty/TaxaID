@@ -226,11 +226,16 @@ silently falls back to degraded/uniform output rather than erroring. If
 every plausibility column comes back suspiciously uniform, pass
 \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
 provider = "anthropic")}.
-On the default path (\code{llm_fn} not supplied and resolving to
-\code{TaxaTools::call_api}) every call is made at \code{temperature = 0.2},
-so a re-asked or re-run review agrees with itself more often; a supplied
-\code{llm_fn} is used exactly as given, so pass the temperature in your
-own wrapper if you want the same.}
+No sampling temperature is set here: the default path calls
+\code{call_api()} with the provider's default. Some current models reject
+the \code{temperature} parameter outright (HTTP 400, "temperature is
+deprecated for this model"), so set one in your own \code{llm_fn} only for
+a model that accepts it. The \code{cache_dir} key fingerprints the
+deparsed SOURCE of \code{llm_fn}: a temperature, model or provider written
+literally into it is covered, and changing it moves the key. One supplied
+indirectly -- from a variable, an option or a closure over a value -- is
+invisible to the key; after changing such a value, use a new
+\code{cache_dir} or a new \code{model_label}.}
 
 \item{model_label}{Character or \code{NULL}. A name for the model behind
 \code{llm_fn}, recorded in the cache key so a verdict obtained from one

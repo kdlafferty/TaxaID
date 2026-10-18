@@ -1,6 +1,6 @@
 # Prompt version v5: id-matched answers (R1), whole-batch mismatch is a failed
 # call (R2), one-set-per-call re-ask (R3), geography GUIDELINES bullets
-# (a)/(b)/(f), default temperature 0.2 (e). Every test uses a mock llm_fn.
+# (a)/(b)/(f); the default path sends no temperature. Every test uses a mock llm_fn.
 
 .v5_obj <- function(name, id = NULL, comment = "ok") {
   id_part <- if (is.null(id)) "" else if (is.na(id)) '"id": null, ' else sprintf('"id": "%s", ', id)
@@ -330,28 +330,28 @@ test_that("verdicts cached under prompt version v4 are a miss", {
   )
 }
 
-test_that("temperature, shape 1: llm_fn not supplied and option NULL -> call_api at 0.2", {
+test_that("temperature, shape 1: llm_fn not supplied and option NULL -> call_api with NO temperature", {
   old_opt <- options(TaxaID.llm_fn = NULL)
   on.exit(options(old_opt), add = TRUE)
   temps <- list()
   testthat::local_mocked_bindings(
     call_api = function(prompt_str, ..., temperature = NULL) {
-      temps[[length(temps) + 1L]] <<- temperature
+      temps[[length(temps) + 1L]] <<- is.null(temperature)
       .v5_valid_reply(prompt_str)
     },
     .package = "TaxaTools"
   )
   out <- .v5_run_default()
   expect_length(temps, 1L)
-  expect_equal(temps[[1L]], 0.2)
+  expect_true(temps[[1L]]) # no temperature reached call_api
   expect_false(any(is.na(out$llm_habitat_plausibility)))
 })
 
-test_that("temperature, shape 2: option explicitly set to TaxaTools::call_api -> still 0.2", {
+test_that("temperature, shape 2: option explicitly set to TaxaTools::call_api -> NO temperature", {
   temps <- list()
   testthat::local_mocked_bindings(
     call_api = function(prompt_str, ..., temperature = NULL) {
-      temps[[length(temps) + 1L]] <<- temperature
+      temps[[length(temps) + 1L]] <<- is.null(temperature)
       .v5_valid_reply(prompt_str)
     },
     .package = "TaxaTools"
@@ -360,7 +360,7 @@ test_that("temperature, shape 2: option explicitly set to TaxaTools::call_api ->
   on.exit(options(old_opt), add = TRUE)
   out <- .v5_run_default()
   expect_length(temps, 1L)
-  expect_equal(temps[[1L]], 0.2)
+  expect_true(temps[[1L]]) # no temperature reached call_api
   expect_false(any(is.na(out$llm_habitat_plausibility)))
 })
 
@@ -470,4 +470,52 @@ test_that("id parsing: no id column falls back to exact then normalised name", {
   # id column present but exact name still works when the id is junk
   r <- .parse_review_response(.v5_json(c(.v5_obj("A x", "?"), .v5_obj("B y", "?"), .v5_obj("C z", "?"))), b, NULL, NULL)
   expect_length(attr(r, "missing_taxa"), 0L)
+})
+
+test_that("the review cache key carries no temperature field", {
+  # The key must stay byte-identical to the one d133b889 wrote: workflows
+  # relaunched on that install are writing v5 entries now.
+  cd <- tempfile("v5key")
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  fn <- function(prompt_str, ...) {
+    '[{"id": "T1", "taxon_name": "Gobiosoma bosc", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "ok"}]'
+  }
+  df <- data.frame(observation_id = "ASV_1", consensus_taxon = "Gobiosoma bosc",
+    consensus_rank = "species", consensus_posterior = 0.99, stringsAsFactors = FALSE)
+  suppressWarnings(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
+    llm_fn = fn, cache_dir = cd, verbose = FALSE
+  ))
+  files <- list.files(cd, full.names = TRUE)
+  expect_true(length(files) > 0L)
+  for (f in files) {
+    k <- readRDS(f)$key
+    expect_false(grepl("temperature", k, fixed = TRUE))
+    expect_true(startsWith(k, "v5\u0001"))
+  }
+})
+
+test_that("an HTTP 400 'temperature is deprecated' reply surfaces as a named batch failure, not silence", {
+  fn <- function(prompt_str, ...) {
+    stop("call_api (anthropic): HTTP 400: `temperature` is deprecated for this model", call. = FALSE)
+  }
+  df <- data.frame(observation_id = "ASV_1", consensus_taxon = "Gobiosoma bosc",
+    consensus_rank = "species", consensus_posterior = 0.99, stringsAsFactors = FALSE)
+  expect_warning(
+    res <- review_assignments(
+      data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+      context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
+      llm_fn = fn, verbose = FALSE, on_unreviewed = "ignore"
+    ),
+    "temperature. is deprecated"
+  )
+  expect_true(all(is.na(res$llm_geographic_plausibility)))
+  expect_error(
+    suppressWarnings(review_assignments(
+      data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+      context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
+      llm_fn = fn, verbose = FALSE, on_unreviewed = "error"
+    ))
+  )
 })
