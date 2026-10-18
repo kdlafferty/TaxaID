@@ -68,7 +68,7 @@ test_that("sites = NULL: prompt, cache key, cache file and columns equal the fro
   fn <- function(prompt_str, ...) {
     '[{"id":"T1","taxon_name":"Gobiidae","habitat_plausibility":"likely","geographic_plausibility":"likely","scope_plausibility":"likely","contamination_risk":"low","review_confidence":"high","review_comment":"ok"},{"id":"T2","taxon_name":"Sardinops sagax","habitat_plausibility":"likely","geographic_plausibility":"likely","scope_plausibility":"likely","contamination_risk":"low","review_confidence":"high","review_comment":"ok"}]'
   }
-  cd <- withr::local_tempdir()
+  cd <- tempfile("gs_cache")
   out <- review_assignments(df,
     context = list(geography = "Pacific coast", habitat = "rocky intertidal"),
     target_group = "fish", marker = "12S", data_type = "eDNA", llm_fn = fn,
@@ -279,7 +279,7 @@ test_that("the sites table and site_col are validated", {
 # --- 7. cache -----------------------------------------------------------------------
 
 test_that("cache: sites and no-sites never serve each other; a hit reproduces the site column", {
-  cd <- withr::local_tempdir()
+  cd <- tempfile("gs_cache")
   geo <- list(`Taxon a` = '{"rule":"latitude","lat_min":30,"lat_max":33,"outside":"unlikely"}')
   log <- new.env()
   fn <- .gs_fn(geo, log = log)
