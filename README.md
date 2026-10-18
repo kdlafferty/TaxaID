@@ -899,14 +899,14 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 57                 | 33         | Yes      |
+| TaxaTools   | 57                 | 34         | Yes      |
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
 | TaxaMatch   | 30                 | 22         | Yes      |
 | TaxaLikely  | 33                 | 40         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
 | TaxaAssign  | 14                 | 24         | Yes      |
-| TaxaFlag    | 16                 | 19         | Yes      |
+| TaxaFlag    | 16                 | 20         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 # U.S. Geological Survey Disclaimer
