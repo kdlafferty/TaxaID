@@ -331,7 +331,8 @@ test_that("verdicts cached under prompt version v4 are a miss", {
 }
 
 test_that("temperature, shape 1: llm_fn not supplied and option NULL -> call_api at 0.2", {
-  withr::local_options(list(TaxaID.llm_fn = NULL))
+  old_opt <- options(TaxaID.llm_fn = NULL)
+  on.exit(options(old_opt), add = TRUE)
   temps <- list()
   testthat::local_mocked_bindings(
     call_api = function(prompt_str, ..., temperature = NULL) {
@@ -355,7 +356,8 @@ test_that("temperature, shape 2: option explicitly set to TaxaTools::call_api ->
     },
     .package = "TaxaTools"
   )
-  withr::local_options(list(TaxaID.llm_fn = TaxaTools::call_api))
+  old_opt <- options(TaxaID.llm_fn = TaxaTools::call_api)
+  on.exit(options(old_opt), add = TRUE)
   out <- .v5_run_default()
   expect_length(temps, 1L)
   expect_equal(temps[[1L]], 0.2)
@@ -376,7 +378,8 @@ test_that("temperature, shape 3: option naming call_anthropic_api (Mugu batch sh
     },
     .package = "TaxaTools"
   )
-  withr::local_options(list(TaxaID.llm_fn = function(p, ...) TaxaTools::call_anthropic_api(p)))
+  old_opt <- options(TaxaID.llm_fn = function(p, ...) TaxaTools::call_anthropic_api(p))
+  on.exit(options(old_opt), add = TRUE)
   out <- .v5_run_default()
   expect_equal(api_n, 1L)
   expect_false("temperature" %in% names(api_args[[1L]]))
@@ -385,7 +388,8 @@ test_that("temperature, shape 3: option naming call_anthropic_api (Mugu batch sh
 })
 
 test_that("temperature: a supplied llm_fn is called exactly as given, no temperature argument", {
-  withr::local_options(list(TaxaID.llm_fn = NULL))
+  old_opt <- options(TaxaID.llm_fn = NULL)
+  on.exit(options(old_opt), add = TRUE)
   called_api <- FALSE
   testthat::local_mocked_bindings(
     call_api = function(prompt_str, ..., temperature = NULL) {
