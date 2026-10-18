@@ -71,18 +71,26 @@ likelihoods_ready <- TaxaAssign::join_priors(
 result <- TaxaAssign::compute_posterior(likelihoods_ready)
 
 # 3. Round 1 consensus
+# "credible_node" with robust_prior_s = 0 and cross_phylum_eps = 0 is the
+# weighted LCA (node summing); the package default remains "lca".
 consensus <- TaxaAssign::posterior_consensus(
   result,
-  rank_system = detected_ranks,
-  backbone_id = {{backbone_id}}
+  rank_system      = detected_ranks,
+  backbone_id      = {{backbone_id}},
+  consensus_method = "credible_node",
+  robust_prior_s   = 0,
+  cross_phylum_eps = 0
 )
 
 # 4. Confirmation update, then Round 2 consensus
 result_updated <- TaxaAssign::update_prior_from_consensus(result, consensus)
 consensus <- TaxaAssign::posterior_consensus(
   result_updated,
-  rank_system = detected_ranks,
-  backbone_id = {{backbone_id}}
+  rank_system      = detected_ranks,
+  backbone_id      = {{backbone_id}},
+  consensus_method = "credible_node",
+  robust_prior_s   = 0,
+  cross_phylum_eps = 0
 )
 
 message("Bayesian pathway complete. ", sum(consensus$is_resolved), " of ",
