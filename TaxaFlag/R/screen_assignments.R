@@ -90,16 +90,19 @@
 #'   it is coarser than the call.
 #' @param relative_score_gap Largest allowed shortfall of a relative's
 #'   `score_likelihood` below the call's best member for the relative to
-#'   qualify under I2 (default 0.25, inclusive).
+#'   qualify under I2 (inclusive). The default 0.25 is a chosen value, not
+#'   calibrated; on the test data 0.10 and 0.25 gave identical results.
 #' @param move_up_max_rank Coarsest call rank that is moved up under I3.
 #'   One of "species", "genus", "family", "order", "class", "phylum",
-#'   "kingdom". Default "genus".
+#'   "kingdom". The default "genus" is a rank limit chosen by the maintainer
+#'   and checked against expert review.
 #' @param poor_fit_habitat_exclude_max_rank Coarsest call rank at which poor
 #'   fit with an unlikely habitat excludes the row. Default "family".
 #' @param blank_flag_col Optional name of a logical column marking rows with
 #'   blank (contamination) evidence. Where TRUE, `suggested_action` becomes
 #'   "exclude" and `identity_reason` has "blank evidence" appended;
-#'   `identity_action` is unchanged. `NULL` (default) ignores it.
+#'   `identity_action` is unchanged. The default `NULL` ignores it, because no fixed column
+#'   name exists, so the caller names the column.
 #'
 #' @return `reviewed_df` with these columns appended, in the same row order:
 #' \describe{

@@ -221,3 +221,14 @@ test_that("custom column names and a per-site geography column work", {
   r <- scr(d, geography_col = "geo_site", poor_fit_col = "pf")
   expect_equal(r$identity_action, "exclude")
 })
+
+test_that("output keeps every input row, its order and all original column values", {
+  d <- mk(taxon = c("A a", "B b", "C c", "D d", "E e"), poor = c(TRUE, FALSE, TRUE, FALSE, TRUE),
+          geo = c("unlikely", "unlikely", "likely", "likely", "unlikely"),
+          hab = c("likely", "likely", "unlikely", "likely", "likely"))
+  d$extra <- letters[1:5]
+  r <- scr(d)
+  expect_equal(nrow(r), nrow(d))
+  expect_true("exclude" %in% r$suggested_action)
+  expect_identical(r[names(d)], d)
+})

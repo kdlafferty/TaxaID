@@ -55,11 +55,13 @@ it is coarser than the call.}
 
 \item{relative_score_gap}{Largest allowed shortfall of a relative's
 \code{score_likelihood} below the call's best member for the relative to
-qualify under I2 (default 0.25, inclusive).}
+qualify under I2 (inclusive). The default 0.25 is a chosen value, not
+calibrated; on the test data 0.10 and 0.25 gave identical results.}
 
 \item{move_up_max_rank}{Coarsest call rank that is moved up under I3.
 One of "species", "genus", "family", "order", "class", "phylum",
-"kingdom". Default "genus".}
+"kingdom". The default "genus" is a rank limit chosen by the maintainer
+and checked against expert review.}
 
 \item{poor_fit_habitat_exclude_max_rank}{Coarsest call rank at which poor
 fit with an unlikely habitat excludes the row. Default "family".}
@@ -67,7 +69,8 @@ fit with an unlikely habitat excludes the row. Default "family".}
 \item{blank_flag_col}{Optional name of a logical column marking rows with
 blank (contamination) evidence. Where TRUE, \code{suggested_action} becomes
 "exclude" and \code{identity_reason} has "blank evidence" appended;
-\code{identity_action} is unchanged. \code{NULL} (default) ignores it.}
+\code{identity_action} is unchanged. The default \code{NULL} ignores it, because no fixed column
+name exists, so the caller names the column.}
 }
 \value{
 \code{reviewed_df} with these columns appended, in the same row order:
