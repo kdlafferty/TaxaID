@@ -134,7 +134,7 @@ specifically its \code{"unprecedented"} value (no local occurrence
 record at all, a pipeline-computed fact, never a threshold on a prior
 VALUE -- see that function's own docs for why). When present, shown to
 the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
-the skepticism GUIDELINES bullet (see \code{@section Skepticism gate}
+the geography GUIDELINES bullets (see \code{@section Geography guidelines}
 below) and the deterministic \code{geographic_disagreement_basis} output
 column. Silently skipped when absent. Default
 \code{"consensus_plausibility"}. Set to \code{NULL} to disable.}
@@ -225,7 +225,12 @@ calling this function from a fully-namespaced script (no
 silently falls back to degraded/uniform output rather than erroring. If
 every plausibility column comes back suspiciously uniform, pass
 \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
-provider = "anthropic")}.}
+provider = "anthropic")}.
+On the default path (\code{llm_fn} not supplied and resolving to
+\code{TaxaTools::call_api}) every call is made at \code{temperature = 0.2},
+so a re-asked or re-run review agrees with itself more often; a supplied
+\code{llm_fn} is used exactly as given, so pass the temperature in your
+own wrapper if you want the same.}
 
 \item{model_label}{Character or \code{NULL}. A name for the model behind
 \code{llm_fn}, recorded in the cache key so a verdict obtained from one
@@ -336,7 +341,7 @@ code-computed, not an LLM output: fires whenever
 \code{llm_geographic_plausibility \%in\% c("likely","possible")} despite
 \code{consensus_plausibility_col == "unprecedented"} and/or
 \code{consensus_discrimination_col == "indistinguishable"}. See
-\code{@section Skepticism gate} below for why this exists as a
+\code{@section Geography guidelines} below for why this exists as a
 deterministic column rather than relying on \code{review_comment}
 alone.}
 }
@@ -424,34 +429,35 @@ schema (what \code{.build_review_prompt()} asks for and
 only the final output column names carry the prefix.
 }
 
-\section{Skepticism gate}{
+\section{Geography guidelines}{
 
-An LLM can rate a taxon \code{llm_geographic_plausibility = "likely"}
-despite the pipeline recording ZERO local occurrence records for it and a
-near-total inability to discriminate it from a confusable relative on score
-alone, explaining itself only with a general species-level range
-description. A stronger prompt instruction alone is not sufficient, since an
-LLM cannot be trusted to reliably self-flag its own uncertainty, so there
-are two responses:
+Three conditional GUIDELINES bullets shape the geographic rating, each
+added only when a taxon in the batch carries the matching bracket fact:
 \enumerate{
-\item{A GUIDELINES bullet (only added when at least one taxon in a
-batch actually carries the flag -- see
-\code{consensus_plausibility_col}/\code{consensus_discrimination_col})
-requires the LLM to default to \code{"unlikely"} for a taxon flagged
-\code{"unprecedented"} (no local record) and/or
-\code{"indistinguishable"} (a confusable relative could score equally
-well) UNLESS it can cite SPECIFIC evidence for a real population at or
-near the study site -- a general species-level range description is
-explicitly declared insufficient. This is stated as a HARD requirement,
-the one deliberate exception to this function's own "the bracket
-informs, never overrides your judgment" rule for every other pipeline
-signal.}
-\item{Prompt compliance is never guaranteed, so the deterministic
-\code{geographic_disagreement_basis} output column (see \code{@return}
-above) is computed in R, independent of whether the LLM actually
-mentioned the disagreement anywhere. Filter/sort on it directly to FIND
-every such row rather than reading every \code{review_comment}.}
+\item{\code{"pipeline flags UNPRECEDENTED"} (no local record in the
+pipeline's occurrence data): absence of a citeable record is not
+evidence of absence. Without specific local evidence the rating is at
+most \code{"possible"}, never \code{"likely"}; \code{"unlikely"} needs
+positive evidence of being out of range (a native range elsewhere with no
+known introduction to the region, or a habitat the taxon cannot use).}
+\item{\code{"pipeline flags INDISTINGUISHABLE"} (a confusable relative
+could score as well) weakens confidence in the name only and must not by
+itself justify an \code{"unlikely"} rating.}
+\item{\code{"pipeline call: <taxon> (<rank>)"}, shown when the reviewed
+label is not the call itself (a species label on a genus or family
+call): the call at its rank is the claim, and the species are candidates
+within it.}
 }
+Prompt compliance is never guaranteed, so the deterministic
+\code{geographic_disagreement_basis} output column (see \code{@return}) still
+marks every row rated likely/possible despite either flag; filter on it to
+audit those rows.
+
+Each taxon line carries an id (\code{[T1]}, \code{[T2]}, ...) that the
+answer must echo; answers are matched by id first, then by name, so a long
+candidate-set label echoed back reformatted is still matched. A response
+matching none of several sets is treated as failed (halved and retried),
+and an omission a re-ask cannot recover is re-asked one set per call.
 }
 
 \section{Pipeline context}{

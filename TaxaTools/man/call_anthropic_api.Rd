@@ -9,7 +9,8 @@ call_anthropic_api(
   model = NULL,
   tier = c("mid", "fast", "top"),
   max_tokens = 16000L,
-  api_key = Sys.getenv("ANTHROPIC_API_KEY")
+  api_key = Sys.getenv("ANTHROPIC_API_KEY"),
+  temperature = NULL
 )
 }
 \arguments{
@@ -35,6 +36,9 @@ outputs (e.g., large species lists). Higher values increase API cost.}
 
 \item{api_key}{Character. Anthropic API key. Defaults to the
 \code{ANTHROPIC_API_KEY} environment variable.}
+
+\item{temperature}{Numeric or \code{NULL}. Passed to \code{\link{call_api}};
+\code{NULL} (default) sends no temperature, keeping the provider default.}
 }
 \value{
 A length-1 character string containing the model's response text.

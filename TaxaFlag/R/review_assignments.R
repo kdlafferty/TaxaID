@@ -159,7 +159,7 @@
 #'   record at all, a pipeline-computed fact, never a threshold on a prior
 #'   VALUE -- see that function's own docs for why). When present, shown to
 #'   the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
-#'   the skepticism GUIDELINES bullet (see \code{@section Skepticism gate}
+#'   the geography GUIDELINES bullets (see \code{@section Geography guidelines}
 #'   below) and the deterministic \code{geographic_disagreement_basis} output
 #'   column. Silently skipped when absent. Default
 #'   \code{"consensus_plausibility"}. Set to \code{NULL} to disable.
@@ -203,6 +203,11 @@
 #'   every plausibility column comes back suspiciously uniform, pass
 #'   \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
 #'   provider = "anthropic")}.
+#'   On the default path (\code{llm_fn} not supplied and resolving to
+#'   \code{TaxaTools::call_api}) every call is made at \code{temperature = 0.2},
+#'   so a re-asked or re-run review agrees with itself more often; a supplied
+#'   \code{llm_fn} is used exactly as given, so pass the temperature in your
+#'   own wrapper if you want the same.
 #' @param model_label Character or \code{NULL}. A name for the model behind
 #'   \code{llm_fn}, recorded in the cache key so a verdict obtained from one
 #'   model is never served to a call asking another. Default \code{NULL}
@@ -289,7 +294,7 @@
 #'     \code{llm_geographic_plausibility \%in\% c("likely","possible")} despite
 #'     \code{consensus_plausibility_col == "unprecedented"} and/or
 #'     \code{consensus_discrimination_col == "indistinguishable"}. See
-#'     \code{@section Skepticism gate} below for why this exists as a
+#'     \code{@section Geography guidelines} below for why this exists as a
 #'     deterministic column rather than relying on \code{review_comment}
 #'     alone.}
 #' }
@@ -343,33 +348,34 @@
 #' \code{.parse_review_response()} parses) uses the bare names internally --
 #' only the final output column names carry the prefix.
 #'
-#' @section Skepticism gate:
-#' An LLM can rate a taxon \code{llm_geographic_plausibility = "likely"}
-#' despite the pipeline recording ZERO local occurrence records for it and a
-#' near-total inability to discriminate it from a confusable relative on score
-#' alone, explaining itself only with a general species-level range
-#' description. A stronger prompt instruction alone is not sufficient, since an
-#' LLM cannot be trusted to reliably self-flag its own uncertainty, so there
-#' are two responses:
+#' @section Geography guidelines:
+#' Three conditional GUIDELINES bullets shape the geographic rating, each
+#' added only when a taxon in the batch carries the matching bracket fact:
 #' \enumerate{
-#'   \item{A GUIDELINES bullet (only added when at least one taxon in a
-#'     batch actually carries the flag -- see
-#'     \code{consensus_plausibility_col}/\code{consensus_discrimination_col})
-#'     requires the LLM to default to \code{"unlikely"} for a taxon flagged
-#'     \code{"unprecedented"} (no local record) and/or
-#'     \code{"indistinguishable"} (a confusable relative could score equally
-#'     well) UNLESS it can cite SPECIFIC evidence for a real population at or
-#'     near the study site -- a general species-level range description is
-#'     explicitly declared insufficient. This is stated as a HARD requirement,
-#'     the one deliberate exception to this function's own "the bracket
-#'     informs, never overrides your judgment" rule for every other pipeline
-#'     signal.}
-#'   \item{Prompt compliance is never guaranteed, so the deterministic
-#'     \code{geographic_disagreement_basis} output column (see \code{@return}
-#'     above) is computed in R, independent of whether the LLM actually
-#'     mentioned the disagreement anywhere. Filter/sort on it directly to FIND
-#'     every such row rather than reading every \code{review_comment}.}
+#'   \item{\code{"pipeline flags UNPRECEDENTED"} (no local record in the
+#'     pipeline's occurrence data): absence of a citeable record is not
+#'     evidence of absence. Without specific local evidence the rating is at
+#'     most \code{"possible"}, never \code{"likely"}; \code{"unlikely"} needs
+#'     positive evidence of being out of range (a native range elsewhere with no
+#'     known introduction to the region, or a habitat the taxon cannot use).}
+#'   \item{\code{"pipeline flags INDISTINGUISHABLE"} (a confusable relative
+#'     could score as well) weakens confidence in the name only and must not by
+#'     itself justify an \code{"unlikely"} rating.}
+#'   \item{\code{"pipeline call: <taxon> (<rank>)"}, shown when the reviewed
+#'     label is not the call itself (a species label on a genus or family
+#'     call): the call at its rank is the claim, and the species are candidates
+#'     within it.}
 #' }
+#' Prompt compliance is never guaranteed, so the deterministic
+#' \code{geographic_disagreement_basis} output column (see \code{@return}) still
+#' marks every row rated likely/possible despite either flag; filter on it to
+#' audit those rows.
+#'
+#' Each taxon line carries an id (\code{[T1]}, \code{[T2]}, ...) that the
+#' answer must echo; answers are matched by id first, then by name, so a long
+#' candidate-set label echoed back reformatted is still matched. A response
+#' matching none of several sets is treated as failed (halved and retried),
+#' and an omission a re-ask cannot recover is re-asked one set per call.
 #'
 #' @section Pipeline context:
 #' When \code{consensus_posterior_col}/\code{winner_prior_col}/
@@ -486,6 +492,13 @@ review_assignments <- function(input_df,
                                poor_absolute_fit_col = "poor_absolute_fit",
                                best_identity_col = "best_identity") {
   on_unreviewed <- match.arg(on_unreviewed)
+  # The default path samples at temperature 0.2: a review is a judgement that
+  # is cached and re-asked, and at the provider default the same prompt gave
+  # opposite verdicts on consecutive runs. A caller's own llm_fn (or a
+  # TaxaID.llm_fn option naming a different function) is used as given.
+  if (missing(llm_fn) && identical(llm_fn, TaxaTools::call_api)) {
+    llm_fn <- function(prompt_str, ...) TaxaTools::call_api(prompt_str, ..., temperature = 0.2)
+  }
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
@@ -830,9 +843,11 @@ review_assignments <- function(input_df,
     # move a verdict: the key holds the inputs, not the prompt, so a cached
     # verdict from the old wording would otherwise be served as a hit.
     # v3: the poor-absolute-fit guideline. v4: the no-reference line is
-    # keyed on the reviewed label's own row type, not the call's.
+    # keyed on the reviewed label's own row type, not the call's. v5: the
+    # geography guidelines (a)/(b)/(f), ids on taxa lines, temperature 0.2 on
+    # the default llm_fn.
     .shared <- paste(c(
-      "v4", target_group %||% "", marker %||% "", data_type,
+      "v5", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1356,6 +1371,19 @@ review_assignments <- function(input_df,
         parts <- c(parts, msg)
       }
     }
+    # (f) When the label is not the call itself (a species label on a genus
+    # or family call), say what the call is, so it is judged at its own rank.
+    if (all(c("consensus_taxon", "consensus_rank") %in% names(input_df))) {
+      ct_r <- as.character(input_df[["consensus_taxon"]][rows])
+      cr_r <- as.character(input_df[["consensus_rank"]][rows])
+      lab_r <- label_vec[rows]
+      off <- !is.na(ct_r) & !is.na(lab_r) & ct_r != lab_r
+      if (any(off)) {
+        calls <- unique(sprintf("%s (%s)", ct_r[off], ifelse(is.na(cr_r[off]), "rank unknown", cr_r[off])))
+        more <- if (length(calls) > 3L) sprintf(" and %d more", length(calls) - 3L) else ""
+        parts <- c(parts, sprintf("pipeline call: %s%s", paste(utils::head(calls, 3L), collapse = "; "), more))
+      }
+    }
     is_unprec <- has_plaus && isTRUE(any(input_df[[consensus_plausibility_col]][rows] == "unprecedented", na.rm = TRUE))
     is_indist <- has_disc && isTRUE(any(input_df[[consensus_discrimination_col]][rows] == "indistinguishable", na.rm = TRUE))
     if (is_unprec) parts <- c(parts, "pipeline flags UNPRECEDENTED: no local occurrence record at all")
@@ -1666,7 +1694,10 @@ review_assignments <- function(input_df,
     # params found a matching column.
     note <- if ("pipeline_note" %in% names(taxa_batch)) taxa_batch$pipeline_note[i] else NA_character_
     if (!is.na(note)) base <- paste0(base, " [", note, "]")
-    base
+    # The id is how the answer is matched back (see .parse_review_response()):
+    # a long candidate-set label echoed back reformatted cannot be matched by
+    # name, and one such label could unmatch a whole batch.
+    sub("^- ", sprintf("- [T%d] ", i), base)
   }, character(1))
 
   taxa_block <- paste(taxa_lines, collapse = "\n")
@@ -1716,34 +1747,57 @@ review_assignments <- function(input_df,
     )
   )
 
-  # --- Skepticism guidance (only when this batch has a real
-  # unprecedented/indistinguishable case) --------------------------------------
-  # Real motivation, not hypothetical: an LLM rated a taxon "likely"
-  # geographically plausible despite the pipeline recording ZERO local
-  # occurrence records (unprecedented) and near-total confusability with a
-  # relative (indistinguishable), explaining itself only with general
-  # species-level range knowledge ("found in the North Pacific") -- no
-  # specific evidence for THIS site. That's a real disagreement with no
-  # indication of why a user should trust it. This bullet only fires when at
-  # least one taxon in this batch actually carries one of these flags (see
-  # has_unprecedented/has_indistinguishable, built by
-  # .summarise_pipeline_context()) -- most batches won't.
-  has_skepticism_note <- ("has_unprecedented" %in% names(taxa_batch) &&
-    any(taxa_batch$has_unprecedented, na.rm = TRUE)) ||
-    ("has_indistinguishable" %in% names(taxa_batch) &&
-      any(taxa_batch$has_indistinguishable, na.rm = TRUE))
-  skepticism_guideline <- if (has_skepticism_note) {
+  # --- Geography guidance (each bullet only when a taxon in this batch
+  # carries the matching bracket fact; see @section Geography guidelines) ---
+  # (b) UNPRECEDENTED: no local record in the pipeline's occurrence data.
+  # Absence of a citeable record is not evidence of absence, so the flag caps
+  # the rating at "possible" and never inverts it: "unlikely" needs POSITIVE
+  # evidence of being out of range. An earlier hard rule ("cite a specific
+  # local record or rate it unlikely") rated widely introduced species out of
+  # range whenever the model could not recall a record on that draw (Mugu:
+  # common carp flipped possible -> unlikely on a byte-identical prompt).
+  has_unprec_note <- "has_unprecedented" %in% names(taxa_batch) &&
+    any(taxa_batch$has_unprecedented, na.rm = TRUE)
+  unprecedented_guideline <- if (has_unprec_note) {
     paste0(
       '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
-      "local occurrence record at all) and/or \"pipeline flags ",
-      'INDISTINGUISHABLE" (a confusable relative could score equally well), do ',
-      'NOT rate geographic_plausibility "likely" or "possible" unless you can ',
-      "cite SPECIFIC evidence for a real population at or near THIS site (a ",
-      "documented occurrence, a verified range extension, a specific source) -- ",
-      "a general species-level range description (e.g. \"found broadly in the ",
-      'Pacific/Atlantic/tropics\") is NOT sufficient justification on its own. ',
-      "If you do rate it likely/possible anyway, review_comment MUST state the ",
-      "specific evidence; otherwise rate it \"unlikely\" and say so.\n"
+      "local occurrence record in the pipeline's occurrence data): absence of ",
+      "a citeable record is NOT evidence of absence. Without specific evidence ",
+      "of a population at or near this site, rate geographic_plausibility at ",
+      'most "possible", never "likely", and say in review_comment that the ',
+      'evidence is thin. Rate it "unlikely" only with POSITIVE evidence that it ',
+      "is out of range here -- for example a native range on another continent ",
+      "with no known introduction to this region, or a habitat it cannot use. A ",
+      'widely introduced species, or one known from the region, is at least "possible".\n'
+    )
+  } else {
+    NULL
+  }
+  # (a) INDISTINGUISHABLE is a sequence fact (a relative could score as well):
+  # it bears on the NAME, never on range or habitat.
+  has_indist_note <- "has_indistinguishable" %in% names(taxa_batch) &&
+    any(taxa_batch$has_indistinguishable, na.rm = TRUE)
+  indistinguishable_guideline <- if (has_indist_note) {
+    paste0(
+      '- "pipeline flags INDISTINGUISHABLE" means a confusable relative could ',
+      "match the sequence equally well. It weakens confidence in the NAME, not ",
+      'the ecology: it must not by itself justify "unlikely" habitat, geography or scope.\n'
+    )
+  } else {
+    NULL
+  }
+  # (f) The claim is the CALL, at its rank. A reviewer shown a species label
+  # for a family call judged the species (Mugu: Gobiidae dropped because the
+  # bay goby could not be placed, while the comment called Gobiidae "almost
+  # certainly present").
+  has_call_note <- "pipeline_note" %in% names(taxa_batch) &&
+    any(grepl("pipeline call: ", taxa_batch$pipeline_note, fixed = TRUE))
+  call_rank_guideline <- if (has_call_note) {
+    paste0(
+      '- When a bracket gives "pipeline call: <taxon> (<rank>)", that taxon at that ',
+      "rank is the claim: rate habitat and geography for it. The species names shown ",
+      "are candidates within it, not the claim, so a candidate you cannot place ",
+      "locally does not make a genus or family call unlikely.\n"
     )
   } else {
     NULL
@@ -1811,6 +1865,7 @@ review_assignments <- function(input_df,
     "object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ",
     "before or after.\n\n",
     "Each object must have these fields:\n",
+    '  "id": the bracketed id given before the taxon, e.g. "T1",\n',
     '  "taxon_name": the exact taxon name as provided,\n',
     '  "habitat_plausibility": one of "likely", "possible", "unlikely",\n',
     '  "geographic_plausibility": one of "likely", "possible", "unlikely",\n',
@@ -1827,7 +1882,9 @@ review_assignments <- function(input_df,
     "- ", contaminant_guideline, "\n",
     '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
     '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
-    if (!is.null(skepticism_guideline)) skepticism_guideline else "",
+    if (!is.null(unprecedented_guideline)) unprecedented_guideline else "",
+    if (!is.null(indistinguishable_guideline)) indistinguishable_guideline else "",
+    if (!is.null(call_rank_guideline)) call_rank_guideline else "",
     if (!is.null(spatial_guideline)) spatial_guideline else "",
     if (!is.null(poorfit_guideline)) poorfit_guideline else "",
     '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
@@ -1835,9 +1892,7 @@ review_assignments <- function(input_df,
     "weights), not your input. Use it to flag disagreement between the pipeline's ",
     "confidence and your own ecological judgment in review_comment -- e.g. a low ",
     'pipeline posterior alongside your own "likely" rating is worth a note -- but do ',
-    "not let it override your independent plausibility assessment itself, EXCEPT for ",
-    "the UNPRECEDENTED/INDISTINGUISHABLE bar above, which is a hard requirement, ",
-    "not a soft consideration.\n\n",
+    "not let it override your independent plausibility assessment itself.\n\n",
     "EXAMPLE OUTPUT FORMAT:\n",
     "[\n",
     '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
@@ -1966,71 +2021,86 @@ review_assignments <- function(input_df,
   # call per batch).
   missing <- attr(parsed, "missing_taxa")
   attempt <- 0L
-  while (length(missing) > 0L && attempt < max_retries) {
+  # R3: a re-ask that recovers nothing resends the same sets, so it would fail
+  # the same way again. Then the remaining budget asks ONE set per call, where
+  # a lone answer is accepted whatever name it carries.
+  singletons <- FALSE
+  hard_stop <- FALSE
+  while (length(missing) > 0L && attempt < max_retries && !hard_stop) {
     attempt <- attempt + 1L
-    sub_batch <- taxa_batch[taxa_batch$taxon_name %in% missing, , drop = FALSE]
-    if (nrow(sub_batch) == 0L) break
+    groups <- if (singletons) as.list(missing) else list(missing)
 
     if (verbose) {
       message(sprintf(
-        "  Batch %s: LLM omitted %d %s -- re-asking (attempt %d/%d)...",
-        batch_label, nrow(sub_batch),
+        "  Batch %s: LLM omitted %d %s -- re-asking (attempt %d/%d%s)...",
+        batch_label, length(missing),
         if (use_candidates) "candidate set(s)" else "taxon/taxa",
-        attempt, max_retries
+        attempt, max_retries, if (singletons) ", one set per call" else ""
       ))
     }
 
-    Sys.sleep(pause_seconds)
-    reask_label <- paste0(batch_label, "r", attempt)
-    reask_prompt <- .build_review_prompt(
-      sub_batch, ctx, target_group, marker, data_type, use_candidates
-    )
-    if (!is.null(prompt_log)) assign(reask_label, reask_prompt, envir = prompt_log)
+    recovered_all <- character(0)
+    for (g in seq_along(groups)) {
+      sub_batch <- taxa_batch[taxa_batch$taxon_name %in% groups[[g]], , drop = FALSE]
+      if (nrow(sub_batch) == 0L) next
 
-    reask_error <- NULL
-    reask_raw <- tryCatch(
-      if (is.null(max_tokens)) {
-        llm_fn(reask_prompt)
-      } else {
-        llm_fn(reask_prompt, max_tokens = max_tokens)
-      },
-      error = function(e) {
-        reask_error <<- conditionMessage(e)
-        NULL
-      }
-    )
-    # A hard llm_fn error (network/auth) will not be fixed by asking again --
-    # stop re-asking and let the residue be reported, exactly as the halving
-    # retry declines to retry a broken call.
-    if (!is.null(reask_error)) {
-      warning(sprintf(
-        "Re-ask for omitted taxa failed for batch %s: %s. Leaving %d unreviewed.",
-        batch_label, reask_error, length(missing)
-      ), call. = FALSE)
-      break
-    }
-
-    reask <- .parse_review_response(
-      reask_raw, sub_batch, target_group, taxon_rank_col, use_candidates
-    )
-    still_missing <- attr(reask, "missing_taxa")
-    recovered <- setdiff(missing, still_missing)
-    if (length(recovered) > 0L) {
-      keep <- reask$taxon_name %in% recovered
-      parsed <- rbind(
-        parsed[!parsed$taxon_name %in% recovered, , drop = FALSE],
-        reask[keep, , drop = FALSE]
+      Sys.sleep(pause_seconds)
+      reask_label <- paste0(batch_label, "r", attempt, if (singletons) paste0("s", g) else "")
+      reask_prompt <- .build_review_prompt(
+        sub_batch, ctx, target_group, marker, data_type, use_candidates
       )
-      if (verbose) {
-        message(sprintf(
-          "    recovered %d of %d on re-ask.", length(recovered), length(missing)
-        ))
+      if (!is.null(prompt_log)) assign(reask_label, reask_prompt, envir = prompt_log)
+
+      reask_error <- NULL
+      reask_raw <- tryCatch(
+        if (is.null(max_tokens)) {
+          llm_fn(reask_prompt)
+        } else {
+          llm_fn(reask_prompt, max_tokens = max_tokens)
+        },
+        error = function(e) {
+          reask_error <<- conditionMessage(e)
+          NULL
+        }
+      )
+      # A hard llm_fn error (network/auth) will not be fixed by asking again --
+      # stop re-asking and let the residue be reported, exactly as the halving
+      # retry declines to retry a broken call.
+      if (!is.null(reask_error)) {
+        warning(sprintf(
+          "Re-ask for omitted taxa failed for batch %s: %s. Leaving %d unreviewed.",
+          batch_label, reask_error, length(setdiff(missing, recovered_all))
+        ), call. = FALSE)
+        hard_stop <- TRUE
+        break
+      }
+
+      reask <- .parse_review_response(
+        reask_raw, sub_batch, target_group, taxon_rank_col, use_candidates
+      )
+      rec <- setdiff(sub_batch$taxon_name, attr(reask, "missing_taxa"))
+      if (length(rec) > 0L) {
+        keep <- reask$taxon_name %in% rec
+        parsed <- rbind(
+          parsed[!parsed$taxon_name %in% rec, , drop = FALSE],
+          reask[keep, , drop = FALSE]
+        )
+        recovered_all <- c(recovered_all, rec)
       }
     }
-    # No progress means asking a third time is unlikely to help either.
+    still_missing <- setdiff(missing, recovered_all)
+    if (verbose && length(recovered_all) > 0L) {
+      message(sprintf(
+        "    recovered %d of %d on re-ask.", length(recovered_all), length(missing)
+      ))
+    }
     if (length(still_missing) == length(missing)) {
-      missing <- still_missing
-      break
+      if (!singletons && length(missing) > 1L) {
+        singletons <- TRUE
+      } else {
+        missing <- still_missing
+        break
+      }
     }
     missing <- still_missing
   }
@@ -2215,6 +2285,26 @@ review_assignments <- function(input_df,
     stringsAsFactors = FALSE
   )
 
+  # An echoed id prefix ("[T3] Cottus") is part of the prompt's own notation,
+  # not a different name: drop it before any matching, silently.
+  result$taxon_name <- sub("^\\s*\\[T[0-9]+\\]\\s*", "", result$taxon_name)
+  # Match by id first (R1). Ids are local to this prompt: T<i> is row i of
+  # taxa_batch. An id overrides the echoed name, which the model may have
+  # reformatted; an unknown or repeated id is ignored and the name decides.
+  if ("id" %in% names(parsed)) {
+    ids <- toupper(trimws(as.character(parsed$id)))
+    idx <- match(ids, paste0("T", seq_along(expected_taxa)))
+    idx[duplicated(idx) & !is.na(idx)] <- NA_integer_
+    ok <- !is.na(idx)
+    result$taxon_name[ok] <- expected_taxa[idx[ok]]
+  }
+  # One set asked, one object back: it is that set's answer, whatever name
+  # the model gave it (the singleton re-ask relies on this).
+  if (length(expected_taxa) == 1L && nrow(result) == 1L &&
+    !result$taxon_name[1L] %in% expected_taxa) {
+    result$taxon_name[1L] <- expected_taxa[1L]
+  }
+
   if (is.null(target_group)) {
     result$scope_plausibility <- NA_character_
   }
@@ -2248,6 +2338,7 @@ review_assignments <- function(input_df,
   # "(rank: ...)" annotation WAS handled, which is exactly why the loss
   # would look like "coarse ranks are excluded on purpose".
   .norm <- function(x) {
+    x <- sub("^\\s*\\[T[0-9]+\\]\\s*", "", x) # an echoed id prefix
     x <- sub("(?i)\\s*\\(\\s*(?:unresolved candidates|rank\\s*:)[^)]*\\)\\s*$",
       "", trimws(x),
       perl = TRUE
@@ -2290,6 +2381,15 @@ review_assignments <- function(input_df,
   }
 
   result <- result[result$taxon_name %in% expected_taxa, , drop = FALSE]
+
+  # A response that answered for NONE of several expected sets is a failed
+  # call, not a complete one with every set omitted (R2): reporting it as
+  # complete skipped the halving retry (GreatLakes batch 4: 10 objects back,
+  # 0 names matched, every re-ask repeating the mismatch).
+  if (length(expected_taxa) > 1L && length(missing_taxa) == length(expected_taxa) &&
+    identical(status, "complete")) {
+    status <- "failed"
+  }
 
   .with_status(result, status, pending, missing_taxa)
 }
