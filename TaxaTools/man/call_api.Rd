@@ -15,7 +15,8 @@ call_api(
   images = NULL,
   show_tokens = FALSE,
   max_input_tokens = NULL,
-  timeout = 120
+  timeout = 120,
+  temperature = NULL
 )
 }
 \arguments{
@@ -88,6 +89,14 @@ large prompts. Default \code{NULL} (no check performed).}
 \code{httr2::req_timeout()}. Default \code{120}. Raise this for a slow
 provider/model (e.g. a large local Ollama model) or a large multi-image
 PDF-vision call that can legitimately take longer than two minutes.}
+
+\item{temperature}{Numeric or \code{NULL}. Sampling temperature, one
+non-negative number. \code{NULL} (default) sends no temperature field, so
+the provider's own default applies, as before this argument existed. A
+low value (e.g. \code{0.2}) makes repeated calls on one prompt agree more
+often, which matters for a judgement that is re-asked or cached; it does
+not make them identical. Providers differ in the range they accept
+(Anthropic 0-1, OpenAI-compatible 0-2).}
 }
 \value{
 A length-1 character string containing the model's response text.

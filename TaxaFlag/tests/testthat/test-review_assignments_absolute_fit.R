@@ -121,7 +121,7 @@ test_that("a batch without a poor-fit note gets no such guideline", {
 })
 
 test_that("verdicts cached under the old prompt version are a miss", {
-  cd <- tempfile("afv4")
+  cd <- tempfile("afv5")
   on.exit(unlink(cd, recursive = TRUE), add = TRUE)
   n <- 0L
   fn <- function(prompt_str, ...) {
@@ -141,7 +141,7 @@ test_that("verdicts cached under the old prompt version are a miss", {
   for (f in list.files(cd, full.names = TRUE)) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v4", "v3", e$key, fixed = TRUE)
+      e$key <- sub("v5", "v4", e$key, fixed = TRUE)
       saveRDS(e, f)
     }
   }

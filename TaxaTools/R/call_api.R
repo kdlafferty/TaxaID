@@ -207,7 +207,8 @@
 #' @noRd
 .build_anthropic_request <- function(endpoint, model, prompt_str,
                                      max_tokens, api_key, prov_reg,
-                                     images = NULL, timeout = 120) {
+                                     images = NULL, timeout = 120,
+                                     temperature = NULL) {
   # Multi-modal: text block + one image block per base64 PNG string.
   # Text-only: content is just the prompt string (saves a JSON nesting level).
   if (!is.null(images) && length(images) > 0L) {
@@ -231,10 +232,14 @@
       "anthropic-version" = prov_reg$api_version_header %||% "2023-06-01",
       "content-type"      = "application/json"
     ) |>
-    httr2::req_body_json(list(
-      model      = model,
-      max_tokens = as.integer(max_tokens),
-      messages   = list(list(role = "user", content = content))
+    httr2::req_body_json(c(
+      list(
+        model      = model,
+        max_tokens = as.integer(max_tokens),
+        messages   = list(list(role = "user", content = content))
+      ),
+      # Sent only when set, so NULL keeps the provider's own default.
+      if (!is.null(temperature)) list(temperature = temperature)
     )) |>
     httr2::req_timeout(timeout) |>
     httr2::req_error(is_error = function(resp) FALSE)
@@ -244,7 +249,8 @@
 #' @noRd
 .build_gemini_request <- function(endpoint, model, prompt_str,
                                   max_tokens, api_key, prov_reg,
-                                  images = NULL, timeout = 120) {
+                                  images = NULL, timeout = 120,
+                                  temperature = NULL) {
   # Multi-modal: text part + one inlineData part per base64 PNG string.
   if (!is.null(images) && length(images) > 0L) {
     parts <- c(
@@ -263,7 +269,10 @@
     httr2::req_headers("Content-Type" = "application/json") |>
     httr2::req_body_json(list(
       contents         = list(list(parts = parts)),
-      generationConfig = list(maxOutputTokens = as.integer(max_tokens))
+      generationConfig = c(
+        list(maxOutputTokens = as.integer(max_tokens)),
+        if (!is.null(temperature)) list(temperature = temperature)
+      )
     )) |>
     httr2::req_timeout(timeout) |>
     httr2::req_error(is_error = function(resp) FALSE)
@@ -273,7 +282,8 @@
 #' @noRd
 .build_openai_compat_request <- function(endpoint, model, prompt_str,
                                          max_tokens, api_key, prov_reg,
-                                         images = NULL, timeout = 120) {
+                                         images = NULL, timeout = 120,
+                                         temperature = NULL) {
   # Body max_tokens field name varies by provider:
   #   - Most providers:  "max_tokens"
   #   - Azure o-series:  "max_completion_tokens" (set in registry)
@@ -300,6 +310,7 @@
     messages = list(list(role = "user", content = content))
   )
   body[[max_tokens_key]] <- as.integer(max_tokens)
+  if (!is.null(temperature)) body$temperature <- temperature
 
   auth_type <- prov_reg$auth_type %||% "bearer"
 
@@ -552,6 +563,13 @@
 #'   \code{httr2::req_timeout()}. Default \code{120}. Raise this for a slow
 #'   provider/model (e.g. a large local Ollama model) or a large multi-image
 #'   PDF-vision call that can legitimately take longer than two minutes.
+#' @param temperature Numeric or \code{NULL}. Sampling temperature, one
+#'   non-negative number. \code{NULL} (default) sends no temperature field, so
+#'   the provider's own default applies, as before this argument existed. A
+#'   low value (e.g. \code{0.2}) makes repeated calls on one prompt agree more
+#'   often, which matters for a judgement that is re-asked or cached; it does
+#'   not make them identical. Providers differ in the range they accept
+#'   (Anthropic 0-1, OpenAI-compatible 0-2).
 #'
 #' @return A length-1 character string containing the model's response text.
 #'   The following attributes are attached:
@@ -644,8 +662,14 @@ call_api <- function(prompt_str,
                      images = NULL,
                      show_tokens = FALSE,
                      max_input_tokens = NULL,
-                     timeout = 120) {
+                     timeout = 120,
+                     temperature = NULL) {
   tier <- match.arg(tier)
+  if (!is.null(temperature) &&
+    (!is.numeric(temperature) || length(temperature) != 1L || !is.finite(temperature) ||
+      temperature < 0)) {
+    stop("call_api: 'temperature' must be NULL or one non-negative number.", call. = FALSE)
+  }
 
   if (!is.character(prompt_str) || length(prompt_str) != 1L) {
     stop("call_api: 'prompt_str' must be a length-1 character string.", call. = FALSE)
@@ -698,13 +722,16 @@ call_api <- function(prompt_str,
   # Build the provider-appropriate HTTP request
   req <- switch(as.character(family),
     anthropic = .build_anthropic_request(
-      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout
+      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout,
+      temperature = temperature
     ),
     gemini = .build_gemini_request(
-      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout
+      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout,
+      temperature = temperature
     ),
     openai_compat = .build_openai_compat_request(
-      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout
+      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout,
+      temperature = temperature
     ),
     stop(sprintf(
       "call_api: unknown handler_family '%s' for provider '%s'. Check inst/model_tiers.json.",

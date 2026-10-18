@@ -129,7 +129,7 @@ A cache gate that tests only 'file.exists()' silently serves stale results. This
 
 Declare inputs whenever a cache derives from a file the caller itself writes -- a checkpoint, a bounding box, an upstream .rds. That is the case this function detects. It does NOT help for a cache whose upstream is a remote service (an NCBI or GBIF query has no local mtime to compare against); that staleness axis is time, and the policy for it is to report the cache's age at load rather than expire it silently.
 
-### call_anthropic_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, api_key = Sys.getenv("ANTHROPIC_API_KEY"))
+### call_anthropic_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, api_key = Sys.getenv("ANTHROPIC_API_KEY"), temperature = NULL)
 
 Call the Anthropic API with a Single Prompt String
 
@@ -142,6 +142,7 @@ Low-level generic function: submits one plain character string to the Anthropic 
 | tier | no | c("mid", "fast", "top") | Character. Capability tier used when model = NULL: "fast" (cheapest), "mid" (balanced, default), or "top" (most capable). Ignored when model is specified. |
 | max_tokens | no | 16000L | Integer. Ceiling on the tokens the model may produce (default 16000). A cap, not an allocation, so a generous value costs nothing extra; it is generous because a reasoning model spends part of the budget thinking before it writes, and a cap sized for the visible answer alone returns a response with no text in it. Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
 | api_key | no | Sys.getenv("ANTHROPIC_API_KEY") | Character. Anthropic API key. Defaults to the ANTHROPIC_API_KEY environment variable. |
+| temperature | no | NULL | Numeric or NULL. Passed to call_api; NULL (default) sends no temperature, keeping the provider default. |
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status.
 
@@ -149,7 +150,7 @@ Low-level generic function: submits one plain character string to the Anthropic 
 
 Use this directly when you have already built your own prompt string (e.g. for geographic screening, PDF extraction, or any ad-hoc task). For habitat assignment with a build_habitat_prompt() (TaxaHabitat) object, use prompt_api instead -- it handles chunking and per-chunk retries automatically.
 
-### call_api(prompt_str, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 16000L, api_key = NULL, base_url = NULL, images = NULL, show_tokens = FALSE, max_input_tokens = NULL, timeout = 120)
+### call_api(prompt_str, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 16000L, api_key = NULL, base_url = NULL, images = NULL, show_tokens = FALSE, max_input_tokens = NULL, timeout = 120, temperature = NULL)
 
 Call Any Configured LLM with a Single Prompt String
 
@@ -168,6 +169,7 @@ Generic provider-neutral function. Resolves the provider, model, API key, and en
 | show_tokens | no | FALSE | Logical. When TRUE, prints a message after each call reporting the provider, model, and token counts (e.g. "Tokens used [anthropic / claude-sonnet-4-6] -- input: 312, output: 87"). Default FALSE to avoid output in non-interactive workflows. Token counts are retrieved from the provider's response body; NA is reported when a provider does not return usage information. |
 | max_input_tokens | no | NULL | Integer or NULL. When non-NULL, estimates the prompt length as ceiling(nchar(prompt_str) / 3.5) (a conservative characters-per-token heuristic) and stops with an informative error before making the HTTP request if the estimate exceeds the limit. Use this as a pre-flight guard against accidentally sending very large prompts. Default NULL (no check performed). |
 | timeout | no | 120 | Numeric. Request timeout in seconds, passed to httr2::req_timeout(). Default 120. Raise this for a slow provider/model (e.g. a large local Ollama model) or a large multi-image PDF-vision call that can legitimately take longer than two minutes. |
+| temperature | no | NULL | Numeric or NULL. Sampling temperature, one non-negative number. NULL (default) sends no temperature field, so the provider's own default applies, as before this argument existed. A low value (e.g. 0.2) makes repeated calls on one prompt agree more often, which matters for a judgement that is re-asked or cached; it does not make them identical. Providers differ in the range they accept (Anthropic 0-1, OpenAI-compatible 0-2). |
 
 **Value:** A length-1 character string containing the model's response text. The following attributes are attached: '"model"' The resolved model identifier. '"provider"' The provider name used. '"tokens"' A named list with elements 'input' and 'output' (integers) giving the token counts reported by the provider. Both are 'NA_integer_' when the provider does not return usage information. Stops on any non-200 HTTP status with a provider-specific error message.
 
