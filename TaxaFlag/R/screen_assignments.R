@@ -200,9 +200,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   bir <- as.character(d[[best_identity_rank_col]])
   good <- !(d[[poor_fit_col]] %in% TRUE)
   geo_plaus <- ifelse(is.na(geo), TRUE, geo %in% c("likely", "possible"))
-  if ("winner_hypothesis_type" %in% names(d)) wht <- as.character(d$winner_hypothesis_type) else {
-    message("screen_assignments(): no winner_hypothesis_type column; unreferenced-species exception skipped.")
-    wht <- rep(NA_character_, n) }
+  wht <- if ("winner_hypothesis_type" %in% names(d)) as.character(d$winner_hypothesis_type) else rep(NA_character_, n)
   obs <- as.character(d$observation_id)
 
   # ---- lineage lookup for move-up targets ---------------------------------
@@ -318,8 +316,6 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     tot <- tapply(nt, tx, function(z) if (anyNA(z)) NA_real_ else sum(z))
     tt <- as.numeric(tot[tx]); tt[is.na(tx)] <- NA_real_
     iso <- ifelse(!(geo %in% "unlikely"), FALSE, ifelse(is.na(tt), NA, tt <= 3))
-  } else {
-    message("screen_assignments(): no n_tubes column; isolated_geography_unlikely is NA.")
   }
 
   d$identity_action <- act
