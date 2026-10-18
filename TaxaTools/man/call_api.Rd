@@ -96,7 +96,10 @@ the provider's own default applies, as before this argument existed. A
 low value (e.g. \code{0.2}) makes repeated calls on one prompt agree more
 often, which matters for a judgement that is re-asked or cached; it does
 not make them identical. Providers differ in the range they accept
-(Anthropic 0-1, OpenAI-compatible 0-2).}
+(Anthropic 0-1, OpenAI-compatible 0-2), and some current models reject
+the parameter outright: the provider then returns HTTP 400 (for example
+"temperature is deprecated for this model") and \code{call_api()} stops
+with that message. Leave it \code{NULL} unless the model accepts it.}
 }
 \value{
 A length-1 character string containing the model's response text.

@@ -157,3 +157,20 @@ test_that("temperature is the last formal, default NULL, of both functions", {
     expect_null(fm$temperature)
   }
 })
+
+
+test_that("a provider's HTTP 400 for a rejected temperature stops with that message", {
+  testthat::local_mocked_bindings(
+    req_perform = function(req, ...) list(),
+    resp_status = function(resp) 400L,
+    resp_body_json = function(resp, ...) {
+      list(error = list(message = "`temperature` is deprecated for this model"))
+    },
+    .package = "httr2"
+  )
+  expect_error(
+    call_api("hello", provider = "anthropic", api_key = "dummy-key",
+      model = "dummy-model", temperature = 0.2),
+    "HTTP 400: `temperature` is deprecated for this model", fixed = TRUE
+  )
+})
