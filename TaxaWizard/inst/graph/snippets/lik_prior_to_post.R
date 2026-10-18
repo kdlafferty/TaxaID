@@ -23,6 +23,15 @@ likelihoods_ready <- TaxaAssign::join_priors(
   backbone_id       = {{backbone_id}}
 )
 
+# compute_posterior() pools named unreferenced rows whose point posterior is
+# below 0.05 into their ring (the coarser relative they descend from) instead
+# of carrying each as a candidate. Its output always has three pooled columns:
+# pooled_n (rows pooled), pooled_prior_mass (their summed prior) and
+# pooled_taxa (their names joined by "; "); they are NA on rows that are not
+# rings. The pooled rows themselves are in attr(posteriors, "pooled_rows")
+# (observation_id, ring_taxon, taxon_name, prior_mean, posterior_point_est).
+# Attributes do NOT survive a dplyr verb: read it before any join or mutate.
 posteriors <- TaxaAssign::compute_posterior(likelihoods_ready, n_sims = 1000L)
+message("Pooled ", nrow(attr(posteriors, "pooled_rows")), " named unreferenced row(s) into rings")
 message("Computed posteriors for ", length(unique(posteriors$observation_id)), " samples")
 posteriors

@@ -155,15 +155,35 @@ if (isTRUE({{include_domestic_priors}})) {
 }
 
 # verify_taxon_names()'s real formals are
-# (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id) --
+# (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id,
+# decisions, cache_dir, cache_ttl_days, input_rank, lineage) --
 # passing the whole `priors` data frame positionally as
 # `name_list` (wrong type: a character vector is expected) and a `taxon_col`
 # argument that does not exist, then discarding `priors` by reassigning it
 # to the verification result, is a real trap. Verify the taxon names
 # informationally without clobbering `priors`.
+#
+# input_rank is the rank the caller means each name at, one per name_list
+# element. A bare name is not a key: "Etheostoma" is a genus and a subgenus,
+# and a class-rank name can match a genus of another kingdom. With the rank
+# given, a name that resolves to several nodes is settled on the node of that
+# rank (NCBI backbone), and a match at another rank is gated on its lineage
+# (Global Names backbone). The rank is read from each name's SHAPE, not from
+# the priors' taxon_name_rank column: that column is stamped "species" on every
+# row above because join_priors() needs a non-NA key, so it is not an
+# observation of rank, and asserting "species" for a genus-rank name would pick
+# a node and weaken the lineage gate. A plausible binomial is read as species;
+# anything else (a single genus name, "sp.", "cf.", an environmental label) as
+# genus. Pass your own ranks when your table records them.
+# lineage (a pipe-delimited string of ancestor names per name, e.g.
+# "Metazoa|Chordata") is the second disambiguator; the priors table carries
+# no lineage column, so it is left NULL here -- pass it when your table has one.
+.prior_names <- priors[!duplicated(priors$taxon_name) & !is.na(priors$taxon_name), , drop = FALSE]
 taxon_verification <- TaxaTools::verify_taxon_names(
-  name_list   = unique(priors$taxon_name),
-  backbone_id = {{target_backbone_id}}
+  name_list   = .prior_names$taxon_name,
+  backbone_id = {{target_backbone_id}},
+  input_rank  = ifelse(TaxaTools::is_plausible_binomial(.prior_names$taxon_name),
+                       "species", "genus")
 )
 message(sprintf(
   "Taxon-name verification: %d of %d unique taxon name(s) did not verify against backbone %s",

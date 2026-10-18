@@ -376,428 +376,305 @@ fed from real, broad BLAST hits instead.
 }
 \section{Why this exists}{
 
-The archived approach's "among"/foreign comparison population for ANY
-accession is exactly and only whatever else got fetched under the
-caller's own \code{taxa} argument -- no broader NCBI comparison exists
-anywhere in that pipeline. This produces both false positives (real,
-correctly-labeled accessions read "incongruent" purely because nothing
-else from their own family happened to be in the caller's list) and false
-negatives (a mislabeled accession's true contaminating identity can only
-ever be caught if its genus happens to be on the caller's list too).
-BLASTing each accession against an unrestricted database removes the
-\code{taxa}-list dependency for both directions at once. The
-real-data evidence is direct (a real 6-genus GreatLakes 12S test flagged 15
-genuine, Smithsonian-vouchered \code{Menidia} accessions "incongruent" purely
-because \code{Menidia}'s family had no other representative on the list).
+A comparison population limited to whatever else was fetched under the
+caller's own \code{taxa} argument produces false positives (correctly-labeled
+accessions read "incongruent" because nothing else from their family
+happened to be in the list) and false negatives (a mislabeled accession's
+true contaminating identity is caught only if its genus is also on the
+list). BLASTing each accession against an unrestricted database removes the
+\code{taxa}-list dependency in both directions.
 }
 
 \section{Scoping a large marker's screen}{
 
 Per-accession remote BLAST does not scale to a large reference set under
-this ecosystem's own NCBI throttle -- confirmed directly: a 995-accession
-PtConception 12S run has already tripped it, and the 18S reference set
-(21,899 accessions) is over 20x that size. Screening every accession in a
-large marker's reference set is NOT the recommended default; it is a
-deliberate, budgeted choice for when you specifically want that coverage
-and can absorb the cost (\code{chunk_size}/\code{max_consecutive_batch_failures}
-exist to make a full run survivable, not to make it free).
+NCBI's throttle. Screening every accession of a large marker's reference set
+is NOT the recommended default; it is a deliberate, budgeted choice for when
+you want that coverage and can absorb the cost (\code{chunk_size} and
+\code{max_consecutive_batch_failures} make a full run survivable, not free).
 
 The recommended default for a large marker scopes the screen to the two
-populations that actually drive real decisions, both already-built tools,
-not something this section is asking you to build:
+populations that drive real decisions, using existing tools:
 \itemize{
 \item \strong{Accessions that actually drive a match.}
 \code{\link[=match_driving_accessions]{match_driving_accessions()}} returns only the accessions that are the
 max-scoring accession of their species for at least one real
-observation -- everything else can never change an assignment
-regardless of what this function would say about it. Real effect:
-709 of 995 on a real PtConception 12S match object.
+observation. Everything else can never change an assignment, whatever
+this function would say about it.
 \item \strong{Accessions the free local check can't already resolve.}
-\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} runs first, for free (no NCBI
-call, reusing the \code{seq_matrix} already built for training) -- pass
-its output as \code{local_corroboration} with \code{skip_locally_corroborated = TRUE} and this function only BLASTs the accessions that check
-couldn't already corroborate from within the reference set itself,
-turning "BLAST the whole training reference set" into "BLAST only
-what's still disputed after the free pass."
+\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} runs first, at no NCBI cost (it reuses
+the \code{seq_matrix} already built for training). Pass its output as
+\code{local_corroboration} with \code{skip_locally_corroborated = TRUE} and this
+function BLASTs only the accessions that check could not corroborate.
 }
-Together these concentrate this screen's real NCBI cost exactly where a
-verdict can change something -- a match-driving accession feeds a real
-assignment; a training accession the free local check couldn't already
-resolve is exactly the population worth spending NCBI budget on -- while
-leaving every other accession in a large reference set unscreened by
-default, not as an oversight but as the documented, correct scope.
+Every other accession is left unscreened by default; that is the documented
+scope, not an oversight.
 }
 
 \section{Why "incongruent" carries a TTL}{
 
-Caching this verdict indefinitely would rest on the reasoning that an
-accession's own sequence and label do not change once deposited. That is
-true and still irrelevant: the verdict is not a property of the
-accession, it is a
-property of what BLAST returns about the accession's NEIGHBOURHOOD, and
-that changes. Measured, not hypothesised: \code{OP056918}
-(\verb{Cryptacanthodes maculatus}) reads \code{"incongruent"} with no corroborating
-evidence anywhere on one real fetch, and \code{"congruent"} with four
-conspecific hits at 100\% identity on a later real fetch the next day,
-under an IDENTICAL \code{params_key}.
-Without a TTL that first, wrong verdict would be served from
-cache forever -- and it is the one verdict
-\code{\link[=remove_incongruent_references]{remove_incongruent_references()}} acts on destructively.
+Caching a verdict indefinitely assumes it depends only on the accession's
+own sequence and label. This one also depends on what BLAST returns about
+the accession's NEIGHBOURHOOD, and that changes: an accession can read
+\code{"incongruent"} with no corroborating evidence and \code{"congruent"} on a later
+fetch, under an IDENTICAL \code{params_key}. BLAST is exactly reproducible at a
+fixed \code{params_key}, so this is not instability. NCBI's \code{nt} is a
+periodically rebuilt SNAPSHOT, not the live nuccore database, and a record
+public in Entrez need not be in the \code{nt} volume BLAST searches until a
+rebuild includes it. Both verdicts were correct for the database each was
+computed against, and the snapshot is what goes stale.
 
-What the flip was, established by
-the \code{blast_verdict_repeatability_probe.R} diagnostic (TaxaID_dev repository): NOT
-instability. Three back-to-back replicates of all 12 PtConception
-\code{"incongruent"} accessions, each into a fresh cache, returned identical
-verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
-14-20 partners each) -- BLAST is exactly reproducible at a fixed
-\code{params_key}. The corroborating records' GenBank create- AND update-dates
-are both months earlier, so they were not newly released either. The
-surviving explanation is that NCBI's \code{nt} is a periodically-rebuilt
-SNAPSHOT rather than the live nuccore database: a record public in Entrez
-since January need not be in the \code{nt} volume BLAST searches until a rebuild
-includes it.
-
-That reframes this TTL. The later verdict was not a correction of a
-malfunction -- both verdicts were correct given the database each was
-computed against. What goes stale is the SNAPSHOT, which is exactly what a
-TTL is for -- and it is also what sets the right cadence for one. \code{nt}
-rebuilds run on the order of days to weeks, so the default is 30 days, not
-the 180 of the "we do not know yet" flags: a TTL much longer than the
-rebuild interval would keep serving a stale \code{"incongruent"} long after the
-evidence that overturns it became searchable, which is the exact failure
-this TTL exists to prevent. The recheck costs ~1\% of an accession
-population.
+Without a TTL, the first (wrong) \code{"incongruent"} verdict would be served
+from cache forever, and it is the one verdict
+\code{\link[=remove_incongruent_references]{remove_incongruent_references()}} acts on destructively. \code{nt} rebuilds run on
+the order of days to weeks, so the default is 30 days, not the 180 of the
+"we do not know yet" flags: a longer TTL would keep serving a stale
+\code{"incongruent"} after the evidence that overturns it became searchable. The
+recheck costs about 1\% of an accession population.
 }
 
 \section{Coarse-rank diagnostic}{
 
 \code{finest_common_rank} walks the FULL \code{kingdom}->\code{species} ladder
 (\code{TaxaTools::standard_ranks}), not just \code{min_congruent_rank} and finer.
-\code{hierarchy_flag}'s classification threshold is unaffected -- it still
-fires at \code{min_congruent_rank} (default \code{"family"}) exactly as before --
-but \code{finest_common_rank} can now report a real coarser match (e.g.
-\code{"order"}) instead of collapsing straight to \code{NA} the moment \code{"family"}
-fails. This distinction is real, not cosmetic: found live-testing against
-a real PtConception 18S accession (\verb{Abylopsis eschscholtzii},
-\code{KY594854}/\code{KX384617}) whose top independent BLAST hits are consistently
-\code{Diphyidae} -- a SISTER family within the same order (Siphonophorae,
-Calycophorae), not an unrelated organism. Both accessions flagged
-\code{"incongruent"} under the family-only version with no way to tell that
-apart from a genuine cross-phylum mismatch; \code{finest_common_rank = "order"}
-now reports that real, more specific picture. The likely underlying
-cause here is 18S's well-documented poor resolving power within
-Calycophorae combined with thin \code{Abylidae} GenBank coverage at this
-locus -- NOT necessarily a mislabel -- and this diagnostic is what makes
-that distinguishable at all from the output alone, without re-BLASTing
-by hand. Query-side taxonomy for every rank is resolved via the internal
-\code{.resolve_taxonomy_by_acc()} (the same NCBI-taxonomy-DB mechanism already
-used to classify BLAST hits), not \code{TaxaTools::fill_higher_ranks()}
-(GNVerifier-backed, and only ever resolved genus/family) -- keeps both
-sides of every comparison authority-consistent.
+\code{hierarchy_flag}'s classification threshold is unaffected: it fires at
+\code{min_congruent_rank} (default \code{"family"}). But \code{finest_common_rank} can
+report a real coarser match (e.g. \code{"order"}) instead of \code{NA} as soon as
+\code{"family"} fails. This separates a SISTER family within the same order from
+an unrelated organism: both read \code{"incongruent"}, but only the second is a
+cross-phylum mismatch. For example, a poorly resolved marker such as 18S
+combined with thin coverage of one family can produce an \code{"incongruent"}
+flag that is not necessarily a mislabel, and this column makes that visible
+without re-BLASTing by hand. Query-side taxonomy for every rank is resolved
+with the internal \code{.resolve_taxonomy_by_acc()} (the NCBI-taxonomy mechanism
+already used to classify BLAST hits), not \code{TaxaTools::fill_higher_ranks()}
+(GNVerifier-backed), so both sides of every comparison use the same
+authority.
 }
 
 \section{Caching}{
 
-Deduplication (\code{unique(accessions)}) happens regardless of caching -- an
-accession is never re-evaluated twice within one call. A persistent,
-cross-run cache underneath (keyed by accession alone, not by
-taxon/genus/project) is what lets a project only pay evaluation cost for
-accessions that are genuinely new or previously out of scope anywhere --
-no \code{taxa} list to decide up front. Staleness is handled asymmetrically,
-per flag, and the asymmetry follows what each verdict actually CLAIMS:
+Accessions are deduplicated (\code{unique(accessions)}) regardless of caching, so
+none is evaluated twice in one call. A persistent cross-run cache, keyed by
+accession alone (not by taxon, genus or project), means a project pays only
+for accessions that are new or previously out of scope. Staleness is handled
+per flag, following what each verdict CLAIMS:
 \itemize{
-\item{\code{"congruent"} -- cached indefinitely. It asserts corroborating
+\item{\code{"congruent"} -- cached indefinitely. It asserts that corroborating
 evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
-match already observed; new deposits can only add more.}
-\item{\code{"incongruent"} -- expires after \code{incongruent_ttl_days}
-(default 30). It
-asserts corroborating evidence was NOT found, which is a statement
-about ABSENCE, and absence is exactly what later evidence overturns.
-See \verb{@section Why "incongruent" carries a TTL} below.}
-\item{\code{"insufficient_independent_evidence"},
-\code{"not_evaluated_oversized"} and
-\code{"not_evaluated_wrong_marker"} -- expire after
-\code{insufficient_evidence_ttl_days} (default 180). All three explicitly
-mean "we do not know yet": new NCBI deposits (for the first), a later
-annotation/primer fix or a raised \code{max_query_len} (for the second), or
-a corrected upstream annotation -- or simply a different
-\code{barcode_term}, since the wrong-marker claim is relative to the marker
-THIS call asked for (for the third).}
-\item{\code{"locally_corroborated"} -- cached indefinitely,
-like \code{"congruent"}: it asserts corroborating evidence WAS found, in
-the caller's own reference set. The one way it is re-evaluated is a
-later call with \code{skip_locally_corroborated = FALSE}, which sends it
-to BLAST after all.}
+match already observed.}
+\item{\code{"incongruent"} -- expires after \code{incongruent_ttl_days} (default
+30). It asserts that corroborating evidence was NOT found, a statement
+about ABSENCE, which later evidence can overturn. See
+\verb{@section Why "incongruent" carries a TTL} below.}
+\item{\code{"insufficient_independent_evidence"}, \code{"not_evaluated_oversized"}
+and \code{"not_evaluated_wrong_marker"} -- expire after
+\code{insufficient_evidence_ttl_days} (default 180). All three mean "we do
+not know yet": new NCBI deposits (first), a later annotation or primer
+fix or a raised \code{max_query_len} (second), or a corrected upstream
+annotation or a different \code{barcode_term}, since the wrong-marker claim
+is relative to the marker THIS call asked for (third).}
+\item{\code{"locally_corroborated"} -- cached indefinitely, like
+\code{"congruent"}: it asserts that corroborating evidence WAS found, in the
+caller's own reference set. It is re-evaluated only by a later call with
+\code{skip_locally_corroborated = FALSE}, which sends it to BLAST.}
 }
-\code{retry_insufficient = FALSE} opts a single call out of retrying ANY
-expired row past its TTL, serving the stale row instead (see that param's
-own documentation).
-Setting \code{incongruent_ttl_days = Inf} caches \code{"incongruent"} indefinitely,
-exactly like \code{"congruent"}. TTLs are deliberately NOT part of \code{params_key}
--- changing one
-must not invalidate a cache. A cached row is also treated as stale (recomputed) if any
-parameter that affects the verdict itself (\code{top_n}, \code{min_congruent_rank},
-\code{submission_window}, \code{hierarchy_incongruent_threshold},
-\code{min_independent_partners}, \code{score_range}, \code{min_score}, \code{max_hits},
-\code{method}, \code{database}, \code{query_span}) differs from the call that produced
-it -- \code{chunk_size}, \code{max_consecutive_batch_failures}, \code{max_query_len},
-\code{max_batch_bp}, \code{prioritize_uncached}, \code{retry_insufficient},
-\code{local_corroboration} and \code{skip_locally_corroborated} are deliberately
-NOT in this list (see \verb{@section Long-sequence robustness} below for
-why). A cached row whose \code{params_key} does not match the current one --
-because it was written under an earlier internal cache version, or under
-different verdict-affecting arguments -- is simply recomputed on the next
-call; there is no separate step to carry it forward.
+\code{retry_insufficient = FALSE} opts a single call out of retrying ANY expired
+row, serving the stale row instead (see that parameter). Setting
+\code{incongruent_ttl_days = Inf} caches \code{"incongruent"} indefinitely, like
+\code{"congruent"}. TTLs are deliberately NOT part of \code{params_key}, so changing
+one does not invalidate a cache.
+
+A cached row is recomputed if any parameter that affects the verdict
+(\code{top_n}, \code{min_congruent_rank}, \code{submission_window},
+\code{hierarchy_incongruent_threshold}, \code{min_independent_partners},
+\code{score_range}, \code{min_score}, \code{max_hits}, \code{method}, \code{database}, \code{query_span})
+differs from the call that produced it. \code{chunk_size},
+\code{max_consecutive_batch_failures}, \code{max_query_len}, \code{max_batch_bp},
+\code{prioritize_uncached}, \code{retry_insufficient}, \code{local_corroboration} and
+\code{skip_locally_corroborated} are deliberately NOT in this list (see
+\verb{@section Long-sequence robustness}). A row whose \code{params_key} does not
+match the current one, whether from an earlier internal cache version or
+different verdict-affecting arguments, is simply recomputed on the next
+call.
 }
 
 \section{Local search speed}{
 
-Against a database the size of \code{core_nt}, a local search spends its time
-per query, not per database scan, and almost all of it extending short
-random seed matches. Measured on real 12S reference queries against two
-\code{core_nt} volumes: one thread took 184 s for 200 queries and 14 threads
-18 s with identical output; \code{word_size = 16} then cut 90 s to 14 s for
-1,000 queries. Against the default word size, 16 returned the same
-best-hit identity for every query and the same best-hit taxon for 99.9\%,
-with differences confined to queries whose best hit was below about 83\%
-identity -- a region where the verdict already rests on distant relatives.
-Changing \code{max_target_seqs} alone moved about 2.5\% of top-5 taxa in the
-same test, so this is inside the noise BLAST's own settings already carry.
-Two faster options were measured and rejected: megablast lost real
-conspecific hits (a 98.7\% match fell to 94.0\%), and a marker-only
-database built by bait search was 290x smaller but only 6x faster and lost
-1.1\% of queries, because the time goes into aligning to real relatives,
-which any correct database must contain.
+Against a database the size of \code{core_nt}, a local search spends its time per
+query, not per database scan, and almost all of it extending short random
+seed matches. Threads therefore help (on 12S queries, 200 queries took 184 s
+on one thread and 18 s on 14 threads with identical output), and
+\code{word_size = 16} cut 90 s to 14 s for 1,000 queries. Compared with the
+default word size, 16 returned the same best-hit identity for every query
+and the same best-hit taxon for 99.9\%, with differences confined to queries
+whose best hit was below about 83\% identity, where the verdict already
+rests on distant relatives. Changing \code{max_target_seqs} alone moved about
+2.5\% of top-5 taxa in the same test, so this is within the noise BLAST's own
+settings carry.
 }
 
 \section{Chunked evaluation and NCBI rate-limiting resilience}{
 
-A large accession list is evaluated \code{chunk_size} accessions at a time,
-with the persistent cache written after EACH chunk rather than once at
-the very end. Combined with \code{blast_sequences()}'s own circuit breaker
-(\code{max_consecutive_batch_failures} -- stops submitting further BLAST
-batches once several in a row have failed, rather than continuing to pay
-up to \code{poll_max_wait} for each of dozens of doomed batches), this means a
-sustained NCBI rate-limiting or CPU-budget-throttling episode is detected
-and this function stops itself early, rather than grinding through the
-full accession list at up to 30 minutes per doomed batch. When this
-happens: every accession successfully evaluated in an EARLIER chunk this
-call is already safely cached (nothing already computed is lost);
-\code{attr(result, "run_summary")$circuit_breaker_tripped} is \code{TRUE}; and an
-actionable \code{message()} reports how many accessions were resolved this
-call (as a percentage), how many are still pending, and recommends a
-pause before calling \code{evaluate_reference_accessions()} again with the
-\emph{same} accessions and \code{cache_dir} -- already-cached accessions are read
-straight from the cache (no re-BLAST), so a resumed call only pays for
-what's still genuinely outstanding. \code{chunk_size} automates what would
-otherwise require manually pre-splitting the accession list into chunks
-of ~200 and calling this function once per chunk, as a large real run
-(e.g. \code{AuditNCBI_Goal2_MatchCandidateScreen.R}, a real external
-GreatLakes workflow) needs.
+A large accession list is evaluated \code{chunk_size} accessions at a time, and
+the persistent cache is written after EACH chunk. Together with
+\code{blast_sequences()}'s circuit breaker (\code{max_consecutive_batch_failures}),
+a sustained NCBI rate-limiting or CPU-budget episode is detected and the
+function stops itself early instead of waiting out up to \code{poll_max_wait}
+for each doomed batch. When that happens, every accession evaluated in an
+earlier chunk is already cached;
+\code{attr(result, "run_summary")$circuit_breaker_tripped} is \code{TRUE}; and a
+\code{message()} reports the percentage resolved this call, the number still
+pending, and a recommended pause. Call the function again with the \emph{same}
+accessions and \code{cache_dir}: cached accessions are read from the cache with
+no re-BLAST, so the resumed call pays only for what is outstanding.
 }
 
 \section{Hybrid-labeled accessions}{
 
-NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
-\code{"Ctenopharyngodon idella x Megalobrama amblycephala"}) is genuinely
-incomplete -- confirmed live against several real GreatLakes candidates:
-the lineage terminates at \code{"unclassified Cyprinoidei"}, with no family,
-genus, or species populated at all. Left as-is, such an accession can
-never agree with any independent hit at family rank or finer (there is
-nothing on the query side to compare), which this function's rank-walk
-mechanically reads as maximal disagreement -- a real, confirmed
-false-positive mode (10 of 13 \code{"incongruent"} flags on a real
-1,183-accession GreatLakes run were this artifact, not genuine
-mislabels; the other 3, with complete normal lineages, were real
-candidates worth reviewing).
+NCBI's taxonomy entry for a hybrid-cross-labeled organism (e.g.
+\code{"Ctenopharyngodon idella x Megalobrama amblycephala"}) can be incomplete:
+the lineage may end at \code{"unclassified Cyprinoidei"} with no family, genus or
+species. Such an accession can never agree with an independent hit at
+family rank or finer, so the rank walk would read maximal disagreement, a
+false \code{"incongruent"} that is an artifact of the lineage, not a mislabel.
 
-Fixed by resolving the accession's maternal parent species' OWN real
-lineage instead, for every rank coarser than species: since mtDNA is
-maternally inherited in fish, a hybrid's barcode sequence genuinely IS
-its maternal parent's lineage at kingdom through genus, even though it
-is (correctly) not literally the same SPECIES as that parent. The
-maternal parent's name is the first-listed parent of the formula (the
-GenBank convention lists the female parent first; not always followed),
-cleaned with \code{TaxaTools::clean_taxon_names()}, then resolved via
-\code{TaxaTools::verify_taxon_names(backbone_id = 4L)} (NCBI, the same
-authority every other taxonomy resolution in this function uses).
-\code{species.x} (the finest rank) is deliberately left as the accession's
-own real listed hybrid label, never replaced by the proxy -- a hybrid
-genuinely is not the same species as its maternal parent, so a spurious
-species-level agreement would be biologically wrong in the opposite
-direction. The proxy requires a maternally inherited marker:
-\code{barcode_term} must name a mitochondrial (12S/MiFish/Teleo, 16S, COI,
-cytb, ND genes, control region) or chloroplast (rbcL, matK, trnL, psbA)
-marker. A nuclear marker (18S, ITS) carries both parents, and with
-\code{barcode_term = NULL} the genome cannot be established; such accessions
-are stamped \code{"hybrid_marker_not_maternal"} and keep their own lineage.
-Detection also requires BOTH \code{listed_taxon} containing a
-standalone \code{" x "} token (the standard nomenclatural hybrid marker) AND
-the accession's own resolved \code{family} being unresolvable -- so an
-ordinary, non-hybrid taxon with a genuinely incomplete NCBI lineage
-(e.g. a real undescribed/unclassified species) is never routed through
-this maternal-parent substitution, which would have no biological
-justification for a non-hybrid. A leading lowercase breeding/ploidy-
-manipulation modifier (e.g. \code{"androgenetic"}, \code{"autodiploid"},
-\code{"autotetraploid"} -- all found on real GreatLakes records)
-is stripped before \code{clean_taxon_names()} runs, since the maternal-
-inheritance argument still holds (these manipulate the nuclear genome,
-not which egg's cytoplasm/mitochondria the offspring develops in). A
-label the hybrid-marker regex catches but still cannot be parsed into a
-usable proxy even after that stripping falls back to the accession's
-own unresolved lineage, \code{taxonomy_resolution_source = "hybrid_unresolved"} -- an honest admission, not a guess.
+To avoid this, every rank coarser than species is taken from the accession's
+maternal parent species instead. mtDNA is maternally inherited, so a
+hybrid's barcode carries its maternal parent's lineage at kingdom through
+genus. The maternal parent is the first-listed parent in the formula (the
+GenBank convention lists the female parent first, though not always),
+cleaned with \code{TaxaTools::clean_taxon_names()} and resolved with
+\code{TaxaTools::verify_taxon_names(backbone_id = 4L)} (NCBI, the authority used
+everywhere else in this function). \code{species.x} is left as the accession's
+own hybrid label, never replaced by the proxy, because a hybrid is not the
+same species as its maternal parent.
+
+The proxy requires a maternally inherited marker: \code{barcode_term} must name a
+mitochondrial (12S/MiFish/Teleo, 16S, COI, cytb, ND genes, control region)
+or chloroplast (rbcL, matK, trnL, psbA) marker. A nuclear marker (18S, ITS)
+carries both parents, and with \code{barcode_term = NULL} the genome cannot be
+established; such accessions are stamped \code{"hybrid_marker_not_maternal"} and
+keep their own lineage. Detection requires BOTH a standalone \code{" x "} token
+in \code{listed_taxon} AND an unresolvable \code{family} for the accession, so a
+non-hybrid taxon with an incomplete NCBI lineage (e.g. an undescribed
+species) is never given a maternal-parent substitution. A leading lowercase
+breeding or ploidy modifier (e.g. \code{"androgenetic"}, \code{"autodiploid"},
+\code{"autotetraploid"}) is stripped before \code{clean_taxon_names()} runs, since it
+changes the nuclear genome, not whose mitochondria the offspring carries. A
+label that still cannot be parsed into a usable proxy keeps the accession's
+own unresolved lineage, with \code{taxonomy_resolution_source = "hybrid_unresolved"}.
 }
 
 \section{Species-resolved comparison partners}{
 
-A comparison partner (an independent BLAST hit) whose OWN listed species
-isn't resolved to species level (e.g. \code{"Serranidae sp. JL-2015"} -- a
-family name used in place of a genus, with an informal specimen code) is
-excluded from \code{n_independent_top_matches}/
-\code{frac_independent_below_min_congruent_rank} entirely, via
-\code{require_species_resolved_partner = TRUE} (default, not currently a
-caller-facing parameter). Found live on the real
-GreatLakes \emph{Stereolepis doederleini} case: both real accessions of this
-genuinely isolated species (Polyprionidae has only 2 genera) read
-\code{"incongruent"} purely because the one real independent hit available in
-all of NCBI to disagree with them was itself a non-species-resolved
-accession -- whether such a partner happens to agree or disagree isn't
-meaningful evidence either way, since its own identity is only fuzzily
-determined. Live-verified before shipping (a direct standalone BLAST re-
-run against the real accession, not assumed): after this exclusion, the
-real vote count for \emph{S. doederleini} drops to 1 (a single genuine
-independent conspecific), correctly producing
-\code{"insufficient_independent_evidence"} instead of \code{"incongruent"} -- the
-honest answer, not an inflated \code{"congruent"} either, since there really
-is only one real corroborating record in NCBI for this species. Reuses
-\code{TaxaTools::is_plausible_binomial()} (the same check
-\code{listed_taxon_is_species} already applies to the QUERY side) applied to
-the HIT side's own resolved species name.
+An independent BLAST hit whose OWN listed species is not resolved to species
+level (e.g. \code{"Serranidae sp. JL-2015"}, a family name used in place of a
+genus with an informal specimen code) is excluded from
+\code{n_independent_top_matches} and \code{frac_independent_below_min_congruent_rank}
+entirely, via \code{require_species_resolved_partner = TRUE} (the default; not a
+caller-facing parameter). Whether such a partner agrees or disagrees is not
+evidence either way, because its own identity is only loosely determined.
+A species whose only independent partner is of this kind therefore reads
+\code{"insufficient_independent_evidence"} rather than \code{"incongruent"}. The check
+is \code{TaxaTools::is_plausible_binomial()}, the same one
+\code{listed_taxon_is_species} applies to the query side.
 }
 
 \section{Identity diagnostics}{
 
-\code{hierarchy_flag}/\code{finest_common_rank} alone cannot distinguish a genuine
-mislabel from "the listed rank has no well-covered independent relative
-in GenBank at this marker" -- both produce identical rank-agreement
-output. Percent identity is the cheapest available discriminator and was
-already being computed (\code{p_match}, used only to ORDER hits) and then
-discarded. A DISAGREEING hit at ~99\% identity is a real mislabel signal
-(the deposited sequence is nearly identical to something in a different
-family); a disagreeing hit at ~85-90\% is unremarkable for a conserved
-marker (e.g. 18S) with poor resolving power at that rank. This does NOT
-resolve the ambiguity on its own -- it is a design-consult finding
-(grounded in a real case: \verb{Abylopsis eschscholtzii},
-\code{KY594854}/\code{KX384617}, both flagged \code{"incongruent"} with disagreeing
-hits at family that are consistently a SISTER family within the same
-order) that these columns give a caller genuinely new information to
-judge that question with, not a verdict. No classification threshold in
-this function reads these columns; they are informational only.
+\code{hierarchy_flag} and \code{finest_common_rank} alone cannot distinguish a genuine
+mislabel from "the listed rank has no well-covered independent relative in
+GenBank at this marker": both give the same rank-agreement output. Percent
+identity helps separate them. A DISAGREEING hit at ~99\% identity is a real
+mislabel signal (the deposited sequence is nearly identical to something in
+a different family); a disagreeing hit at ~85-90\% is unremarkable for a
+conserved marker such as 18S with poor resolving power at that rank. The
+\verb{best_*_pident} columns give a caller that information to judge with; they
+are not a verdict, and no classification threshold in this function reads
+them.
 }
 
 \section{Long-sequence robustness}{
 
-\code{barcode_term}
-trimming already shortens an over-length query when the primer sites can
-be found; four further mechanisms address what happens when they
-CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST
-at full length is dramatically more CPU-expensive than a short amplicon,
-the real, confirmed cause of sustained NCBI server-side CPU-budget
-rejections that stall this function's own progress:
+\code{barcode_term} trimming shortens an over-length query when the primer sites
+can be found. A full mitogenome (or larger) record sent to remote BLAST at
+full length is far more CPU-expensive than a short amplicon and can cause
+sustained NCBI CPU-budget rejections, so five further mechanisms apply when
+the primer sites cannot be found:
 \enumerate{
 \item{Feature-table-guided extraction fallback -- a query still
-over-length after primer trimming is checked against the record's
-OWN annotated GBSeq feature table for a feature matching the marker
+over-length after primer trimming is checked against the record's OWN
+annotated GBSeq feature table for a feature matching the marker
 \code{barcode_term} implies, and that coordinate span (plus margin) is
 extracted instead. See \code{.extract_feature_table_fallback()}
-(\code{R/trim_query_to_amplicon.R}), which reuses
-\code{check_marker_mismatch()}'s own fetch/matching internals
-(\code{R/check_marker_mismatch.R}) rather than duplicating them.}
+(\code{R/trim_query_to_amplicon.R}), which reuses \code{check_marker_mismatch()}'s
+fetch/matching internals (\code{R/check_marker_mismatch.R}).}
 \item{Hard submission cap -- \code{max_query_len}: a query still over-length
-after BOTH rescue strategies is never submitted to BLAST at all. Gets
-a real cached row, \code{hierarchy_flag = "not_evaluated_oversized"},
-every diagnostic column \code{NA} -- an explicit, labeled non-result, not
-a silent drop. TTL-retryable like \code{"insufficient_independent_ evidence"} (see \verb{@section Caching} above), so a later annotation fix,
-primer update, or a raised \code{max_query_len} can rescue it.}
-\item{Wrong marker, separated from wrong size: when the
-feature-table fallback declined because the record HAS annotated
-features and none is this marker, the deferred row reads
-\code{"not_evaluated_wrong_marker"} instead. The distinction is
-actionable, which is the whole point: \code{"oversized"} implies a size
-problem a caller could fix by raising \code{max_query_len}, and for this
-class no length ever helps -- the accession should not be in the
-candidate set. Real case: \code{HM561627} (\emph{Lasiurus intermedius}), 2,657
-bp, whose feature table contains exactly one feature, 16S ribosomal
-RNA at 1061-2657, sitting in a 12S (MiFishU) screen. It was 1 of 1
-oversized accessions on the real 995-accession PtConception run --
-i.e. 100\% of that population was this case, not a length problem.
-Before building more rescue machinery, check what fraction of your own
-oversized rows are really this.}
+after BOTH rescue strategies is never submitted. It gets a cached row,
+\code{hierarchy_flag = "not_evaluated_oversized"}, with every diagnostic
+column \code{NA}: an explicit, labeled non-result, not a silent drop.
+TTL-retryable like \code{"insufficient_independent_evidence"} (see
+\verb{@section Caching}), so a later annotation fix, primer update, or raised
+\code{max_query_len} can rescue it.}
+\item{Wrong marker, separated from wrong size -- when the feature-table
+fallback declined because the record HAS annotated features and none is
+this marker, the deferred row reads \code{"not_evaluated_wrong_marker"}
+instead. \code{"oversized"} implies a size problem that raising
+\code{max_query_len} could fix; for this class no length helps, because the
+accession does not belong in the candidate set. If you see many
+oversized rows, check what fraction are really this case.}
 \item{Length-aware BLAST batching -- \code{max_batch_bp}, forwarded to
-\code{blast_sequences()}: closes a submission batch on a cumulative bp cap
-as well as the existing count cap, and rides one very long query
-alone rather than letting it doom a whole batch of otherwise-cheap
-queries.}
-\item{Retry-priority ordering + a retry switch -- \code{prioritize_uncached}
-(default \code{TRUE}, changes existing default ordering, deliberately
-safe) and \code{retry_insufficient} (default \code{TRUE}; \code{FALSE} makes a call
-purely cache-served, spending zero new NCBI budget on expired
-retries this call).}
+\code{blast_sequences()}: closes a submission batch on a cumulative bp cap as
+well as the count cap, and sends one very long query alone rather than
+letting it doom a batch of otherwise-cheap queries.}
+\item{Retry-priority ordering and a retry switch -- \code{prioritize_uncached}
+(default \code{TRUE}) and \code{retry_insufficient} (default \code{TRUE}; \code{FALSE} makes
+a call purely cache-served, spending no new NCBI budget on expired
+retries).}
 }
-\code{max_query_len}, \code{max_batch_bp}, \code{prioritize_uncached}, and
-\code{retry_insufficient} are all additive and deliberately excluded from
-\code{params_key} -- like \code{chunk_size}/\code{max_consecutive_batch_failures}
-before them, they govern call MECHANICS/scheduling policy (how/whether
-work is submitted this call), not what verdict a given accession's
-evidence would produce, so changing them between calls never invalidates
-an already-\code{"congruent"}/\code{"incongruent"}-cached row. \verb{.EVAL_REF_ACC_ VERSION} is unaffected by these -- only \code{query_span} (see below) changes
-it.
+\code{max_query_len}, \code{max_batch_bp}, \code{prioritize_uncached} and
+\code{retry_insufficient} are deliberately excluded from \code{params_key}, like
+\code{chunk_size} and \code{max_consecutive_batch_failures}: they govern how and
+whether work is submitted this call, not what verdict an accession's
+evidence produces, so changing them never invalidates a cached
+\code{"congruent"} or \code{"incongruent"} row. Only \code{query_span} (see below) does.
 }
 
 \section{Why the query is the primer-stripped amplicon}{
 
-The screen runs \code{blastn} (\code{megablast = FALSE}, +2 match / -3 mismatch).
-With the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect
-conspecific amplicon-only deposit scores 338 raw, while every full-length
-relative at >= 93.1\% identity over the whole 217 bp scores >= 359 -- so
-NCBI's \code{HITLIST_SIZE = 100} list fills with mitogenome relatives and the
-short perfect conspecific never arrives. Behind that,
-\code{\link[=blast_sequences]{blast_sequences()}}'s default \code{min_query_coverage = 80} would have
-dropped it anyway (169/217 = 77.9\%). Found on the real PtConception
-screen: \code{KM057996} (\emph{Zaniolepis frenata}) was actioned \code{"remove"} ("no
-conspecific evidence anywhere in nt") while the user's own reference set
-held \code{OQ846041}, a 169 bp \emph{Z. frenata} deposit from 2023 at 100\% identity
-over 97\% overlap. A live probe (the \code{blast_coverage_blindspot_probe.R} diagnostic, TaxaID_dev
-repository) confirmed the mechanism: the 217 bp query returns no
-conspecific but itself among 100 hits; the same query with the primers
-stripped (169 bp) returns \code{OQ846041} at rank 2, score 100, coverage 100.
-Amplicon-only deposits are 33\% of PtConception's references and 25\% of
-GreatLakes', so the whole class was invisible as corroborators. With the
-stripped query both barriers vanish and \code{min_query_coverage} needs no
-change. Because this changes what is submitted, it is verdict-affecting:
-\code{query_span} is in \code{params_key}, so a cached row written under an earlier
-\code{query_span} (or any other verdict-affecting argument) simply re-BLASTs
-under the new query on the next call.
+The screen runs \code{blastn} (\code{megablast = FALSE}, +2 match / -3 mismatch). With
+the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect conspecific
+amplicon-only deposit scores 338 raw, while every full-length relative at
+93.1\% identity or more over the whole 217 bp scores 359 or more. NCBI's
+\code{HITLIST_SIZE = 100} list then fills with mitogenome relatives and the short
+perfect conspecific never arrives. Separately, \code{blast_sequences()}'s default
+\code{min_query_coverage = 80} would drop it anyway (169/217 = 77.9\%). The
+consequence is a false \code{"remove"} ("no conspecific evidence anywhere in
+nt") for an accession that has a 100\% identity conspecific amplicon-only
+deposit. With the primers stripped (169 bp) both barriers vanish and
+\code{min_query_coverage} needs no change. Because this changes what is
+submitted, it is verdict-affecting: \code{query_span} is in \code{params_key}, so a
+cached row written under a different \code{query_span} (or any other
+verdict-affecting argument) is re-BLASTed on the next call.
 }
 
 \section{Local corroboration}{
 
 If an ASV matches several references of the same species that agree with
-each other, why BLAST any of them? \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}
-answers that from the workflow's own \code{seq_matrix}, for free: a reference
-whose best INDEPENDENT (different submission batch, the screen's own
-rule) conspecific matches at >= \code{min_pident} over >= \code{min_overlap} of
-the amplicon is \code{"corroborated"}. Passed here as \code{local_corroboration},
-such accessions are skipped rather than BLASTed (about 40\% of the
-PtConception population, 15\% of GreatLakes), cached as
-\code{"locally_corroborated"} with TTL \code{Inf}. \code{\link[=score_reference_labels]{score_reference_labels()}} uses
-the same table for provenance (\code{corroboration_source}) and to VETO a
-BLAST \code{"remove"} down to \code{"inspect"} when the local set corroborates the
-label -- the disagreement between the two is what exposed the blind spot
-above. The overlap filter is not optional: \code{KM057967} (\emph{Jordania zonope})
-looked corroborated by \code{LC126244} at "100\%" over a 5.6\% overlap (~40 bp
-of a different 12S region); it is a true singleton and its removal
-stands.
+each other, there is no need to BLAST any of them.
+\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} answers that from the workflow's own
+\code{seq_matrix} for free: a reference whose best INDEPENDENT conspecific
+(different submission batch, the screen's own rule) matches at
+\code{min_pident} or more over \code{min_overlap} or more of the amplicon is
+\code{"corroborated"}.
+Passed here as \code{local_corroboration}, such accessions are skipped rather than
+BLASTed and cached as \code{"locally_corroborated"} with TTL \code{Inf}.
+\code{\link[=score_reference_labels]{score_reference_labels()}} uses the same table for provenance
+(\code{corroboration_source}) and to VETO a BLAST \code{"remove"} down to \code{"inspect"}
+when the local set corroborates the label. The overlap filter is not
+optional: a "100\%" match over a few percent of the amplicon (e.g. ~40 bp of
+a different 12S region) is not corroboration.
 }
 
 \examples{

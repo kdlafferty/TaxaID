@@ -28,9 +28,8 @@ whose rejected congeners are returned in exactly this shape via
 \code{attr(result, "regional_unreferenced")}.}
 }
 \value{
-\code{likelihood_df} with generic \code{"unreferenced_species"} and
-\code{"unreferenced_genus"} rows replaced by named species rows where matches
-are found.  Column set is unchanged; new rows carry \code{NA} for most extra
+\code{likelihood_df} with named species rows added under each genus
+ring where matches are found; generic rows are kept.  Column set is unchanged; new rows carry \code{NA} for most extra
 columns in the input (e.g. \code{constraint_applied}, which is genuinely
 row-specific), except \code{score_likelihood_cov}, \code{score_likelihood_evidence},
 and \code{h2_delta_source} when present -- these, like \code{score_likelihood}/
@@ -59,21 +58,26 @@ unreferenced species next to those generic rows, enabling
 priors from TaxaExpect.
 \subsection{Expansion rules (applied per \code{observation_id})}{
 
+\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} builds one \code{"unreferenced_species"} (H2) row per
+genus and one \code{"unreferenced_genus"} (H3) row per family among the
+observation's candidates. A species is named only from its own genus's
+ring (the last item concerns the generic rows):
 \enumerate{
-\item The \code{"unreferenced_species"} (H2) row carries a genus label.
-Species-level suppression: an unreferenced species in the H2 genus is
-suppressed only if that exact species is already a \code{specific_candidate}
-for this observation.  Other unreferenced congeners (e.g. F. parvipinnis
-when F. lima is H1) are expanded normally and receive the H2
-\code{score_likelihood} / \code{score_likelihood_mean} / \code{score_likelihood_sd}.
+\item A genus with a candidate in the observation has its own genus
+ring, and its unreferenced species take that ring (each genus ring is
+copied onto the species of its own genus only). Species-level
+suppression: an unreferenced species is suppressed only if that exact
+species is already a \code{specific_candidate} for this observation.
 Exception: when an H1 \code{specific_candidate} row is genus-rank
 (\code{taxon_name_rank == "genus"}), the entire genus is suppressed -- the
 genus is already represented with its own calibrated score.
-\item The \code{"unreferenced_genus"} (H3) row carries a family label.
-Unreferenced species whose family matches that label, whose genus
-differs from the H2 genus, \emph{and} that are not already a
-species-level H1 \code{specific_candidate} (or whose genus is covered by a
-genus-rank H1), receive the H3 likelihood values.
+\item A species whose genus has no ring in the observation is never
+named. A family ring means "some unreferenced genus of this family",
+and its local species can number in the dozens, so naming one of them
+would be the prior's choice rather than the read's. Such species are
+listed as withheld (see below): a referenced genus whose references
+did not match the read, or a genus with no reference for the marker.
+The generic family row still stands for them.
 \item The generic H2 and H3 rows are kept alongside the named rows.
 The named rows cover unreferenced species recorded locally; the generic
 row stands for species of that genus or family that are neither
@@ -95,7 +99,7 @@ matches (cross-species matches within the same genus in the reference
 database).  The H3 likelihood is modelled from sister-genus matches.
 These are not borrowed from H1 rows -- they reflect the expected score
 distribution for an unreferenced congener or confamilial, respectively.
-All named species produced by expansion share the same H2 (or H3) likelihood;
+All named species expanded from one ring share that ring's H2 (or H3) likelihood;
 TaxaExpect priors differentiate among them geographically.
 }
 
@@ -128,6 +132,18 @@ For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
 \code{result}/\code{unreferenced_species_result} are derived), see
 \code{inst/review_function_inputs.R} Section 7 in the package source.
 }
+\section{Withheld rows}{
+
+No species is named from a FAMILY ring. Every species a family ring would
+otherwise have named is listed in \code{attr(result, "unreferenced_withheld")}
+(\code{observation_id}, \code{taxon_name}, \code{genus}, \code{family}, \code{reason}) and counted
+in a message. \code{reason} is \code{"genus_referenced_unmatched"} when the genus
+has references for this marker (a \code{specific_candidate} row anywhere in
+\code{likelihood_df}) that did not match the read, and \code{"no_own_genus_ring"}
+when the genus has none. The data frame is present, possibly empty, on
+every return.
+}
+
 \examples{
 \dontrun{
 expanded <- expand_unreferenced_hypotheses(

@@ -88,6 +88,87 @@ test_that("every named argument in the template is a real formal", {
                             paste(unique(stale), collapse = "; ")))
 })
 
+# Collect every call to `Pkg::fn` (fn in `fns`) in a parsed file, by AST walk.
+.template_calls <- function(f, pkg, fns) {
+  exprs <- parse(f, keep.source = FALSE)
+  found <- list()
+  walk <- function(x) {
+    if (is.call(x)) {
+      h <- x[[1]]
+      if (is.call(h) && identical(h[[1]], as.name("::")) &&
+          identical(as.character(h[[2]]), pkg) && as.character(h[[3]]) %in% fns) {
+        found[[length(found) + 1L]] <<- x
+      }
+      rest <- as.list(x)[-1]
+      for (i in seq_along(rest)) {
+        if (!identical(rest[[i]], quote(expr = ))) walk(rest[[i]])
+      }
+    }
+  }
+  for (e in exprs) walk(e)
+  found
+}
+
+test_that("every taxonomy lookup in the template passes input_rank", {
+  # A bare name is not a key: without the name's own rank, a coarse-rank name
+  # resolves to whichever homonym the backbone returns first (a class-rank
+  # name to a flagellate genus). A renamed or unknown argument is caught by the
+  # formals test above; an argument the template simply omits is caught here.
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+
+  calls <- .template_calls(f, "TaxaTools", c("verify_taxon_names", "fill_higher_ranks"))
+  expect_gt(length(calls), 0L)  # sanity: the walk found the calls it guards
+  missing <- vapply(calls, function(cl) {
+    !"input_rank" %in% names(as.list(cl))
+  }, logical(1))
+  expect_false(any(missing),
+               info = paste(sum(missing), "taxonomy lookup call(s) without input_rank"))
+  # The retired fill_higher_ranks(ranks =) spelling is fill_ranks now.
+  old <- vapply(calls, function(cl) "ranks" %in% names(as.list(cl)), logical(1))
+  expect_false(any(old), info = "fill_higher_ranks() argument was renamed fill_ranks")
+})
+
+test_that("input_rank is never read from the stamped taxon_name_rank column", {
+  # The priors' taxon_name_rank is stamped "species" on every row so that
+  # join_priors() has a non-NA key; it is not an observation of rank. Fed to
+  # input_rank it would assert species for a genus-rank name, which selects a
+  # homonym node without consulting decisions and weakens the lineage gate.
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+
+  calls <- .template_calls(f, "TaxaTools", c("verify_taxon_names", "fill_higher_ranks"))
+  reads_stamp <- vapply(calls, function(cl) {
+    arg <- as.list(cl)[["input_rank"]]
+    !is.null(arg) && "taxon_name_rank" %in% all.names(arg)
+  }, logical(1))
+  expect_false(any(reads_stamp),
+               info = paste(sum(reads_stamp), "lookup call(s) take input_rank from taxon_name_rank"))
+})
+
+test_that("every posterior_consensus() call in the template names its consensus_method", {
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+
+  calls <- .template_calls(f, "TaxaAssign", "posterior_consensus")
+  expect_gt(length(calls), 0L)
+  has <- vapply(calls, function(cl) "consensus_method" %in% names(as.list(cl)), logical(1))
+  expect_true(all(has),
+              info = paste(sum(!has), "posterior_consensus() call(s) rely on the default method"))
+})
+
+test_that("every review_assignments() call in the template passes the fit columns", {
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+
+  calls <- .template_calls(f, "TaxaFlag", "review_assignments")
+  expect_gt(length(calls), 0L)
+  has <- vapply(calls, function(cl) {
+    all(c("poor_absolute_fit_col", "best_identity_col") %in% names(as.list(cl)))
+  }, logical(1))
+  expect_true(all(has))
+})
+
 test_that("the committed template is what the generator currently produces", {
   # The strongest guard: a snippet change that never reached the template fails
   # here rather than silently making the template wrong. This is what neither

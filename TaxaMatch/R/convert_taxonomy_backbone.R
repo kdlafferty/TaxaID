@@ -26,81 +26,61 @@
 #' was drawn from (`"backbone_N"` for found rows, source label for not-found rows).
 #'
 #' @section Rank correction on fallback:
-#' When a row's own `taxon_name_rank` has no matching target-backbone value
-#' at that same rank (e.g. a row claims `"species"` but the target only
-#' resolved this name to genus), `match_df[[taxon_col]]` falls back to the
-#' coarser resolved name -- and `taxon_name_rank` is now corrected to match
-#' it, using `verify_fn`'s `matched_rank` column when present (silently
-#' skipped when `verify_fn`'s return value lacks that column, e.g. a
-#' custom function injected for offline testing). Real motivating case: an
-#' informally-named NCBI reference
-#' ("Inu sp. 1 sensu Shibukawa et al., 2020.") resolves against GBIF to the
-#' genus `Luciogobius` (a synonym relationship -- GBIF's own backbone
-#' considers `"Inu"` Snyder 1909 a synonym of `Luciogobius` Gill 1859; NCBI's
-#' own taxonomy does not) with no species-level entry to fill. Demoting
-#' `taxon_name` to the genus without also correcting `taxon_name_rank` to
-#' match would leave a downstream slash-name builder treating the bare genus
-#' as if it were a complete binomial, manufacturing a fabricated
-#' pseudo-binomial (`"Inu Inu"`) from it. This is backbone-general, not
-#' GBIF-specific -- see
-#' `TaxaTools::verify_taxon_names()`'s own `@section Synonym resolution and
-#' rank correctness`.
+#' When a row's own `taxon_name_rank` has no matching target-backbone value at
+#' that rank (e.g. a row claims `"species"` but the target only resolved the
+#' name to genus), `match_df[[taxon_col]]` falls back to the coarser resolved
+#' name and `taxon_name_rank` is corrected to match, using `verify_fn`'s
+#' `matched_rank` column when present (silently skipped when `verify_fn`'s
+#' return value lacks that column, e.g. a custom function injected for offline
+#' testing). For example, an informally-named NCBI reference ("Inu sp. 1 sensu
+#' Shibukawa et al., 2020.") resolves against GBIF to the genus `Luciogobius`
+#' (GBIF treats `"Inu"` as a synonym; NCBI does not) with no species-level entry
+#' to fill. Demoting `taxon_name` without correcting `taxon_name_rank` would
+#' leave a downstream slash-name builder treating the bare genus as a complete
+#' binomial and manufacturing a pseudo-binomial (`"Inu Inu"`). This is
+#' backbone-general, not GBIF-specific; see `TaxaTools::verify_taxon_names()`'s
+#' `@section Synonym resolution and rank correctness`.
 #'
-#' **Finer rank columns are also cleared on the same rows** (e.g. `species`
-#' set to `NA` when the row is demoted to genus), not just
-#' `taxon_name`/`taxon_name_rank`. Found necessary by testing against a real
-#' production workflow, not by inspection alone: the per-column fallback
-#' (documented above) deliberately keeps each rank column's own cleaned
-#' original value when the target backbone has no replacement for it --
-#' correct for a column that genuinely didn't change, but it left a stale,
-#' semantically-invalid value (`species = "Inu"`) in place even after
-#' `taxon_name`/`taxon_name_rank` were correctly demoted. Any code that
-#' re-derives a name from rank columns after calling this function (e.g. a
-#' second `TaxaTools::create_taxon_names()` call, a real step some
-#' production workflows already run "to re-derive taxon_name after backbone
-#' conversion") would otherwise see `species` still populated, apply
-#' "most specific non-NA rank wins", and silently undo the correction.
+#' **Finer rank columns are also cleared on the same rows** (e.g. `species` set
+#' to `NA` when the row is demoted to genus), not just
+#' `taxon_name`/`taxon_name_rank`. The per-column fallback (above) keeps each
+#' rank column's own cleaned original value when the target has no replacement,
+#' which would otherwise leave a stale value (`species = "Inu"`) after
+#' `taxon_name`/`taxon_name_rank` were demoted. Code that re-derives a name from
+#' rank columns afterwards (e.g. a second `TaxaTools::create_taxon_names()`
+#' call) would see `species` still populated, apply "most specific non-NA rank
+#' wins", and silently undo the correction.
 #'
 #' @section Rank correction on a genus-collapsing name, any source:
-#' The `matched_rank`-driven correction above only fires when the target
-#' backbone's own reported rank disagrees with the row's claimed rank. A
-#' second, independent mechanism corrects `taxon_name_rank` whenever the
-#' value that actually ended up in `taxon_name` was produced by
-#' [TaxaTools::clean_taxon_names()] COLLAPSING a real second token to
-#' genus-only -- regardless of which of the three possible sources produced
-#' it (a not-found row's fallback cleaning; a found row's `matched_name_clean`
-#' fallback when its own rank had no target value; or a found row's own
-#' `target_<rank>` value at its claimed rank). This closes two real,
-#' independently-discovered cases from GreatLakes2023 production data:
-#' (1) an open-nomenclature, specimen-voucher-tagged reference label (e.g.
+#' The `matched_rank`-driven correction above fires only when the target
+#' backbone's reported rank disagrees with the row's claimed rank. A second,
+#' independent mechanism corrects `taxon_name_rank` whenever the value that
+#' ended up in `taxon_name` was produced by [TaxaTools::clean_taxon_names()]
+#' COLLAPSING a real second token to genus-only, whichever of three sources
+#' produced it: a not-found row's fallback cleaning; a found row's
+#' `matched_name_clean` fallback when its own rank had no target value; or a
+#' found row's own `target_<rank>` value at its claimed rank. It covers two
+#' cases: (1) an open-nomenclature, specimen-voucher-tagged label (e.g.
 #' `"Ictalurus cf. pricei USON-01120-1"`) that never resolves in the target
-#' backbone at all (`found_mask = FALSE`); and (2) NCBI's own taxonomy DB
-#' genuinely contains leaf-level nodes
-#' for informally-named specimens (e.g. a real node literally named
-#' `"Ictalurus sp. UM 105-1789"`, ranked `"species"` by NCBI itself) -- here
-#' `found_mask = TRUE` and `matched_rank` genuinely IS `"species"`
-#' (backbone-consistent, so the `matched_rank`-driven correction correctly
-#' does nothing), but the classification path's own species-rank VALUE is
-#' that same informal label, which collapses to genus-only when cleaned.
-#' No rank-MISMATCH-based correction can ever catch case (2) -- the
-#' backbone's own rank claim is genuinely self-consistent; only the collapse
-#' signal itself reveals the problem. Without this correction,
-#' `taxon_name_rank` would stay stale at whatever rank the row claimed before
-#' conversion, mislabeling a bare genus as if it were still species-level.
+#' backbone (`found_mask = FALSE`); and (2) an NCBI taxonomy node for an
+#' informally named specimen (e.g. `"Ictalurus sp. UM 105-1789"`, ranked
+#' `"species"` by NCBI), where `found_mask = TRUE` and `matched_rank` is
+#' genuinely `"species"` (so the `matched_rank`-driven correction correctly does
+#' nothing) but the species-rank value is the informal label, which collapses to
+#' genus-only when cleaned. No rank-mismatch correction can catch case (2); only
+#' the collapse signal reveals it. Without this correction, `taxon_name_rank`
+#' would stay at whatever rank the row claimed before conversion, labeling a
+#' bare genus as species-level.
 #'
-#' Deliberately tracks the actual collapse event through the pipeline (via
-#' `collapsed_to_genus`) rather than re-deriving the signal from the final
-#' value's shape (e.g. via [TaxaTools::is_plausible_binomial()]) -- that
-#' function's binomial regex requires a literal space immediately after the
-#' genus token, which a real hyphenated genus (e.g. *Pseudo-nitzschia*,
-#' already a real fixture elsewhere in this ecosystem's own test suite)
-#' fails, which would have wrongly demoted every hyphenated-genus species
-#' row. Requires `"genus"` to be present in `rank_system`; a no-op
-#' otherwise. A no-op when the input lacks the `collapsed_to_genus`
-#' attribute (e.g. from a `clean_taxon_names()`-alike that does not set it).
-#' Rank columns finer than
-#' the demoted rank are cleared, same as the `matched_rank`-driven
-#' correction above.
+#' The correction tracks the actual collapse event (via `collapsed_to_genus`)
+#' rather than re-deriving it from the final value's shape (e.g. via
+#' [TaxaTools::is_plausible_binomial()]), whose binomial regex requires a
+#' literal space after the genus token and would wrongly demote every
+#' hyphenated-genus species row (e.g. *Pseudo-nitzschia*). It requires
+#' `"genus"` to be present in `rank_system`, and is a no-op otherwise or when
+#' the input lacks the `collapsed_to_genus` attribute (e.g. from a
+#' `clean_taxon_names()`-alike that does not set it). Rank columns finer than
+#' the demoted rank are cleared, as in the `matched_rank`-driven correction.
 #'
 #' An R attribute `backbone_cols` is set on the returned data frame recording
 #' which rank columns were subject to backbone conversion. A summary message
@@ -192,16 +172,15 @@
 #' `taxon_col` before calling.
 #'
 #' @section Not-found rows are cleaned too:
-#' When a taxon is not found in the target backbone, its original rank
-#' columns and `taxon_col` value are still run through
-#' [TaxaTools::clean_taxon_names()] before being used as the output value --
-#' without this, an exotic
-#' name that failed to resolve (e.g. a compound hybrid-formula name straight
-#' from a raw reference-database accession label,
+#' When a taxon is not found in the target backbone, its original rank columns
+#' and `taxon_col` value are still run through [TaxaTools::clean_taxon_names()]
+#' before being used as the output value. Without this, an exotic name that
+#' failed to resolve (e.g. a compound hybrid-formula name from a raw
+#' reference-database label,
 #' `"((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"`)
-#' would pass through completely unmodified. This does NOT change which names are
-#' sent to `verify_fn` or which rows count as "found" -- only the fallback
-#' value's formatting.
+#' would pass through unmodified. This does NOT change which names are sent to
+#' `verify_fn` or which rows count as "found", only the fallback value's
+#' formatting.
 #'
 #' @seealso [TaxaTools::verify_taxon_names()], [TaxaTools::clean_taxon_names()]
 #'
@@ -288,8 +267,28 @@ convert_taxonomy_backbone <- function(
   # ---------------------------------------------------------------------------
   # Query target backbone (single batched API call on unique names)
   # ---------------------------------------------------------------------------
+  # The rank of each name is known (taxon_name_rank), so pass it as `input_rank=`
+  # to let verify_fn resolve an NCBI homonym by rank. Only when verify_fn
+  # declares the argument (it is user-injectable; mocks may not).
+  .fn_takes_input_rank <- "input_rank" %in% names(formals(verify_fn))
+  .first_rank <- function(nm, key) {
+    if (!"taxon_name_rank" %in% names(match_df)) {
+      return(rep(NA_character_, length(nm)))
+    }
+    r <- as.character(match_df[["taxon_name_rank"]])
+    vapply(nm, function(n) {
+      v <- r[!is.na(key) & key == n & !is.na(r)]
+      if (length(v)) v[[1L]] else NA_character_
+    }, character(1), USE.NAMES = FALSE)
+  }
+  unique_ranks <- .first_rank(unique_names, match_df[[taxon_col]])
   verified <- tryCatch(
-    verify_fn(unique_names, backbone_id = target_backbone_id),
+    if (.fn_takes_input_rank) {
+      verify_fn(unique_names, backbone_id = target_backbone_id,
+                input_rank = unique_ranks)
+    } else {
+      verify_fn(unique_names, backbone_id = target_backbone_id)
+    },
     error = function(e) {
       stop(
         "convert_taxonomy_backbone: verify_fn call failed -- check network ",
@@ -462,7 +461,15 @@ convert_taxonomy_backbone <- function(
   .second <- setdiff(unique(.clean_changed), unique_names)
   .second <- .second[!is.na(.second) & nzchar(.second)]
   if (length(.second) > 0L) {
-    v2 <- tryCatch(verify_fn(.second, backbone_id = target_backbone_id),
+    v2 <- tryCatch(
+      if (.fn_takes_input_rank) {
+        # rank of the rows whose cleaned name is this name (fallback path);
+        # NA for names that arose only from matched_name_clean
+        verify_fn(.second, backbone_id = target_backbone_id,
+                  input_rank = .first_rank(.second, taxon_col_clean_fallback))
+      } else {
+        verify_fn(.second, backbone_id = target_backbone_id)
+      },
       error = function(e) NULL
     )
     if (!is.null(v2) && is.data.frame(v2) && nrow(v2) > 0L &&

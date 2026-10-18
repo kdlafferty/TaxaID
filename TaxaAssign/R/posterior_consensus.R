@@ -280,6 +280,13 @@
 #'   `min_posterior = 0`. `FALSE` disables both checks, so the reference alone
 #'   decides.
 #'
+#'   Independently of this argument, a call whose winning hypothesis (its
+#'   highest-posterior row, `winner_hypothesis_type`) is unreferenced is never
+#'   downranked to a species: the read fitted an unreferenced relative better
+#'   than any referenced candidate, so naming a referenced species would
+#'   contradict it. A coarser narrowing (family to genus) is still taken. The
+#'   blocked steps are counted in a message.
+#'
 #'   Why membership alone is not enough: `plausible_taxa` is PADDED whenever
 #'   `tail_pooled` is `TRUE`, because the tail block then joins the plausible
 #'   set -- so a hypothesis far below `min_posterior` becomes a member and
@@ -355,31 +362,25 @@
 #' hypothesis still cannot coarsen a call on its own, but a flat tail holding
 #' most of the mass is no longer renormalised away. This changes the meaning of
 #' the threshold (a call at 0.6 with 0.4 below the floor no longer resolves
-#' alone), so re-check a validation set before adopting it. Measured on
-#' CalIntertidal: species calls 544 to 475 on one subset, including 52 calls
-#' with posterior 0.5--0.9. \code{cumulative_threshold = 0.9} is analogous to a
+#' alone), so re-check a validation set before adopting it.
+#' \code{cumulative_threshold = 0.9} is analogous to a
 #' 90% credible interval; increase toward 0.95--0.99 for more conservative
 #' assignments (more upranking to genus/family); decrease to 0.8 for more
 #' aggressive species-level calls.
 #'
-#' \strong{Parameter sensitivity:} a grid sweep against a real posterior
-#' dataset (see the \code{posterior_threshold_sweep.R} diagnostic, TaxaID_dev
-#' repository) found the two
-#' defaults are not equally load-bearing: \code{min_posterior} has a real,
-#' roughly linear effect on how often the pipeline resolves to the finest
-#' rank, while \code{cumulative_threshold} does comparatively little
-#' independent work once a reasonable \code{min_posterior} floor is already
-#' in place. The two interact sharply only in the unrealistic combination of
-#' \code{min_posterior = 0} with a very high \code{cumulative_threshold}.
-#' This sweep measures resolution \emph{rate}, not \emph{accuracy} -- no
-#' ground-truth-validated observation set was available, so a higher
-#' resolved-% is not itself evidence those calls are correct.
+#' \strong{Parameter sensitivity:} the two defaults are not equally
+#' load-bearing. \code{min_posterior} has a real, roughly linear effect on how
+#' often the pipeline resolves to the finest rank, while
+#' \code{cumulative_threshold} does comparatively little independent work once
+#' a reasonable \code{min_posterior} floor is in place. The two interact
+#' sharply only in the unrealistic combination of \code{min_posterior = 0}
+#' with a very high \code{cumulative_threshold}. This describes resolution
+#' \emph{rate}, not \emph{accuracy}: a higher resolved-% is not itself
+#' evidence those calls are correct.
 #'
 #' \strong{LCA method:}
 #' Lowest Common Ancestor is the standard conservative consensus method in
-#' molecular systematics (Huson et al., 2007, MEGAN). The implementation
-#' walks from finest to coarsest rank and stops at the first rank where all
-#' plausible hypotheses agree.
+#' molecular systematics (Huson et al., 2007, MEGAN).
 #'
 #' \strong{Why a sole perfect-identity candidate can still be wrong:} H2/H3
 #' (`unreferenced_species`/`unreferenced_genus`) hypotheses exist for every
@@ -406,10 +407,7 @@
 #' sharpest -- the same sequence can be called at species at one site and at
 #' genus at another. That is not a defect: a per-site prior carries
 #' information a pooled one does not, and the rank it supports legitimately
-#' differs between sites. It is the common case, not an edge one. Measured on
-#' one multi-marker study, of 233 sequences with any species-level site only
-#' 18 were species at ALL of their sites; 215 were species at some and coarser
-#' at the rest, at a median of half.
+#' differs between sites. It is the common case, not an edge one.
 #'
 #' So a per-site call must not be read as a statement about the sequence.
 #' Three different questions have three different answers, and a species list
@@ -419,10 +417,9 @@
 #'     at `likelihood_consensus_rank`, the prior-independent call;
 #'   \item what a SITE resolves -- `consensus_taxon` at `consensus_rank` on
 #'     that site's row, which is what this function returns;
-#'   \item what holds across a sequence's sites -- the coarsest label
-#'     consistent with every site's call. This is not computed here, because
-#'     it depends on which sites a reader is pooling; it is the coarsest rank
-#'     at which every one of a sequence's per-site calls agrees.
+#'   \item what holds across a sequence's sites -- the coarsest rank at which
+#'     every one of its per-site calls agrees. This is not computed here,
+#'     because it depends on which sites a reader is pooling.
 #' }
 #' Quoting a per-site species call as the sequence's identification counts the
 #' site's prior as if it were sequence evidence, and summing species across
@@ -439,9 +436,9 @@
 #' compared with a baseline in which the named candidates' priors are
 #' flattened (each gets their mean) while generic unsequenced-relative rows
 #' keep their own priors. `likelihood_support` is the share of that baseline
-#' in the reported taxon: 0.84 means the sequence nearly makes the call
-#' itself and the prior nudged it over `cumulative_threshold`; 0.10 means
-#' the prior chose it. `prior_role` records the direction (`"agrees"`,
+#' in the reported taxon: how close the sequence alone comes to the call (high
+#' means the prior only nudged it over `cumulative_threshold`; low means the
+#' prior chose it). `prior_role` records the direction (`"agrees"`,
 #' `"narrowed"`, `"broadened"`, `"changed"`). Neither changes the call: in a
 #' clade with one local species the prior legitimately concentrates the
 #' posterior on it, which is correct inference, so sequence support is
@@ -450,9 +447,8 @@
 #' A support above 0.5 means the reported taxon is more probable on the
 #' sequence evidence than every alternative combined (named priors
 #' flattened); unnamed and generic mass that no named taxon contains counts
-#' against every taxon. The gap between the posterior (which clears
-#' `cumulative_threshold`) and `likelihood_support` is the part of the call
-#' that rests on the prior.
+#' against every taxon. The gap between the posterior and `likelihood_support`
+#' is the part of the call that rests on the prior.
 #'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
@@ -673,6 +669,18 @@
 #'       column is absent from `posterior_df` (e.g. any upstream call
 #'       predating these columns) or when `consensus_taxon` is `NA`. Purely
 #'       informational -- never changes `consensus_taxon`/`consensus_rank`.}
+#'     \item{`best_identity`, `best_identity_rank`,
+#'       `poor_absolute_fit`}{Numeric (percent), character, logical. The
+#'       unit-level absolute-fit flag from
+#'       `TaxaLikely::evaluate_likelihoods()` (see its `@section Absolute
+#'       fit`), read from the unit's rows: the best raw match identity among
+#'       its specific candidates, the finest rank whose marker-specific
+#'       identity threshold it reaches, and whether it reaches none
+#'       (`TRUE`). Needed because likelihoods are normalised to the unit
+#'       maximum, so a poor best match can still be called confidently. `NA`
+#'       when the columns are absent from `posterior_df` or the unit has no
+#'       specific candidate. A flag only; never changes `consensus_taxon`/
+#'       `consensus_rank`.}
 #'     \item{`consensus_confusion_risk`}{Numeric. The same confusion-risk
 #'       quantity, but rank-matched to `consensus_rank` rather than to
 #'       `primary_taxon`'s own rank (which is what
@@ -917,6 +925,16 @@ posterior_consensus <- function(posterior_df,
     min_posterior < 0 || min_posterior >= 1) {
     cli::cli_abort("{.arg min_posterior} must be a single number in [0, 1).")
   }
+  pooled_floor <- attr(posterior_df, "pooled_min_posterior", exact = TRUE)
+  pooled_rows <- attr(posterior_df, "pooled_rows", exact = TRUE)
+  if (is.numeric(pooled_floor) && length(pooled_floor) == 1L && min_posterior < pooled_floor &&
+    (!is.data.frame(pooled_rows) || nrow(pooled_rows) > 0L)) {
+    cli::cli_warn(
+      "{.arg min_posterior} ({min_posterior}) is below the pooling threshold \
+      ({pooled_floor}) of {.fn compute_posterior}: pooled rows below that \
+      threshold are not individually represented in {.arg posterior_df}."
+    )
+  }
   if (!is.null(species_reference) &&
     !is.data.frame(species_reference) &&
     !inherits(species_reference, "unreferenced_species_result")) {
@@ -1020,11 +1038,11 @@ posterior_consensus <- function(posterior_df,
               if (!is.null(taxonomy_cache_dir)) args$cache_dir <- taxonomy_cache_dir
               # The rank each hypothesis means its name at resolves an NCBI
               # homonym (Etheostoma: genus vs subgenus) without a decision
-              # the workflow has no way to pass; only when the installed
-              # TaxaTools takes it, for the same reason as cache_dir above.
-              if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names)) &&
-                "taxon_name_rank" %in% names(posterior_df)) {
-                args$ranks <- as.character(posterior_df$taxon_name_rank)[match(unref_names, posterior_df$taxon_name)]
+              # the workflow has no way to pass. Passed outright: the packages
+              # install as a version-locked set, and a rename must fail here
+              # loudly rather than silently drop the rank.
+              if ("taxon_name_rank" %in% names(posterior_df)) {
+                args$input_rank <- as.character(posterior_df$taxon_name_rank)[match(unref_names, posterior_df$taxon_name)]
               }
               do.call(TaxaTools::verify_taxon_names, args)
             },
@@ -1147,11 +1165,23 @@ posterior_consensus <- function(posterior_df,
       .pre_taxon <- result$consensus_taxon
       .pre_rank <- result$consensus_rank
       .pre_resolved <- result$is_resolved
+      # Ring guard. When the call's WINNER -- its highest-posterior hypothesis --
+      # is an unreferenced row, the read fitted "an unreferenced relative"
+      # better than any referenced candidate, so narrowing the call to a
+      # referenced species contradicts it (CalIntertidal: genus Cottus, won by
+      # its ring at 0.85, downranked to the referenced Cottus asper). Keyed on
+      # the winner, not on the row named like the call: a genus node always
+      # shares its name with its genus ring, though a referenced species may
+      # hold most of its mass (GreatLakes: Percina, won by the referenced and
+      # Lamar-corroborated P. maculata at 0.71, ring 0.24).
+      .wt <- if ("winner_hypothesis_type" %in% names(result)) as.character(result$winner_hypothesis_type) else rep(NA_character_, nrow(result))
+      result$.ring_call <- !is.na(.wt) & startsWith(ifelse(is.na(.wt), "", .wt), "unreferenced_")
       result <- .downrank_consensus(
         result, species_ref, rank_system_eff,
         require_candidate = downrank_requires_candidate,
         min_posterior = min_posterior
       )
+      result$.ring_call <- NULL
       # Cross-phylum, second half: a call that sat AT phylum with a runner-up
       # phylum over cross_phylum_eps was flagged, not withheld, because the
       # amendment lets a phylum call stand. If downranking has now moved it
@@ -1264,7 +1294,7 @@ posterior_consensus <- function(posterior_df,
   }
   args <- list(phyla, backbone_id = backbone_id)
   if (!is.null(taxonomy_cache_dir)) args$cache_dir <- taxonomy_cache_dir
-  if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names))) args$ranks <- rep("phylum", length(phyla))
+  args$input_rank <- rep("phylum", length(phyla))
   v <- tryCatch(
     suppressWarnings(suppressMessages(do.call(TaxaTools::verify_taxon_names, args))),
     error = function(e) NULL
@@ -1761,6 +1791,17 @@ posterior_consensus <- function(posterior_df,
   if (col %in% names(row)) row[[col]][[1L]] else default
 }
 
+#' First non-NA value of a unit-level column across the unit's rows
+#' @noRd
+.unit_col_or <- function(chunk, col, default = NA_real_) {
+  if (!col %in% names(chunk)) {
+    return(default)
+  }
+  v <- chunk[[col]]
+  v <- v[!is.na(v)]
+  if (length(v) == 0L) default else v[[1L]]
+}
+
 #' Compute consensus for one observation
 #' @noRd
 .consensus_one_observation <- function(chunk, sid, rank_system,
@@ -1914,6 +1955,15 @@ posterior_consensus <- function(posterior_df,
   winner_genus_confusion_risk <- .row_col_or(winner_row, "genus_confusion_risk")
   winner_family_confusion_risk <- .row_col_or(winner_row, "family_confusion_risk")
   winner_own_rank_confusion_risk <- .row_col_or(winner_row, "own_rank_confusion_risk")
+
+  # Absolute-fit pass-through (TaxaLikely::evaluate_likelihoods()'s
+  # best_identity/best_identity_rank/poor_absolute_fit): unit-level values
+  # repeated on every row of the unit, so read from the unit's rows rather than
+  # the winner row (an expanded or ring winner may not carry them). NA when
+  # absent. A flag only; never changes consensus_taxon/consensus_rank.
+  best_identity <- .unit_col_or(chunk, "best_identity", NA_real_)
+  best_identity_rank <- as.character(.unit_col_or(chunk, "best_identity_rank", NA_character_))
+  poor_absolute_fit <- as.logical(.unit_col_or(chunk, "poor_absolute_fit", NA))
 
   # winner_rank_expanded: TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
@@ -2230,6 +2280,9 @@ posterior_consensus <- function(posterior_df,
     winner_genus_confusion_risk = winner_genus_confusion_risk,
     winner_family_confusion_risk = winner_family_confusion_risk,
     winner_own_rank_confusion_risk = winner_own_rank_confusion_risk,
+    best_identity = best_identity,
+    best_identity_rank = best_identity_rank,
+    poor_absolute_fit = poor_absolute_fit,
     consensus_confusion_risk = consensus_confusion_risk,
     primary_n_plausible_competitors = primary_n_plausible_competitors,
     consensus_n_plausible_competitors = consensus_n_plausible_competitors,
@@ -2417,6 +2470,9 @@ posterior_consensus <- function(posterior_df,
     winner_genus_confusion_risk = NA_real_,
     winner_family_confusion_risk = NA_real_,
     winner_own_rank_confusion_risk = NA_real_,
+    best_identity = NA_real_,
+    best_identity_rank = NA_character_,
+    poor_absolute_fit = NA,
     consensus_confusion_risk = NA_real_,
     primary_n_plausible_competitors = NA_integer_,
     consensus_n_plausible_competitors = NA_integer_,
@@ -2579,6 +2635,7 @@ posterior_consensus <- function(posterior_df,
     !is.na(min_posterior) && min_posterior > 0
   n_blocked <- 0L
   n_blocked_support <- 0L
+  n_blocked_ring <- 0L
 
   consensus_df$downranked <- FALSE
 
@@ -2689,6 +2746,12 @@ posterior_consensus <- function(posterior_df,
         }
       }
 
+      # Never onto a species when the call's winner is unreferenced (see the ring guard in
+      # posterior_consensus()); a coarser narrowing, family -> genus, stays.
+      if (identical(finer_rank, finest_rank) && isTRUE(consensus_df$.ring_call[i])) {
+        n_blocked_ring <- n_blocked_ring + 1L
+        break
+      }
       cur_rank <- finer_rank
       cur_taxon <- finer_vals[[1L]]
       changed <- TRUE
@@ -2707,6 +2770,13 @@ posterior_consensus <- function(posterior_df,
       "posterior_consensus: {n_blocked} downranking step(s) blocked because the ",
       "reference's only finer taxon was not among the observation's own ",
       "candidates (see {.arg downrank_requires_candidate})."
+    ))
+  }
+  if (n_blocked_ring > 0L) {
+    cli::cli_inform(paste0(
+      "posterior_consensus: {n_blocked_ring} downranking step(s) to a species ",
+      "blocked because the call's winning hypothesis is an unreferenced row: the ",
+      "read fitted an unreferenced relative better than any referenced candidate."
     ))
   }
   if (n_blocked_support > 0L) {

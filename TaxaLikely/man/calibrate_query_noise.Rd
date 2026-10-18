@@ -153,92 +153,70 @@ correction measures that extra scatter on the confident observations
 (variance of their residuals, 5 percent trimmed each side, over the trained
 variance) and widens the spread by it; it never narrows. The variance is
 used because identity scores on a short amplicon take few distinct values,
-on which a median absolute deviation can collapse to zero; an earlier
-MAD-based version narrowed the spread that way and zeroed correct
-candidates. With fewer than \code{min_sigma_obs} confident observations the
-scatter cannot be measured, and the spread is held at the conservative
-floor of 1.0 transform unit^2.
+on which a median absolute deviation can collapse to zero and narrow the
+spread. With fewer than \code{min_sigma_obs} confident observations the scatter
+cannot be measured, and the spread is held at the conservative floor of
+1.0 transform unit^2.
 }
 
 \section{Level-aware recalibration (\code{offset_form = "linear"})}{
 
 The default \code{"constant"} form is correct only if the train-vs-inference
 scale gap is a pure location shift -- the same additive offset for every
-species, regardless of identity level. That assumption is exactly what a
-single additive offset \emph{cannot} check, and on real externally-scored 12S
-data it does not hold: the per-species H1 means estimated from
-\code{build_sequence_matrix()}'s DECIPHER reference-vs-reference MSA do not
-transfer to the external scoring scale at all. Regressing each confident
-species' required offset on its trained mean gives a slope near \code{-1} (i.e.,
-real correct-species query scores collapse toward one identity level
-regardless of what the reference MSA says that species' self-similarity is),
-and a single pooled inference-scale mean predicts real confident queries
-\emph{better} than "per-species trained mean + one offset" in cross-validation.
-\code{offset_form = "linear"} addresses this by remapping every H1 mean through a
-robustly-fit line \code{intercept + slope * trained_mean} (fit on per-species
+species, regardless of identity level. A single additive offset cannot
+check that assumption, and it can fail: when scores come from a different
+instrument or pipeline than the reference-vs-reference alignment, the
+per-species H1 means estimated from \code{build_sequence_matrix()} may not
+transfer to the inference scale at all. Regressing each confident species'
+required offset on its trained mean then gives a slope near \code{-1} (real
+correct-species query scores collapse toward one identity level regardless
+of the reference alignment's self-similarity), and a single pooled
+inference-scale mean predicts confident queries better than "per-species
+trained mean + one offset".
+
+\code{offset_form = "linear"} addresses this by remapping every H1 mean through
+a robustly-fit line \code{intercept + slope * trained_mean} (fit on per-species
 medians, weighted by observation count) instead of adding one constant. It
 is a strict generalization: \verb{slope = 1, intercept = offset} reproduces the
 constant form exactly, so it degrades to "constant offset" when the
-per-species structure \emph{does} transfer (\code{slope -> 1}) and to "one pooled
-inference location for all species" when it does not (\code{slope -> 0}, the real
-12S case). The slope is NOT constrained to [0, 1]. A negative slope means
-the observed query score falls as the trained mean rises, so the remap
-reverses the order of the species' expected scores; a slope above 1 stretches
-it. On real COI data (California intertidal, two sequencing platforms fitted
-separately) the fitted slope was negative on both platforms (-11 to -67,
-depending on the confident set). Held-out tests supported it: holding out
-whole families, the unconstrained line predicted the observed scores of unseen
-species better than a single pooled location (weighted RMSE 0.18 vs 0.20 and
-0.13 vs 0.16), and controlling for each species' number of reference
-sequences left the slope almost unchanged. The cause is not established. On
-18S the fitted slope was positive and did no better than the pooled location.
-Inspect \verb{$Query_Calibration$slope} rather than assuming it lies in [0, 1]. Only the H1 mean \emph{location} is remapped; the H2/H3
+per-species structure does transfer (\code{slope -> 1}) and to "one pooled
+inference location for all species" when it does not (\code{slope -> 0}). The
+slope is NOT constrained to [0, 1]: a negative slope means the observed
+query score falls as the trained mean rises, so the remap reverses the
+order of the species' expected scores; a slope above 1 stretches it.
+Inspect \verb{$Query_Calibration$slope} rather than assuming it lies in
+[0, 1]. Only the H1 mean \emph{location} is remapped; the H2/H3
 congener-divergence deltas (defined relative to the H1 mean) and the gap
 feature -- the structure that actually discriminates between candidate
-species -- are untouched.
+species -- are untouched. \code{"linear"} requires at least \code{min_calib_species}
+confident species spanning a range of trained means; it falls back to
+\code{"constant"} with a warning otherwise.
 
-One caveat bears on choosing between the two forms. The confident set is
-selection-biased toward abundant, well-sampled, easy genera, and by construction has exactly one plausible species per genus
--- so it can measure absolute H1 \emph{location} fit but cannot directly test
-congener \emph{discrimination}. A \code{"linear"} fit whose slope collapses to 0 removes
-per-species location structure that is demonstrably not real on the inference
-scale, but that this validation set cannot independently confirm is safe to
-remove in hard congener-vs-congener cases.
+Two caveats bear on choosing between the forms. First, the confident set is
+selection-biased toward abundant, well-sampled, easy genera and has, by
+construction, exactly one plausible species per genus, so it can measure
+absolute H1 \emph{location} fit but cannot directly test congener
+\emph{discrimination}: a \code{"linear"} fit whose slope collapses to 0 removes
+per-species location structure that is not real on the inference scale,
+but this validation set cannot confirm that removal is safe in hard
+congener-vs-congener cases. Second, the confident set is built by
+thresholding \code{theta_mean}, a SHARE of a pool denominator that includes
+coarse-rank records (rows naming no species), so every species' value is
+diluted and the set contains observations that are not truly confident.
+The set therefore cannot adjudicate between the two forms. \code{"constant"} is
+the default because it is the SIMPLEST correction to state and applies one
+method to every marker -- a stated default, not a measured winner.
+\code{"linear"} is available when a marker's own evidence supports a slope.
 
-A SECOND caveat is sharper, and it governs how the default should be read.
-The confident set is built by thresholding \code{theta_mean}, and \code{theta_mean} is
-a SHARE of a pool denominator that includes coarse-rank records -- rows that
-name no species at all -- so every species' value is diluted by them. An
-independent review measured 72 percent of 18S rows and 60 percent of COI
-rows in that set as not confident, which moves the fitted COI constant
-offset from -0.069 to -0.221. So the set cannot adjudicate between the two
-forms, and the held-out ratios quoted in this section inherit the same
-problem. \code{"constant"} is therefore the default because it is the SIMPLEST
-correction to state and applies one method to every marker -- a stated
-default, not a measured winner. Choosing between the forms on evidence has
-to wait for a confident set built on an undiluted denominator.
-\code{"linear"} is available when a marker's own evidence
-supports a slope; it reduces to \code{"constant"} automatically wherever the
-per-species means transfer exactly (slope 1). \code{"linear"} requires at least
-\code{min_calib_species} confident species spanning a range of trained means; it
-falls back to \code{"constant"} with a warning otherwise.
-
-The collapse is not specific to the 12S external-pipeline data it was found
-on: across five real datasets (one external-pipeline 12S run and BLAST-scored
-12S, 16S, and COI datasets) the fitted slope stayed far from 1 (roughly
-\code{-0.28} to \code{0.02}), and cross-validation on the confident set found the
-per-species trained means added no inference-scale predictive value over a
-single pooled location -- so the reference-derived per-species locations do
-not survive a change of scoring instrument (BLAST or an unknown external
-tool alike). This is a post-hoc calibration against an independent,
-non-circular anchor set, analogous in spirit to Platt scaling for classifier
-outputs (Platt 1999) but linear-in-the-location rather than logistic, and it
-addresses a train-vs-inference \emph{dataset shift} (Quinonero-Candela et al.
-2009) that arises because percent identity is an operationally-defined
-quantity whose value for a fixed pair of sequences depends on the alignment
-method and denominator (May 2004; Raghava & Barton 2006). See
-\code{inst/TaxaLikely_supplemental_methods.md} Section 11A for the full derivation,
-the empirical result, and references.
+The linear form is a post-hoc calibration against an independent,
+non-circular anchor set, analogous in spirit to Platt scaling for
+classifier outputs (Platt 1999) but linear-in-the-location rather than
+logistic, and it addresses a train-vs-inference \emph{dataset shift}
+(Quinonero-Candela et al. 2009) that arises because percent identity is an
+operationally-defined quantity whose value for a fixed pair of sequences
+depends on the alignment method and denominator (May 2004; Raghava &
+Barton 2006). See \code{inst/TaxaLikely_supplemental_methods.md} Section 11A for
+the derivation, the empirical result, and references.
 }
 
 \section{Scope}{
@@ -247,101 +225,82 @@ This estimates one offset for the \emph{whole model} (i.e., one marker/dataset),
 not a per-species correction -- there usually isn't enough confident-genus
 coverage to support anything finer, and the confident set can never contain
 cross-species information anyway. Do not reuse an offset estimated on one
-marker (or one primer set) for another: the size of this gap has been found
-to vary by roughly an order of magnitude between markers of different
-length and quality (a 12S/18S comparison validated this design) and does
-not transfer as
-either a fixed percentage or a fixed mismatch count. The same applies
-across \code{score_transform} values: the offset is estimated on
-whichever scale \code{model_params$Score_Transform} says the model was trained
-on (read automatically), but a \code{"logit"}-scale offset and a
-\code{"sqrt_mismatch"}-scale offset are different numbers in different units --
-never reuse one for the other, and always recompute after retraining with
-a different \code{score_transform}.
+marker (or one primer set) for another: the size of this gap varies by
+roughly an order of magnitude between markers of different length and
+quality and does not transfer as either a fixed percentage or a fixed
+mismatch count. The same applies across \code{score_transform} values: the
+offset is estimated on whichever scale \code{model_params$Score_Transform} says
+the model was trained on (read automatically), but a \code{"logit"}-scale offset
+and a \code{"sqrt_mismatch"}-scale offset are different numbers in different
+units -- never reuse one for the other, and always recompute after
+retraining with a different \code{score_transform}.
 }
 
 \section{Bimodality diagnostic}{
 
 \code{train_likelihood_model()} fits ONE Gaussian per species for H1, and this
-function's own \code{offset_form = "linear"} fits a single line across species
--- both assume the underlying H1 score distribution is unimodal. Mixing
+function's \code{offset_form = "linear"} fits a single line across species --
+both assume the underlying H1 score distribution is unimodal. Mixing
 sequencing platforms (or markers, or primer sets) inside one calibration
-run breaks that assumption silently: a real Nanopore top-hit distribution
-had a 20.3\% spike at exactly 100 and a tail reaching
-94.1 at the 10th percentile, while Illumina data for the same marker was
-tight and unimodal. Fitting one Gaussian (or one line) across a mix like
-that lands the mean between the two modes, where almost nothing actually
-is.
+run breaks that assumption silently (e.g. a Nanopore top-hit distribution
+with a spike at exactly 100 and a long lower tail, against tight, unimodal
+Illumina data for the same marker), and fitting one Gaussian or one line
+across such a mix lands the mean between the two modes, where almost
+nothing actually is.
 
-This function now runs an internal two-component-normal-mixture-vs-BIC
+This function therefore runs an internal two-component-normal-mixture-vs-BIC
 check (see \code{.bimodality_check()}) on the SAME confident-observation score
 vector (\code{p_norm * 100}, i.e. raw percent identity, computed before the
 \code{score_transform} step) that the calibration itself fits. The check flags
 bimodality only when a 2-component fit beats a 1-component fit by
-\code{delta_bic > 10} (Kass & Raftery 1995's "very strong" evidence band -- see
-\code{.bimodality_check()}'s own docs for the verified citation) AND the two
-fitted component means are separated by more than 1 percentage point (or
-further, on discrete data -- see the next section) AND the fitted mixture
-has a genuine density dip between the two means AND the smaller component
-holds real mass -- all four guard against a false positive from ordinary,
-ceiling-skewed-but-genuinely-unimodal H1 data (the reason a simpler
-bimodality-coefficient test was explicitly rejected for this diagnostic:
-H1 scores pile up near 100\% identity by construction, and a
-skewness/kurtosis-based test would flag that shape on its own).
+\code{delta_bic > 10} (Kass & Raftery 1995's "very strong" evidence band; see
+\code{.bimodality_check()} for the citation) AND the two fitted component means
+are separated by more than 1 percentage point (or further, on discrete
+data -- see the next section) AND the fitted mixture has a genuine density
+dip between the two means AND the smaller component holds real mass. All
+four guard against a false positive from ordinary, ceiling-skewed but
+unimodal H1 data; a simpler skewness/kurtosis-based bimodality-coefficient
+test would flag that shape on its own, because H1 scores pile up near 100\%
+identity by construction.
 }
 
 \section{Percent identity is discrete, not continuous}{
 
-A second, structurally different false positive was found on a real
-PtConception 12S production run: this function warned "H1
-scores look bimodal: 4\% near 95.4 (sd 3.0) and 96\% near 98.8 (sd 0.4),
-delta BIC 8297" on data that is genuinely unimodal. The cause is that
-percent identity on a short, fixed-length amplicon is DISCRETE -- a
-~167bp amplicon can only take values spaced by roughly one mismatch's
-worth of identity (measured \code{0.6} apart on that run: the three most
-common of 219 distinct raw match-object values were 98.8/99.4/98.2,
-exactly \code{0.6} apart, i.e. one mismatch). Real match-score data therefore
-forms a "comb" of spikes at each mismatch count, not a continuum, and a
-comb has LITERAL zero density in the gaps between teeth -- not a real
-valley between two populations, just quantization. A two-component
-Gaussian mixture always beats one component on comb-like data (hence a
-\code{delta_bic} in the thousands), and the pre-existing valley guard, built
-to reject a smoothly ceiling-skewed unimodal shape, PASSES on a comb
-precisely because a real (if spurious) dip genuinely sits between the
-teeth there.
+Percent identity on a short, fixed-length amplicon is DISCRETE: a ~167bp
+amplicon can only take values spaced by roughly one mismatch's worth of
+identity (about \code{0.6}). Real match-score data therefore forms a "comb" of
+spikes at each mismatch count, not a continuum, and a comb has LITERAL zero
+density in the gaps between teeth -- quantization, not a valley between two
+populations. A two-component Gaussian mixture always beats one component on
+comb-like data (a \code{delta_bic} in the thousands), and the density-dip guard
+passes on a comb because a dip genuinely sits between the teeth.
 
-\code{.bimodality_check()} now (1) estimates the identity-per-mismatch
-quantum directly from the data (\code{NA} when the data don't look
-comb-shaped at all -- most continuous data, including a genuine
-Nanopore-vs-Illumina platform mixture, estimates no quantum and is
-checked exactly as before); (2) when a quantum is found, deterministically
-smooths the comb before fitting (spreading each tied group of
-observations evenly across its own quantum-wide cell -- a dependency-free
-continuity correction, closing the literal zero-density gaps between
-teeth without disturbing a real multi-quantum gap between two genuinely
-separate populations); (3) requires the minority component to hold real
-mass (\verb{>= 15\%}) before calling it a mode -- a thin tail is not a second
-population, and this alone rejects the false positive
-above (its minority component held only 4\%); and (4) requires the two
-fitted means to be separated by more than a few QUANTA, not just the
-flat \code{1.0} percentage point, since \code{1.0} is under two mismatches on a
-167bp amplicon. See \code{.estimate_score_quantum()}, \code{.smooth_comb()}, and
-\code{.bimodality_check()}'s own docs for the full mechanism and the exact
-thresholds, each justified against this run's own real numbers.
+\code{.bimodality_check()} therefore (1) estimates the identity-per-mismatch
+quantum directly from the data (\code{NA} when the data don't look comb-shaped
+at all; most continuous data, including a genuine platform mixture,
+estimates no quantum and is checked without smoothing); (2) when a quantum
+is found, deterministically smooths the comb before fitting (spreading
+each tied group of observations evenly across its own quantum-wide cell, a
+dependency-free continuity correction that closes the zero-density gaps
+without disturbing a real multi-quantum gap between two separate
+populations); (3) requires the minority component to hold real mass
+(\verb{>= 15\%}) before calling it a mode, since a thin tail is not a second
+population; and (4) requires the two fitted means to be separated by more
+than a few QUANTA, not just the flat \code{1.0} percentage point, which is under
+two mismatches on a 167bp amplicon. See \code{.estimate_score_quantum()},
+\code{.smooth_comb()}, and \code{.bimodality_check()} for the mechanism and exact
+thresholds.
 
 When the check fires, this function emits exactly ONE \code{warning()} naming
 the fitted structure in plain numbers (component weights, means, sds, and
 \code{delta_bic}) and pointing at the remedy -- calibrating mixed platforms or
 markers separately, which this function does NOT do for you. \strong{This is a
 diagnostic only}: it never changes any fitted value (the offset,
-\code{offset_form}, slope/intercept, or sigma ratio are computed exactly as
-they always were) and calibration is never refused -- a caller who ignores
-the warning still silently gets the same, now-suspect single offset back.
-\code{train_likelihood_model()} runs the identical check on its own H1 training
-scores and RECORDS the result in \code{Stats$h1_bimodality} (no warning there --
-this function is where the warning belongs, since it is the one place
-\emph{inference}-time calibration is actually about to apply a single, possibly
-wrong, offset/line).
+\code{offset_form}, slope/intercept, or sigma ratio) and calibration is never
+refused. \code{train_likelihood_model()} runs the identical check on its own H1
+training scores and RECORDS the result in \code{Stats$h1_bimodality} without
+warning; the warning belongs here, where a single, possibly wrong,
+offset/line is actually applied to inference-time scores.
 }
 
 \examples{

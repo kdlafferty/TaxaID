@@ -72,41 +72,34 @@ one data source has no reason to skip this step, unlike
 \strong{gbifID deduplication:} If \code{occurrence_data} has a \code{gbifID} column,
 rows with a duplicated non-\code{NA} \code{gbifID} are dropped (first
 occurrence kept). This is defense-in-depth against the same GBIF record
-being counted twice -- e.g. two separately-issued queries with overlapping
-search geometry, or a genuinely coincidental overlap between
-separately-fetched taxa -- since neither \code{\link{get_gbif_occurrences}}
-nor \code{\link{filter_gbif_quality}} dedupe records themselves. This can
-happen within a \emph{single} \code{get_gbif_occurrences()} call (e.g. one
-call querying overlapping taxon keys), not only when combining sources.
+being counted twice -- e.g. two queries with overlapping search geometry,
+or one call querying overlapping taxon keys -- since neither
+\code{\link{get_gbif_occurrences}} nor \code{\link{filter_gbif_quality}}
+dedupe records themselves.
 Sources without a \code{gbifID} column (e.g. literature or DataONE
 occurrences) are unaffected.
 
 \strong{Duplicate detection occasions (\code{collapse_duplicate_occasions}):}
 a different problem than the \code{gbifID} check above. That check catches
 the identical GBIF record entering twice; this one catches \emph{different}
-records -- often from different platforms and different observers
-entirely -- that describe the same underlying detection event. GBIF
-aggregates eBird, iNaturalist, Observation.org, OBIS, and museum
-collections (see \code{\link{get_gbif_occurrences}}'s own Details), and
-citizen-science platforms routinely produce many independent reports of
-one detection: a rare-bird alert can draw dozens of separate eBird
-checklists for the same individual; a bioblitz can produce a dozen
-separate iNaturalist uploads of the same local population on the same day.
-Each of those is a genuinely distinct GBIF record (a distinct \code{gbifID},
-so the check above does not touch them) but not a distinct \emph{occasion}
-on which the species was documented -- and critically, this can all happen
-inside \emph{one} \code{get_gbif_occurrences()} call, since GBIF is the
-aggregator across all of those platforms. A caller with only one data
-source is not exempt from this.
+records -- often from different platforms and observers -- that describe
+the same underlying detection event. GBIF aggregates eBird, iNaturalist,
+Observation.org, OBIS, and museum collections (see
+\code{\link{get_gbif_occurrences}}'s own Details), and citizen-science
+platforms routinely produce many independent reports of one detection
+(dozens of eBird checklists for one rare bird; a dozen iNaturalist uploads
+from one bioblitz). Each is a distinct \code{gbifID}, so the check above
+does not touch them, but not a distinct \emph{occasion} on which the species
+was documented. This can all happen inside \emph{one}
+\code{get_gbif_occurrences()} call, so a caller with only one data source is
+not exempt.
 
 This matters beyond bookkeeping: \code{TaxaExpect::prepare_model_dataframe()}
 counts raw records (\code{dplyr::n()}) as both \code{n_species} (the
 binomial numerator for a taxon at a site) and \code{n_total_at_site} (the
 shared effort denominator across every taxon at that site). Uncollapsed
 repeat reports of one individual therefore inflate that species' modeled
-relative detection frequency directly, not just its raw record count --
-the model has no way to distinguish "documented once, seen by ten
-observers" from "documented independently ten separate times." Collapsing
+relative detection frequency directly. Collapsing
 to one row per unique combination of \code{taxon_col} (case-insensitive),
 \code{date_col} (or \code{year}/\code{month}/\code{day} when
 \code{date_col} is absent), and \code{lat_col}/\code{lon_col} rounded to
@@ -116,8 +109,9 @@ occasion} -- not \emph{how many people documented it}.
 
 Only rows with a non-missing value for every key component participate --
 a row missing \code{taxon_col}, both \code{date_col} and
-\code{year}/\code{month}/\code{day}, or either coordinate is always kept,
-never dropped on incomplete information. This is a content-based match, not
+\code{year}/\code{month}/\code{day}, or either coordinate (including a
+present column holding \code{NA} for that row) is always kept, never dropped
+on incomplete information. This is a content-based match, not
 an exact-ID match like \code{gbifID} -- it can only ever produce false
 negatives (a real duplicate occasion missed, e.g. differing date precision
 or coordinate rounding across platforms), never false positives, since two
@@ -141,20 +135,10 @@ that check is simply skipped, with no message.
 parameters with documented defaults, not optional metadata. If any is
 absent from \code{occurrence_data}, the function \code{stop()}s
 immediately, naming the missing column(s) and the columns actually
-present, rather than silently skipping the step (the previous
-behavior) or failing several steps later with an opaque error (a
-missing \code{lat_col}/\code{lon_col} used to surface as
-\code{round()}'s "non-numeric argument to mathematical function",
-which does not point back at the real cause). Set
+present, rather than silently skipping the step. Set
 \code{collapse_duplicate_occasions = FALSE} to skip this step
 entirely on a source that genuinely lacks these columns.
 }
-
-\strong{Per-row \code{NA} in a present column} is a different case,
-unaffected by the check above: a row with a present-but-\code{NA} value
-in any key component (\code{taxon_col}, the resolved date, \code{lat_col},
-or \code{lon_col}) is always kept, never dropped -- see the
-key-completeness rule two paragraphs up.
 }
 \examples{
 \dontrun{

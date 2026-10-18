@@ -401,45 +401,37 @@ utils::globalVariables(c(
 #' }
 #'
 #' ## Dark diversity fallback
-#' Dark diversity is an ecological concept: the set of species that
-#' belong to the regional species pool and could inhabit a site given
-#' its environmental conditions, but have not been observed there. In
-#' TaxaAssign, species with no TaxaExpect prior (e.g., referenced
-#' species not expected at the site) receive a dark diversity prior:
-#' the mean `alpha` and `beta` from Tier 3 (undetected) rows in
-#' `taxaexpect_priors` for the same `grid_id` x `main_habitat`.
-#' If no site-level Tier 3 rows exist, a global average across all
-#' Tier 3 rows is used. This ensures that every hypothesis has a
-#' non-zero prior, reflecting the possibility that unobserved species
-#' could be present.
+#' Dark diversity is the set of species that belong to the regional species
+#' pool and could inhabit a site, but have not been observed there. Species
+#' with no TaxaExpect prior (e.g., referenced species not expected at the
+#' site) receive a dark diversity prior: the mean `alpha` and `beta` from Tier
+#' 3 (undetected) rows in `taxaexpect_priors` for the same `grid_id` x
+#' `main_habitat`, or, if no site-level Tier 3 rows exist, a global average
+#' across all Tier 3 rows. Every hypothesis therefore has a non-zero prior.
 #'
 #' ## Habitat-agnostic named-species prior fallback
 #' A named prior row can legitimately have no habitat concept at all --
-#' `TaxaExpect::generate_domestic_food_priors()`'s output is the real example
-#' (a food/domestic species' plausibility is governed by human food supply,
-#' not local habitat suitability, so `main_habitat = NA` there is intentional,
-#' not a missing value to fill in). The primary composite-key join above
-#' requires an exact `main_habitat` match, so such a row could never match a
-#' real observation's specific habitat on its own -- this function re-matches
-#' any row whose primary join failed on `(taxon_name, taxon_name_rank,
-#' grid_id)` alone against habitat-agnostic (`main_habitat = NA`)
-#' `taxaexpect_priors` rows, ranked below a real per-habitat match but above
-#' the dark-diversity/global-floor fallback below. Confirmed on real data: a
-#' domestic-food prior row never matches a real observation under
-#' habitat-scoped priors alone, silently falling back to the generic floor
-#' instead of the tailored prior `generate_domestic_food_priors()` computed
-#' for it.
+#' `TaxaExpect::generate_domestic_food_priors()`'s output is the example (a
+#' food/domestic species' plausibility is governed by human food supply, not
+#' local habitat suitability, so `main_habitat = NA` there is intentional, not
+#' a missing value to fill in). The primary composite-key join requires an
+#' exact `main_habitat` match, so such a row could never match on its own.
+#' This function therefore re-matches any row whose primary join failed on
+#' `(taxon_name, taxon_name_rank, grid_id)` alone against habitat-agnostic
+#' (`main_habitat = NA`) `taxaexpect_priors` rows, ranked below a real
+#' per-habitat match but above the dark-diversity/global-floor fallback.
+#' Without it, a domestic-food prior row would silently fall back to the
+#' generic floor instead of the tailored prior.
 #'
-#' **Domestic/synanthropic species caveat:** this fallback
-#' assumes unmodelled species are exchangeable draws from one detection
-#' process. Domestic/synanthropic species (pets, livestock) violate this in
-#' a known, systematic direction, since GBIF/iNaturalist under-index captive
-#' organisms -- see `TaxaExpect::generate_undetected_diversity()`'s own
-#' Domestic/synanthropic species section for the root cause and the
-#' recommended fix (augment your occurrence data before training, rather
-#' than relying on this floor). `TaxaFlag::add_posthoc_assessment(domestic_taxa
-#' = ...)` can flag the resulting low-prior-vs-strong-likelihood contrast
-#' downstream for review.
+#' **Domestic/synanthropic species caveat:** the floor assumes unmodelled
+#' species are exchangeable draws from one detection process. Domestic and
+#' synanthropic species (pets, livestock) violate this systematically, since
+#' GBIF/iNaturalist under-index captive organisms; see
+#' `TaxaExpect::generate_undetected_diversity()`'s Domestic/synanthropic
+#' species section for the recommended fix (augment your occurrence data
+#' before training, rather than relying on this floor).
+#' `TaxaFlag::add_posthoc_assessment(domestic_taxa = ...)` can flag the
+#' resulting low-prior-vs-strong-likelihood contrast downstream for review.
 #'
 #' ## Deduplication and redundancy filtering
 #' After the join, rows are deduplicated on `observation_id` x
@@ -500,8 +492,9 @@ utils::globalVariables(c(
 #' @param expansion_taxonomy Optional data frame mapping species names in
 #'   `taxaexpect_priors` to their higher-rank taxonomy. Must contain
 #'   `taxon_name` plus one or more coarser-rank columns (e.g. `genus`,
-#'   `family`). Typically produced by
-#'   `TaxaTools::fill_higher_ranks(unique(taxaexpect_priors$taxon_name),
+#'   `family`). Typically produced from the priors' distinct
+#'   (`taxon_name`, `taxon_name_rank`) pairs, passing each name's own rank:
+#'   `TaxaTools::fill_higher_ranks(tx$taxon_name, input_rank = tx$taxon_name_rank,
 #'   local_sources = list(match_df))`. When `NULL` (default) and coarse-rank
 #'   likelihood rows are present, a warning is emitted and those rows fall
 #'   back to the dark diversity floor prior. See Details.
@@ -565,10 +558,23 @@ utils::globalVariables(c(
 #' modelled row below the singleton-mirror mean is promoted -- the
 #' extrapolation check requires that column.
 #'
+#' @section Ring rows share one global floor per unit:
+#' A ring row (`unreferenced_*` above species: an unsequenced relative named
+#' by its genus or family) has no occurrence prior of its own. Where its
+#' clade has a dark-diversity budget it carries that clade's remaining
+#' missing-species mass; otherwise it falls back to the global floor, the
+#' prior that the detected taxon is one arbitrary unrecorded taxon. A unit
+#' detects one taxon, so the floor-priced rings of one observation (at one
+#' site) share a single floor: each of the `k` such rings gets floor / `k`,
+#' with the floor's concentration kept. Without this the unreferenced
+#' prior mass of a unit would grow with the number of candidate genera, with
+#' no regional evidence behind it. A unit with one floor-priced ring, and a
+#' ring priced by a clade budget, are unchanged.
+#'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
 #' `"family"` or `"genus"`), the primary species-level join finds no match
-#' and the row would otherwise fall back to the global floor prior -- ignoring
+#' and the row would otherwise fall back to the global floor prior, ignoring
 #' all species-level prior information within that taxon.
 #'
 #' When `expansion_taxonomy` is supplied, `join_priors()` instead expands each
@@ -1046,8 +1052,9 @@ join_priors <- function(likelihoods,
       "{n_coarse_unmatched} likelihood row(s) have a coarse-rank taxon_name_rank ({paste(sort(unique(result$taxon_name_rank[is.na(result$alpha) & result$taxon_name_rank %in% coarser_than_finest & !is.na(result$taxon_name)])), collapse = ', ')}) that cannot join to species-level priors.",
       "i" = "These rows will receive the dark diversity floor prior.",
       "i" = "To expand them into species-level hypotheses, supply {.arg expansion_taxonomy}:",
+      "i" = "  tx <- dplyr::distinct(taxaexpect_priors[!is.na(taxaexpect_priors$taxon_name), ], taxon_name, taxon_name_rank)",
       "i" = "  expansion_taxonomy = TaxaTools::fill_higher_ranks(",
-      "i" = "    unique(taxaexpect_priors$taxon_name[!is.na(taxaexpect_priors$taxon_name)]),",
+      "i" = "    tx$taxon_name, input_rank = tx$taxon_name_rank,",
       "i" = "    local_sources = list(match_df, gbif_occurrences))"
     ))
   }
@@ -1538,11 +1545,11 @@ join_priors <- function(likelihoods,
         {
           vargs <- list(names_to_query, backbone_id = backbone_id)
           # The row's own rank resolves an NCBI homonym without a decision
-          # (see posterior_consensus()); only when the installed TaxaTools
-          # takes it.
-          if ("ranks" %in% names(formals(TaxaTools::verify_taxon_names)) &&
-            "taxon_name_rank" %in% names(result)) {
-            vargs$ranks <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]
+          # (see posterior_consensus()). The nine packages version-lock and
+          # install as a set, so the argument is passed outright: a rename
+          # must fail loudly here, not silently stop passing the rank.
+          if ("taxon_name_rank" %in% names(result)) {
+            vargs$input_rank <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]
           }
           verified <- do.call(TaxaTools::verify_taxon_names, vargs)
           TaxaTools::change_backbone(verified,
@@ -1618,6 +1625,18 @@ join_priors <- function(likelihoods,
     kept$.jp_row <- NULL
     result <- kept
   }
+
+  # ---- one global floor per unit for floor-priced ring rows ----------------
+  # A ring row (an unsequenced relative named by its clade) that no clade
+  # budget priced still holds the flat global floor: the prior that the
+  # detected taxon is one arbitrary unrecorded taxon. A unit detects one
+  # taxon, and its rings are mutually exclusive versions of that one event,
+  # so together they carry the floor ONCE: each of the k floor-priced rings
+  # of a unit (per observation and site) gets floor / k, concentration kept.
+  # Rings priced by a clade budget keep their own mass; a unit with one
+  # floor-priced ring is unchanged. Runs after the dedup and the redundancy
+  # filter, so k counts only the rings that survive into the output.
+  result <- .split_ring_floor(result, gf_alpha, gf_beta)
 
   # Join rate per rank: how many distinct candidate taxa found a modelled
   # prior (alpha set by the join) against how many were offered. A wrong

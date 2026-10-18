@@ -55,7 +55,10 @@ named at species rank) carrying the ring row's likelihood and its own
 occurrence prior, and leaves the ring row's prior as it was (the
 unrecorded part). The species can then be reported by name when the
 prior concentrates on it; the total prior in each scope is the same
-either way.}
+either way. Only a species claimed by its OWN genus ring is named: a
+family, order, class or phylum ring stands for "some unreferenced taxon
+of this clade", so the species it claims add their prior to that ring
+row unnamed, exactly as with \code{FALSE}.}
 }
 \value{
 \code{joined} with \code{prior_mean}, \code{prior_alpha} and \code{prior_beta} updated
@@ -124,6 +127,17 @@ silently inflates the added mass. As a check, every named
 \code{specific_candidate} in \code{joined} is a referenced species by construction;
 the function reports how many of them are missing from \code{referenced_names}
 and messages when that fraction exceeds \code{mismatch_message_fraction}.
+}
+
+\section{Withheld species}{
+
+A local unreferenced species whose genus has a reference for this marker
+(the genus of any name in \code{referenced_names}) is claimed only by its own
+genus ring. Where the unit has no genus ring for it, the genus's
+references were compared with the read and did not match, so no family,
+order, class or phylum ring may name it; it is withheld and listed in
+\code{attr(result, "unreferenced_withheld")} (\code{observation_id}, \code{taxon_name},
+\code{scope}, \code{scope_rank}, \code{reason}), present on every return.
 }
 
 \examples{

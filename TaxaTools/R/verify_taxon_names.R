@@ -60,16 +60,47 @@
 #'   \code{verified = FALSE} -- never cached, asked again next call, with the
 #'   candidate table in a warning -- and the rest of the batch proceeds.
 #'
-#' @param ranks Character vector or \code{NULL} (default). One rank per
+#' @param input_rank Character vector or \code{NULL} (default). One rank per
 #'   element of \code{name_list} (\code{"genus"}, \code{"species"}, ...; \code{NA}
 #'   where unknown): the rank the CALLER means each name at. Only used by the
 #'   NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
 #'   more than one NCBI node: when exactly one candidate carries the given
 #'   rank, that node is taken, with no further request and before
 #'   \code{decisions} is consulted. "Etheostoma" is both a genus and a
-#'   subgenus; a consensus table knows which it means. Silently unused by the
-#'   Global Names path. On the NCBI path a rank that is given enters the
-#'   cache key (see \code{cache_dir}); elsewhere the key is unchanged.
+#'   subgenus; a consensus table knows which it means. On the Global Names
+#'   path it does not change the query (one best match is returned) but it
+#'   decides, with \code{lineage}, whether that match can be gated: a match
+#'   at another rank is gated on its lineage, a match at the asked rank only
+#'   on a kingdom difference (see \code{lineage}). On the NCBI path a rank
+#'   that is given enters the cache key (see \code{cache_dir}); elsewhere
+#'   the key is unchanged.
+#' @param lineage Character vector or \code{NULL} (default). One lineage
+#'   context per element of \code{name_list} (\code{NA} = none): a
+#'   pipe-delimited string of ancestor names the caller already knows for that
+#'   name, e.g. \code{"Chordata"} or \code{"Metazoa|Chordata|Actinopteri"}.
+#'   Used twice. On the NCBI path (\code{backbone_id = 4}) a homonym is
+#'   resolved, after \code{input_rank} and before \code{decisions}, to the one
+#'   candidate whose own lineage contains any of the context's names (the
+#'   candidates' lineages are already fetched for the ambiguity report, so
+#'   this adds no request); zero or several containing candidates leave it
+#'   ambiguous. Second, a returned classification that contradicts the
+#'   context -- both carry comparable names (kingdoms are ignored, see
+#'   [check_lineage_agreement()]) and share none -- is reported as
+#'   unverified, never accepted, but only where a CHOICE between taxa
+#'   existed: on the NCBI path a name that had several candidates and was
+#'   settled by \code{input_rank} or \code{decisions}; on the Global Names
+#'   path (one best match, no candidate set) a match whose rank differs from
+#'   \code{input_rank}, or any match when no rank was given; a match AT the
+#'   asked rank is gated only when the context names a kingdom (Animalia or
+#'   Metazoa, Plantae or Viridiplantae, Fungi, Chromista, Protozoa, Bacteria,
+#'   Archaea) and the returned path's kingdom differs, since a same-rank
+#'   homonym such as Ulvaria (a fish genus and an alga genus) crosses
+#'   kingdoms while a reclassification never does. A unique node, or a
+#'   same-rank match within one kingdom, is accepted however the backbones
+#'   word its lineage: NCBI carries no phylum rank for many protist lineages, and
+#'   GBIF and NCBI name the same clades differently, which is reclassification,
+#'   not a homonym. A name is not a key; this is the caller's way of saying
+#'   which one it means. Part of the cache key when given.
 #' @param cache_dir Character or \code{NULL} (default). A directory for a
 #'   per-name on-disk cache, so a re-run on the same names reproduces instead
 #'   of depending on whether the service answered this time. Only names the
@@ -139,7 +170,12 @@
 #'     unrelated to the sequence match scores used elsewhere in the TaxaID
 #'     ecosystem (e.g., percent identity from BLAST).}
 #'   \item{verified}{Logical. \code{TRUE} if the lookup ran and the API
-#'     answered, \code{FALSE} if the API failed and fallback values were used.
+#'     answered, \code{FALSE} if the API failed and fallback values were used
+#'     -- or, when \code{lineage} was given, if the API answered and the
+#'     answer contradicted the caller's lineage (see \code{lineage}). The
+#'     second case is deterministic: the same name with the same context is
+#'     rejected every time, so retrying it is pointless; the message that
+#'     names each rejected name tells the two cases apart.
 #'     It does not say whether the name was found: a name the backbone does
 #'     not hold returns \code{verified = TRUE} with \code{matched_name = NA}.
 #'     Always check rows where \code{verified = FALSE}.}
@@ -210,12 +246,14 @@ verify_taxon_names <- function(name_list,
                                decisions = NULL,
                                cache_dir = NULL,
                                cache_ttl_days = 365,
-                               ranks = NULL) {
-  ranks <- .check_verify_ranks(ranks, name_list)
+                               input_rank = NULL,
+                               lineage = NULL) {
+  ranks <- .check_verify_ranks(input_rank, name_list)
+  lineage <- .check_verify_lineage(lineage, name_list)
   if (!is.null(cache_dir)) {
     return(.verify_taxon_names_cached(
       name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id,
-      decisions, cache_dir, cache_ttl_days, ranks = ranks
+      decisions, cache_dir, cache_ttl_days, ranks = ranks, lineage = lineage
     ))
   }
   # --- Input validation ---
@@ -254,7 +292,8 @@ verify_taxon_names <- function(name_list,
     unique_df <- .verify_via_ncbi(
       clean_names, fallback_backbone_id = fallback_backbone_id,
       decisions = decisions,
-      ranks = .ranks_for_names(ranks, trimmed_names, clean_names)
+      ranks = .ranks_for_names(ranks, trimmed_names, clean_names),
+      lineage = .ranks_for_names(lineage, trimmed_names, clean_names)
     )
     idx <- match(trimmed_names, unique_df$user_supplied_name)
     final_df <- unique_df[idx, , drop = FALSE]
@@ -270,7 +309,15 @@ verify_taxon_names <- function(name_list,
   # filter on `verified` alone keeps every unmatched row, which reads as
   # success downstream.
   final_df$matched <- final_df$verified & !is.na(final_df$matched_name)
-    return(final_df)
+    # A contradiction is evidence of a homonym only where a CHOICE existed.
+    # A unique NCBI node's lineage is the backbone's classification of the
+    # only bearer of the name; where it differs from the caller's context the
+    # backbones disagree about placement (NCBI has no phylum rank for many
+    # protist lineages), which is not a homonym. So only names settled by
+    # rank or decisions among several candidates are gated.
+    # Per INPUT ROW (final_df, lineage): trimmed_names, not the unique list.
+    gate_eligible <- trimmed_names %in% attr(unique_df, "lineage_gate_names")
+    return(.apply_lineage_gate(final_df, lineage, gate_eligible))
   }
 
   message("Verifying ", n_total, " unique name(s) against backbone ", backbone_id, "...")
@@ -449,7 +496,77 @@ verify_taxon_names <- function(name_list,
   if (n_unverified > 0L) msg <- paste0(msg, sprintf(" %d were unverified due to API failure.", n_unverified))
   message(msg)
 
-  final_df
+  # The gate prints its own line naming every rejected name, so the count
+  # above is the API-failure count only; the gate's rejections are reported
+  # separately, not folded into "API failure".
+  # The Global Names path returns one best match and no candidate set, so
+  # "a choice existed" is read off the rank: a match at the rank the caller
+  # asked for is the same taxon however the backbones word its lineage; a
+  # match at ANOTHER rank whose lineage shares nothing with the context is
+  # the other taxon (the rank-agreement rule). Where the caller gave no rank,
+  # or the backbone reports none, the name test alone decides as before.
+  # A match AT the asked rank can still be the other taxon when the name is
+  # a homonym at that rank (Ulvaria the fish genus and Ulvaria the alga): the
+  # one thing reclassification never does is move a taxon across KINGDOMS, so
+  # a same-rank match is gated only when both the context and the returned
+  # path carry a kingdom (Animalia/Metazoa, Plantae/Viridiplantae, Fungi,
+  # Chromista, Protozoa, Bacteria, Archaea) and they differ. A context with
+  # no kingdom name leaves a same-rank match accepted.
+  # Eligibility only matters when a lineage context exists at all; without
+  # one the gate is a no-op and `lineage` is NULL, so nothing below may index
+  # it (the fill's default fallback reaches here with input_rank and no
+  # lineage).
+  gate_eligible <- rep(TRUE, nrow(final_df))
+  if (!is.null(lineage) && !is.null(ranks) && "matched_rank" %in% names(final_df)) {
+    mr <- tolower(final_df$matched_rank)
+    known <- !is.na(ranks) & !is.na(mr)
+    same <- known & mr == ranks & !is.na(lineage)
+    gate_eligible[known] <- mr[known] != ranks[known]
+    if (any(same)) {
+      # A context can name SEVERAL kingdoms (the fill unions contexts per
+      # genus word: a fish Ulvaria and an alga Ulvaria in one table give
+      # "Metazoa|Chordata|Plantae|Chlorophyta"), so the test is a SET test,
+      # order-free: gated only when the path's kingdom is in none of them.
+      kc <- lapply(lineage[same], .kingdoms_of_context)
+      kp <- mapply(.kingdom_of_path, final_df$classification_path[same],
+                   final_df$classification_ranks[same], USE.NAMES = FALSE)
+      gate_eligible[same] <- mapply(function(set, k) !is.na(k) && length(set) > 0L && !(k %in% set),
+                                    kc, kp, USE.NAMES = FALSE)
+    }
+  }
+  .apply_lineage_gate(final_df, lineage, gate_eligible)
+}
+
+# Kingdom vocabularies differ between backbones; one normalised label each.
+.KINGDOM_LABELS <- c(metazoa = "animalia", animalia = "animalia",
+                     viridiplantae = "plantae", plantae = "plantae",
+                     fungi = "fungi", chromista = "chromista", protozoa = "protozoa",
+                     bacteria = "bacteria", archaea = "archaea")
+
+#' EVERY kingdom named in a pipe-delimited context, normalised and unique;
+#' character(0) if none. A set, because a context may be the union of
+#' several taxa's lineages.
+#' @noRd
+.kingdoms_of_context <- function(ctx) {
+  if (is.na(ctx)) return(character(0L))
+  terms <- tolower(trimws(strsplit(ctx, "|", fixed = TRUE)[[1L]]))
+  k <- unname(.KINGDOM_LABELS[terms]); unique(k[!is.na(k)])
+}
+
+#' The kingdom of a classification path: its kingdom-rank node, else the
+#' first node that is a known kingdom name; NA if none
+#' @noRd
+.kingdom_of_path <- function(path, ranks) {
+  if (is.na(path) || !nzchar(path)) return(NA_character_)
+  nodes <- tolower(trimws(strsplit(path, "|", fixed = TRUE)[[1L]]))
+  rk <- if (is.na(ranks)) character(0L) else tolower(trimws(strsplit(ranks, "|", fixed = TRUE)[[1L]]))
+  i <- which(rk == "kingdom")
+  if (length(i) && i[[1L]] <= length(nodes)) {
+    k <- unname(.KINGDOM_LABELS[nodes[i[[1L]]]])
+    if (!is.na(k)) return(k)
+  }
+  k <- unname(.KINGDOM_LABELS[nodes]); k <- k[!is.na(k)]
+  if (length(k)) k[[1L]] else NA_character_
 }
 
 
@@ -472,7 +589,7 @@ verify_taxon_names <- function(name_list,
 
 #' @noRd
 .verify_cache_key <- function(name, backbone_id, fallback_backbone_id, decisions_fp,
-                              rank = NA_character_) {
+                              rank = NA_character_, lineage = NA_character_) {
   key <- list(
     name = name, backbone_id = as.integer(backbone_id),
     fallback_backbone_id = if (is.null(fallback_backbone_id)) NA_integer_ else as.integer(fallback_backbone_id),
@@ -485,15 +602,97 @@ verify_taxon_names <- function(name_list,
   # no rank. Existing entries therefore still hit except NCBI ones now asked
   # with a rank, which re-ask once.
   if (!is.na(rank) && identical(as.integer(backbone_id), 4L)) key$rank <- rank
+  # A lineage context can change the answer on EVERY backbone (it resolves an
+  # NCBI homonym and gates a contradicting Global Names match), so it is
+  # always part of the question when given.
+  if (!is.na(lineage)) key$lineage <- lineage
   key
+}
+
+#' Validate `lineage`: NULL, or one context per name_list element (NA allowed)
+#' @noRd
+.check_verify_lineage <- function(lineage, name_list) {
+  if (is.null(lineage)) return(NULL)
+  # A logical all-NA vector is "no context for any name", not a type error.
+  if (is.logical(lineage) && all(is.na(lineage))) lineage <- as.character(lineage)
+  if (!is.character(lineage) || length(lineage) != length(name_list)) {
+    stop("`lineage` must be NULL or a character vector with one lineage context per element of `name_list`.")
+  }
+  l <- trimws(lineage)
+  l[!is.na(l) & !nzchar(l)] <- NA_character_
+  l
+}
+
+#' Does each candidate lineage contain ANY of the context's terms?
+#'
+#' `lineages` are pipe-delimited (or " > "-delimited) ancestor strings, one per
+#' candidate; `context` is one pipe-delimited string of known ancestor names.
+#' Term match is exact and case-insensitive on whole names.
+#' @noRd
+.lineage_contains <- function(lineages, context) {
+  terms <- tolower(trimws(strsplit(as.character(context), "|", fixed = TRUE)[[1L]]))
+  terms <- terms[nzchar(terms)]
+  if (length(terms) == 0L) return(rep(FALSE, length(lineages)))
+  vapply(lineages, function(l) {
+    if (is.na(l)) return(FALSE)
+    nodes <- tolower(trimws(unlist(strsplit(l, "\\||>"))))
+    any(terms %in% nodes)
+  }, logical(1L), USE.NAMES = FALSE)
+}
+
+#' Reject a resolved name whose classification contradicts the caller's lineage
+#'
+#' `df` is in input order; `lineage` is the per-element context (or NULL);
+#' `eligible` marks the rows where a choice between taxa existed (NULL = all).
+#' An eligible row with a context and a classification path that DISAGREES with it (see
+#' [check_lineage_agreement()]: both sides carry comparable names and share
+#' none) is turned into an unverified row -- the caller asked about a taxon
+#' in one lineage and the backbone answered with another, which is a homonym,
+#' not a verification. "unknown" (nothing comparable) and "agrees" pass.
+#' @noRd
+.apply_lineage_gate <- function(df, lineage, eligible = NULL) {
+  if (is.null(lineage) || nrow(df) == 0L) return(df)
+  if (is.null(eligible)) eligible <- rep(TRUE, nrow(df))
+  has <- eligible & !is.na(lineage) & !is.na(df$classification_path) & nzchar(df$classification_path)
+  if (!any(has)) return(df)
+  verdict <- rep("unknown", nrow(df))
+  verdict[has] <- check_lineage_agreement(lineage[has], df$classification_path[has])
+  bad <- which(verdict == "disagrees")
+  if (length(bad) == 0L) return(df)
+  shown <- unique(sprintf("\"%s\" (asked for %s; backbone returned %s)",
+    df$user_supplied_name[bad], lineage[bad],
+    vapply(df$classification_path[bad], function(p) .short_lineage_terms(p), character(1L))))
+  message(sprintf(
+    "verify_taxon_names: %d name(s) resolved to a lineage that contradicts the caller's and are reported as unverified (a name is not a key; deterministic, not an API failure, so retrying will not change it): %s.",
+    length(unique(df$user_supplied_name[bad])), paste(utils::head(shown, 10L), collapse = "; ")
+  ))
+  df$verified[bad] <- FALSE
+  df$matched_name[bad] <- NA_character_
+  if ("matched_rank" %in% names(df)) df$matched_rank[bad] <- NA_character_
+  if ("is_synonym" %in% names(df)) df$is_synonym[bad] <- NA
+  df$classification_path[bad] <- NA_character_
+  df$classification_ranks[bad] <- NA_character_
+  if ("score" %in% names(df)) df$score[bad] <- NA_real_
+  if ("matched" %in% names(df)) df$matched[bad] <- FALSE
+  df
+}
+
+#' First three comparable names of a pipe-delimited path, for messages
+#' @noRd
+.short_lineage_terms <- function(path) {
+  nodes <- trimws(strsplit(path, "|", fixed = TRUE)[[1L]])
+  nodes <- nodes[nzchar(nodes) & !tolower(nodes) %in% c("cellular organisms", "eukaryota")]
+  paste(utils::head(nodes, 3L), collapse = " > ")
 }
 
 #' Validate `ranks`: NULL, or one rank per name_list element (NA allowed)
 #' @noRd
 .check_verify_ranks <- function(ranks, name_list) {
   if (is.null(ranks)) return(NULL)
+  # A logical all-NA vector is "no rank for any name", not a type error.
+  if (is.logical(ranks) && all(is.na(ranks))) ranks <- as.character(ranks)
   if (!is.character(ranks) || length(ranks) != length(name_list)) {
-    stop("`ranks` must be NULL or a character vector with one rank per element of `name_list`.")
+    stop("`input_rank` must be NULL or a character vector with one rank per element of `name_list`.")
   }
   r <- tolower(trimws(ranks))
   r[!is.na(r) & !nzchar(r)] <- NA_character_
@@ -525,7 +724,7 @@ verify_taxon_names <- function(name_list,
 #' @noRd
 .verify_taxon_names_cached <- function(name_list, backbone_id, batch_size, timeout_sec,
                                        fallback_backbone_id, decisions, cache_dir,
-                                       cache_ttl_days, ranks = NULL) {
+                                       cache_ttl_days, ranks = NULL, lineage = NULL) {
   if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
     stop("`cache_dir` must be NULL or a single directory path.")
   }
@@ -544,9 +743,11 @@ verify_taxon_names <- function(name_list,
   }
   fp <- .verify_decisions_fingerprint(decisions)
   rank_of <- .ranks_for_names(ranks, trimmed, uniq)
+  lin_of <- .ranks_for_names(lineage, trimmed, uniq)
   keys <- lapply(uniq, function(nm) .verify_cache_key(
     nm, backbone_id, fallback_backbone_id, fp,
-    rank = if (is.null(rank_of)) NA_character_ else rank_of[[nm]]
+    rank = if (is.null(rank_of)) NA_character_ else rank_of[[nm]],
+    lineage = if (is.null(lin_of)) NA_character_ else lin_of[[nm]]
   ))
   now <- Sys.time()
   cached <- lapply(keys, function(k) {
@@ -572,7 +773,8 @@ verify_taxon_names <- function(name_list,
     fresh <- .verify_taxon_names_uncached(miss, backbone_id,
       batch_size = batch_size, timeout_sec = timeout_sec,
       fallback_backbone_id = fallback_backbone_id, decisions = decisions,
-      ranks = if (is.null(rank_of)) NULL else unname(rank_of[miss])
+      input_rank = if (is.null(rank_of)) NULL else unname(rank_of[miss]),
+      lineage = if (is.null(lin_of)) NULL else unname(lin_of[miss])
     )
     fresh <- fresh[!duplicated(fresh$user_supplied_name), , drop = FALSE]
     # Write only names the service answered. A failed lookup (verified FALSE)
@@ -648,10 +850,14 @@ verify_taxon_names <- function(name_list,
 #'   be \code{4}.
 #' @param ranks Named character vector (names = \code{clean_names}) or NULL:
 #'   the caller's rank for each name, used to resolve a homonym by rank before
-#'   \code{decisions} is consulted. See \code{verify_taxon_names(ranks =)}.
+#'   \code{decisions} is consulted. See \code{verify_taxon_names(input_rank =)}.
 #' @param decisions See \code{\link{verify_taxon_names}}'s own \code{@param
 #'   decisions} -- NULL, a \code{data.frame(name, taxid)}, or a path to an
 #'   \code{.rds} file holding one.
+#' @param lineage Named character vector (names = \code{clean_names}) or NULL:
+#'   the caller's known ancestor names for each name, pipe-delimited, used to
+#'   resolve a homonym by lineage containment after \code{ranks} and before
+#'   \code{decisions}. See \code{verify_taxon_names(lineage =)}.
 #' @return A tibble with columns: user_supplied_name, matched_name,
 #'   classification_path, classification_ranks, score, verified,
 #'   fuzzy_corrected.
@@ -661,7 +867,13 @@ verify_taxon_names <- function(name_list,
                              fetch_batch_size = 100L,
                              fallback_backbone_id = 11L,
                              decisions = NULL,
-                             ranks = NULL) {
+                             ranks = NULL,
+                             lineage = NULL) {
+  # Names that had MORE THAN ONE candidate and were settled by the caller's
+  # rank or decisions: the only ones whose lineage can contradict the
+  # caller's context because a different taxon was chosen. Returned as
+  # attr(, "lineage_gate_names") for the agreement gate.
+  gate_names <- character(0L)
   if (!requireNamespace("rentrez", quietly = TRUE) ||
     !requireNamespace("xml2", quietly = TRUE)) {
     stop(
@@ -824,6 +1036,48 @@ verify_taxon_names <- function(name_list,
           length(by_rank), paste(by_rank, collapse = ", ")
         ))
         pending_names <- setdiff(pending_names, by_rank)
+        gate_names <- c(gate_names, by_rank)
+      }
+    }
+
+    # Lineage next. Rank cannot separate two genus-rank nodes in different
+    # kingdoms (Argentina the fish, Argentina the plant); the caller's own
+    # known ancestors can. Every candidate's lineage is fetched here, in one
+    # batched request for the whole set, the same table the report below
+    # prints -- so this costs nothing the unresolved case would not have paid.
+    # Where the caller also gave a rank, candidates at that rank are preferred
+    # when any exist. Exactly one candidate containing any context term
+    # resolves; zero or several leave the name pending.
+    prebuilt_ambiguous <- NULL
+    if (!is.null(lineage) && length(pending_names) > 0L) {
+      ctx <- vapply(pending_names, function(nm) {
+        if (nm %in% names(lineage)) as.character(lineage[[nm]]) else NA_character_
+      }, character(1L))
+      with_ctx <- pending_names[!is.na(ctx)]
+      if (length(with_ctx) > 0L) {
+        prebuilt_ambiguous <- .build_ncbi_ambiguous_table(ambiguous_summaries[with_ctx], delay)
+        by_lineage <- character(0L)
+        for (nm in with_ctx) {
+          cand <- prebuilt_ambiguous[prebuilt_ambiguous$name == nm, , drop = FALSE]
+          want <- if (!is.null(ranks) && nm %in% names(ranks)) ranks[[nm]] else NA_character_
+          if (!is.na(want)) {
+            at <- !is.na(cand$candidate_rank) & tolower(cand$candidate_rank) == want
+            if (any(at)) cand <- cand[at, , drop = FALSE]
+          }
+          full <- if ("candidate_lineage_full" %in% names(cand)) cand$candidate_lineage_full else cand$candidate_lineage
+          hit <- which(.lineage_contains(full, ctx[[nm]]))
+          if (length(hit) == 1L) {
+            name_to_taxid[[nm]] <- cand$candidate_taxid[hit]
+            by_lineage <- c(by_lineage, nm)
+          }
+        }
+        if (length(by_lineage) > 0L) {
+          message(sprintf(
+            "verify_taxon_names: %d homonym(s) resolved by the caller's lineage: %s.",
+            length(by_lineage), paste(by_lineage, collapse = ", ")
+          ))
+          pending_names <- setdiff(pending_names, by_lineage)
+        }
       }
     }
 
@@ -831,6 +1085,7 @@ verify_taxon_names <- function(name_list,
     for (nm in pending_names[attr(applied, "decided")]) {
       if (!is.na(applied[[nm]])) {
         name_to_taxid[[nm]] <- applied[[nm]]
+        gate_names <- c(gate_names, nm)
       } else {
         skipped_names <- c(skipped_names, nm)
       }
@@ -838,7 +1093,12 @@ verify_taxon_names <- function(name_list,
     still_pending <- pending_names[!attr(applied, "decided")]
 
     if (length(still_pending) > 0L) {
-      ambiguous_df <- .build_ncbi_ambiguous_table(ambiguous_summaries[still_pending], delay)
+      # Reuse the candidate table already fetched for the lineage step.
+      need_build <- setdiff(still_pending, if (is.null(prebuilt_ambiguous)) character(0L) else unique(prebuilt_ambiguous$name))
+      ambiguous_df <- dplyr::bind_rows(
+        if (!is.null(prebuilt_ambiguous)) prebuilt_ambiguous[prebuilt_ambiguous$name %in% still_pending, , drop = FALSE],
+        if (length(need_build) > 0L) .build_ncbi_ambiguous_table(ambiguous_summaries[need_build], delay)
+      )
 
       if (.is_interactive_session()) {
         new_decisions <- .prompt_ncbi_homonym_decisions(ambiguous_df)
@@ -882,7 +1142,7 @@ verify_taxon_names <- function(name_list,
         warning(
           "verify_taxon_names: ", length(still_pending), " name(s) resolved to more than one ",
           "NCBI taxonomy node and could not be told apart by rank; reported as unverified ",
-          "(verified = FALSE), not cached. Supply `ranks =` or `decisions =` to resolve them:\n\n",
+          "(verified = FALSE), not cached. Supply `input_rank =` or `decisions =` to resolve them:\n\n",
           .format_ncbi_ambiguous_report(ambiguous_df),
           call. = FALSE
         )
@@ -1092,6 +1352,7 @@ verify_taxon_names <- function(name_list,
   if (n_failed > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d could not be looked up (verified = FALSE; not cached).", n_failed))
   message(msg_ncbi)
 
+  attr(result, "lineage_gate_names") <- gate_names
   result
 }
 

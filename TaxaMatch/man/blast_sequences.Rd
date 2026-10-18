@@ -343,69 +343,46 @@ distant), while an ambiguous query retains all plausible candidates.
 
 This step checks the length of the \strong{aligned region} (the BLAST
 \code{length} field), not the reference accession's own total sequence
-length. Confirmed as a real, not cosmetic, distinction on real Great Lakes
-Ameiurus (bullhead catfish) data: a query's raw BLAST hits included two
-\emph{Ameiurus melas} references at 100\% identity and 100\% query
-coverage over the full amplicon -- a genuine, exactly-tied congener match
--- but both were deposited as long mitogenome/partial-genome records
-(672bp and 960bp), so checking the \emph{subject's own length} against a
-~130-210bp MiFish window discarded them entirely, leaving only a single
-\emph{A. nebulosus} hit (a short, standalone 172bp barcode submission)
-that happened to be the only reference short enough to survive -- not
-because it was the best match, but because it was the only
-correctly-sized \emph{record}. The aligned region itself, in every one of
-these mitogenome-embedded hits, was the correct barcode window (full
-query length, 100\% coverage) -- exactly the case this filter should
-retain, not the "wrong genomic region of the same gene" case
-(\code{TaxaLikely}'s documented "Paralabrax footgun") it exists to catch.
-Checking aligned length rather than raw subject length fixes this while
-still catching genuinely off-target hits (a poor, partial, non-amplicon
-overlap is already excluded by \code{min_query_coverage} before this step
-ever runs).
+length. A reference embedded in a long mitogenome or partial-genome record
+can match the whole query amplicon at 100\% identity and 100\% coverage, and
+it should be retained; checking the subject's own length against a
+~130-210bp MiFish window would discard it, leaving only references that
+happen to be deposited as short standalone barcodes. The filter exists to
+catch the "wrong genomic region of the same gene" case (\code{TaxaLikely}'s
+documented "Paralabrax footgun"), and a poor, partial, non-amplicon overlap
+is already excluded by \code{min_query_coverage} before this step runs.
 }
 
 \subsection{Score window validation}{
 
-This filter decides which candidates ever reach TaxaLikely/TaxaAssign --
-a true species dropped here cannot be recovered downstream, no matter how
-good the likelihood model is. A narrow \code{score_range} (e.g.
-\code{2}, adequate for an easy query with a clear top hit at 98\% identity
-or above) is not safe in general: it is not
-stress-tested against a
-taxonomically dense genus where real congeneric divergence can be tight.
+This filter decides which candidates ever reach TaxaLikely/TaxaAssign, and a
+true species dropped here cannot be recovered downstream. A narrow
+\code{score_range} (e.g. \code{2}, adequate for a clear top hit at 98\%
+identity or above) is not safe in a taxonomically dense genus, where real
+congeneric divergence can be tight.
 
-A leave-one-out check (the \code{score_window_leave_one_out.R} diagnostic, TaxaID_dev
-repository) against three independent real reference-vs-reference
-distance matrices found this risk is real, not hypothetical: treating each
-reference sequence as a query against every other sequence in the same
-matrix, and asking how often a congener outscores the sequence's own true
-species, and by how much --
+A leave-one-out check (the \code{score_window_leave_one_out.R} diagnostic,
+TaxaID_dev repository) treated each reference sequence as a query against
+every other sequence in three real reference-vs-reference distance matrices
+and asked how often a congener outscores the sequence's own true species:
 \itemize{
-\item \strong{Sebastes} (54 species, real MiFish-window 12S data):
-3/113 (2.7\%) queries had a congener score higher than the true
-species, but only by 0.6 points each -- none would be dropped
-even at \code{score_range = 2}.
-\item \strong{Chromis} (26 species): 3/33 (9.1\%) queries had this
-happen, by 4.7-7.1 points -- \emph{all three} would be
-silently dropped at \code{score_range = 2}.
-\item \strong{A real 6-genus PtConception 12S set} (Clinocottus,
-Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1\%) queries,
-by 2.5 points -- would also be dropped at \code{score_range = 2}.
+\item \strong{Sebastes} (54 species): 3/113 (2.7\%) queries, each by 0.6
+points, so none would be dropped even at \code{score_range = 2}.
+\item \strong{Chromis} (26 species): 3/33 (9.1\%) queries, by 4.7-7.1
+points, so \emph{all three} would be silently dropped at
+\code{score_range = 2}.
+\item \strong{A 6-genus PtConception 12S set}: 1/11 (9.1\%) queries, by 2.5
+points, which would also be dropped at \code{score_range = 2}.
 }
-Pooling all three: 4 of 7 real congener-outscoring events (57\%) exceed
-a \code{score_range = 2} window and would silently exclude
-the true species from every downstream step. The default (\code{8})
-comfortably covers every gap actually observed in this check (worst case
-7.1 points); it is an evidence-backed starting point given what has
-been measured so far, not a guarantee no real dataset will ever exceed it
--- \code{max_hits} (default 20) bounds the resulting candidate count
-regardless of how wide \code{score_range} is set, and a wider window is
-precisely what preserves the "gap" feature
-(\code{TaxaLikely::train_likelihood_model()}'s own key discriminator
-between H1/H2/H3) for the bivariate-normal model to actually use --
-dropping the true congener here removes the one signal that model needs
-to correctly flag a genuinely ambiguous call instead of confidently
-returning the wrong species.
+Pooled, 4 of 7 congener-outscoring events (57\%) exceed a
+\code{score_range = 2} window. The default (\code{8}) covers every gap
+observed (worst case 7.1 points), but it is not a guarantee that no dataset
+will exceed it. \code{max_hits} (default 20) bounds the candidate count
+however wide \code{score_range} is set, and a wider window preserves the
+"gap" feature (\code{TaxaLikely::train_likelihood_model()}'s key
+discriminator between H1/H2/H3); dropping the true congener here removes
+the signal the model needs to flag a genuinely ambiguous call instead of
+confidently returning the wrong species.
 }
 
 \subsection{Remote BLAST}{

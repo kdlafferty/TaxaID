@@ -150,3 +150,70 @@ test_that("cost_per_1k_output defaults to cost_per_1k_input when NULL", {
   )
   expect_equal(result_same$cost_usd, result_equal$cost_usd)
 })
+
+test_that(".get_llm_caller() survives a closure in the function slot", {
+  # do.call(fun_object, ...) puts the closure itself, not its name, in the
+  # call's function slot. Deparsing a closure returns its whole source, and a
+  # long vector in a scalar `&&` used to error after the API reply returned.
+  long_fn <- function(x) {
+    a <- 1
+    b <- 2
+    c <- 3
+    a + b + c + x
+  }
+  closure_call <- as.call(list(long_fn, 1))
+  # The old code deparsed the whole closure: confirm that is a vector, so the
+  # stack below genuinely exercises the failure.
+  expect_gt(length(deparse(closure_call[[1L]])), 1L)
+
+  # Closure frame outermost, as when a workflow calls do.call(fn_object, ...)
+  # at top level: it must be skipped, and the named frame inside it used.
+  stack <- list(closure_call, quote(review_assignments(x)), quote(call_api(p)))
+  expect_identical(TaxaTools:::.get_llm_caller(stack), "review_assignments")
+
+  # A stack holding only the closure and skipped frames labels as "unknown".
+  expect_identical(
+    TaxaTools:::.get_llm_caller(list(closure_call, quote(call_api(p)))),
+    "unknown"
+  )
+
+  # An anonymous call in the function slot deparses to several lines. It
+  # must be skipped, not deparsed into a label such as "(function(x) {".
+  anon_call <- quote((function(x) {
+    a <- 1
+    a + x
+  })(1))
+  expect_gt(length(deparse(anon_call[[1L]])), 1L)
+  expect_identical(
+    TaxaTools:::.get_llm_caller(list(anon_call, quote(review_assignments(x)))),
+    "review_assignments"
+  )
+
+  # tryCatch's internal frames never label a caller.
+  expect_identical(
+    TaxaTools:::.get_llm_caller(list(
+      quote(tryCatchList(expr, names, parentenv, handlers)),
+      quote(doTryCatch(return(expr), name, parentenv, handler)),
+      quote(review_assignments(x))
+    )),
+    "review_assignments"
+  )
+
+  # pkg::fn still labels by its full name.
+  expect_identical(
+    TaxaTools:::.get_llm_caller(list(quote(TaxaFlag::review_assignments(x)))),
+    "TaxaFlag::review_assignments"
+  )
+})
+
+test_that(".get_llm_caller() returns one string under a real do.call() on a closure", {
+  long_fn <- function() {
+    a <- 1
+    b <- 2
+    TaxaTools:::.get_llm_caller()
+  }
+  out <- do.call(long_fn, list())
+  expect_type(out, "character")
+  expect_length(out, 1L)
+  expect_false(out %in% c("tryCatchList", "tryCatchOne", "doTryCatch"))
+})

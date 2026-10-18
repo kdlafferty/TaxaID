@@ -160,7 +160,11 @@ below this marker's own median" sidesteps that),
 (\code{"genus_specific"} or \code{"global_fallback"} for
 \code{unreferenced_species}/\code{unreferenced_genus} rows; \code{NA} for
 \code{specific_candidate} rows), plus the \verb{*_confusion_risk} columns
-described under \strong{Confusion risk} below.}
+described under \strong{Confusion risk} below, plus the unit-level
+\code{best_identity} (numeric, percent), \code{best_identity_rank} (character)
+and \code{poor_absolute_fit} (logical) flag columns described under
+\strong{Absolute fit}. The thresholds used are in
+\verb{attr($likelihoods, "rank_thresholds_used")} (named numeric).}
 \item{\verb{$unresolved}}{Rows from \code{match_df} for any \code{observation_id} that
 produced no usable likelihoods (empty data frame if none).  Pass to
 a second call of \code{evaluate_likelihoods()} with a coarser
@@ -196,11 +200,29 @@ shifts the H1 score distribution downward (by \code{H2$delta} logit
 units, or by a genus-specific shrunk delta from
 \code{model_params$H2_Lookup} when the anchor candidate's genus has
 real congener data -- see \code{h2_delta_source} below) to predict
-what a sister-species match looks like.
+what a sister-species match looks like. There is one such row per
+distinct genus among the unit's candidates, named by the genus.
 \item \strong{H3 (unreferenced_genus):} The query comes from a genus not in
 the reference database at all. The score distribution is shifted further
-downward (by \code{H3$delta}).
+downward (by \code{H3$delta}). There is one such row per distinct family
+among the unit's candidates, named by the family.
 }
+
+\strong{Ring anchors:} Every unreferenced row is valued and named at the
+same anchor candidate. The anchor of a set of candidates is the one with the
+highest transformed score; ties (within 1e-9) are broken by a real
+reference hit over a restored row, then by the highest H1 density, then by
+the highest raw identity; only a final exact tie keeps the first candidate
+in the table, and that is the only order-dependent step. Each genus ring
+(H2) is anchored on the best candidate of that genus and uses that genus's
+own H2 delta, variance and identical-barcode weight; each family ring (H3)
+is anchored on the best candidate of that family, so a unit whose
+candidates span several families gets one family ring per family, each at
+its own family's anchor. The coarser rings (order and above) stay one per
+unit, anchored on the best candidate of the whole unit. Only candidates with
+a usable genus (not missing, blank or a placeholder such as
+"unclassified") are eligible; a unit with none keeps a single ring per tier
+anchored over all its candidates and named by the nearest real rank.
 
 \strong{Features:}
 \itemize{
@@ -217,20 +239,19 @@ not computed (1D model used instead).
 \strong{Per-species sigma floor:}
 When a species is found in \code{H1_Lookup}, its per-species
 \code{sigma_score} (score variance) is used in place of the global
-\code{H1_Sigma[1,1]}.  However, the per-species estimate can be
-artificially small for well-sampled species whose reference sequences are
-nearly identical (many NCBI accessions from the same voucher or
-population).  Such a tight distribution wrongly rejects realistic query
-scores of any kind (sequence, image, or acoustic) that fall slightly
-below the near-perfect reference mean,
-causing the species to receive a near-zero H1 likelihood and be silently
-dropped by \code{ratio_threshold}.  To prevent this,
+\code{H1_Sigma[1,1]}.  The per-species estimate can be artificially small
+for well-sampled species whose reference sequences are nearly identical
+(many accessions from the same voucher or population); such a tight
+distribution would reject realistic query scores of any kind (sequence,
+image, or acoustic) that fall slightly below the near-perfect reference
+mean, giving the species a near-zero H1 likelihood so that
+\code{ratio_threshold} silently drops it.  To prevent this,
 \code{evaluate_likelihoods()} floors the per-species sigma at the global
 \code{H1_Sigma[1,1]}: species-specific sigma is used only when it is
-\emph{larger} than global (i.e., more uncertain than average).  This has
-negligible impact on discrimination between closely related species because
-the global sigma (SD \eqn{\approx \sqrt{H1\_Sigma[1,1]}}) still spans the
-logit range corresponding to a few percent identity difference.
+\emph{larger} than global.  This has negligible impact on discrimination
+between closely related species because the global sigma (SD
+\eqn{\approx \sqrt{H1\_Sigma[1,1]}}) still spans the logit range
+corresponding to a few percent identity difference.
 
 \strong{Coverage-adjusted likelihood (\code{score_likelihood_cov}):}
 When the match object contains a \code{coverage} column (e.g., BLAST \code{qcovs / 100}
@@ -247,115 +268,86 @@ absent or equals 1 for all candidates, \code{score_likelihood_cov} is identical 
 to identify queries where coverage meaningfully shifts the likelihood ratios.
 
 \strong{Evidence-based sigma rescaling (\code{score_likelihood_evidence}) and its
-crossover gate:} Unconditionally rescaling every
-candidate's H1 \code{sigma_score} whenever \code{evidence_ratio < 1}
-(widening for low-evidence candidates, exactly like the coverage adjustment
-above) tests net negative against real 12S data, even
-capped at \code{evidence_max_ratio = 1} (27 real observations helped, 2053 hurt;
-mean H1 relative likelihood 0.899 -> 0.884). The reason is a basic property
-of the normal density, not an implementation defect: because a Gaussian must
-integrate to 1, widening its variance necessarily lowers its peak while
-raising its tails. For a variance rescaled by a factor \eqn{c} (\eqn{c > 1}
-widens, \eqn{c < 1} tightens), the log-density at a point \eqn{z} standard
-deviations from the species mean changes by exactly:
+crossover gate:} Rescaling every candidate's H1 \code{sigma_score} whenever
+\code{evidence_ratio < 1} (widening for low-evidence candidates, like the
+coverage adjustment above) is net negative, even capped at
+\code{evidence_max_ratio = 1}. A Gaussian must integrate to 1, so widening its
+variance lowers its peak while raising its tails. For a variance rescaled
+by a factor \eqn{c} (\eqn{c > 1} widens, \eqn{c < 1} tightens), the
+log-density at a point \eqn{z} standard deviations from the species mean
+changes by exactly:
 \deqn{\Delta = -\tfrac{1}{2}\log(c) + \tfrac{1}{2}z^2\left(1 - \tfrac{1}{c}\right)}
 which is non-negative only when \eqn{z} is large enough (for widening) or
 small enough (for tightening) that the tail/peak tradeoff pays for itself.
-Because most low-evidence real observations are still decent, close-to-mean
-matches (small \eqn{z}), applying the widening formula to \emph{every}
-low-evidence candidate paid the peak-lowering cost far more often than it
-collected the tail-raising benefit -- exactly the pattern in the real-data
-result above. \code{evaluate_likelihoods()} computes \eqn{\Delta} directly
-(using \eqn{z} standardized against whatever sigma is already in effect
-after the per-species floor and coverage inflation) and only applies the
-evidence rescale when \eqn{\Delta > 0} -- i.e., only where doing so is
-provably not going to lower the candidate's H1 density relative to leaving
-sigma untouched. This is an exact, closed-form condition, not a heuristic
-threshold, and it degrades gracefully to a no-op as \code{evidence_ratio}
-approaches 1 (nothing to gate). One caveat for multi-candidate queries: the
-gate is computed on the score-only marginal \eqn{z}, not the exact bivariate
-\verb{(score_logit, gap_logit)} crossover (only \code{sigma_score} is ever rescaled;
-the gap variance and score/gap covariance are untouched, so the true joint
-crossover would also depend on the correlation term) -- deliberately
-consistent with the score-only outlier test described above rather than a
-new, unvalidated 2D derivation. For singleton (1D) queries, where the
-density actually evaluated is exactly this univariate form, the gate is
-exact, not an approximation. This is
-validated end to end against the same real 12S PtConception dataset
-used to test unconditional rescaling above: 163 helped / 3 hurt across 24,857
-real H1 rows (vs. 27 helped / 2053 hurt for unconditional rescaling), mean
-H1 relative likelihood 0.8014 -> 0.8016 (vs. unconditional rescaling's real
-regression 0.899 -> 0.884). The 3 residual hurt cases were traced directly
-(via \code{mvtnorm::dmvnorm} on the real fitted parameters) to this score-only
-marginal approximation: each sits right at the marginal gate's own decision
-boundary, where the neglected score/gap covariance term flips the sign of
-the true joint density change relative to the marginal prediction. Bounded
-in practice (largest observed swing under 1\% of the score range) but a real,
-understood limitation of the approximation, not a bug.
+Most low-evidence observations are still decent, close-to-mean matches
+(small \eqn{z}), so unconditional widening pays the peak-lowering cost far
+more often than it collects the tail-raising benefit.
+\code{evaluate_likelihoods()} therefore computes \eqn{\Delta} directly (using
+\eqn{z} standardized against whatever sigma is already in effect after the
+per-species floor and coverage inflation) and applies the evidence rescale
+only when \eqn{\Delta > 0}, i.e. only where it cannot lower the candidate's
+H1 density relative to leaving sigma untouched. This is an exact,
+closed-form condition, not a heuristic threshold, and it degrades to a
+no-op as \code{evidence_ratio} approaches 1. One caveat for multi-candidate
+queries: the gate uses the score-only marginal \eqn{z}, not the exact
+bivariate \verb{(score_logit, gap_logit)} crossover (only \code{sigma_score} is
+rescaled; the gap variance and score/gap covariance are untouched, so the
+true joint crossover also depends on the correlation term), consistent with
+the score-only outlier test described above. Candidates sitting right at
+the gate's decision boundary can therefore see a small decrease in H1
+density. For singleton (1D) queries the gate is exact.
 
 \strong{Genus-specific H2/H3 delta (\code{h2_delta_source}):}
 \code{H2$delta}/\code{H3$delta} are single values pooled across every genus seen
-during training, which treats a genus with unusually tight (cryptic-like)
-congeneric divergence the same as one with unusually loose divergence.
-When \code{train_likelihood_model()} found at least one real congener pair for
-the query's best-matching candidate's genus, \code{evaluate_likelihoods()} uses
-a genus-specific delta (\code{model_params$H2_Lookup}, shrunk toward the pooled
-value by how many congener pairs were available) instead, and marks the
-row \code{h2_delta_source = "genus_specific"}. Rows marked
-\code{"global_fallback"} (including every row when the genus has only one
-referenced species, or when the model was trained without genus
-information) used the pooled constant, which is the cruder approximation
--- treat \code{unreferenced_species}/\code{unreferenced_genus} likelihoods on those
-rows with more caution. This correction only adjusts the shift's
-\emph{magnitude} for the correct genus; it does not address the separate
-case where the true taxon's nearest relative in evidence space (visual or
-acoustic mimicry/convergence) is not its nearest phylogenetic relative --
-see \code{inst/TaxaLikely_supplemental_methods.md} for that limitation.
+during training. When \code{train_likelihood_model()} found at least one real
+congener pair for a ring's anchor candidate's genus,
+\code{evaluate_likelihoods()} instead uses a genus-specific delta
+(\code{model_params$H2_Lookup}, shrunk toward the pooled value by how many
+congener pairs were available) and marks the row
+\code{h2_delta_source = "genus_specific"}. Rows marked \code{"global_fallback"}
+(including every row when the genus has only one referenced species, or
+when the model was trained without genus information) used the pooled
+constant, the cruder approximation -- treat
+\code{unreferenced_species}/\code{unreferenced_genus} likelihoods on those rows with
+more caution. This correction only adjusts the shift's \emph{magnitude}
+for the correct genus; it does not address the case where the true taxon's
+nearest relative in evidence space (visual or acoustic
+mimicry/convergence) is not its nearest phylogenetic relative -- see
+\code{inst/TaxaLikely_supplemental_methods.md}.
 
-\strong{H2/H3 mean anchor and genus-specific variance:} H2's
-mean is \verb{(anchor candidate's own resolved species mean) - delta}, not
-\code{H1_Global_Mu - delta} -- a referenced species
-whose own trained mean sits above or below the population average is real
-information about how conserved or variable that lineage specifically is,
-and an unreferenced sister species should inherit it rather than being
-shifted from an unrelated population-wide baseline. When a genus-specific
-\code{H2_Lookup} entry exists, its own shrunk congener variance (\code{var_shrunk})
-is used for H2's sigma in place of the pooled global value -- genera whose
-species are hard to tell apart (small delta) also tend to show more
-\emph{consistent} divergence (lower variance), and genera whose species are
-easy to tell apart show more variable divergence; both the delta and the
-variance now reflect this per genus, on the same footing. When absent from
-\code{H2_Lookup}, those fall back to the pooled global variance. See
-\code{train_likelihood_model()}'s \code{score_transform} documentation for
-why this requires moving off the plain logit scale to be correctly
-signed: on real 12S congener data, the raw match-proportion scale shows
-tight genera have lower variance as expected (Pearson r = -0.55), but
-logit reverses this (r = +0.47) because nearly all real matches sit near
-100\% identity, exactly where logit's derivative diverges fastest.
+\strong{H2/H3 mean anchor and genus-specific variance:} H2's mean is
+\verb{(that ring's anchor candidate's own resolved species mean) - delta}, not
+\code{H1_Global_Mu - delta}: a referenced species whose own trained mean sits
+above or below the population average is real information about how
+conserved or variable that lineage is, and an unreferenced sister species
+should inherit it. When a genus-specific \code{H2_Lookup} entry exists, its own
+shrunk congener variance (\code{var_shrunk}) is used for H2's sigma in place of
+the pooled global value, since genera whose species are hard to tell apart
+(small delta) also tend to show more consistent divergence (lower
+variance); otherwise both fall back to the pooled global values. See
+\code{train_likelihood_model()}'s \code{score_transform} documentation for why this
+requires \code{"sqrt_mismatch"} rather than the plain logit scale to be
+correctly signed.
 
 \strong{Monte Carlo uncertainty (\code{score_likelihood_mean}/\code{score_likelihood_sd}):}
-Represents genuine uncertainty in the likelihood estimate itself -- driven
-by how much reference data calibrated the trained mean being evaluated
+Represents uncertainty in the likelihood estimate itself, driven by how
+much reference data calibrated the trained mean being evaluated
 (\code{H1_Lookup$n_obs_species} for a specific candidate; \code{H2_Lookup$n_pairs}
 for a genus-specific H2/H3 delta, or \code{Stats$n_h2_pooled} when no
-genus-specific delta exists) -- not by resampling the query's own observed
-score around the population's overall spread (an earlier design, which
-answered a different question: how sensitive the density is to where the
-query happens to land, not how confidently the candidate's own mean is
-known). Each of the \code{n_sims} draws perturbs the candidate's trained mean by
+genus-specific delta exists), not by resampling the query's own observed
+score. Each of the \code{n_sims} draws perturbs the candidate's trained mean by
 its own estimation uncertainty (\verb{Var(mean) ~= sigma^2/n}) and evaluates the
 query's real, fixed observed point against that draw. Practical
 consequence: a poorly-referenced species gets a wider \code{score_likelihood_sd}
 than a well-referenced one for the identical observed score, and
 \code{unreferenced_species}/\code{unreferenced_genus} rows -- which borrow a shifted
 mean rather than being directly observed -- are systematically wider than
-\code{specific_candidate} rows. Reuses whichever per-candidate sigma the
-evidence-adjusted point estimate already resolved (species floor +
+\code{specific_candidate} rows. The draws reuse whichever per-candidate sigma
+the evidence-adjusted point estimate already resolved (species floor +
 evidence gate, when applicable), so a low-depth candidate's evidence-widened
-sigma also widens its mean uncertainty here at no additional cost.
-Falls back to a score-resampling approach
-when \code{model_params$H1_Lookup} is empty or absent (no species-level
-training data).
+sigma also widens its mean uncertainty. Falls back to a score-resampling
+approach when \code{model_params$H1_Lookup} is empty or absent (no
+species-level training data).
 }
 \note{
 For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
@@ -365,52 +357,72 @@ Section 6 in the package source.
 \section{Confusion risk}{
 
 \code{species_confusion_risk}/\code{genus_confusion_risk}/\code{family_confusion_risk} are
-an independent, model-independent diagnostic --
-deliberately score-only and model-free, rather than a second application
-of this function's own trained bivariate-normal likelihood. Each answers,
-at its own rank: given this row's raw match score and its own genus (for
+a score-only, model-free diagnostic, not a second application of this
+function's trained bivariate-normal likelihood. Each answers, at its own
+rank: given this row's raw match score and its own genus (for
 \code{species_confusion_risk}) or family (for \code{genus_confusion_risk}), how
-often would a REAL congener/confamilial pair score this high or higher,
-in this training reference database? Read off
+often would a REAL congener/confamilial pair score this high or higher in
+the training reference database? They are read off
 \code{model_params$Confusion_Risk_Curves} (genus-/family-equal-weighted,
-Empirical-Bayes-shrunk curves computed once by
-\code{train_likelihood_model()}, not recomputed here -- see that function's
-own \code{Confusion_Risk_Curves} documentation and
-the \code{score_floor_roc_sweep.R} diagnostic (TaxaID_dev repository), the reference implementation these
-curves are built from).
+Empirical-Bayes-shrunk curves computed once by \code{train_likelihood_model()};
+see its \code{Confusion_Risk_Curves} documentation and the
+\code{score_floor_roc_sweep.R} diagnostic, TaxaID_dev repository, from which
+the curves are built).
 
 \strong{Higher means MORE confusable, i.e. WEAKER evidence for the rank in
-question} -- matching this ecosystem's existing high=concern convention
-for risk-style metrics (e.g. \code{TaxaFlag::flag_contaminant()}'s
-\code{contaminant_score}), not the higher-is-better convention \code{score_likelihood}/
-\code{posterior_mean}/\code{confidence_score} use. These are one-sided tail
-probabilities (a p-value-like quantity for the null hypothesis "this is
-just a confusable relative"): \code{species_confusion_risk = 0.97} at a given
-score means a real congener would score this high 97\% of the time too --
-high confusion risk, weak evidence the species call is correct -- while
-\code{species_confusion_risk = 0.02} at the same score means a real congener
-almost never scores this high -- low confusion risk, strong evidence.
-\code{family_confusion_risk} has no grouping
-variable (a single, ungrouped cross-family rate) since no rank exists
-above family to equal-weight by. \code{own_rank_confusion_risk} is a
-convenience column pointing at whichever of the three matches this row's
-own \code{hypothesis_type} (\code{species_confusion_risk} for \code{specific_candidate},
-\code{genus_confusion_risk} for \code{unreferenced_species}, \code{family_confusion_risk}
-for \code{unreferenced_genus}) -- but all three are populated for every row
-(where computable) regardless of \code{hypothesis_type}, so a reviewer can
-also see e.g. "resolved to species, but genus_confusion_risk is also
-high, meaning even the genus call is shaky."
+question}, matching the high=concern convention of risk-style metrics
+(e.g. \code{TaxaFlag::flag_contaminant()}'s \code{contaminant_score}), not the
+higher-is-better convention of \code{score_likelihood}/\code{posterior_mean}/
+\code{confidence_score}. These are one-sided tail probabilities (p-value-like
+for the null "this is just a confusable relative"):
+\code{species_confusion_risk = 0.97} means a real congener would score this high
+97\% of the time too (weak evidence the species call is correct), while
+\code{0.02} means a real congener almost never scores this high (strong
+evidence). \code{family_confusion_risk} has no grouping variable (a single,
+ungrouped cross-family rate) since no rank exists above family to
+equal-weight by. \code{own_rank_confusion_risk} points at whichever of the
+three matches this row's \code{hypothesis_type} (\code{species_confusion_risk} for
+\code{specific_candidate}, \code{genus_confusion_risk} for \code{unreferenced_species},
+\code{family_confusion_risk} for \code{unreferenced_genus}), but all three are
+populated for every row (where computable), so a reviewer can also see
+e.g. "resolved to species, but genus_confusion_risk is also high."
 
-Purely informational -- never zeroes
-a likelihood or changes which hypothesis wins. \code{NA} when
-\code{model_params$Confusion_Risk_Curves} lacks the relevant tier (e.g.
-\code{rank_system} too short) or this row's own genus/family is unresolved
-(e.g. \code{unreferenced_genus} rows have no genus, so \code{species_confusion_risk}
-is always \code{NA} there). See \code{TaxaAssign::posterior_consensus()}'s
-\code{winner_species_confusion_risk}/\code{winner_genus_confusion_risk}/
-\code{winner_family_confusion_risk}/\code{winner_own_rank_confusion_risk}
-pass-through for how a downstream consumer reads these off the winning
-row.
+Purely informational: never zeroes a likelihood or changes which
+hypothesis wins. \code{NA} when \code{model_params$Confusion_Risk_Curves} lacks the
+relevant tier (e.g. \code{rank_system} too short) or this row's own
+genus/family is unresolved (e.g. \code{unreferenced_genus} rows have no genus,
+so \code{species_confusion_risk} is always \code{NA} there). See
+\code{TaxaAssign::posterior_consensus()}'s \verb{winner_*_confusion_risk} and
+\code{winner_own_rank_confusion_risk} pass-through for how a downstream
+consumer reads these off the winning row.
+}
+
+\section{Absolute fit}{
+
+\code{best_identity}, \code{best_identity_rank} and \code{poor_absolute_fit} are a flag
+only: they never change a likelihood or which hypothesis wins.
+\code{score_likelihood} is normalised to the unit's maximum, so the best
+hypothesis always scores 1 however poor the match itself is (an 86\%
+identity alignment can be called at 0.998 when it is the best of a bad
+set). These columns report the match on its own, absolute scale.
+
+\code{best_identity} is the unit's best raw match identity among its
+\code{specific_candidate} rows: the maximum of the per-taxon median scores
+computed for the likelihoods, on the percent scale (0-100, whether the
+input scores were 0-100 or 0-1). \code{best_identity_rank} is the finest rank
+(species, then genus, then family) whose marker-specific identity
+threshold \code{best_identity} reaches (\code{>=}), \code{NA} when it reaches none.
+\code{poor_absolute_fit} is \code{TRUE} when \code{best_identity} reaches no rank
+threshold and \code{FALSE} when it reaches at least one. The thresholds are the
+per-rank Youden's J values of \code{\link[=compute_rank_thresholds]{compute_rank_thresholds()}}, derived from
+\code{model_params$Confusion_Risk_Curves}, and are recorded in
+\code{attr(result$likelihoods, "rank_thresholds_used")}.
+
+All three are unit-level, repeated on every row of the unit's table. All
+three are \code{NA} for a unit with no \code{specific_candidate} row. If the model's
+stored curves cannot give thresholds (a model object from before they were
+stored), \code{best_identity_rank} and \code{poor_absolute_fit} are \code{NA} for every
+unit and one message says so.
 }
 
 \section{Pair-coverage check}{
@@ -423,14 +435,12 @@ when present (set by \code{TaxaMatch::blast_sequences()}), else falls back to
 the observed minimum of \code{match_df$query_coverage}; a value greater than 1
 is treated as a 0-100 percentage and normalised to 0-1. It warns only
 when the match object's floor sits more than 0.01 below the model's own
-\code{min_pair_coverage} -- i.e. only when inference is being asked to
-evaluate the gap feature on lower-coverage hits than the model was
-trained on. The check is one-directional by design: a match object with a
-STRICTER coverage floor than training never warns, since evaluating on a
-cleaner-than-trained population is not the failure mode this check exists
-to catch. Silently skipped (no check performed) when \code{model_params} was
-trained with no coverage floor at all, or when neither \code{report_params}
-nor a \code{query_coverage} column is available on \code{match_df}.
+\code{min_pair_coverage}, i.e. when inference is asked to evaluate the gap
+feature on lower-coverage hits than the model was trained on. The check is
+one-directional: a match object with a STRICTER coverage floor than
+training never warns. It is silently skipped when \code{model_params} was
+trained with no coverage floor, or when neither \code{report_params} nor a
+\code{query_coverage} column is available on \code{match_df}.
 }
 
 \examples{

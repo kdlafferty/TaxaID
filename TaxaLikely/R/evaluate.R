@@ -1,5 +1,5 @@
 utils::globalVariables(c(
-  "p_med", "p_b", "score_logit", "gap_logit", "p_norm",
+  "p_med", "p_b", "best_identity", "score_logit", "gap_logit", "p_norm",
   "raw_likelihood", "raw_likelihood_cov", "raw_likelihood_evidence",
   "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
   "score_likelihood_cov", "score_likelihood_evidence",
@@ -202,6 +202,7 @@ utils::globalVariables(c(
         ~ stats::median(.x, na.rm = TRUE)
       ),
       dplyr::across(dplyr::any_of(existing_rank_cols), dplyr::first),
+      dplyr::across(dplyr::any_of("is_restored"), ~ any(.x %in% TRUE)),
       .groups = "drop"
     ) |>
     dplyr::mutate(
@@ -225,6 +226,7 @@ utils::globalVariables(c(
       genus_confusion_risk = numeric(0),
       family_confusion_risk = numeric(0),
       own_rank_confusion_risk = numeric(0),
+      best_identity = numeric(0),
       stringsAsFactors = FALSE
     ))
   }
@@ -299,6 +301,7 @@ utils::globalVariables(c(
   # directly observed.
   .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d,
                                 cov_vec = NULL, genus_vec = NULL, evidence_vec = NULL,
+                                family_vec = NULL, restored_vec = NULL,
                                 mu_override = NULL, delta_override = NULL) {
     h1_vals <- numeric(length(s_vec))
     used_mu1 <- rep(NA_real_, length(s_vec))
@@ -506,139 +509,186 @@ utils::globalVariables(c(
       }
     }
 
-    # Anchor for the unsequenced-relative rings: the best-scoring candidate
-    # that has a genus. A higher-scoring hit identified only at a coarse rank
-    # (e.g. "Eukaryota") would name every ring NA and drop them all.
-    has_tax <- if (!is.null(genus_vec)) {
-      !is.na(genus_vec) & nzchar(trimws(as.character(genus_vec)))
-    } else {
-      rep(TRUE, length(s_vec))
+    # ---- Anchors for the unreferenced rings --------------------------------
+    # Every ring is VALUED and NAMED at one anchor candidate chosen by
+    # .pick_anchor(). A genus ring (H2) is anchored on the best candidate of
+    # that genus, a family ring (H3) on the best candidate of that family, the
+    # coarser rings (order and above) on the best candidate of the whole unit.
+    # Only candidates with a usable genus (non-missing, non-blank, not a
+    # placeholder such as "unclassified") are eligible; a unit with none keeps
+    # a single ring per tier anchored over all candidates.
+    .usable <- function(v) {
+      !is.na(v) & nzchar(trimws(as.character(v))) & !.is_placeholder_rank(v)
     }
-    best_i <- if (any(has_tax)) which(has_tax)[which.max(s_vec[has_tax])] else which.max(s_vec)
-    if (length(best_i) == 0L || all(s_vec == 0)) {
-      return(list(
-        h1 = h1_vals, h2 = 0, h3 = 0, rings = rep(0, length(model_params$Rings)),
-        h2_delta_source = "global_fallback",
-        used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
-        used_h2_delta = h2_delta, used_h2_tau_sq = NA_real_
-      ))
+    n_c <- length(s_vec)
+    has_tax <- if (!is.null(genus_vec)) .usable(genus_vec) else rep(FALSE, n_c)
+    fam_ok <- if (!is.null(family_vec)) has_tax & .usable(family_vec) else rep(FALSE, n_c)
+
+    # Deterministic anchor over a set of candidate indices: highest transformed
+    # score (ties within 1e-9); then a real BLAST hit over a restored row;
+    # then the highest H1 density (relative 1e-9); then the highest raw
+    # identity (1e-9). Only a final exact tie falls to the FIRST in candidate
+    # order, which is the sole order-dependent step.
+    .pick_anchor <- function(idx) {
+      if (length(idx) <= 1L) {
+        return(idx)
+      }
+      top <- function(v, tol) {
+        v[is.na(v)] <- -Inf
+        v >= max(v) - tol
+      }
+      idx <- idx[top(s_vec[idx], 1e-9)]
+      if (length(idx) > 1L && !is.null(restored_vec)) {
+        r <- restored_vec[idx] %in% TRUE
+        if (any(r) && any(!r)) idx <- idx[!r]
+      }
+      if (length(idx) > 1L) {
+        hv <- h1_vals[idx]
+        idx <- idx[top(hv, abs(max(hv, na.rm = TRUE)) * 1e-9)]
+      }
+      if (length(idx) > 1L) idx <- idx[top(p_raw[idx], 1e-9)]
+      idx[1L]
     }
 
-    best_pt <- c(s_vec[best_i], g_vec[best_i])
+    unit_pool <- if (any(has_tax)) which(has_tax) else seq_len(n_c)
+    unit_anchor <- .pick_anchor(unit_pool)
+    zero_all <- length(unit_anchor) == 0L || all(s_vec == 0)
+    if (length(unit_anchor) == 0L) unit_anchor <- 1L
+
+    # Delta resampled for the genus of anchor `a` (Monte Carlo); NULL otherwise.
+    .ovr <- function(a) {
+      if (is.null(delta_override)) {
+        return(NULL)
+      }
+      g <- if (!is.null(genus_vec) && .usable(genus_vec[a])) as.character(genus_vec[a]) else NA_character_
+      if (!is.na(g) && g %in% names(delta_override)) delta_override[[g]] else delta_override[[1L]]
+    }
+
+    h2_gap_mu <- model_params$H2$gap_mean %||% 0
+    h3_gap_mu <- model_params$H3$gap_mean %||% 0
 
     # Per-genus H2 delta AND variance (see train_likelihood_model()'s
     # "Per-genus delta shrinkage" section): prefer the anchor candidate's own
-    # genus-specific estimates when the model has one; otherwise fall back to
-    # the pooled global values unchanged. H3 keeps the "+ constant taxonomic
-    # step" heuristic on top of whichever delta (local or global) H2 used, so
-    # a genus-specific H2 correction propagates to H3 consistently. H3's
-    # sigma is not genus-specific (would need family-level congener data).
-    use_h2_delta <- h2_delta
-    use_h2_sigma <- h2_sigma
-    delta_source <- "global_fallback"
-    h2_n_used <- NA_real_
-    h2_matched_local <- FALSE
-    if (!is.null(genus_vec) && !is.null(model_params$H2_Lookup) &&
-      nrow(model_params$H2_Lookup) > 0L) {
-      anchor_genus <- genus_vec[best_i]
-      if (!is.na(anchor_genus)) {
-        gidx <- match(anchor_genus, model_params$H2_Lookup$genus)
-        if (!is.na(gidx)) {
-          use_h2_delta <- model_params$H2_Lookup$delta_shrunk[gidx]
-          delta_source <- "genus_specific"
-          h2_n_used <- model_params$H2_Lookup$n_pairs[gidx]
-          h2_matched_local <- TRUE
-          # When H2_Lookup lacks a var_shrunk column, fall back to the
-          # pooled global h2_sigma.
-          if ("var_shrunk" %in% names(model_params$H2_Lookup)) {
-            use_h2_sigma[1L, 1L] <- model_params$H2_Lookup$var_shrunk[gidx]
-          }
+    # genus-specific estimates when the model has one; otherwise the pooled
+    # global values. used_h2_delta/used_h2_tau_sq record what was resolved
+    # BEFORE delta_override (see this function's header comment), read by the
+    # Monte Carlo section to build its resampling distribution. H2/H3 mean
+    # anchor: the ANCHOR'S OWN resolved species mean (used_mu1[a], species
+    # floor applied, mu_override not yet), falling back to global_mu.
+    .resolve_h2 <- function(a) {
+      g <- if (!is.null(genus_vec)) genus_vec[a] else NA
+      d <- h2_delta
+      sg <- h2_sigma
+      src <- "global_fallback"
+      n_used <- NA_real_
+      matched <- FALSE
+      q_id <- model_params$H2$q_identical %||% 0
+      lk <- model_params$H2_Lookup
+      if (!is.null(genus_vec) && !is.null(lk) && nrow(lk) > 0L && !is.na(g)) {
+        gi <- match(g, lk$genus)
+        # A lookup row whose delta is not finite, or whose variance is not a
+        # positive finite number, cannot value a ring (an NA gives an NA
+        # density; a zero variance an infinite one, which turns the unit's
+        # normalisation into NaN): such a genus falls back to the pooled values.
+        if (!is.na(gi) && (!is.finite(lk$delta_shrunk[gi]) ||
+          ("var_shrunk" %in% names(lk) && !(is.finite(lk$var_shrunk[gi]) && lk$var_shrunk[gi] > 0)))) {
+          gi <- NA_integer_
+        }
+        if (!is.na(gi)) {
+          d <- lk$delta_shrunk[gi]
+          src <- "genus_specific"
+          n_used <- lk$n_pairs[gi]
+          matched <- TRUE
+          if ("var_shrunk" %in% names(lk)) sg[1L, 1L] <- lk$var_shrunk[gi]
+          if ("q_identical" %in% names(lk) && is.finite(lk$q_identical[gi])) q_id <- lk$q_identical[gi]
         }
       }
-    }
-    # used_h2_delta/used_h2_tau_sq record what was resolved BEFORE
-    # delta_override (see .calc_likelihoods()'s own header comment) -- read by
-    # the Monte Carlo section to build its resampling distribution for H2/H3.
-    # Same shrinkage-consistent treatment as H1's used_tau_sq1 above: a
-    # genus-specific delta is itself a shrinkage blend (w = n_pairs/(n_pairs +
-    # prior_weight)), so its uncertainty is w^2 * h2_var/n_pairs, not the naive
-    # h2_var/n_pairs; a genus with no congener data at all falls back to
-    # h2_var/prior_weight (not the true pooled foreign-match count -- see the
-    # header comment for why that would understate uncertainty exactly where
-    # it should be largest).
-    resolved_h2_delta <- use_h2_delta
-    resolved_h2_tau_sq <- if (has_n_info) {
-      if (h2_matched_local) {
-        w_h2 <- h2_n_used / (h2_n_used + prior_weight_val)
-        w_h2^2 * use_h2_sigma[1L, 1L] / h2_n_used
+      tau <- if (has_n_info) {
+        if (matched) {
+          w_h2 <- n_used / (n_used + prior_weight_val)
+          w_h2^2 * sg[1L, 1L] / n_used
+        } else {
+          sg[1L, 1L] / prior_weight_val
+        }
       } else {
-        use_h2_sigma[1L, 1L] / prior_weight_val
+        NA_real_
       }
-    } else {
-      NA_real_
-    }
-    if (!is.null(delta_override)) use_h2_delta <- delta_override
-    use_h3_delta <- use_h2_delta + (h3_delta - h2_delta)
-
-    # H2/H3 mean anchor: anchored on the ANCHOR
-    # CANDIDATE'S OWN resolved species mean (used_mu1[best_i], the same value
-    # H1's own density used for this candidate -- species floor already
-    # applied, mu_override NOT yet applied at this point in the primary/
-    # point-estimate pass) rather than the population-wide global_mu. A
-    # referenced species whose own trained mean sits above or below the
-    # population average is real information about how conserved or variable
-    # THIS lineage specifically is -- an unreferenced sister species should
-    # inherit that, not be shifted from an unrelated population-wide
-    # baseline. Falls back to global_mu when the anchor has no species-
-    # specific entry at all (used_mu1[best_i] is then already global_mu,
-    # since that is what use_mu starts as before any lookup).
-    h2_anchor_mu <- if (!is.na(used_mu1[best_i])) used_mu1[best_i] else global_mu[1L]
-    # gap means: measured in training (0 for models trained before that)
-    h2_gap_mu <- model_params$H2$gap_mean %||% 0
-    h3_gap_mu <- model_params$H3$gap_mean %||% 0
-    h2_mu <- c(h2_anchor_mu - use_h2_delta, h2_gap_mu)
-    h3_mu <- c(h2_anchor_mu - use_h3_delta, h3_gap_mu)
-    if (use_1d) {
-      h2_val <- stats::dnorm(best_pt[1L],
-        mean = h2_mu[1L],
-        sd = sqrt(use_h2_sigma[1L, 1L])
+      o <- .ovr(a)
+      list(
+        delta = d, tau_sq = tau, src = src, sigma = sg, q_id = q_id,
+        d_use = if (is.null(o)) d else o,
+        mu = if (!is.na(used_mu1[a])) used_mu1[a] else global_mu[1L]
       )
-      h3_val <- stats::dnorm(best_pt[1L],
-        mean = h3_mu[1L],
-        sd = sqrt(h3_sigma[1L, 1L])
-      )
-    } else {
-      h2_val <- mvtnorm::dmvnorm(best_pt, mean = h2_mu, sigma = use_h2_sigma)
-      h3_val <- mvtnorm::dmvnorm(best_pt, mean = h3_mu, sigma = h3_sigma)
     }
-    # An unsequenced congener with an IDENTICAL barcode scores against the
-    # anchor as a conspecific would: H2 is a mixture of the anchor's own H1
-    # density (weight q) and the shifted Gaussian (1 - q).
-    q_id <- model_params$H2$q_identical %||% 0
-    if (!is.null(model_params$H2_Lookup) && "q_identical" %in% names(model_params$H2_Lookup) &&
-      !is.null(genus_vec) && !is.na(genus_vec[best_i])) {
-      gq <- match(genus_vec[best_i], model_params$H2_Lookup$genus)
-      if (!is.na(gq) && !is.na(model_params$H2_Lookup$q_identical[gq])) {
-        q_id <- model_params$H2_Lookup$q_identical[gq]
-      }
-    }
-    if (isTRUE(q_id > 0)) h2_val <- q_id * h1_vals[best_i] + (1 - q_id) * h2_val
-
-    # Outer rings (order, class): same anchor, each ring's shift applied on top
-    # of whichever H2 shift was resolved for the anchor's genus.
-    ring_vals <- vapply(model_params$Rings %||% list(), function(R) {
-      mu_r <- c(h2_anchor_mu - (use_h2_delta + (R$delta - h2_delta)), 0)
+    .dens <- function(a, mean_s, gap_mu, sig) {
       if (use_1d) {
-        stats::dnorm(best_pt[1L], mean = mu_r[1L], sd = sqrt(R$sigma[1L, 1L]))
+        stats::dnorm(s_vec[a], mean = mean_s, sd = sqrt(sig[1L, 1L]))
       } else {
-        mvtnorm::dmvnorm(best_pt, mean = mu_r, sigma = R$sigma)
+        mvtnorm::dmvnorm(c(s_vec[a], g_vec[a]), mean = c(mean_s, gap_mu), sigma = sig)
       }
+    }
+    # H2 at anchor a: shifted Gaussian, mixed with the anchor's own H1 density
+    # at weight q_identical (an unsequenced congener with an IDENTICAL barcode
+    # scores against the anchor as a conspecific would).
+    .h2_at <- function(a) {
+      rs <- .resolve_h2(a)
+      v <- .dens(a, rs$mu - rs$d_use, h2_gap_mu, rs$sigma)
+      if (isTRUE(rs$q_id > 0)) v <- rs$q_id * h1_vals[a] + (1 - rs$q_id) * v
+      c(rs, list(val = v))
+    }
+    # H3 at anchor a: that anchor's genus delta plus the global H3 offset.
+    .h3_at <- function(a) {
+      rs <- .resolve_h2(a)
+      d3 <- rs$d_use + (h3_delta - h2_delta)
+      c(rs, list(val = .dens(a, rs$mu - d3, h3_gap_mu, h3_sigma)))
+    }
+
+    # Genus rings (H2)
+    g_chr <- if (!is.null(genus_vec)) as.character(genus_vec) else rep(NA_character_, n_c)
+    f_chr <- if (!is.null(family_vec)) as.character(family_vec) else rep(NA_character_, n_c)
+    h2_keys <- unique(g_chr[has_tax])
+    h2_anchor <- if (length(h2_keys) > 0L) {
+      vapply(h2_keys, function(g) .pick_anchor(which(has_tax & g_chr == g)), integer(1))
+    } else {
+      unit_anchor
+    }
+    if (length(h2_keys) == 0L) h2_keys <- NA_character_
+    h2_res <- lapply(h2_anchor, .h2_at)
+    # Family rings (H3): the same rule one rank up.
+    h3_keys <- unique(f_chr[fam_ok])
+    h3_anchor <- if (length(h3_keys) > 0L) {
+      vapply(h3_keys, function(f) .pick_anchor(which(fam_ok & f_chr == f)), integer(1))
+    } else {
+      unit_anchor
+    }
+    if (length(h3_keys) == 0L) h3_keys <- NA_character_
+    h3_res <- lapply(h3_anchor, .h3_at)
+
+    # Outer rings (order, class): the unit anchor, each ring's shift applied on
+    # top of whichever H2 shift was resolved for that anchor's genus.
+    u_res <- .resolve_h2(unit_anchor)
+    ring_vals <- vapply(model_params$Rings %||% list(), function(R) {
+      .dens(unit_anchor, u_res$mu - (u_res$d_use + (R$delta - h2_delta)), 0, R$sigma)
     }, numeric(1))
 
+    h2_val <- stats::setNames(vapply(h2_res, `[[`, numeric(1), "val"), h2_keys)
+    h3_val <- stats::setNames(vapply(h3_res, `[[`, numeric(1), "val"), h3_keys)
+    if (zero_all) {
+      h2_val[] <- 0
+      h3_val[] <- 0
+      ring_vals[] <- 0
+    }
+
     list(
-      h1 = h1_vals, h2 = h2_val, h3 = h3_val, rings = ring_vals, h2_delta_source = delta_source,
+      h1 = h1_vals, h2 = h2_val, h3 = h3_val, rings = ring_vals,
+      h2_anchor = unname(h2_anchor), h3_anchor = unname(h3_anchor),
+      unit_anchor = unit_anchor,
+      h2_delta_source = stats::setNames(vapply(h2_res, `[[`, character(1), "src"), h2_keys),
+      h3_delta_source = stats::setNames(vapply(h3_res, `[[`, character(1), "src"), h3_keys),
+      ring_delta_source = u_res$src,
       used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
-      used_h2_delta = resolved_h2_delta, used_h2_tau_sq = resolved_h2_tau_sq
+      used_h2_delta = stats::setNames(vapply(h2_res, `[[`, numeric(1), "delta"), h2_keys),
+      used_h2_tau_sq = stats::setNames(vapply(h2_res, `[[`, numeric(1), "tau_sq"), h2_keys)
     )
   }
 
@@ -649,9 +699,19 @@ utils::globalVariables(c(
     NULL
   }
 
+  family_vec <- if (!is.na(family_rank_col) && family_rank_col %in% names(cand)) {
+    cand[[family_rank_col]]
+  } else {
+    NULL
+  }
+  # A real BLAST hit outranks a restored row at an equal score when choosing
+  # a ring's anchor (see .pick_anchor() in .calc_likelihoods()).
+  restored_vec <- if ("is_restored" %in% names(cand)) cand$is_restored %in% TRUE else NULL
+
   primary <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
     cand$p_med, cand$taxon_name,
-    use_1d = is_singleton, genus_vec = genus_vec
+    use_1d = is_singleton, genus_vec = genus_vec,
+    family_vec = family_vec, restored_vec = restored_vec
   )
 
   # Coverage-adjusted point estimate: inflate sigma_score by 1/coverage for
@@ -662,7 +722,7 @@ utils::globalVariables(c(
     cand$p_med, cand$taxon_name,
     use_1d = is_singleton,
     cov_vec = if (has_coverage) cand$coverage else NULL,
-    genus_vec = genus_vec
+    genus_vec = genus_vec, family_vec = family_vec, restored_vec = restored_vec
   )
 
   # Evidence-adjusted point estimate: scale sigma_score by 1/sqrt(evidence_ratio)
@@ -681,7 +741,7 @@ utils::globalVariables(c(
     cand$score_logit, cand$gap_logit, cand$p_med, cand$taxon_name,
     use_1d = is_singleton,
     evidence_vec = if (has_evidence) cand[[evidence_col]] / reference_evidence else NULL,
-    genus_vec = genus_vec
+    genus_vec = genus_vec, family_vec = family_vec, restored_vec = restored_vec
   )
 
   # Build result rows for H1
@@ -693,83 +753,71 @@ utils::globalVariables(c(
       raw_likelihood_evidence = primary_evidence$h1
     )
 
-  # Build H2/H3 rows from the best candidate
-  cand_has_tax <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(cand)) {
-    g <- as.character(cand[[genus_rank_col]])
-    !is.na(g) & nzchar(trimws(g)) & !.is_placeholder_rank(g)
-  } else {
-    rep(TRUE, nrow(cand))
-  }
-  h1_tax <- primary$h1 * cand_has_tax
-  best_i <- if (any(h1_tax > 0)) {
-    which.max(h1_tax)
-  } else if (any(primary$h1 > 0) && !any(cand_has_tax)) {
-    which.max(primary$h1)
-  } else if (any(cand_has_tax)) {
-    which(cand_has_tax)[which.max(cand$score_logit[cand_has_tax])]
-  } else {
-    which.max(cand$score_logit)
-  }
-  best_row <- cand[best_i, , drop = FALSE]
-  # A placeholder rank value ("unk_family") names no taxon; blank it so the
-  # H2/H3 rows are named by the nearest real rank, not by the placeholder.
-  for (rc in intersect(rank_cols, names(best_row))) {
-    if (is.character(best_row[[rc]]) && .is_placeholder_rank(best_row[[rc]])) {
-      best_row[[rc]] <- NA_character_
-    }
-  }
-
-  # Derive H2 taxon_name: finest rank NA -> create_taxon_names picks genus
-  # Derive H3 taxon_name: two finest ranks NA -> create_taxon_names picks family
+  # Build the unreferenced rows. Each ring is named at the SAME anchor
+  # candidate that valued it (primary$h2_anchor / h3_anchor / unit_anchor, all
+  # chosen by .pick_anchor() inside .calc_likelihoods()): one genus ring
+  # (unreferenced_species) per usable genus, one family ring
+  # (unreferenced_genus) per usable family, and one row per coarser ring for
+  # the unit anchor. A unit with no usable genus keeps a single ring per tier,
+  # named by the nearest real rank of the unit anchor.
   finest <- if (length(rank_cols) >= 1L) rank_cols[length(rank_cols)] else NULL
   second <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NULL
 
-  row_h2 <- best_row
-  if (!is.null(finest) && finest %in% names(row_h2)) {
-    row_h2[[finest]] <- NA_character_
+  # A placeholder rank value ("unk_family") names no taxon; blank it so the
+  # rows are named by the nearest real rank, not by the placeholder.
+  .anchor_row <- function(a) {
+    br <- cand[a, , drop = FALSE]
+    for (rc in intersect(rank_cols, names(br))) {
+      if (is.character(br[[rc]]) && .is_placeholder_rank(br[[rc]])) {
+        br[[rc]] <- NA_character_
+      }
+    }
+    br
   }
-  row_h2 <- TaxaTools::create_taxon_names(row_h2, rank_cols)
-  row_h2$hypothesis_type <- "unreferenced_species"
-  row_h2$raw_likelihood <- primary$h2
-  row_h2$raw_likelihood_cov <- primary$h2 # H2 sigma is global fixed; no inflation
-  row_h2$raw_likelihood_evidence <- primary$h2 # H2 sigma is global fixed; no inflation
-  row_h2$h2_delta_source <- primary$h2_delta_source
+  .ring_row <- function(a, blank, type, val, src) {
+    rw <- .anchor_row(a)
+    for (bc in intersect(blank, names(rw))) rw[[bc]] <- NA_character_
+    rw <- TaxaTools::create_taxon_names(rw, rank_cols)
+    rw$hypothesis_type <- type
+    # H2/H3 sigmas are global fixed values: no coverage or evidence inflation.
+    rw$raw_likelihood <- val
+    rw$raw_likelihood_cov <- val
+    rw$raw_likelihood_evidence <- val
+    rw$h2_delta_source <- src
+    rw
+  }
 
-  row_h3 <- best_row
-  if (!is.null(finest) && finest %in% names(row_h3)) {
-    row_h3[[finest]] <- NA_character_
-  }
-  if (!is.null(second) && second %in% names(row_h3)) {
-    row_h3[[second]] <- NA_character_
-  }
-  row_h3 <- TaxaTools::create_taxon_names(row_h3, rank_cols)
-  row_h3$hypothesis_type <- "unreferenced_genus"
-  row_h3$raw_likelihood <- primary$h3
-  row_h3$raw_likelihood_cov <- primary$h3 # H3 sigma is global fixed; no inflation
-  row_h3$raw_likelihood_evidence <- primary$h3 # H3 sigma is global fixed; no inflation
-  row_h3$h2_delta_source <- primary$h2_delta_source
+  # Derive H2 taxon_name: finest rank NA -> create_taxon_names picks genus.
+  # Derive H3 taxon_name: two finest ranks NA -> create_taxon_names picks family.
+  h2_rows_l <- lapply(seq_along(primary$h2), function(k) {
+    .ring_row(primary$h2_anchor[k], finest, "unreferenced_species",
+      primary$h2[[k]], primary$h2_delta_source[[k]])
+  })
+  h3_rows_l <- lapply(seq_along(primary$h3), function(k) {
+    .ring_row(primary$h3_anchor[k], c(finest, second), "unreferenced_genus",
+      primary$h3[[k]], primary$h3_delta_source[[k]])
+  })
+  # row taxon_name of each ring, for the Monte Carlo mapping back to a ring
+  h2_row_names <- vapply(h2_rows_l, function(r) as.character(r$taxon_name[1L]), character(1))
+  h3_row_names <- vapply(h3_rows_l, function(r) as.character(r$taxon_name[1L]), character(1))
 
-  # Outer ring rows: named by the anchor's own order (class); skipped when the
-  # anchor has no real value at that rank.
+  # Outer ring rows: named by the unit anchor's own order (class); skipped
+  # when the anchor has no real value at that rank.
+  unit_row <- .anchor_row(primary$unit_anchor)
   ring_rows <- list()
   for (ri in seq_along(model_params$Rings %||% list())) {
     R <- model_params$Rings[[ri]]
-    if (!R$rank %in% rank_cols || !R$rank %in% names(best_row)) next
-    v <- best_row[[R$rank]]
+    if (!R$rank %in% rank_cols || !R$rank %in% names(unit_row)) next
+    v <- unit_row[[R$rank]]
     if (is.na(v) || .is_placeholder_rank(v)) next
-    row_r <- best_row
     finer <- rank_cols[seq_along(rank_cols) > match(R$rank, rank_cols)]
-    for (fc in intersect(finer, names(row_r))) row_r[[fc]] <- NA_character_
-    row_r <- TaxaTools::create_taxon_names(row_r, rank_cols)
-    row_r$hypothesis_type <- R$hypothesis_type
-    row_r$raw_likelihood <- primary$rings[ri]
-    row_r$raw_likelihood_cov <- primary$rings[ri]
-    row_r$raw_likelihood_evidence <- primary$rings[ri]
-    row_r$h2_delta_source <- primary$h2_delta_source
-    ring_rows[[length(ring_rows) + 1L]] <- row_r
+    ring_rows[[length(ring_rows) + 1L]] <- .ring_row(
+      primary$unit_anchor, finer, R$hypothesis_type,
+      primary$rings[ri], primary$ring_delta_source
+    )
   }
 
-  res <- dplyr::bind_rows(c(list(df_h1, row_h2, row_h3), ring_rows))
+  res <- dplyr::bind_rows(c(list(df_h1), h2_rows_l, h3_rows_l, ring_rows))
 
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
@@ -785,7 +833,7 @@ utils::globalVariables(c(
   # call, matching this ecosystem's existing high=concern convention, e.g.
   # TaxaFlag::flag_contaminant()'s contaminant_score). Evaluated per row at
   # THAT row's own genus/family (H2 rows retain genus; H3 rows retain family
-  # only) and its own observed score (best_row's p_med for H2/H3, i.e. the
+  # only) and its own observed score (each ring's anchor p_med, i.e. the
   # anchor's score) -- res still carries genus_rank_col/family_rank_col
   # columns at this point (only nulled by create_taxon_names for
   # taxon_name/taxon_name_rank purposes, not the raw taxonomy columns
@@ -854,6 +902,9 @@ utils::globalVariables(c(
       species_confusion_risk = dplyr::first(species_confusion_risk),
       genus_confusion_risk = dplyr::first(genus_confusion_risk),
       family_confusion_risk = dplyr::first(family_confusion_risk),
+      # Anchor/own score on the percent scale; read back below for the unit's
+      # best raw identity (specific_candidate rows only).
+      .p_med_pct = dplyr::first(p_med) * 100,
       # NA for specific_candidate rows (only H2/H3 rows carry this);
       # each unreferenced_species/unreferenced_genus group has a
       # single row, so first() is unambiguous.
@@ -931,6 +982,12 @@ utils::globalVariables(c(
     h1_idx_map <- vector("list", nrow(res_agg))
     h2_rows <- integer(0L)
     h3_rows <- integer(0L)
+    h2_keys_mc <- integer(0L)
+    h3_keys_mc <- integer(0L)
+    .ring_key <- function(nm, row_names) {
+      k <- match(nm, row_names)
+      if (is.na(k)) 1L else k
+    }
     ring_types <- vapply(model_params$Rings %||% list(), function(R) R$hypothesis_type, character(1))
     ring_rows_mc <- lapply(ring_types, function(x) integer(0L))
     for (r in seq_len(nrow(res_agg))) {
@@ -938,12 +995,15 @@ utils::globalVariables(c(
       if (ht == "specific_candidate") {
         h1_idx_map[[r]] <- which(cand$taxon_name == res_agg$taxon_name[r])
       } else if (ht == "unreferenced_species") {
+        # genus ring: map the row back to its genus (position in primary$h2)
         h2_rows <- c(h2_rows, r)
+        h2_keys_mc <- c(h2_keys_mc, .ring_key(res_agg$taxon_name[r], h2_row_names))
       } else if (ht %in% ring_types) {
         k <- match(ht, ring_types)
         ring_rows_mc[[k]] <- c(ring_rows_mc[[k]], r)
       } else {
         h3_rows <- c(h3_rows, r)
+        h3_keys_mc <- c(h3_keys_mc, .ring_key(res_agg$taxon_name[r], h3_row_names))
       }
     }
 
@@ -957,15 +1017,23 @@ utils::globalVariables(c(
       # when genuinely unknown -- conservative, not a guess.
       mean_sd1 <- sqrt(primary_evidence$used_tau_sq1)
       mean_sd1[is.na(mean_sd1)] <- 0
-      h2_delta_sd <- if (!is.na(primary$used_h2_tau_sq)) sqrt(primary$used_h2_tau_sq) else 0
+      h2_delta_sd <- sqrt(primary$used_h2_tau_sq)
+      h2_delta_sd[is.na(h2_delta_sd)] <- 0
 
       for (sim_i in seq_len(n_sims)) {
         mu_sim <- stats::rnorm(nc, mean = primary_evidence$used_mu1, sd = mean_sd1)
-        delta_sim <- stats::rnorm(1L, mean = primary$used_h2_delta, sd = h2_delta_sd)
+        # one resampled delta PER GENUS ring, each with its own variance
+        delta_sim <- stats::setNames(
+          stats::rnorm(length(primary$used_h2_delta),
+            mean = primary$used_h2_delta, sd = h2_delta_sd
+          ),
+          names(primary$used_h2_delta)
+        )
 
         sim_res <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
           cand$p_med, cand$taxon_name,
           use_1d = is_singleton, genus_vec = genus_vec,
+          family_vec = family_vec, restored_vec = restored_vec,
           mu_override = mu_sim, delta_override = delta_sim
         )
 
@@ -974,8 +1042,8 @@ utils::globalVariables(c(
           m <- h1_idx_map[[r]]
           if (!is.null(m) && length(m) > 0L) iter_liks[r] <- max(sim_res$h1[m])
         }
-        if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2
-        if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3
+        if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2[h2_keys_mc]
+        if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3[h3_keys_mc]
         for (k in seq_along(ring_rows_mc)) {
           if (length(ring_rows_mc[[k]]) > 0L) iter_liks[ring_rows_mc[[k]]] <- sim_res$rings[k]
         }
@@ -1005,7 +1073,8 @@ utils::globalVariables(c(
 
         sim_res <- .calc_likelihoods(sim_scores, sim_gaps,
           cand$p_med, cand$taxon_name,
-          use_1d = is_singleton, genus_vec = genus_vec
+          use_1d = is_singleton, genus_vec = genus_vec,
+          family_vec = family_vec, restored_vec = restored_vec
         )
 
         iter_liks <- numeric(nrow(res_agg))
@@ -1015,8 +1084,8 @@ utils::globalVariables(c(
             iter_liks[r] <- max(sim_res$h1[m])
           }
         }
-        if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2
-        if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3
+        if (length(h2_rows) > 0L) iter_liks[h2_rows] <- sim_res$h2[h2_keys_mc]
+        if (length(h3_rows) > 0L) iter_liks[h3_rows] <- sim_res$h3[h3_keys_mc]
         for (k in seq_along(ring_rows_mc)) {
           if (length(ring_rows_mc[[k]]) > 0L) iter_liks[ring_rows_mc[[k]]] <- sim_res$rings[k]
         }
@@ -1045,6 +1114,13 @@ utils::globalVariables(c(
       hypothesis_type != "specific_candidate"
   )
 
+  # Unit-level best raw identity (percent scale): the maximum of the
+  # per-taxon median scores (p_med) over the specific_candidate rows that
+  # survive; NA when none do. Repeated on every row.
+  spec_pct <- res_agg$.p_med_pct[res_agg$hypothesis_type == "specific_candidate"]
+  spec_pct <- spec_pct[is.finite(spec_pct)]
+  res_agg$best_identity <- if (length(spec_pct) > 0L) max(spec_pct) else NA_real_
+
   res_agg |>
     dplyr::select(
       hypothesis_type, taxon_name, taxon_name_rank,
@@ -1052,9 +1128,41 @@ utils::globalVariables(c(
       score_likelihood, score_likelihood_mean, score_likelihood_sd,
       score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
       species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-      own_rank_confusion_risk
+      own_rank_confusion_risk, best_identity
     ) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
+}
+
+#' Absolute-fit columns for a vector of unit best identities
+#'
+#' @param best_identity Numeric, percent scale (one value per row).
+#' @param thresholds Named numeric (species/genus/family subset, NAs removed),
+#'   on the same percent scale.
+#' @return Data frame with `best_identity`, `best_identity_rank`,
+#'   `poor_absolute_fit`.
+#' @noRd
+.absolute_fit_columns <- function(best_identity, thresholds) {
+  n <- length(best_identity)
+  rank_out <- rep(NA_character_, n)
+  poor <- rep(NA, n)
+  if (length(thresholds) > 0L) {
+    tol <- 1e-8
+    # finest first
+    ord <- intersect(c("species", "genus", "family"), names(thresholds))
+    for (i in seq_len(n)) {
+      b <- best_identity[i]
+      if (is.na(b)) next
+      hit <- ord[b >= thresholds[ord] - tol]
+      rank_out[i] <- if (length(hit) > 0L) hit[[1L]] else NA_character_
+      poor[i] <- length(hit) == 0L
+    }
+  }
+  data.frame(
+    best_identity = best_identity,
+    best_identity_rank = rank_out,
+    poor_absolute_fit = as.logical(poor),
+    stringsAsFactors = FALSE
+  )
 }
 
 #' Truncate a character vector of observation_ids for a warning message
@@ -1219,7 +1327,11 @@ utils::globalVariables(c(
 #'       (`"genus_specific"` or `"global_fallback"` for
 #'       `unreferenced_species`/`unreferenced_genus` rows; `NA` for
 #'       `specific_candidate` rows), plus the `*_confusion_risk` columns
-#'       described under \strong{Confusion risk} below.}
+#'       described under \strong{Confusion risk} below, plus the unit-level
+#'       `best_identity` (numeric, percent), `best_identity_rank` (character)
+#'       and `poor_absolute_fit` (logical) flag columns described under
+#'       \strong{Absolute fit}. The thresholds used are in
+#'       `attr($likelihoods, "rank_thresholds_used")` (named numeric).}
 #'     \item{`$unresolved`}{Rows from `match_df` for any `observation_id` that
 #'       produced no usable likelihoods (empty data frame if none).  Pass to
 #'       a second call of `evaluate_likelihoods()` with a coarser
@@ -1239,11 +1351,29 @@ utils::globalVariables(c(
 #'     units, or by a genus-specific shrunk delta from
 #'     \code{model_params$H2_Lookup} when the anchor candidate's genus has
 #'     real congener data -- see \code{h2_delta_source} below) to predict
-#'     what a sister-species match looks like.
+#'     what a sister-species match looks like. There is one such row per
+#'     distinct genus among the unit's candidates, named by the genus.
 #'   \item \strong{H3 (unreferenced_genus):} The query comes from a genus not in
 #'     the reference database at all. The score distribution is shifted further
-#'     downward (by \code{H3$delta}).
+#'     downward (by \code{H3$delta}). There is one such row per distinct family
+#'     among the unit's candidates, named by the family.
 #' }
+#'
+#' \strong{Ring anchors:} Every unreferenced row is valued and named at the
+#' same anchor candidate. The anchor of a set of candidates is the one with the
+#' highest transformed score; ties (within 1e-9) are broken by a real
+#' reference hit over a restored row, then by the highest H1 density, then by
+#' the highest raw identity; only a final exact tie keeps the first candidate
+#' in the table, and that is the only order-dependent step. Each genus ring
+#' (H2) is anchored on the best candidate of that genus and uses that genus's
+#' own H2 delta, variance and identical-barcode weight; each family ring (H3)
+#' is anchored on the best candidate of that family, so a unit whose
+#' candidates span several families gets one family ring per family, each at
+#' its own family's anchor. The coarser rings (order and above) stay one per
+#' unit, anchored on the best candidate of the whole unit. Only candidates with
+#' a usable genus (not missing, blank or a placeholder such as
+#' "unclassified") are eligible; a unit with none keeps a single ring per tier
+#' anchored over all its candidates and named by the nearest real rank.
 #'
 #' \strong{Features:}
 #' \itemize{
@@ -1260,20 +1390,19 @@ utils::globalVariables(c(
 #' \strong{Per-species sigma floor:}
 #' When a species is found in \code{H1_Lookup}, its per-species
 #' \code{sigma_score} (score variance) is used in place of the global
-#' \code{H1_Sigma[1,1]}.  However, the per-species estimate can be
-#' artificially small for well-sampled species whose reference sequences are
-#' nearly identical (many NCBI accessions from the same voucher or
-#' population).  Such a tight distribution wrongly rejects realistic query
-#' scores of any kind (sequence, image, or acoustic) that fall slightly
-#' below the near-perfect reference mean,
-#' causing the species to receive a near-zero H1 likelihood and be silently
-#' dropped by \code{ratio_threshold}.  To prevent this,
+#' \code{H1_Sigma[1,1]}.  The per-species estimate can be artificially small
+#' for well-sampled species whose reference sequences are nearly identical
+#' (many accessions from the same voucher or population); such a tight
+#' distribution would reject realistic query scores of any kind (sequence,
+#' image, or acoustic) that fall slightly below the near-perfect reference
+#' mean, giving the species a near-zero H1 likelihood so that
+#' \code{ratio_threshold} silently drops it.  To prevent this,
 #' \code{evaluate_likelihoods()} floors the per-species sigma at the global
 #' \code{H1_Sigma[1,1]}: species-specific sigma is used only when it is
-#' \emph{larger} than global (i.e., more uncertain than average).  This has
-#' negligible impact on discrimination between closely related species because
-#' the global sigma (SD \eqn{\approx \sqrt{H1\_Sigma[1,1]}}) still spans the
-#' logit range corresponding to a few percent identity difference.
+#' \emph{larger} than global.  This has negligible impact on discrimination
+#' between closely related species because the global sigma (SD
+#' \eqn{\approx \sqrt{H1\_Sigma[1,1]}}) still spans the logit range
+#' corresponding to a few percent identity difference.
 #'
 #' \strong{Coverage-adjusted likelihood (`score_likelihood_cov`):}
 #' When the match object contains a `coverage` column (e.g., BLAST `qcovs / 100`
@@ -1290,164 +1419,153 @@ utils::globalVariables(c(
 #' to identify queries where coverage meaningfully shifts the likelihood ratios.
 #'
 #' \strong{Evidence-based sigma rescaling (`score_likelihood_evidence`) and its
-#' crossover gate:} Unconditionally rescaling every
-#' candidate's H1 `sigma_score` whenever `evidence_ratio < 1`
-#' (widening for low-evidence candidates, exactly like the coverage adjustment
-#' above) tests net negative against real 12S data, even
-#' capped at `evidence_max_ratio = 1` (27 real observations helped, 2053 hurt;
-#' mean H1 relative likelihood 0.899 -> 0.884). The reason is a basic property
-#' of the normal density, not an implementation defect: because a Gaussian must
-#' integrate to 1, widening its variance necessarily lowers its peak while
-#' raising its tails. For a variance rescaled by a factor \eqn{c} (\eqn{c > 1}
-#' widens, \eqn{c < 1} tightens), the log-density at a point \eqn{z} standard
-#' deviations from the species mean changes by exactly:
+#' crossover gate:} Rescaling every candidate's H1 `sigma_score` whenever
+#' `evidence_ratio < 1` (widening for low-evidence candidates, like the
+#' coverage adjustment above) is net negative, even capped at
+#' `evidence_max_ratio = 1`. A Gaussian must integrate to 1, so widening its
+#' variance lowers its peak while raising its tails. For a variance rescaled
+#' by a factor \eqn{c} (\eqn{c > 1} widens, \eqn{c < 1} tightens), the
+#' log-density at a point \eqn{z} standard deviations from the species mean
+#' changes by exactly:
 #' \deqn{\Delta = -\tfrac{1}{2}\log(c) + \tfrac{1}{2}z^2\left(1 - \tfrac{1}{c}\right)}
 #' which is non-negative only when \eqn{z} is large enough (for widening) or
 #' small enough (for tightening) that the tail/peak tradeoff pays for itself.
-#' Because most low-evidence real observations are still decent, close-to-mean
-#' matches (small \eqn{z}), applying the widening formula to \emph{every}
-#' low-evidence candidate paid the peak-lowering cost far more often than it
-#' collected the tail-raising benefit -- exactly the pattern in the real-data
-#' result above. `evaluate_likelihoods()` computes \eqn{\Delta} directly
-#' (using \eqn{z} standardized against whatever sigma is already in effect
-#' after the per-species floor and coverage inflation) and only applies the
-#' evidence rescale when \eqn{\Delta > 0} -- i.e., only where doing so is
-#' provably not going to lower the candidate's H1 density relative to leaving
-#' sigma untouched. This is an exact, closed-form condition, not a heuristic
-#' threshold, and it degrades gracefully to a no-op as `evidence_ratio`
-#' approaches 1 (nothing to gate). One caveat for multi-candidate queries: the
-#' gate is computed on the score-only marginal \eqn{z}, not the exact bivariate
-#' `(score_logit, gap_logit)` crossover (only `sigma_score` is ever rescaled;
-#' the gap variance and score/gap covariance are untouched, so the true joint
-#' crossover would also depend on the correlation term) -- deliberately
-#' consistent with the score-only outlier test described above rather than a
-#' new, unvalidated 2D derivation. For singleton (1D) queries, where the
-#' density actually evaluated is exactly this univariate form, the gate is
-#' exact, not an approximation. This is
-#' validated end to end against the same real 12S PtConception dataset
-#' used to test unconditional rescaling above: 163 helped / 3 hurt across 24,857
-#' real H1 rows (vs. 27 helped / 2053 hurt for unconditional rescaling), mean
-#' H1 relative likelihood 0.8014 -> 0.8016 (vs. unconditional rescaling's real
-#' regression 0.899 -> 0.884). The 3 residual hurt cases were traced directly
-#' (via `mvtnorm::dmvnorm` on the real fitted parameters) to this score-only
-#' marginal approximation: each sits right at the marginal gate's own decision
-#' boundary, where the neglected score/gap covariance term flips the sign of
-#' the true joint density change relative to the marginal prediction. Bounded
-#' in practice (largest observed swing under 1% of the score range) but a real,
-#' understood limitation of the approximation, not a bug.
+#' Most low-evidence observations are still decent, close-to-mean matches
+#' (small \eqn{z}), so unconditional widening pays the peak-lowering cost far
+#' more often than it collects the tail-raising benefit.
+#' `evaluate_likelihoods()` therefore computes \eqn{\Delta} directly (using
+#' \eqn{z} standardized against whatever sigma is already in effect after the
+#' per-species floor and coverage inflation) and applies the evidence rescale
+#' only when \eqn{\Delta > 0}, i.e. only where it cannot lower the candidate's
+#' H1 density relative to leaving sigma untouched. This is an exact,
+#' closed-form condition, not a heuristic threshold, and it degrades to a
+#' no-op as `evidence_ratio` approaches 1. One caveat for multi-candidate
+#' queries: the gate uses the score-only marginal \eqn{z}, not the exact
+#' bivariate `(score_logit, gap_logit)` crossover (only `sigma_score` is
+#' rescaled; the gap variance and score/gap covariance are untouched, so the
+#' true joint crossover also depends on the correlation term), consistent with
+#' the score-only outlier test described above. Candidates sitting right at
+#' the gate's decision boundary can therefore see a small decrease in H1
+#' density. For singleton (1D) queries the gate is exact.
 #'
 #' \strong{Genus-specific H2/H3 delta (`h2_delta_source`):}
 #' `H2$delta`/`H3$delta` are single values pooled across every genus seen
-#' during training, which treats a genus with unusually tight (cryptic-like)
-#' congeneric divergence the same as one with unusually loose divergence.
-#' When `train_likelihood_model()` found at least one real congener pair for
-#' the query's best-matching candidate's genus, `evaluate_likelihoods()` uses
-#' a genus-specific delta (`model_params$H2_Lookup`, shrunk toward the pooled
-#' value by how many congener pairs were available) instead, and marks the
-#' row `h2_delta_source = "genus_specific"`. Rows marked
-#' `"global_fallback"` (including every row when the genus has only one
-#' referenced species, or when the model was trained without genus
-#' information) used the pooled constant, which is the cruder approximation
-#' -- treat `unreferenced_species`/`unreferenced_genus` likelihoods on those
-#' rows with more caution. This correction only adjusts the shift's
-#' \emph{magnitude} for the correct genus; it does not address the separate
-#' case where the true taxon's nearest relative in evidence space (visual or
-#' acoustic mimicry/convergence) is not its nearest phylogenetic relative --
-#' see `inst/TaxaLikely_supplemental_methods.md` for that limitation.
+#' during training. When `train_likelihood_model()` found at least one real
+#' congener pair for a ring's anchor candidate's genus,
+#' `evaluate_likelihoods()` instead uses a genus-specific delta
+#' (`model_params$H2_Lookup`, shrunk toward the pooled value by how many
+#' congener pairs were available) and marks the row
+#' `h2_delta_source = "genus_specific"`. Rows marked `"global_fallback"`
+#' (including every row when the genus has only one referenced species, or
+#' when the model was trained without genus information) used the pooled
+#' constant, the cruder approximation -- treat
+#' `unreferenced_species`/`unreferenced_genus` likelihoods on those rows with
+#' more caution. This correction only adjusts the shift's \emph{magnitude}
+#' for the correct genus; it does not address the case where the true taxon's
+#' nearest relative in evidence space (visual or acoustic
+#' mimicry/convergence) is not its nearest phylogenetic relative -- see
+#' `inst/TaxaLikely_supplemental_methods.md`.
 #'
-#' \strong{H2/H3 mean anchor and genus-specific variance:} H2's
-#' mean is `(anchor candidate's own resolved species mean) - delta`, not
-#' `H1_Global_Mu - delta` -- a referenced species
-#' whose own trained mean sits above or below the population average is real
-#' information about how conserved or variable that lineage specifically is,
-#' and an unreferenced sister species should inherit it rather than being
-#' shifted from an unrelated population-wide baseline. When a genus-specific
-#' `H2_Lookup` entry exists, its own shrunk congener variance (`var_shrunk`)
-#' is used for H2's sigma in place of the pooled global value -- genera whose
-#' species are hard to tell apart (small delta) also tend to show more
-#' *consistent* divergence (lower variance), and genera whose species are
-#' easy to tell apart show more variable divergence; both the delta and the
-#' variance now reflect this per genus, on the same footing. When absent from
-#' `H2_Lookup`, those fall back to the pooled global variance. See
-#' `train_likelihood_model()`'s `score_transform` documentation for
-#' why this requires moving off the plain logit scale to be correctly
-#' signed: on real 12S congener data, the raw match-proportion scale shows
-#' tight genera have lower variance as expected (Pearson r = -0.55), but
-#' logit reverses this (r = +0.47) because nearly all real matches sit near
-#' 100% identity, exactly where logit's derivative diverges fastest.
+#' \strong{H2/H3 mean anchor and genus-specific variance:} H2's mean is
+#' `(that ring's anchor candidate's own resolved species mean) - delta`, not
+#' `H1_Global_Mu - delta`: a referenced species whose own trained mean sits
+#' above or below the population average is real information about how
+#' conserved or variable that lineage is, and an unreferenced sister species
+#' should inherit it. When a genus-specific `H2_Lookup` entry exists, its own
+#' shrunk congener variance (`var_shrunk`) is used for H2's sigma in place of
+#' the pooled global value, since genera whose species are hard to tell apart
+#' (small delta) also tend to show more consistent divergence (lower
+#' variance); otherwise both fall back to the pooled global values. See
+#' `train_likelihood_model()`'s `score_transform` documentation for why this
+#' requires `"sqrt_mismatch"` rather than the plain logit scale to be
+#' correctly signed.
 #'
 #' \strong{Monte Carlo uncertainty (`score_likelihood_mean`/`score_likelihood_sd`):}
-#' Represents genuine uncertainty in the likelihood estimate itself -- driven
-#' by how much reference data calibrated the trained mean being evaluated
+#' Represents uncertainty in the likelihood estimate itself, driven by how
+#' much reference data calibrated the trained mean being evaluated
 #' (`H1_Lookup$n_obs_species` for a specific candidate; `H2_Lookup$n_pairs`
 #' for a genus-specific H2/H3 delta, or `Stats$n_h2_pooled` when no
-#' genus-specific delta exists) -- not by resampling the query's own observed
-#' score around the population's overall spread (an earlier design, which
-#' answered a different question: how sensitive the density is to where the
-#' query happens to land, not how confidently the candidate's own mean is
-#' known). Each of the `n_sims` draws perturbs the candidate's trained mean by
+#' genus-specific delta exists), not by resampling the query's own observed
+#' score. Each of the `n_sims` draws perturbs the candidate's trained mean by
 #' its own estimation uncertainty (`Var(mean) ~= sigma^2/n`) and evaluates the
 #' query's real, fixed observed point against that draw. Practical
 #' consequence: a poorly-referenced species gets a wider `score_likelihood_sd`
 #' than a well-referenced one for the identical observed score, and
 #' `unreferenced_species`/`unreferenced_genus` rows -- which borrow a shifted
 #' mean rather than being directly observed -- are systematically wider than
-#' `specific_candidate` rows. Reuses whichever per-candidate sigma the
-#' evidence-adjusted point estimate already resolved (species floor +
+#' `specific_candidate` rows. The draws reuse whichever per-candidate sigma
+#' the evidence-adjusted point estimate already resolved (species floor +
 #' evidence gate, when applicable), so a low-depth candidate's evidence-widened
-#' sigma also widens its mean uncertainty here at no additional cost.
-#' Falls back to a score-resampling approach
-#' when `model_params$H1_Lookup` is empty or absent (no species-level
-#' training data).
+#' sigma also widens its mean uncertainty. Falls back to a score-resampling
+#' approach when `model_params$H1_Lookup` is empty or absent (no
+#' species-level training data).
 #'
 #' @section Confusion risk:
 #' `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk` are
-#' an independent, model-independent diagnostic --
-#' deliberately score-only and model-free, rather than a second application
-#' of this function's own trained bivariate-normal likelihood. Each answers,
-#' at its own rank: given this row's raw match score and its own genus (for
+#' a score-only, model-free diagnostic, not a second application of this
+#' function's trained bivariate-normal likelihood. Each answers, at its own
+#' rank: given this row's raw match score and its own genus (for
 #' `species_confusion_risk`) or family (for `genus_confusion_risk`), how
-#' often would a REAL congener/confamilial pair score this high or higher,
-#' in this training reference database? Read off
+#' often would a REAL congener/confamilial pair score this high or higher in
+#' the training reference database? They are read off
 #' `model_params$Confusion_Risk_Curves` (genus-/family-equal-weighted,
-#' Empirical-Bayes-shrunk curves computed once by
-#' `train_likelihood_model()`, not recomputed here -- see that function's
-#' own `Confusion_Risk_Curves` documentation and
-#' the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository), the reference implementation these
-#' curves are built from).
+#' Empirical-Bayes-shrunk curves computed once by `train_likelihood_model()`;
+#' see its `Confusion_Risk_Curves` documentation and the
+#' `score_floor_roc_sweep.R` diagnostic, TaxaID_dev repository, from which
+#' the curves are built).
 #'
 #' **Higher means MORE confusable, i.e. WEAKER evidence for the rank in
-#' question** -- matching this ecosystem's existing high=concern convention
-#' for risk-style metrics (e.g. `TaxaFlag::flag_contaminant()`'s
-#' `contaminant_score`), not the higher-is-better convention `score_likelihood`/
-#' `posterior_mean`/`confidence_score` use. These are one-sided tail
-#' probabilities (a p-value-like quantity for the null hypothesis "this is
-#' just a confusable relative"): `species_confusion_risk = 0.97` at a given
-#' score means a real congener would score this high 97% of the time too --
-#' high confusion risk, weak evidence the species call is correct -- while
-#' `species_confusion_risk = 0.02` at the same score means a real congener
-#' almost never scores this high -- low confusion risk, strong evidence.
-#' `family_confusion_risk` has no grouping
-#' variable (a single, ungrouped cross-family rate) since no rank exists
-#' above family to equal-weight by. `own_rank_confusion_risk` is a
-#' convenience column pointing at whichever of the three matches this row's
-#' own `hypothesis_type` (`species_confusion_risk` for `specific_candidate`,
-#' `genus_confusion_risk` for `unreferenced_species`, `family_confusion_risk`
-#' for `unreferenced_genus`) -- but all three are populated for every row
-#' (where computable) regardless of `hypothesis_type`, so a reviewer can
-#' also see e.g. "resolved to species, but genus_confusion_risk is also
-#' high, meaning even the genus call is shaky."
+#' question**, matching the high=concern convention of risk-style metrics
+#' (e.g. `TaxaFlag::flag_contaminant()`'s `contaminant_score`), not the
+#' higher-is-better convention of `score_likelihood`/`posterior_mean`/
+#' `confidence_score`. These are one-sided tail probabilities (p-value-like
+#' for the null "this is just a confusable relative"):
+#' `species_confusion_risk = 0.97` means a real congener would score this high
+#' 97% of the time too (weak evidence the species call is correct), while
+#' `0.02` means a real congener almost never scores this high (strong
+#' evidence). `family_confusion_risk` has no grouping variable (a single,
+#' ungrouped cross-family rate) since no rank exists above family to
+#' equal-weight by. `own_rank_confusion_risk` points at whichever of the
+#' three matches this row's `hypothesis_type` (`species_confusion_risk` for
+#' `specific_candidate`, `genus_confusion_risk` for `unreferenced_species`,
+#' `family_confusion_risk` for `unreferenced_genus`), but all three are
+#' populated for every row (where computable), so a reviewer can also see
+#' e.g. "resolved to species, but genus_confusion_risk is also high."
 #'
-#' Purely informational -- never zeroes
-#' a likelihood or changes which hypothesis wins. `NA` when
-#' `model_params$Confusion_Risk_Curves` lacks the relevant tier (e.g.
-#' `rank_system` too short) or this row's own genus/family is unresolved
-#' (e.g. `unreferenced_genus` rows have no genus, so `species_confusion_risk`
-#' is always `NA` there). See `TaxaAssign::posterior_consensus()`'s
-#' `winner_species_confusion_risk`/`winner_genus_confusion_risk`/
-#' `winner_family_confusion_risk`/`winner_own_rank_confusion_risk`
-#' pass-through for how a downstream consumer reads these off the winning
-#' row.
+#' Purely informational: never zeroes a likelihood or changes which
+#' hypothesis wins. `NA` when `model_params$Confusion_Risk_Curves` lacks the
+#' relevant tier (e.g. `rank_system` too short) or this row's own
+#' genus/family is unresolved (e.g. `unreferenced_genus` rows have no genus,
+#' so `species_confusion_risk` is always `NA` there). See
+#' `TaxaAssign::posterior_consensus()`'s `winner_*_confusion_risk` and
+#' `winner_own_rank_confusion_risk` pass-through for how a downstream
+#' consumer reads these off the winning row.
+#'
+#' @section Absolute fit:
+#' `best_identity`, `best_identity_rank` and `poor_absolute_fit` are a flag
+#' only: they never change a likelihood or which hypothesis wins.
+#' `score_likelihood` is normalised to the unit's maximum, so the best
+#' hypothesis always scores 1 however poor the match itself is (an 86%
+#' identity alignment can be called at 0.998 when it is the best of a bad
+#' set). These columns report the match on its own, absolute scale.
+#'
+#' `best_identity` is the unit's best raw match identity among its
+#' `specific_candidate` rows: the maximum of the per-taxon median scores
+#' computed for the likelihoods, on the percent scale (0-100, whether the
+#' input scores were 0-100 or 0-1). `best_identity_rank` is the finest rank
+#' (species, then genus, then family) whose marker-specific identity
+#' threshold `best_identity` reaches (`>=`), `NA` when it reaches none.
+#' `poor_absolute_fit` is `TRUE` when `best_identity` reaches no rank
+#' threshold and `FALSE` when it reaches at least one. The thresholds are the
+#' per-rank Youden's J values of [compute_rank_thresholds()], derived from
+#' `model_params$Confusion_Risk_Curves`, and are recorded in
+#' `attr(result$likelihoods, "rank_thresholds_used")`.
+#'
+#' All three are unit-level, repeated on every row of the unit's table. All
+#' three are `NA` for a unit with no `specific_candidate` row. If the model's
+#' stored curves cannot give thresholds (a model object from before they were
+#' stored), `best_identity_rank` and `poor_absolute_fit` are `NA` for every
+#' unit and one message says so.
 #'
 #' @section Pair-coverage check:
 #' On every call, `.check_pair_coverage_floor()` compares `match_df`'s own
@@ -1458,14 +1576,12 @@ utils::globalVariables(c(
 #' the observed minimum of `match_df$query_coverage`; a value greater than 1
 #' is treated as a 0-100 percentage and normalised to 0-1. It warns only
 #' when the match object's floor sits more than 0.01 below the model's own
-#' `min_pair_coverage` -- i.e. only when inference is being asked to
-#' evaluate the gap feature on lower-coverage hits than the model was
-#' trained on. The check is one-directional by design: a match object with a
-#' STRICTER coverage floor than training never warns, since evaluating on a
-#' cleaner-than-trained population is not the failure mode this check exists
-#' to catch. Silently skipped (no check performed) when `model_params` was
-#' trained with no coverage floor at all, or when neither `report_params`
-#' nor a `query_coverage` column is available on `match_df`.
+#' `min_pair_coverage`, i.e. when inference is asked to evaluate the gap
+#' feature on lower-coverage hits than the model was trained on. The check is
+#' one-directional: a match object with a STRICTER coverage floor than
+#' training never warns. It is silently skipped when `model_params` was
+#' trained with no coverage floor, or when neither `report_params` nor a
+#' `query_coverage` column is available on `match_df`.
 #'
 #' @references
 #' Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
@@ -1752,6 +1868,7 @@ evaluate_likelihoods <- function(match_df,
       genus_confusion_risk = numeric(0L),
       family_confusion_risk = numeric(0L),
       own_rank_confusion_risk = numeric(0L),
+      best_identity = numeric(0L),
       stringsAsFactors = FALSE
     )
   }
@@ -1805,8 +1922,27 @@ evaluate_likelihoods <- function(match_df,
     score_likelihood_cov, score_likelihood_evidence,
     h2_delta_source,
     species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-    own_rank_confusion_risk
+    own_rank_confusion_risk, best_identity
   )
+
+  # ---- ABSOLUTE-FIT COLUMNS ---------------------------------------------------
+  # best_identity (unit-level, set per unit above) is compared with the
+  # per-rank Youden's J thresholds from the stored curves; see @section
+  # "Absolute fit". Flag only: no likelihood is touched.
+  rank_thr <- .rank_thresholds_from_curves(model_params$Confusion_Risk_Curves)
+  rank_thr <- rank_thr[!is.na(rank_thr)]
+  if (length(rank_thr) == 0L) {
+    message(
+      "evaluate_likelihoods: model_params$Confusion_Risk_Curves has no usable ",
+      "true/false-positive curves (model trained before they were stored, or ",
+      "too few ranks); best_identity_rank and poor_absolute_fit are NA."
+    )
+  }
+  likelihoods <- cbind(
+    likelihoods[, setdiff(names(likelihoods), "best_identity"), drop = FALSE],
+    .absolute_fit_columns(likelihoods$best_identity, rank_thr)
+  )
+  attr(likelihoods, "rank_thresholds_used") <- rank_thr
 
   # Propagate is_restored from match_df when present.
   # For each (observation_id, taxon_name), is_restored = TRUE only when ALL

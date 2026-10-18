@@ -143,10 +143,7 @@ blocking prompt inside a function that is called from a script is unsafe:
 when RStudio runs or sources a script it queues the remaining lines as
 console input, and \code{menu()} consumes those lines as answers --
 re-prompting on each one, and, far worse, SILENTLY SWALLOWING them so they
-never execute. This package already documents the same hazard for
-\code{readline()} in \code{TaxaMatch::group_observations_by_bbox()}; there
-the advice is "run this call on its own", which is not available to a
-function called mid-workflow. With \code{FALSE} every decision is REPORTED
+never execute. With \code{FALSE} every decision is REPORTED
 with the exact command to act on it, and nothing blocks. Set \code{TRUE}
 only when calling this function by hand at the console.}
 
@@ -277,9 +274,8 @@ message.
 
 \strong{GBIF outages:} GBIF's API can return a 5xx during an outage. A
 production run that re-requests its occurrences on every run
-(\code{overwrite = TRUE}) would otherwise die at this step the moment that
-happens, even with a verified zip for the identical query already on disk.
-Instead the request is retried with backoff
+(\code{overwrite = TRUE}) would otherwise die at this step even with a
+verified zip for the identical query already on disk. Instead the request is retried with backoff
 (\code{submit_attempts}/\code{submit_wait}), and if GBIF is still refusing,
 \code{on_submit_failure = "use_cache"} falls back to that zip -- with a
 warning, never silently -- so the run completes on data that differ from a
@@ -290,9 +286,8 @@ key is recorded in the cache metadata as \emph{pending}, and the next call
 re-fetches that prepared download instead of submitting a new request.
 
 \strong{Dead pending keys:} a pending record is cleared automatically once
-it can no longer be honoured, rather than making every subsequent call fail
-identically forever against a key GBIF has itself killed, cancelled,
-failed, or purged server-side. Two mechanisms, both automatic: (1) a
+it can no longer be honoured (a key GBIF has killed, cancelled, failed, or
+purged server-side). Two mechanisms, both automatic: (1) a
 pending key older than \code{pending_max_age_days} is abandoned unpolled
 and a fresh request is submitted instead (see that parameter); (2) when the
 poll on a still-fresh pending key fails non-transiently, the dead record is
@@ -302,8 +297,7 @@ longer pending, so the real local zip is still served as an ordinary cache
 hit) and a fresh request is submitted automatically, in the same call -- no
 manual intervention needed. A brand-new key that itself fails to poll
 non-transiently is unaffected by this: that is still raised as an
-immediate error, since a first-time failure of that kind is a real problem
-worth surfacing, not a stale cache to route around.
+immediate error, since a first-time failure of that kind is a real problem.
 
 \strong{Concurrent download limits:} GBIF limits accounts to 3
 concurrent downloads (fewer for accounts with many prior downloads). If
@@ -319,10 +313,7 @@ therefore never executed, even after the GBIF download itself has
 succeeded. RStudio queues the rest of a script as pending console input, and
 \code{menu()}/\code{readline()} read exactly that queue, so
 \code{interactive()} being \code{TRUE} says nothing about whether a human is
-waiting to type. This package already documented the same hazard for
-\code{readline()} in \code{TaxaMatch::group_observations_by_bbox()}, whose
-advice ("run this call on its own") is unavailable to a function called
-mid-workflow. Every decision here is therefore REPORTED, with the command to
+waiting to type. Every decision here is therefore REPORTED, with the command to
 act on it, unless \code{allow_prompts = TRUE} is passed deliberately.
 }
 

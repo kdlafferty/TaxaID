@@ -567,65 +567,58 @@ utils::globalVariables(c(
 #'   approximately what a sister species looks like. `H2$delta` is a single
 #'   value pooled across every genus in the training set; where a genus has
 #'   real congener pairs in the reference, `H2_Lookup` provides a
-#'   genus-specific delta (Empirical Bayes shrinkage toward `H2$delta`,
-#'   identical in form to the per-species shrinkage below) that
-#'   `evaluate_likelihoods()` prefers when available. See the "Per-genus
-#'   delta shrinkage" section below.
+#'   genus-specific delta that `evaluate_likelihoods()` prefers when
+#'   available (see "Per-genus delta shrinkage").
 #' * **H3 (missing genus):** H1 mean shifted further left by `H3$delta`.
 #'
 #' @section Memory:
 #' The per-reference training passes (each reference's best foreign,
 #' congener, confamilial and ring match, its gap draws, its best conspecific
 #' pair, and the confusion-risk curves' per-reference best match) are
-#' computed in blocks of whole references and bound, so their temporaries
-#' scale with the block rather than the whole pair table (a 32.6-million-pair
-#' COI matrix otherwise exceeded 17 GB). The output is identical for any block
-#' size. The rate curves by species, genus and family span references and are
-#' computed once, on the combined per-reference results. The species pair
-#' counts (`N_Obs`) are counted per block and summed: exact because they are
-#' row counts, and row counts add over disjoint blocks (a distinct count, of
-#' partners say, would not add: a partner seen from two blocks would be
-#' counted twice). Block size: `options(TaxaLikely.train_block_ids =)`,
-#' references per block, default 5000.
+#' computed in blocks of whole references, so their temporaries scale with
+#' the block rather than the whole pair table. The output is identical for
+#' any block size. The rate curves by species, genus and family span
+#' references and are computed once, on the combined per-reference results.
+#' The species pair counts (`N_Obs`) are counted per block and summed, which
+#' is exact because row counts add over disjoint blocks. Block size:
+#' `options(TaxaLikely.train_block_ids =)`, references per block, default
+#' 5000.
 #'
 #' @section Marker validation scope:
-#' The continuous bivariate-normal form above (as opposed to a discrete
-#' "100% match or nothing" rule) was empirically validated against real
-#' PtConception data for the 12S and 18S markers only (see the "Framing B
-#' verdict" project notes) -- 100% rules were shown unreliable at the
-#' congeneric level, and the bivariate-normal form captured the real score
-#' distribution well for those two markers specifically. Nothing in this
-#' function checks that the same form fits a different marker (e.g. COI,
-#' 16S, cytb, rbcL, matK, trnL -- all now trainable here via
-#' `trim_to_amplicon()`) before fitting it. Run
-#' the `seq_matrix_score_distribution.R` diagnostic (TaxaID_dev repository) on `build_sequence_matrix()`
-#' output for a new marker before trusting this model there -- it checks
-#' logit-normality and the H1/H2 spike ratio, the two properties this
-#' function's Gaussian form assumes hold.
+#' The continuous bivariate-normal form (as opposed to a discrete "100% match
+#' or nothing" rule) was validated empirically for the 12S and 18S markers
+#' only: 100% rules were unreliable at the congeneric level, and the
+#' bivariate-normal form captured the real score distribution well for those
+#' two markers. Nothing in this function checks that the same form fits a
+#' different marker (e.g. COI, 16S, cytb, rbcL, matK, trnL, all trainable
+#' here via `trim_to_amplicon()`) before fitting it. Run the
+#' `seq_matrix_score_distribution.R` diagnostic (TaxaID_dev repository) on
+#' `build_sequence_matrix()` output for a new marker before trusting this
+#' model there; it checks logit-normality and the H1/H2 spike ratio, the two
+#' properties the Gaussian form assumes.
 #'
 #' @section Per-genus delta shrinkage:
-#' The pooled, global `H2$delta` treats every genus identically, which is a
-#' poor approximation for genera whose real congeneric divergence is far from
-#' the training-set average -- most consequentially for cryptic species
-#' complexes, where true divergence is much smaller than the pooled estimate
-#' and the pooled delta will overstate confidence in the known-species
-#' hypothesis. Where a genus has at least one real congener pair in the
-#' reference database, `H2_Lookup` stores a genus-specific delta shrunk
-#' toward the pooled value by `n_pairs / (n_pairs + prior_weight)` (the same
-#' Empirical Bayes form used for per-species means). A genus with only one
-#' referenced species (no congener pairs at all) gets no `H2_Lookup` row and
-#' falls back to the pooled `H2$delta` unchanged -- there is no way to
-#' estimate local divergence from a single species, and none is invented.
+#' The pooled `H2$delta` treats every genus identically, a poor approximation
+#' for genera whose real congeneric divergence is far from the training-set
+#' average, most consequentially cryptic species complexes, where true
+#' divergence is much smaller than the pooled estimate and the pooled delta
+#' overstates confidence in the known-species hypothesis. Where a genus has
+#' at least one real congener pair in the reference database, `H2_Lookup`
+#' stores a genus-specific delta shrunk toward the pooled value by
+#' `n_pairs / (n_pairs + prior_weight)` (the same Empirical Bayes form used
+#' for per-species means). A genus with only one referenced species (no
+#' congener pairs) gets no `H2_Lookup` row and falls back to the pooled
+#' `H2$delta` unchanged; local divergence cannot be estimated from a single
+#' species and none is invented.
+#'
 #' This says nothing about whether an unreferenced congener is plausible in
-#' the first place (that is a prior-side question, answered by
-#' \code{TaxaExpect} from occurrence/richness data, not by this function) --
-#' only about how far its likelihood should be shifted from a known match
-#' \emph{if} one exists. Nor does it address the case where a query's true
-#' relatives are absent from the reference for reasons unrelated to sequence
-#' divergence (e.g. an unreferenced acoustic or visual mimic in the acoustic
-#' and image pathways, where evidence similarity need not track phylogeny at
-#' all) -- see `inst/TaxaLikely_supplemental_methods.md` for a fuller
-#' discussion of that limitation.
+#' the first place (a prior-side question, answered by \code{TaxaExpect} from
+#' occurrence/richness data), only about how far its likelihood should be
+#' shifted from a known match \emph{if} one exists. Nor does it address a
+#' query whose true relatives are absent from the reference for reasons
+#' unrelated to sequence divergence (e.g. an unreferenced acoustic or visual
+#' mimic in the acoustic and image pathways, where evidence similarity need
+#' not track phylogeny); see `inst/TaxaLikely_supplemental_methods.md`.
 #'
 #' @section Unsequenced-genus likelihood (H3):
 #' `H3` is the hypothesis that the query comes from a genus of the anchor's
@@ -637,118 +630,82 @@ utils::globalVariables(c(
 #' the pooled `H2` shift so an unsequenced genus is never assumed to match
 #' better than an unsequenced congener. The variance uses the same
 #' family-equal weights (mean within-family variance plus the variance of
-#' family means). That choice is not direction-free: on real data it
-#' sharpened 18S `H3` (sd 0.149 to 0.114 transform units), making 18S species
-#' calls somewhat more confident, and widened COI's (0.066 to 0.078). With fewer than 3 families supplying
-#' such matches, the shift falls back to the `H2` shift plus 2.0 transform
-#' units; `Stats$h3_source` records which was used.
+#' family means); depending on the marker this can sharpen or widen `H3`, so
+#' species calls can become somewhat more or less confident. With fewer than
+#' 3 families supplying such matches, the shift falls back to the `H2` shift
+#' plus 2.0 transform units; `Stats$h3_source` records which was used.
 #'
 #' Two sampling effects bear on the measured value, in opposite directions.
 #' Pairs below `build_sequence_matrix()`'s identity floor (`max_dist`) are
 #' never stored, so a very poor confamilial match cannot be observed, which
-#' would push the estimate up; `Stats$h3_share_near_floor` reports how much
-#' of the pool sits in the lowest 5 percent of its observed range (3 to 8
-#' percent on real 12S, 18S and COI data, so this effect is small). And
-#' under `build_sequence_matrix(by_genus = TRUE)` each genus is aligned
-#' against a random sample of other genera's single representatives, so most
-#' confamilial pairs are never computed (79 to 95 percent of eligible
-#' references had none on the same data) and the stored best is the best
-#' against one sampled genus rather than against every referenced genus of
-#' the family. That pushes the estimate down. The measured similarity is
+#' pushes the estimate up; `Stats$h3_share_near_floor` reports how much of
+#' the pool sits in the lowest 5 percent of its observed range (3 to 8
+#' percent on real 12S, 18S and COI data, so this effect is small). And under
+#' `build_sequence_matrix(by_genus = TRUE)` each genus is aligned against a
+#' random sample of other genera's single representatives, so most
+#' confamilial pairs are never computed and the stored best is the best
+#' against one sampled genus rather than every referenced genus of the
+#' family. That pushes the estimate down. The measured similarity is
 #' therefore a lower bound: an unsequenced genus probably matches more
 #' closely than `H3` assumes, so `H3` still loses somewhat too easily to a
-#' referenced candidate and calls keep some residual overconfidence. The
-#' correction runs the right way but is smaller than the true one. On real
-#' data it sits far closer than the earlier fixed rule: an implied mean
-#' identity of 91.8 against 83.3 percent (12S; 858 references in 47
-#' families supplied confamilial pairs), 95.5 against 85.8 (18S; 702 in 197)
-#' and 86.8 against 74.6 (COI; 25,513 in 1,143).
+#' referenced candidate and calls keep some residual overconfidence.
 #'
 #' @section Pseudo-data anchoring:
 #' When `anchor_perfect = TRUE`, synthetic "perfect match" observations are
-#' injected into the H1 training data before fitting the global mean.  This
-#' softens the **perfection penalty** -- a pathology where a 100% match
+#' injected into the H1 training data before fitting the global mean. This
+#' softens the **perfection penalty**, a pathology where a 100% match
 #' receives a *lower* likelihood than the training mean (e.g., 98.5%) because
-#' the Gaussian density peaks at the mean -- by nudging the *global* (pooled)
+#' the Gaussian density peaks at the mean, by nudging the *global* (pooled)
 #' mean upward, diluted by however much real training data exists. It does
 #' **not** force any individual species' own `H1_Lookup$mu_score` to the
-#' ceiling (the anchor pseudo-rows are excluded from per-species estimation
-#' before shrinkage happens) and does **not**, on its own, guarantee a
-#' monotonically increasing density as match quality approaches 100% for any
-#' given species -- see the "Non-monotonic score->likelihood shape" section
-#' below for what property this model actually needs (and checks
-#' automatically), and why a peaked-below-100%-density is not itself a
-#' problem. The number of anchor points is 10% of the H1 training rows
-#' (minimum 5), weighted enough to nudge the pooled mean without overwhelming
-#' real data.
+#' ceiling (the anchor rows are excluded from per-species estimation before
+#' shrinkage) and does **not**, on its own, guarantee a monotonically
+#' increasing density toward 100% for any given species; see "Non-monotonic
+#' score->likelihood shape" for the property the model actually needs (and
+#' checks automatically). The number of anchor points is 10% of the H1
+#' training rows (minimum 5), enough to nudge the pooled mean without
+#' overwhelming real data; a species with abundant real data is essentially
+#' unaffected.
 #'
-#' This is not a workaround standing in for "a real Bayesian model" -- it IS
-#' one, via the standard prior-as-pseudo-observations construction for
-#' conjugate Normal estimation: adding `n0` synthetic rows at a target value
-#' is mathematically equivalent to placing a `Normal(target, sigma^2/n0)`
-#' prior on the mean and computing the closed-form posterior mean, the exact
-#' same `w = N/(N+prior_weight)` Empirical Bayes shrinkage form already used
-#' throughout this model for per-species/per-genus estimates (see
-#' `prior_weight` above). Implementing it as injected rows, rather than a
-#' second, separately-coded prior-density formula, keeps this correction on
-#' the same estimation machinery as everything else in the model instead of
-#' adding a parallel mechanism to keep in sync. It is also deliberately NOT a
-#' tight/strong prior: capped at 10% of real H1 rows (min 5) specifically so
-#' it nudges the pooled global mean rather than dominating it, and it is
-#' never applied to any individual species' own shrunk estimate -- only the
-#' pooled global mean is nudged, and only diluted by however much real
-#' training data exists (a species with abundant real data is essentially
-#' unaffected).
+#' Adding `n0` synthetic rows at a target value is mathematically equivalent
+#' to a `Normal(target, sigma^2/n0)` prior on the mean with its closed-form
+#' posterior mean, the same `w = N/(N+prior_weight)` Empirical Bayes
+#' shrinkage form used throughout this model (see `prior_weight`), so the
+#' correction runs on the same estimation machinery as everything else.
 #'
 #' @section Non-monotonic score->likelihood shape:
 #' A trained species' H1 density is a Gaussian (or bivariate normal, jointly
 #' with gap) on the transformed score, and a Gaussian is unimodal by
-#' construction -- it peaks at that species' own fitted `mu_score`, not
+#' construction: it peaks at that species' own fitted `mu_score`, not
 #' necessarily at the transformed value of a perfect (100%) match. Since
-#' `mu_score` is estimated from real reference-pair comparisons (which are
-#' essentially never *exactly* 100% identical even for the correct species,
-#' due to real intraspecific variation and sequencing/assembly noise) and
-#' real query-time scores run measurably below the training-only mean on top
-#' of that (`calibrate_query_noise()`'s own real-data finding: trained means
-#' commonly sit 0.6-1.2 percentage points above real production query
-#' medians), it is normal and expected for a species' H1 density to peak at
-#' an intermediate score and decline, rather than increase, as score
-#' approaches 100%. **This is not itself a sign of overfitting or a
-#' bug** -- it is the correct behavior of a well-specified Gaussian estimating
-#' a quantity whose true mean is genuinely below the ceiling.
+#' `mu_score` is estimated from real reference-pair comparisons (essentially
+#' never *exactly* 100% identical even for the correct species, owing to
+#' intraspecific variation and sequencing/assembly noise) and real
+#' query-time scores run below the training-only mean on top of that (see
+#' `calibrate_query_noise()`), it is normal for a species' H1 density to peak
+#' at an intermediate score and decline as score approaches 100%. **This is
+#' not itself a sign of overfitting or a bug.**
 #'
-#' What actually matters for a Bayesian classifier is not where the H1
-#' density's own peak sits, but whether the **H1-vs-H2 likelihood
-#' ratio** stays monotone at the ceiling -- i.e. whether a better score is
-#' ever *weaker*, rather than stronger or equal, evidence for the
-#' known-species hypothesis relative to the missing-species alternative. Two
-#' Gaussians with different means and different variances can, in principle,
-#' cross twice, so this is checked directly (not assumed) at the end of
+#' What matters for a Bayesian classifier is whether the **H1-vs-H2
+#' likelihood ratio** stays monotone at the ceiling, i.e. whether a better
+#' score is ever *weaker* evidence for the known-species hypothesis than for
+#' the missing-species alternative. Two Gaussians with different means and
+#' variances can cross twice, so this is checked directly at the end of
 #' training via an internal `.check_score_ratio_monotonicity()`, using the
 #' same inference-time sigma floor `evaluate_likelihoods()` applies. A
 #' `warning()` is raised if any species' ratio turns over before the ceiling,
-#' or if any species' perfect-match point sits implausibly far (more than 2
-#' floored standard deviations) from its own fitted mean -- both symptoms are
-#' recorded in the returned object's `Stats` list (`mlr_violations` and
-#' `max_ceiling_z` respectively) for inspection.
+#' or if any species' perfect-match point sits more than 2 floored standard
+#' deviations from its own fitted mean; both symptoms are recorded in
+#' `Stats` (`mlr_violations` and `max_ceiling_z`).
 #'
-#' On real production models (Great Lakes, Mugu; all trained with
-#' `score_transform = "sqrt_mismatch"`), this was checked empirically across
-#' ~2,000 real species and found negligible: the likelihood ratio was
-#' strictly increasing all the way to a perfect match in every case, and the
-#' worst observed distance from a species' fitted mean to the ceiling was
-#' 0.85 floored standard deviations (0% exceeded 1 SD). The one severe case
-#' found (median ~2.5 floored SDs, some species effectively at the boundary)
-#' was a stale, orphaned model object still trained with
-#' `score_transform = "logit"` -- under `logit`, the transformed value of a
-#' perfect match is not a fixed point determined by real data but is set by
-#' `logit_epsilon` (a numerical-hygiene constant), and the default sits only
-#' about one order of magnitude away from a value that would make every
-#' perfect match implausible under every species' own fitted distribution.
-#' `score_transform = "sqrt_mismatch"` does not have this fragility (a
-#' perfect match maps to exactly `0`, the finite edge of that transform's own
-#' range, with no free parameter) and is the more robust choice for any new
-#' training run near this boundary.
+#' Under `score_transform = "logit"`, the transformed value of a perfect
+#' match is not fixed by real data but set by `logit_epsilon` (a
+#' numerical-hygiene constant), and the default sits only about one order of
+#' magnitude from a value that would make every perfect match implausible
+#' under every species' own fitted distribution. `"sqrt_mismatch"` has no
+#' such fragility (a perfect match maps to exactly `0`, the finite edge of
+#' its range, with no free parameter) and is the more robust choice for any
+#' new training run near this boundary.
 #'
 #' @param raw_df Data frame of pairwise match scores, as returned by
 #'   `build_sequence_matrix()`.  Passed through `.prep_training_data()`.
@@ -848,39 +805,28 @@ utils::globalVariables(c(
 #' The H1 gap feature is `score - max_foreign_score`, and `max_foreign_score`
 #' is taken over every cross-species pair a reference has.  A pairwise
 #' alignment between a short deposit and an unrelated sequence can be 100%
-#' identical over a few percent of the sequence, and on real GreatLakes 12S
-#' data (2,750 references) that was the "best foreign match" for 86% of
-#' references (median coverage 4.6%): 89% of references trained with
-#' `gap <= 0`, the global expected gap was negative, and at inference -- where
-#' every BLAST candidate has query coverage >= 80 -- a perfect match with a
-#' real positive gap read as atypical while a 96% match with a negative gap
-#' read as typical.  728 of 885 ASVs were H1 near-ties and a Lamar-confirmed
-#' grass carp detection lost to bighead carp at equal priors.
+#' identical over a few percent of the sequence and then be the "best foreign
+#' match", pushing most training gaps to `<= 0` and the global expected gap
+#' negative. At inference every BLAST candidate has query coverage >= 80, so
+#' a perfect match with a real positive gap would read as atypical while a
+#' 96% match with a negative gap read as typical, producing spurious H1
+#' near-ties.
 #'
 #' `min_pair_coverage` restricts which pair may define the foreign, congener
 #' and conspecific maxima to pairs at or above the inference-side floor.
 #' It is train/inference distribution matching for one feature, not a data
-#' quality filter: it removes no pair and drops no species.  Measured on the
-#' same data (foreign side only): global expected gap -0.010 -> +0.122,
-#' near-ties 728 -> 295, and the top H1 candidate agrees with a unique best
-#' BLAST hit (>= 99.5% identity) in 244/326 cases vs 178/326.
+#' quality filter: it removes no pair and drops no species.
 #'
 #' @section No built-in reference-quality screening:
 #' This function does NOT screen `raw_df` for mislabeled/contaminated
-#' reference accessions before fitting -- it trains on exactly what it's
-#' given. An internal, free, within-reference-set heuristic for this purpose
-#' measured only roughly 6.7% precise against
-#' `TaxaMatch::evaluate_reference_accessions()`'s BLAST-based screen (0 of 40
-#' randomly-sampled flags confirmed as genuine mislabels on one real
-#' dataset), and a TaxaMatch mechanism
-#' (`TaxaMatch::corroborate_references_locally()` +
-#' `TaxaMatch::evaluate_reference_accessions()`) already does the same job
-#' more precisely, for the same zero/low NCBI cost, directly on `reference_df`
-#' before it ever reaches `build_sequence_matrix()`. Screen there, exclude
-#' any accession `evaluate_reference_accessions()`/`score_reference_labels()`
-#' resolves to `reference_action == "remove"` from `reference_df` (or from
-#' `raw_df` by `id_x`/`id_y`) before calling this function -- there is
-#' no parameter here to pass a bad-accession list through.
+#' reference accessions before fitting; it trains on exactly what it is
+#' given. Screen with `TaxaMatch::corroborate_references_locally()` +
+#' `TaxaMatch::evaluate_reference_accessions()` directly on `reference_df`
+#' before it reaches `build_sequence_matrix()`, and exclude any accession
+#' that `evaluate_reference_accessions()`/`score_reference_labels()` resolves
+#' to `reference_action == "remove"` from `reference_df` (or from `raw_df` by
+#' `id_x`/`id_y`) before calling this function. There is no parameter here to
+#' pass a bad-accession list through.
 #'
 #' @return A named list (class `"taxa_model_params"`) with slots:
 #'   \describe{
@@ -995,52 +941,34 @@ utils::globalVariables(c(
 #'
 #' @section H1 bimodality (recorded, not warned):
 #' `Stats$h1_bimodality` runs the same two-component-normal-vs-BIC check
-#' `calibrate_query_noise()` uses (see that function's own "Bimodality
-#' diagnostic" and "Percent identity is discrete, not continuous" sections
-#' for the full method, the thresholds, and why a bimodality-coefficient
-#' test was rejected instead) against this model's OWN real H1 training
-#' scores, so a saved `lik_model` carries the evidence regardless of
-#' whether/when `calibrate_query_noise()` is ever called on it. **Percent
-#' identity is discrete, not continuous** -- confirmed as a real false
-#' positive on a PtConception 12S production run:
-#' `Stats$h1_bimodality` reported weights 0.323/0.677, means 98.3/100, sds
-#' 3.26/0.0202 -- the "second component" was just the perfect-match spike,
-#' a STRUCTURAL feature of every reference-based dataset (every reference
-#' matching itself, or an identical duplicate deposit, scores at or near
-#' 100% identity), not evidence of a second population on its own.
-#' `.bimodality_check()` estimates a quantum directly from the data and
-#' smooths over it before fitting, requires the minority component to hold
-#' real mass, and requires the two fitted means to be separated by more
-#' than a few quanta -- see that function's own docs for the exact
-#' thresholds and mechanism. **This model's OWN H1 training scores are a
-#' structurally different dataset from `calibrate_query_noise()`'s
-#' confident-observation query scores**, and the comb-smoothing's benefit
-#' differs correspondingly: query scores share one fixed query length, so they land
-#' on one clean, consistent quantum grid (`0.6` on the real motivating run)
-#' that the smoothing closes cleanly; H1 training pairs come from
-#' `build_sequence_matrix()`'s reference-vs-reference alignment, whose
-#' length varies pair to pair, so the "grid" is really many different,
-#' overlaid quanta -- the quantum this function's own diagnostic estimates
-#' for real H1 training data is correspondingly much finer (measured
-#' `~0.01` on that same real run, versus the query side's `0.6`), and the
-#' quanta-separation guard built for a single consistent grid does little
-#' to rescue this specific case: `Stats$h1_bimodality$flag` can still read
-#' `TRUE` for real H1 training data with this exact "spike at 100" shape,
-#' verified directly against the real run above. Recording rather than
-#' warning is exactly why this residual case is safe to leave as-is: the
-#' evidence (including the estimated `quantum` field, small here as a
-#' visible signal that the flagged split may be exactly this artifact) is
-#' preserved for an analyst to inspect, and no automatic action is ever
-#' taken on it here. This function deliberately does NOT `warning()` when
-#' the check flags bimodal training data -- `calibrate_query_noise()` is
-#' the one place a single offset/line is actually about to be applied to
-#' inference-time scores, so that is where the warning belongs (per the
-#' user's explicit direction); warning
-#' in both places for the same underlying fact would be redundant, not more
-#' informative. **This is a diagnostic only**: it never changes H1's fitted
-#' mean/sigma, and training is never refused when
-#' `Stats$h1_bimodality$flag` is `TRUE`. The remedy for genuinely mixed
-#' sequencing platforms or markers is to train/calibrate them separately --
+#' `calibrate_query_noise()` uses (see its "Bimodality diagnostic" and
+#' "Percent identity is discrete, not continuous" sections for the method and
+#' thresholds) on this model's own real H1 training scores, so a saved
+#' `lik_model` carries the evidence whether or not `calibrate_query_noise()`
+#' is ever called on it. Percent identity is discrete, not continuous, and
+#' every reference-based dataset has a structural spike at or near 100%
+#' identity (each reference matching itself or an identical duplicate
+#' deposit); that spike alone is not evidence of a second population.
+#' `.bimodality_check()` therefore estimates the identity quantum from the
+#' data and smooths over it before fitting, requires the minority component
+#' to hold real mass, and requires the two fitted means to be separated by
+#' more than a few quanta.
+#'
+#' H1 training pairs come from `build_sequence_matrix()`'s
+#' reference-vs-reference alignments, whose length varies pair to pair, so
+#' their quantum grid is a mixture of many overlaid quanta and the estimated
+#' `quantum` is much finer than for the single-query-length scores
+#' `calibrate_query_noise()` sees. The quanta-separation guard therefore does
+#' little here, and `Stats$h1_bimodality$flag` can read `TRUE` for training
+#' data that simply has this "spike at 100" shape; a very small `quantum` is
+#' the visible signal that a flagged split may be this artifact.
+#'
+#' This function deliberately does NOT `warning()` on a flag:
+#' `calibrate_query_noise()` is where a single offset/line is actually
+#' applied to inference-time scores, so the warning belongs there. **This is
+#' a diagnostic only**: it never changes H1's fitted mean/sigma, and training
+#' is never refused when the flag is `TRUE`. The remedy for genuinely mixed
+#' sequencing platforms or markers is to train and calibrate them separately;
 #' this package does not do that for you.
 #'
 #' @references

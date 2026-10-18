@@ -105,6 +105,18 @@
 #' attribute is set: the type scan is the fallback, and it would absorb the new
 #' column as an extra habitat weight.
 #'
+#' \strong{Compound labels:} when \code{habitat_scheme} is a prompt object
+#' whose scheme declares \code{parts}, the model returns the compounds' PARTS as
+#' columns and this function derives each compound label's weight from its
+#' parts (the sum of their shares, capped at 1, or the max; see
+#' \code{\link{build_habitat_prompt}}'s \code{compound_rule}), so the
+#' compound is never below any part. The
+#' output then carries the scheme's own labels (the compounds and the plain
+#' labels) as its habitat columns, declared in the \code{"habitat_cols"}
+#' attribute, with the part columns kept after them for inspection. The
+#' sum-to-1 check runs over the columns the model returned, not over the
+#' derived ones.
+#'
 #' \strong{Weight normalisation:} Weights are NOT renormalised. A warning is
 #' emitted for any row where weights deviate more than 0.05 from 1.0.
 #'
@@ -169,9 +181,15 @@ parse_hierarchical_habitat_response <- function(raw_text,
   expected_hab_cols <- NULL
   scheme <- NULL
 
+  compounds <- list()
+  compound_rule <- "sum"
+  scheme_cols <- NULL
   if (inherits(habitat_scheme, "habitat_prompt")) {
     expected_hab_cols <- habitat_scheme$habitat_cols # ordered vector from build_habitat_prompt()
     scheme <- habitat_scheme$scheme # validated dataframe (or NULL for IUCN)
+    compounds <- habitat_scheme$compounds %||% list()
+    compound_rule <- habitat_scheme$compound_rule %||% "sum"
+    scheme_cols <- habitat_scheme$scheme_cols
   } else if (is.data.frame(habitat_scheme)) {
     # A bare dataframe: derive cols the same way build_habitat_prompt() would
     scheme <- tryCatch(.validate_habitat_scheme_local(habitat_scheme), error = function(e) NULL)
@@ -181,6 +199,13 @@ parse_hierarchical_habitat_response <- function(raw_text,
           nzchar(trimws(scheme$l2_name))])
       } else {
         expected_hab_cols <- unique(scheme$l1_name)
+        if ("parts" %in% names(habitat_scheme) && any(!is.na(habitat_scheme$parts))) {
+          sc2 <- scheme; sc2$parts <- as.character(habitat_scheme$parts)[match(scheme$l1_name, habitat_scheme$l1_name)]
+          sp <- .compounds_from_scheme(sc2)
+          scheme_cols <- expected_hab_cols
+          expected_hab_cols <- sp$asked
+          compounds <- sp$compounds
+        }
       }
     }
   }
@@ -402,6 +427,17 @@ parse_hierarchical_habitat_response <- function(raw_text,
   }
 
   # ---------------------------------------------------------------------------
+  # Compound labels: derive each as the max over its parts (see @details).
+  # The scheme's own labels become the habitat columns; the parts are kept.
+  # ---------------------------------------------------------------------------
+  part_cols <- character(0)
+  if (length(compounds) > 0L) {
+    parsed <- .derive_compound_weights(parsed, compounds, compound_rule)
+    part_cols <- setdiff(pure_hab_cols, scheme_cols)
+    pure_hab_cols <- scheme_cols
+  }
+
+  # ---------------------------------------------------------------------------
   # Habitat convenience column: argmax of all weight columns
   # ---------------------------------------------------------------------------
   all_weight_cols <- c(pure_hab_cols, "Other_weight")
@@ -442,7 +478,7 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # Canonical column order; drop non-scheme leftovers
   # ---------------------------------------------------------------------------
   col_order <- c(
-    "taxon_name", pure_hab_cols, "Other_weight",
+    "taxon_name", pure_hab_cols, part_cols, "Other_weight",
     "habitat_best_guess",
     if (has_ecoregion_guess) "ecoregion_best_guess",
     "Habitat", "habitat_breadth", covariate_keep

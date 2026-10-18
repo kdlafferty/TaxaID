@@ -74,8 +74,7 @@
 #' sidebar filter, and therefore selectable as a \strong{group}. Filter to one
 #' signature, draw a polygon over a region, and reassign the lot to whichever
 #' habitat the location implies. Location disambiguates what the assemblage
-#' cannot. On the bundled PtConception demo this turns 646 "Unknown" points
-#' into 12 named groups, the largest holding 248.
+#' cannot.
 #'
 #' Members are sorted \strong{alphabetically}, not by proportion, so the same
 #' candidate set always lands in the same group; ordering by proportion would
@@ -97,34 +96,27 @@
 #' point reading Freshwater 0.35 / Marine 0.30 / Estuarine 0.25 / Terrestrial
 #' 0.10 offers the first three at \code{candidate_mass = 0.8}.
 #'
-#' A cumulative-mass rule is used rather than a fixed proportion cutoff because
-#' a cutoff barely reduces anything in practice: the LLM emits round numbers, so
-#' the 5th percentile of non-zero proportions is already 0.10 and a 0.05 cutoff
-#' takes a 5-habitat scheme only to 3.98 candidates. Measured across the 31,383
-#' unassigned PtConception 12S points, \code{candidate_mass = 0.8} gives a mean
-#' of 2.91 candidates and a median of 3, with 90% of points landing on exactly
-#' three.
+#' The rule is cumulative mass rather than a fixed proportion cutoff, which
+#' barely reduces the list because the LLM emits round numbers.
 #'
 #' The point's current habitat is always offered, even when it falls outside the
 #' mass, so a reassignment can be undone by hand. \strong{Other} (free text) is
 #' always offered. A \strong{Show all habitats} checkbox restores the full
 #' scheme and names how many were hidden -- use it when the consensus itself is
-#' what you are disputing. With no attribute present the dropdown behaves
-#' exactly as before, offering everything.
+#' what you are disputing. With no attribute present the dropdown offers
+#' everything.
 #'
 #' @section Bulk selection (rectangle or polygon):
 #' The map's draw toolbar offers a \strong{rectangle} and a \strong{polygon}.
 #' Both select every visible point of the current view that falls inside the
-#' drawn shape; the polygon exists because real selection boundaries (a
-#' coastline, a lake shore, a basin) are rarely rectangular, and approximating
-#' one with repeated rectangles multiplies the number of review rounds.
+#' drawn shape (the polygon suits non-rectangular boundaries such as a
+#' coastline or lake shore).
 #' In \strong{Flag} mode the shape applies immediately; in
 #' \strong{Reassign Habitat} mode it selects, and \strong{Confirm} applies.
 #'
-#' Selection size is gated, never truncated -- a partially applied selection
-#' would leave the un-applied points scattered through the drawn shape and
-#' drawn identically to points that were never selected, which is invisible
-#' to the reviewer and indistinguishable in the output. Instead: at or below
+#' Selection size is gated, never truncated, because a partially applied
+#' selection would be invisible to the reviewer and indistinguishable in the
+#' output. At or below
 #' \code{bulk_confirm_threshold} the action applies straight away; above it a
 #' dialog reports the exact count and requires an explicit \strong{Apply};
 #' above \code{bulk_max} the action is refused with a message.
@@ -144,8 +136,7 @@
 #' carries the number of points it currently holds \strong{in the view on
 #' screen}, so a category's size is visible before it is ticked and an emptied
 #' one is obvious; a category reduced to zero by reassignment is greyed and
-#' struck through rather than removed, so the list does not jump and the
-#' evidence that the group existed is preserved.
+#' struck through rather than removed.
 #' Use \strong{All} / \strong{None} to select or clear all at once.
 #'
 #' @section Point Info panel:

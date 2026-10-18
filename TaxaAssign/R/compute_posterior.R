@@ -4,8 +4,10 @@
 #' Compute Bayesian Posterior Probabilities
 #'
 #' Performs the Bayesian update: Posterior ~ Likelihood * Prior.
-#' Adds posterior columns to the input dataframe and returns the full dataframe,
-#' so all existing columns (e.g., taxon name, hypothesis type, rank) are preserved.
+#' Adds posterior columns to the input dataframe and returns it with all existing
+#' columns (e.g., taxon name, hypothesis type, rank) preserved. The output can
+#' have fewer rows than the input: named unreferenced rows with a negligible
+#' posterior are pooled into their ring row (see "Pooled unreferenced rows").
 #'
 #' Two computation paths are available:
 #' - **Point estimate path** (fast): uses `score_likelihood` and `prior_mean`
@@ -22,38 +24,30 @@
 #'   species with tiny but non-zero prior_mean would almost always lose to species
 #'   with a well-concentrated prior at a lower mean. For these rows, the prior is
 #'   treated as fixed at `prior_mean` in simulation rather than sampled, making the
-#'   simulation consistent with the point-estimate path. (This threshold covers
+#'   simulation consistent with the point-estimate path. (This covers
 #'   `prior_alpha == 1` exactly, a real, common case, e.g.
 #'   `TaxaExpect::generate_undetected_diversity()`'s global floor
-#'   `Beta(1, N_total - 1)`. Whether the boundary should extend further, e.g.
-#'   to `prior_alpha` moderately above 1 with high relative uncertainty, is
-#'   still open -- it needs a larger real `prior_alpha` distribution than the
-#'   small bundled fixtures to characterize.)
+#'   `Beta(1, N_total - 1)`.)
 #'   Only runs when `n_sims > 0` AND at least one source of uncertainty exists
 #'   (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
 #'
 #' \strong{Why truncated Normal, not the true generative distribution:} this
 #' function only receives `score_likelihood_mean`/`score_likelihood_sd` --
 #' already-summarized fitted values, not the raw match scores or the model
-#' object that produced them. The true generative model (e.g.
-#' `TaxaLikely::train_likelihood_model()`'s `score_transform` -- Normal on a
-#' logit or sqrt-mismatch-transformed scale, then back-transformed) is not
-#' available at this interface boundary, and `likelihood_w_prior` may equally
-#' come from a non-TaxaLikely source (e.g. `assign_taxa_llm()`'s own
-#' LLM-derived likelihood proxy). Treating the summary as approximately
-#' Normal, truncated only at 0 (likelihoods below zero are not meaningful; no
-#' upper truncation, since `score_likelihood` need not sum to 1 across
-#' candidates before `normalize_vec()` runs) is a documented approximation at
-#' this boundary, not a claim that match scores are truly Gaussian.
+#' that produced them (e.g. `TaxaLikely::train_likelihood_model()`'s
+#' `score_transform`), and `likelihood_w_prior` may come from a non-TaxaLikely
+#' source (e.g. `assign_taxa_llm()`'s LLM-derived likelihood proxy). Treating
+#' the summary as approximately Normal, truncated only at 0 (no upper
+#' truncation, since `score_likelihood` need not sum to 1 across candidates
+#' before `normalize_vec()` runs), is a documented approximation, not a claim
+#' that match scores are truly Gaussian.
 #'
 #' \strong{The truncated mean can differ substantially from `mu`:} when
 #' `sigma` is large relative to `mu` (e.g. `mu = 0.001`, `sigma = 2`), the
-#' truncated distribution's mean is pulled well above `mu` -- e.g. `~1.60`
-#' for that pair, matching the standard truncated-normal expectation formula
+#' truncated mean is pulled well above `mu` (`~1.60` for that pair), per
 #' \eqn{E[X \mid X > 0] = \mu + \sigma \cdot \phi(\alpha) / (1 - \Phi(\alpha))},
-#' \eqn{\alpha = -\mu/\sigma}. This is the correct, intended behavior of
-#' truncation (the whole point of switching away from a clamp), not a bug --
-#' but it means a hypothesis with a small `mu` and large `sigma` is not
+#' \eqn{\alpha = -\mu/\sigma}. This is the intended behavior of truncation, not
+#' a bug, but it means a hypothesis with a small `mu` and large `sigma` is not
 #' "mostly sampled near `mu`"; a substantial share of its simulated draws can
 #' be far above it.
 #'
@@ -75,11 +69,54 @@
 #' @param n_sims Integer. Number of Monte Carlo simulations. Default 1000.
 #'   Set to 0 to skip simulation and return point estimates only.
 #'
-#' @return The input dataframe with four new columns added:
+#' @return The input dataframe with four new columns added, possibly with fewer
+#'   rows (pooled rows are removed):
 #'   - `posterior_point_est`: deterministic posterior from point estimates
 #'   - `posterior_mean`: mean posterior across Monte Carlo simulations
 #'   - `posterior_sd`: SD of posterior across Monte Carlo simulations
 #'   - `confidence_score`: fraction of simulations in which this hypothesis won
+#'
+#'   Three columns that are always present, whether or not anything was
+#'   pooled (a fixed schema, so per-marker tables bind and a data dictionary
+#'   holds): `pooled_n` (integer),
+#'   `pooled_prior_mass` (numeric) and `pooled_taxa` (character, names joined
+#'   by `"; "`). They are `NA` on rows that are not rings; a ring that pooled
+#'   nothing has `pooled_n` 0, `pooled_prior_mass` 0 and `pooled_taxa` `NA`.
+#'   The attribute `pooled_rows` is a data frame (`observation_id`,
+#'   `ring_taxon`, `taxon_name`, `prior_mean`, `posterior_point_est`) of every
+#'   pooled row, and `pooled_min_posterior` is the threshold used (0.05); both
+#'   are present, the first with zero rows, when nothing was pooled.
+#'
+#' @section Pooled unreferenced rows:
+#' A \emph{named} row is a species-rank row of hypothesis type
+#' \code{"unreferenced_species"} or \code{"unreferenced_genus"}: a local
+#' species with no reference for the marker, carrying the likelihood of its
+#' \emph{ring} (the generic \code{"unreferenced_*"} row above species whose
+#' scope contains it) and its own prior. Before simulation, within each
+#' observation, a named row whose point posterior is below 0.05 is removed and
+#' its prior mass is added to its ring row. The ring is the row named by
+#' \code{unreferenced_scope} (with \code{unreferenced_scope_rank}) when those
+#' columns exist; otherwise the \code{"unreferenced_species"} ring of the
+#' row's genus, or the \code{"unreferenced_genus"} ring of its family. A named
+#' row with no such ring row, a different likelihood from its ring's (beyond
+#' 1e-12), or a presence-mixture prior is kept, and a ring with a presence
+#' mixture takes none.
+#'
+#' Because a pooled row and its ring share one likelihood, the ring's point
+#' posterior after pooling is exactly the sum of its own and the pooled rows'
+#' point posteriors before, and no other row's changes; this is checked
+#' internally (to 1e-12). The ring's \code{prior_alpha} and \code{prior_beta}
+#' are moment-matched to the summed mean and the summed Beta variances
+#' (independence assumed).
+#'
+#' Second pass: where the ring is coarser than genus, the pooled candidates
+#' are grouped by genus, and a genus whose pooled rows' posteriors sum to 0.05
+#' or more keeps all of them unpooled, since a node below the ring could then
+#' be called. The members of each ring are in \code{pooled_taxa}, and every
+#' pooled row is in \code{attr(, "pooled_rows")}. A table that already holds
+#' \code{pooled_*} columns accumulates onto them. A consumer that reads the
+#' output with a \code{min_posterior} below 0.05 sees the pooled rows only
+#' through their ring ([posterior_consensus()] warns).
 #'
 #' @details
 #' \strong{Bayesian framework:}
@@ -95,16 +132,14 @@
 #' \code{TaxaExpect::apply_undetected_evidence()} for evidence-elevated
 #' species) are presence mixtures: with probability \code{prior_mix_w} the
 #' species is locally present (theta at the ceiling-anchor state), otherwise
-#' absent (theta at the floor). In simulation these rows draw presence
 #' explicitly (\code{z ~ Bernoulli(w)}; \code{theta = z*theta_present +
-#' (1-z)*theta_absent}) instead of sampling their Beta summary -- which is
-#' J-shaped by construction and would otherwise be pinned at its mean by the
-#' \code{prior_alpha <= 1} guard, erasing exactly the bimodality the mixture
-#' expresses. \code{posterior_mean} therefore integrates over presence
-#' states, and \code{confidence_score} reads as the fraction of presence
-#' states in which the hypothesis wins. The point-estimate path is unchanged:
-#' \code{prior_mean} equals the mixture's exact expectation by construction.
-#' Non-mixture rows are completely unaffected.
+#' (1-z)*theta_absent}) instead of sampling their J-shaped Beta summary, which
+#' the \code{prior_alpha <= 1} guard would pin at its mean and so erase the
+#' bimodality the mixture expresses. \code{posterior_mean} therefore
+#' integrates over presence states, and \code{confidence_score} reads as the
+#' fraction of presence states in which the hypothesis wins. The
+#' point-estimate path is unchanged: \code{prior_mean} equals the mixture's
+#' exact expectation by construction. Non-mixture rows are unaffected.
 #'
 #' \strong{Closed-genus placeholders (weight moved, not removed):}
 #' a row marked \code{constraint_applied == "census_closed_genus_relabeled"}
@@ -123,12 +158,7 @@
 #' from a \code{genus} column when present, else from the placeholder's own
 #' name and the first word of each candidate's binomial. A placeholder
 #' whose observation holds no referenced member of its genus keeps its
-#' posterior (there is nothing to eliminate into), and a message counts
-#' both cases. Why not zero the likelihood upstream: renormalising over
-#' every hypothesis then hands the placeholder's share to the other genera
-#' and families in the observation as well -- at Great Lakes the grass
-#' carp genus fell from 0.925 to 0.848 of the posterior and the call from
-#' species to family.
+#' both cases.
 #'
 #' \strong{Prior uncertainty (Beta distribution):}
 #' When \code{prior_alpha} and \code{prior_beta} columns are present, the prior
@@ -172,6 +202,14 @@
 #'
 #' @export
 compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
+  out <- .compute_posterior_impl(likelihood_w_prior, n_sims = n_sims, pool = TRUE)
+  .ensure_pooled_schema(out)
+}
+
+# The body of compute_posterior(). `pool = FALSE` skips the pooling of named
+# unreferenced rows; kept only so tests can compare the two paths.
+#' @noRd
+.compute_posterior_impl <- function(likelihood_w_prior, n_sims = 1000, pool = TRUE) {
   # --- Input validation ---
   required_cols <- c(
     "observation_id", "score_likelihood", "score_likelihood_mean",
@@ -219,6 +257,21 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   if (na_lik_sd > 0) {
     cli::cli_warn("{na_lik_sd} NA value(s) in {.field score_likelihood_sd} replaced with 0.")
     likelihood_w_prior$score_likelihood_sd[is.na(likelihood_w_prior$score_likelihood_sd)] <- 0
+  }
+
+  # --- Pool named unreferenced rows into their ring ----------------------
+  pooled_info <- NULL
+  if (pool && !dplyr::is_grouped_df(likelihood_w_prior)) {
+    pl <- .pool_unreferenced_rows(likelihood_w_prior, use_beta_prior)
+    pooled_info <- pl$pooled
+    if (nrow(pooled_info) > 0L) {
+      likelihood_w_prior <- pl$df
+      pool_floor <- .POOL_MIN_POSTERIOR
+      cli::cli_inform(
+        "Pooled {nrow(pooled_info)} named unreferenced row(s) (point posterior below \
+        {pool_floor}) into their ring rows."
+      )
+    }
   }
 
   # --- Detect presence-mixture rows -------------------------------------
@@ -554,5 +607,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   out <- dplyr::arrange(out, .data$observation_id, dplyr::desc(.data$posterior_mean))
 
   attr(out, "report_params") <- list(n_sims = n_sims)
+  if (!is.null(pooled_info)) {
+    attr(out, "pooled_rows") <- pooled_info
+    attr(out, "pooled_min_posterior") <- .POOL_MIN_POSTERIOR
+  }
   out
 }

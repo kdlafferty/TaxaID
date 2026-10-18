@@ -345,6 +345,27 @@ test_that("rank-agreeing matches still harmonise NCBI vocabulary to GBIF", {
                c("phytoplankton", "zooplankton", "macroinvertebrates"))
 })
 
+test_that("harmonise passes each probe name's source rank as input_rank=", {
+  got <- new.env()
+  local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id = 11L, input_rank = NULL, ...) {
+      got$names <- names
+      got$input_rank <- input_rank
+      .gbif_fixture[match(names, .gbif_fixture$user_supplied_name), , drop = FALSE]
+    }
+  )
+  tx <- data.frame(
+    kingdom = c(NA_character_, "Metazoa"),
+    phylum  = c("Bacillariophyta", "Arthropoda"),
+    class   = c(NA_character_, "Copepoda"),
+    order   = c("Thalassiosirales", "Calanoida"),
+    stringsAsFactors = FALSE
+  )
+  suppressWarnings(assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE))
+  expect_equal(got$names, c("Calanoida", "Thalassiosirales"))
+  expect_equal(got$input_rank, c("order", "order"))
+})
+
 test_that("a name with no backbone match keeps its original value, silently", {
   local_mocked_bindings(verify_taxon_names = .mock_verify)
   tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",

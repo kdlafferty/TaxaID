@@ -160,6 +160,7 @@ if (isTRUE({{include_evidence_block}})) {
         habitat_scheme = {{habitat_scheme}},
         llm_fn         = {{llm_fn}},
         cache_dir      = {{habitat_cache_dir}},
+        compound_rule  = "sum",   # same rule as the occ_to_std lookup; see there
         verbose        = FALSE
       )
       .hab <- dplyr::bind_rows(.hab, .hab_new)

@@ -24,29 +24,31 @@
 # Names are split on the first space; everything after the first space is
 # treated as the specific epithet (handles hybrids like
 # "Bos grunniens x Bos taurus" -- epithet becomes "grunniens x Bos taurus").
+# A one-word name (genus, family) is kept whole as its own group:
+# c("Atractoscion", "Umbrina", "Sciaena umbra") -> "Atractoscion + Umbrina + Sciaena umbra".
 #
 # @noRd
 .make_slash_name <- function(taxa_vec) {
+  # A one-word name (a genus or family ring, or any name above species) is a
+  # whole taxon, not a genus without an epithet: it is kept whole and is its
+  # own group. Splitting it as a binomial gave "Atractoscion Atractoscion".
   first_space <- regexpr(" ", taxa_vec, fixed = TRUE)
   has_space <- first_space > 0L
-
-  genera <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), taxa_vec)
-  epithets <- ifelse(has_space,
-    substr(taxa_vec, first_space + 1L, nchar(taxa_vec)),
-    taxa_vec
-  )
-
-  unique_genera <- unique(genera)
-
-  if (length(unique_genera) == 1L) {
-    paste0(unique_genera, " ", paste(epithets, collapse = "/"))
-  } else {
-    genus_strings <- vapply(unique_genera, function(g) {
-      eps <- epithets[genera == g]
-      if (length(eps) == 1L) paste(g, eps) else paste0(g, " ", paste(eps, collapse = "/"))
-    }, character(1L))
-    paste(genus_strings, collapse = " + ")
-  }
+  genera <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), NA_character_)
+  epithets <- ifelse(has_space, substr(taxa_vec, first_space + 1L, nchar(taxa_vec)), NA_character_)
+  # Group key: the genus for a binomial, the whole name for a one-word taxon.
+  # Groups keep first-occurrence order, so the first plausible taxon stays
+  # first (primary_taxon reads it).
+  key <- ifelse(has_space, paste0("g:", genera), paste0("w:", taxa_vec))
+  groups <- unique(key)
+  strings <- vapply(groups, function(k) {
+    i <- which(key == k)
+    if (startsWith(k, "w:")) {
+      return(taxa_vec[i[1L]])
+    }
+    paste0(genera[i[1L]], " ", paste(epithets[i], collapse = "/"))
+  }, character(1L), USE.NAMES = FALSE)
+  paste(strings, collapse = " + ")
 }
 
 

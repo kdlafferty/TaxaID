@@ -35,7 +35,9 @@ review_assignments(
   pause_seconds = 1,
   cache_dir = NULL,
   on_unreviewed = c("warn", "error", "ignore"),
-  verbose = TRUE
+  verbose = TRUE,
+  poor_absolute_fit_col = "poor_absolute_fit",
+  best_identity_col = "best_identity"
 )
 }
 \arguments{
@@ -132,7 +134,7 @@ specifically its \code{"unprecedented"} value (no local occurrence
 record at all, a pipeline-computed fact, never a threshold on a prior
 VALUE -- see that function's own docs for why). When present, shown to
 the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
-the skepticism GUIDELINES bullet (see \code{@section Skepticism gate}
+the geography GUIDELINES bullets (see \code{@section Geography guidelines}
 below) and the deterministic \code{geographic_disagreement_basis} output
 column. Silently skipped when absent. Default
 \code{"consensus_plausibility"}. Set to \code{NULL} to disable.}
@@ -223,7 +225,17 @@ calling this function from a fully-namespaced script (no
 silently falls back to degraded/uniform output rather than erroring. If
 every plausibility column comes back suspiciously uniform, pass
 \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
-provider = "anthropic")}.}
+provider = "anthropic")}.
+No sampling temperature is set here: the default path calls
+\code{call_api()} with the provider's default. Some current models reject
+the \code{temperature} parameter outright (HTTP 400, "temperature is
+deprecated for this model"), so set one in your own \code{llm_fn} only for
+a model that accepts it. The \code{cache_dir} key fingerprints the
+deparsed SOURCE of \code{llm_fn}: a temperature, model or provider written
+literally into it is covered, and changing it moves the key. One supplied
+indirectly -- from a variable, an option or a closure over a value -- is
+invisible to the key; after changing such a value, use a new
+\code{cache_dir} or a new \code{model_label}.}
 
 \item{model_label}{Character or \code{NULL}. A name for the model behind
 \code{llm_fn}, recorded in the cache key so a verdict obtained from one
@@ -271,10 +283,8 @@ Default \code{1}.}
 per-taxon review cache. \code{NULL} disables caching entirely.
 Supplying a directory makes a re-run
 REPRODUCIBLE and stops it re-paying for verdicts already obtained: the
-review is a judgement, and two GreatLakes runs 50 minutes apart on
-identical input disagreed about \emph{Pimephales vigilax}
-(\code{"possible"} then \code{"unlikely"}), putting it in one species
-list and not the other. One small \code{.rds} per reviewed taxon, keyed
+review is a judgement, and two runs on identical input can disagree.
+One small \code{.rds} per reviewed taxon, keyed
 on everything that can move a verdict -- the taxon label and rank, its
 attached pipeline/weight/spatial notes, \code{context},
 \code{target_group}, \code{marker}, \code{data_type} and the
@@ -292,6 +302,24 @@ by the usual export filters, so a run with residue produces a species
 list that is silently short.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
+
+\item{poor_absolute_fit_col}{Character or \code{NULL}. Column name for
+\code{TaxaLikely::evaluate_likelihoods()}'s \code{poor_absolute_fit}, as
+passed through by \code{posterior_consensus()}: \code{TRUE} when the
+unit's best raw match identity reaches no rank threshold for the marker.
+Likelihoods are normalised to the unit maximum, so such a call can still
+carry a high posterior. When \code{TRUE} for any row sharing a label, one
+fact line (e.g. "best match identity 86.1\% is below every rank threshold
+for this marker (poor absolute fit)") is added to that taxon's pipeline
+notes; \code{FALSE} or \code{NA} adds nothing. Because the note is part
+of what is reviewed, a change in the flag changes the cache key. Silently
+skipped when absent. Default \code{"poor_absolute_fit"}. Set to
+\code{NULL} to disable.}
+
+\item{best_identity_col}{Character or \code{NULL}. Column name for the
+\code{best_identity} (percent) quoted in that note. Silently skipped when
+absent (the note then omits the number). Default \code{"best_identity"}.
+Set to \code{NULL} to disable.}
 }
 \value{
 The input data frame with 8 or 9 columns appended:
@@ -318,7 +346,7 @@ code-computed, not an LLM output: fires whenever
 \code{llm_geographic_plausibility \%in\% c("likely","possible")} despite
 \code{consensus_plausibility_col == "unprecedented"} and/or
 \code{consensus_discrimination_col == "indistinguishable"}. See
-\code{@section Skepticism gate} below for why this exists as a
+\code{@section Geography guidelines} below for why this exists as a
 deterministic column rather than relying on \code{review_comment}
 alone.}
 }
@@ -371,24 +399,20 @@ ordering appears in the data. Display labels are unchanged.
 An LLM response can parse cleanly, be the right length, and still leave
 specific taxa out -- consistently the long compound slash labels, i.e. the
 hardest rows, not random ones. That is not truncation, so the halving retry
-alone would not catch it, and without a dedicated safeguard those taxa
-would be filled with \code{NA} in all four \code{llm_} columns and the
-omission warned about and then forgotten. Because every production
-workflow's export chain filters with \code{!= "unlikely"}, which
-\strong{discards \code{NA}}, an unreviewed observation would be silently
-removed from the final species list.
+alone would not catch it. Without a dedicated safeguard those taxa would be
+filled with \code{NA} in all four \code{llm_} columns, and because export
+chains filter with \code{!= "unlikely"}, which \strong{discards \code{NA}},
+an unreviewed observation would be silently removed from the final species
+list.
 
 Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
-to \code{max_retries} times; the cost is bounded and pay-per-failure,
-since it only fires when the model omits, and it stops early when a re-ask
-recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- a
-cached entry holding no verdict is treated as a MISS,
-so an existing cache heals itself rather than serving the omission forever.
-(3) Whatever residue survives is \strong{loud}: named in
-\code{attr(result, "unreviewed_taxa")}, counted in
+to \code{max_retries} times; the cost is pay-per-failure, and the re-asking
+stops early when a re-ask recovers nothing. (2) An unreviewed taxon is
+\strong{never cached} -- a cached entry holding no verdict is treated as a
+MISS, so an existing cache heals itself. (3) Whatever residue survives is
+\strong{loud}: named in \code{attr(result, "unreviewed_taxa")}, counted in
 \code{attr(result, "n_unreviewed_rows")}, and escalated per
-\code{on_unreviewed}. A workflow should not have to run a hand-written
-diagnostic to discover that rows went missing.
+\code{on_unreviewed}.
 
 The export filters themselves are deliberately UNCHANGED (still
 \code{!= "unlikely"}, still dropping \code{NA}). Keeping an unreviewed row
@@ -401,50 +425,44 @@ per-run and explicit.
 
 The four independent LLM judgments (\code{llm_habitat_plausibility}/
 \code{llm_geographic_plausibility}/\code{llm_scope_plausibility}/
-\code{llm_contamination_risk}) all carry the \code{llm_} prefix precisely
-because they are independent LLM judgments -- by design, NOT derived from
-or gated by any pipeline-computed value (see \code{@section Pipeline
-context} below). An unprefixed name would read as if it might be pipeline
-output, which is exactly the trap a real user fell into: tracing a
-surprising \code{geographic_plausibility = "likely"} back through the
-pipeline before realising the number it appeared to contradict was never
-actually consulted to produce it. The prefix makes the provenance explicit
-at the column-name level. The LLM's own JSON response schema (what
-\code{.build_review_prompt()} asks for and \code{.parse_review_response()}
-parses) uses the bare names internally -- only the final output column
-names carry the prefix.
+\code{llm_contamination_risk}) carry the \code{llm_} prefix because they are
+independent LLM judgments -- by design NOT derived from or gated by any
+pipeline-computed value (see \code{@section Pipeline context} below). An
+unprefixed name would read as pipeline output. The LLM's own JSON response
+schema (what \code{.build_review_prompt()} asks for and
+\code{.parse_review_response()} parses) uses the bare names internally --
+only the final output column names carry the prefix.
 }
 
-\section{Skepticism gate}{
+\section{Geography guidelines}{
 
-A real case motivated this: an LLM rated a taxon
-\code{llm_geographic_plausibility = "likely"} despite the pipeline
-recording ZERO local occurrence records for it AND a near-total inability
-to discriminate it from a confusable relative on score alone -- explaining
-itself only with a general species-level range description, no evidence
-specific to the actual study site. Two independent responses, both real,
-both needed: a stronger prompt instruction alone is not sufficient, since
-an LLM cannot be trusted to reliably self-flag its own uncertainty:
+Three conditional GUIDELINES bullets shape the geographic rating, each
+added only when a taxon in the batch carries the matching bracket fact:
 \enumerate{
-\item{A GUIDELINES bullet (only added when at least one taxon in a
-batch actually carries the flag -- see
-\code{consensus_plausibility_col}/\code{consensus_discrimination_col})
-requires the LLM to default to \code{"unlikely"} for a taxon flagged
-\code{"unprecedented"} (no local record) and/or
-\code{"indistinguishable"} (a confusable relative could score equally
-well) UNLESS it can cite SPECIFIC evidence for a real population at or
-near the study site -- a general species-level range description is
-explicitly declared insufficient. This is stated as a HARD requirement,
-the one deliberate exception to this function's own "the bracket
-informs, never overrides your judgment" rule for every other pipeline
-signal.}
-\item{Prompt compliance is never guaranteed, so the deterministic
-\code{geographic_disagreement_basis} output column (see \code{@return}
-above) is computed in R, independent of whether the LLM actually
-mentioned the disagreement anywhere. It is the reliable way to FIND
-every such row -- filter/sort on it directly rather than reading every
-\code{review_comment}.}
+\item{\code{"pipeline flags UNPRECEDENTED"} (no local record in the
+pipeline's occurrence data): absence of a citeable record is not
+evidence of absence. Without specific local evidence the rating is at
+most \code{"possible"}, never \code{"likely"}; \code{"unlikely"} needs
+positive evidence of being out of range (a native range elsewhere with no
+known introduction to the region, or a habitat the taxon cannot use).}
+\item{\code{"pipeline flags INDISTINGUISHABLE"} (a confusable relative
+could score as well) weakens confidence in the name only and must not by
+itself justify an \code{"unlikely"} rating.}
+\item{\code{"pipeline call: <taxon> (<rank>)"}, shown when the reviewed
+label is not the call itself (a species label on a genus or family
+call): the call at its rank is the claim, and the species are candidates
+within it.}
 }
+Prompt compliance is never guaranteed, so the deterministic
+\code{geographic_disagreement_basis} output column (see \code{@return}) still
+marks every row rated likely/possible despite either flag; filter on it to
+audit those rows.
+
+Each taxon line carries an id (\code{[T1]}, \code{[T2]}, ...) that the
+answer must echo; answers are matched by id first, then by name, so a long
+candidate-set label echoed back reformatted is still matched. A response
+matching none of several sets is treated as failed (halved and retried),
+and an omission a re-ask cannot recover is re-asked one set per call.
 }
 
 \section{Pipeline context}{
@@ -461,9 +479,9 @@ sets, each candidate's averaged posterior weight. This lets the LLM's
 free-text \code{review_comment} flag a disagreement between the
 pipeline's own confidence and its ecological judgment. It is purely
 additive: it never changes which rows are reviewed, the dedup key, or any
-output column, and adds only a few tokens per taxon to the prompt. Set any
-of the four params to \code{NULL} to disable; all four are silently
-skipped (not an error) when the named column is absent from \code{input_df}.
+output column. Set any of the four params to \code{NULL} to disable; all
+four are silently skipped (not an error) when the named column is absent
+from \code{input_df}.
 }
 
 \section{Spatial context}{
@@ -477,38 +495,30 @@ taxon name before calling this function, since both source functions
 operate per-taxon at a query point, not per-row -- the same \code{"[...]"}
 bracket used for pipeline context also carries a compact GBIF/iNat summary
 (e.g. \code{"[GBIF: nearest occurrence ~41km away, patch ~2.1km across;
-iNat: in range, 1275 obs]"}). Found empirically to matter, not
-hypothetically: real GreatLakes2023 "unprecedented" taxa included both a
-genuine Great Lakes native (a real regional species simply not yet
-recorded at this exact site) and two European fish species ~6500km from
-any GBIF-mapped occurrence -- the same "unprecedented" flag, two very
-different real explanations, indistinguishable without this evidence.
+iNat: in range, 1275 obs]"}). This matters because the same "unprecedented"
+flag can have very different explanations: a genuine regional native not yet
+recorded at this exact site, or a species thousands of km from any
+GBIF-mapped occurrence.
 
-Deliberately facts-only in the per-taxon bracket -- no plausibility
-judgment is pre-computed or baked in server-side (the same design choice
-already made for \code{winner_rank_expanded}'s note above). Two
-real caveats about how to weigh these facts are added as a GUIDELINES
-bullet instead (only when a batch has at least one such note), for the LLM
-to apply per case: (1) GBIF's density map is raw, unfiltered global data --
-an occurrence found far away, especially in a small (1-2 cell) patch, may
-itself be a single bad or mis-georeferenced GBIF record rather than a real
-population; a small isolated patch is weaker evidence than a large one.
-(2) When iNat's \code{matched_name} differs from the taxon under review,
-its \code{in_range} verdict may describe a \emph{different}, often more common,
-species due to a fuzzy name-search match -- not the taxon actually being
-assessed. Confirmed as a real, not hypothetical, failure mode: a query for
-the European \emph{Gasterosteus gymnurus} resolved via iNat's own search to
-\emph{Gasterosteus aculeatus} (a genuinely North American/circumpolar
-species), returning a misleading \code{in_range = TRUE}. This is a known,
-separate, not-yet-fixed limitation of \code{check_inat_range()}'s name
-resolution -- \code{matched_name} is surfaced here specifically so a
-reviewer (human or LLM) can catch it downstream in the meantime, not as a
-substitute for fixing it upstream.
+The per-taxon bracket is facts-only: no plausibility judgment is
+pre-computed (as for \code{winner_rank_expanded}'s note above). Two caveats
+about how to weigh these facts are added as a GUIDELINES bullet instead
+(only when a batch has at least one such note), for the LLM to apply per
+case: (1) GBIF's density map is raw, unfiltered global data -- an occurrence
+found far away, especially in a small (1-2 cell) patch, may itself be a
+single bad or mis-georeferenced GBIF record rather than a real population;
+a small isolated patch is weaker evidence than a large one. (2) When iNat's
+\code{matched_name} differs from the taxon under review, its \code{in_range}
+verdict may describe a \emph{different}, often more common, species due to a
+fuzzy name-search match (e.g. a query for the European \emph{Gasterosteus
+gymnurus} can resolve to \emph{Gasterosteus aculeatus}, returning a
+misleading \code{in_range = TRUE}). \code{matched_name} is surfaced so a
+reviewer (human or LLM) can catch this.
 
-Purely additive, matching "Pipeline context" above in every other respect:
-never changes which rows are reviewed, the dedup key, or any output
-column. Set any of the six params to \code{NULL} to disable; all six are
-silently skipped when the named column is absent from \code{input_df}.
+Purely additive, as for "Pipeline context": never changes which rows are
+reviewed, the dedup key, or any output column. Set any of the six params to
+\code{NULL} to disable; all six are silently skipped when the named column
+is absent from \code{input_df}.
 }
 
 \examples{

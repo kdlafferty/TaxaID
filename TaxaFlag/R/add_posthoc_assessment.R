@@ -19,16 +19,10 @@
 #' fallback for any row whose \code{consensus_rank} is coarser than species
 #' -- and a short-circuit value such as \code{"vague_rank"}, returned for
 #' EVERY such row, stops classification entirely rather than reporting a
-#' coarser-but-still-informative answer. Measured on a real 616-observation
-#' Mugu dataset: a rank-based short-circuit of that kind would leave 109
-#' observations (17.7%) never assessed at all. Axis 1 and Axis 2 avoid this
+#' coarser-but-still-informative answer. Axis 1 and Axis 2 avoid this
 #' because both are computed at whatever rank the data actually resolved to,
 #' reported alongside each other, with no rank at which classification
-#' simply stops -- there is no separate 3x2 tier-times-likelihood table,
-#' since \code{primary_plausibility} (occurrence side) and
-#' \code{primary_discrimination} (evidence side) already answer the same two
-#' questions without collapsing them into one column or gating either on
-#' rank.
+#' simply stops.
 #'
 #' @section Domestic/synanthropic species caveat:
 #' GBIF- and iNaturalist-derived occurrence priors structurally under-index
@@ -44,9 +38,8 @@
 #' the occurrence-implausibility flag at face value. This is deliberately
 #' conservative: it only fires when the prior is expected to be an
 #' under-count (see \code{domestic_prior_source}), never invents or elevates
-#' a prior itself, and is its own small additive column, matching the axes'
-#' own "report alongside, never override" design. If your prior pipeline
-#' already augments occurrence data
+#' a prior itself, and is its own small additive column. If your prior
+#' pipeline already augments occurrence data
 #' with known local domestic/synanthropic presence (rather than relying on
 #' raw GBIF/iNat), set \code{domestic_prior_source = "augmented"} to disable
 #' this flag, since \code{primary_plausibility} is then informative on its
@@ -133,12 +126,8 @@
 #' \code{consensus_plausibility} (Axis 1) rather than combined with them --
 #' Axis 1 asks whether the taxon is expected to be here at all; Axis 2 asks
 #' whether the evidence could discriminate it from a plausible relative.
-#' Neither substitutes for the other. This design is deliberately additive
-#' rather than a recomputing/overriding mechanism: a rank-trust mechanism
-#' that walks up the rank ladder recomputing or overriding lower-rank calls
-#' is the cautionary precedent here, since a real ~30% likelihood/
-#' posterior-winner mismatch rate, plus a downranking-cancellation bug,
-#' showed that kind of design is unsafe.
+#' Neither substitutes for the other, and neither recomputes or overrides
+#' any other column.
 #'
 #' @param winner_theta_col Character.  Column in \code{consensus_df} holding
 #'   the winning hypothesis's own raw occurrence-model share (default
@@ -219,12 +208,10 @@
 #' \strong{Reads \code{theta_mean}, not \code{prior_mean}.}
 #' \code{prior_mean} can be substantially inflated by
 #' \code{TaxaAssign::update_prior_from_consensus()}'s cross-observation
-#' confirmation boost, which has no gate on occurrence-record presence.
-#' Measured on real Mugu data: of 616 winning candidates, 110 had
-#' \code{winner_prior >= 0.5}, and on that same dataset EVERY row with
-#' \code{prior_mean >= 0.5} was a boosted row -- so an \code{expected} call
-#' built on \code{prior_mean} would mean "confirmed elsewhere in this
-#' dataset", not "expected here on occurrence grounds". \code{theta_mean}
+#' confirmation boost, which has no gate on occurrence-record presence -- so
+#' an \code{expected} call built on \code{prior_mean} would mean "confirmed
+#' elsewhere in this dataset", not "expected here on occurrence grounds".
+#' \code{theta_mean}
 #' (\code{TaxaExpect::prepare_model_dataframe()}'s raw occurrence-model share,
 #' a compositional share of local records -- see
 #' \code{TaxaAssign::update_prior_from_consensus()}'s own "Rescaling onto the
@@ -240,9 +227,8 @@
 #' \code{theta_mean} across every locally modelled group member, from
 #' \code{TaxaAssign::posterior_consensus(group_priors = ...)}) is
 #' mechanically larger than any one species' own share just from summing
-#' more terms -- measured on real Mugu data, 27 of 28 real families clear
-#' the SPECIES-level median purely by having more members, not because they
-#' are more locally expected. \code{expected_theta_threshold} is therefore a
+#' more terms, not because it is more locally expected.
+#' \code{expected_theta_threshold} is therefore a
 #' RANK-MATCHED vector: \code{primary_plausibility} (always the winning
 #' candidate's own species-level share) is compared against the
 #' \code{"species"} entry; \code{consensus_plausibility} is compared against

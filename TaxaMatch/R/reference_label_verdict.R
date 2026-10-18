@@ -156,36 +156,23 @@ utils::globalVariables(c(
 #' @section No partners is not a coin flip:
 #' An accession with ZERO valid comparison partners
 #' (`n_independent_top_matches == 0`) has `label_confidence = NA` and
-#' `reference_action = "untested"`, rather than the 0.500 the arithmetic
-#' would otherwise produce.
-#'
-#' Why it would otherwise be 0.500: with no partners,
+#' `reference_action = "untested"`, rather than the 0.500 the arithmetic would
+#' otherwise produce. With no partners,
 #' `frac_independent_below_min_congruent_rank` falls back to its 0.5 default
 #' and the identity margin is `NA`, so the formula reduces to
-#' `plogis(qlogis(0.5) + 0)`. That is a prior with no data, not a
-#' measurement, and it lands squarely in the `"caution"` band -- i.e. the
-#' screen asserting concern earned by an absence, against a base rate of 931
-#' congruent out of 989 evaluated PtConception accessions.
-#'
-#' Measured across four independent real caches (PtConception plus three
-#' GreatLakes), the split is total and has no exceptions: all 98 zero-partner
-#' rows scored exactly 0.500 and read `"caution"`, while all 55 rows with at
-#' least one partner had corroborating evidence
-#' (`congruent_evidence_exists_anywhere == TRUE`) and read `"keep"`.
+#' `plogis(qlogis(0.5) + 0)`. That is a prior with no data, not a measurement,
+#' and it lands in the `"caution"` band, asserting concern earned by an
+#' absence.
 #'
 #' The rule keys on the partner COUNT, deliberately not on `hierarchy_flag`.
 #' An accession with 1-2 partners also reads
-#' `"insufficient_independent_evidence"`, but it does have real evidence and
-#' (55 of 55, measured) that evidence corroborates it; keying on the verdict
-#' would wrongly blank those too.
+#' `"insufficient_independent_evidence"`, but it does have real evidence, and
+#' keying on the verdict would wrongly blank those too.
 #'
-#' Some of these rows are a `max_hits` truncation artifact rather than a
-#' property of the accession -- re-running PtConception's 34 at
-#' `max_hits = 100` resolved 12, including 7 zero-partner rows that moved
-#' `"caution"` to `"keep"` (the `insufficient_evidence_probe.R` diagnostic (TaxaID_dev repository)). But
-#' 21 of 34 gained no hits at all when the window quintupled, so most of the
-#' population is genuinely thin. `"untested"` is the honest reading either
-#' way: we do not know.
+#' Some zero-partner rows are a `max_hits` truncation artifact rather than a
+#' property of the accession, and a larger `max_hits` can resolve some of them,
+#' but many stay genuinely thin. `"untested"` is the honest reading either way:
+#' we do not know.
 #'
 #' @section Where the numbers come from:
 #' `label_confidence` is a pure function of columns
@@ -202,69 +189,52 @@ utils::globalVariables(c(
 #' }
 #'
 #' `margin_scale` is the one free parameter: it says how many percent-identity
-#' points are worth one unit of log-odds. The default `1` is not fitted -- it
-#' is a stated convention, chosen because
-#' at MiFish-U amplicon lengths (~170 bp) one percent identity is roughly 1.7
-#' nucleotide differences, the granularity at which this ecosystem already
-#' treats identity differences as discriminating at species level. What the
-#' default is checked against is behaviour, not fit: on the real 995-accession
-#' PtConception evaluation it reproduces the measured, user-approved
-#' evidence-gate split exactly (the 4 no-corroboration accessions score
-#' <= 0.001 and are the only ones that reach `"remove"`; the 8 spared score
-#' 0.056 to 0.97 and reach at worst `"inspect"`), and leaves all 919
-#' `"congruent"` accessions at `"keep"`.
+#' points are worth one unit of log-odds. The default `1` is a stated
+#' convention, not a fitted value: at MiFish-U amplicon lengths (~170 bp) one
+#' percent identity is roughly 1.7 nucleotide differences, the granularity at
+#' which this ecosystem treats identity differences as discriminating at
+#' species level.
 #'
 #' @section Why `"remove"` also requires no corroboration anywhere:
 #' `reference_action == "remove"` is gated on THREE conditions, not just a low
 #' `label_confidence`: the accession must be flagged `"incongruent"`, have no
-#' corroborating evidence anywhere in the untruncated independence-filtered
-#' hit pool, AND score below `action_remove_below`. The corroboration test is
-#' a hard veto rather than another additive term because one corroborating
-#' record anywhere is qualitatively different from none -- it means some
-#' independent submitter's sequence agrees with this label at family or finer.
-#' The case that shows why a threshold alone is not enough is `Oxylebius
-#' pictus` (`KM057978`), a real, locally-abundant painted greenling whose only
-#' corroboration sits outside its top-5 window at 93.58, just below the 94.01
-#' that contradicts it. It scores 0.056 -- a hair above the 0.05 default, so
-#' the default threshold happens to spare it, but its fate would flip on any
-#' small change to `margin_scale` or to `action_remove_below`. The veto is
-#' what makes the outcome robust rather than lucky: raise
-#' `action_remove_below` to 0.2 and it is still `"inspect"`, while the
-#' genuinely uncorroborated accessions are still `"remove"`. That is the right
-#' treatment: a borderline reference should be surfaced for review, not
-#' deleted.
+#' corroborating evidence anywhere in the untruncated independence-filtered hit
+#' pool, AND score below `action_remove_below`. The corroboration test is a
+#' hard veto rather than another additive term because one corroborating record
+#' anywhere is qualitatively different from none: some independent submitter's
+#' sequence agrees with this label at family or finer. A threshold alone is not
+#' robust, because a borderline reference whose only corroboration sits just
+#' outside the top-`n` window would flip on any small change to `margin_scale`
+#' or `action_remove_below`. The veto keeps such a reference at `"inspect"`
+#' (surfaced for review, not deleted) while genuinely uncorroborated accessions
+#' are still `"remove"`.
 #'
-#' `"remove"` is furthermore unreachable for any flag other than
-#' `"incongruent"`. `"insufficient_independent_evidence"` is retryable, not
-#' removable (it may simply mean a sparsely-referenced region of the
-#' database), `"not_evaluated_oversized"` and
-#' `"not_evaluated_wrong_marker"` were never submitted to BLAST
-#' at all, and `"locally_corroborated"` was deliberately not
-#' submitted because the caller's own reference set already corroborates it
-#' -- it reads `"keep"` with `label_confidence = NA` (there is no BLAST
-#' evidence to grade).
+#' `"remove"` is unreachable for any flag other than `"incongruent"`.
+#' `"insufficient_independent_evidence"` is retryable, not removable (it may
+#' simply mean a sparsely-referenced region of the database).
+#' `"not_evaluated_oversized"` and `"not_evaluated_wrong_marker"` were never
+#' submitted to BLAST. `"locally_corroborated"` was deliberately not submitted
+#' because the caller's own reference set already corroborates it; it reads
+#' `"keep"` with `label_confidence = NA` (there is no BLAST evidence to grade).
 #'
 #' @section Local corroboration: provenance and the veto:
 #' When `local_corroboration` ([corroborate_references_locally()] output) is
 #' supplied, three things happen, and one deliberately does not.
-#' `corroboration_source` records where the corroboration for each label
-#' came from: `"blast"` (`congruent_evidence_exists_anywhere`), `"local"`
+#' `corroboration_source` records where the corroboration for each label came
+#' from: `"blast"` (`congruent_evidence_exists_anywhere`), `"local"`
 #' (`local_tier == "corroborated"`, or the row was skipped as
 #' `"locally_corroborated"`), `"both"`, or `"none"`.
-#' `local_best_independent_pident` and `local_n_independent_conspecific`
-#' carry the local numbers beside the BLAST ones. And a row that resolves to
+#' `local_best_independent_pident` and `local_n_independent_conspecific` carry
+#' the local numbers beside the BLAST ones. And a row that resolves to
 #' `"remove"` while the local set corroborates it is VETOED to `"inspect"`,
 #' with `action_reason = "vetoed_by_local_corroboration"`.
 #'
 #' What does not happen: `label_confidence` stays the BLAST-only probability.
-#' Local evidence is not folded into it, on purpose, so a reviewer can see
-#' the two disagree -- that disagreement is exactly what found the
-#' primer-inclusive-query blind spot (`KM057996`, *Zaniolepis frenata*,
-#' actioned `"remove"` by BLAST while `OQ846041` in the local set matched it
-#' at 100% over 97% of the amplicon; see [evaluate_reference_accessions()]'s
-#' `@section Why the query is the primer-stripped amplicon`). All four
-#' columns are present (`NA`/`"none"`-filled) even when no table is
-#' supplied, so downstream code can rely on them.
+#' Local evidence is not folded into it, on purpose, so a reviewer can see the
+#' two disagree (see [evaluate_reference_accessions()]'s `@section Why the
+#' query is the primer-stripped amplicon`). All four columns are present
+#' (`NA`/`"none"`-filled) even when no table is supplied, so downstream code
+#' can rely on them.
 #'
 #' @param evaluation Data frame. Output of [evaluate_reference_accessions()]
 #'   (or any data frame carrying its diagnostic columns -- a cache file read

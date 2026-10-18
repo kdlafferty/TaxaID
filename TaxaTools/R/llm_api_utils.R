@@ -72,6 +72,8 @@
 #'   outputs (e.g., large species lists). Higher values increase API cost.
 #' @param api_key Character. Anthropic API key. Defaults to the
 #'   \code{ANTHROPIC_API_KEY} environment variable.
+#' @param temperature Numeric or \code{NULL}. Passed to \code{\link{call_api}};
+#'   \code{NULL} (default) sends no temperature, keeping the provider default.
 #'
 #' @return A length-1 character string containing the model's response text.
 #'   Stops on any non-200 HTTP status.
@@ -94,14 +96,16 @@ call_anthropic_api <- function(prompt_str,
                                model = NULL,
                                tier = c("mid", "fast", "top"),
                                max_tokens = 16000L,
-                               api_key = Sys.getenv("ANTHROPIC_API_KEY")) {
+                               api_key = Sys.getenv("ANTHROPIC_API_KEY"),
+                               temperature = NULL) {
   tier <- match.arg(tier)
   call_api(prompt_str,
-    provider   = "anthropic",
-    tier       = tier,
-    model      = model,
-    max_tokens = max_tokens,
-    api_key    = if (nzchar(api_key)) api_key else NULL
+    provider    = "anthropic",
+    tier        = tier,
+    model       = model,
+    max_tokens  = max_tokens,
+    api_key     = if (nzchar(api_key)) api_key else NULL,
+    temperature = temperature
   )
 }
 

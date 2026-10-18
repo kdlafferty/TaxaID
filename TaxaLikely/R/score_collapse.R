@@ -223,7 +223,7 @@ detect_suppressed_candidates <- function(match_obj,
 #' \code{hypothesis_type = "suppressed_candidate"} row (so it flows through
 #' [evaluate_likelihoods()] -> prior join -> \code{compute_posterior()}
 #' exactly like anything else) under either or both of two purposes, recorded
-#' in the new \code{restoration_basis} column:
+#' in the \code{restoration_basis} column:
 #'
 #' \itemize{
 #'   \item \strong{\code{"competitive_score"}} (Purpose A -- competitiveness
@@ -256,7 +256,7 @@ detect_suppressed_candidates <- function(match_obj,
 #' [expand_unreferenced_hypotheses()]'s generic borrowed-likelihood path
 #' instead.
 #'
-#' \strong{No-score pathway (Rule 3 / \code{best_only}, unchanged):} when
+#' \strong{No-score pathway (Rule 3 / \code{best_only}):} when
 #' \code{match_obj} carries no usable \code{score_col} at all, there is no
 #' real evidence to source Purpose A/B from -- every same-genus congener
 #' (filtered by \code{candidate_species_filter} if supplied) is restored with
@@ -433,29 +433,27 @@ detect_suppressed_candidates <- function(match_obj,
 #' (edges 75, 85, 90, 95, 98, 99.5). A band with fewer than 30 pairs is pooled
 #' into its upward neighbour; each measured score takes its band's median
 #' offset. Where the offset is flat the bands come out equal and this is a
-#' constant; where it slopes with identity they differ (on CalIntertidal: 18S
-#' +2.24 to +2.28 throughout; COI +1.6 below 85, about +0.3 above, about 0 at
-#' 98 and up). A measured score outside the observed scores the offset was
-#' measured on takes the nearest band and is flagged
-#' (\code{restored_offset_out_of_range}), never with the below-floor flag. With
-#' fewer than 30 pairs in all the offset is 0 and flagged thin. The calibration
-#' is returned as \code{attr(result, "measured_score_calibration")}
-#' (\code{offset}, \code{n}, \code{iqr}, \code{thin}, \code{bands},
-#' \code{range}, \code{source}). A measured score may exceed the observation's best observed score: a
-#' suppressed congener can genuinely match the query better than every hit the
-#' provider kept, since suppression does not follow identity.
+#' constant; where it slopes with identity they differ. A measured score
+#' outside the observed scores the offset was measured on takes the nearest
+#' band and is flagged (\code{restored_offset_out_of_range}), never with the
+#' below-floor flag. With fewer than 30 pairs in all the offset is 0 and
+#' flagged thin. The calibration is returned as
+#' \code{attr(result, "measured_score_calibration")} (\code{offset},
+#' \code{n}, \code{iqr}, \code{thin}, \code{bands}, \code{range},
+#' \code{source}). A measured score may exceed the observation's best observed
+#' score: a suppressed congener can genuinely match the query better than
+#' every hit the provider kept, since suppression does not follow identity.
 #'
 #' Only when no reference clears the coverage rule (or no query sequence is
 #' available) does the score fall back to the hierarchy below, as an
 #' IMPUTATION (\code{restored_score_source = "imputed"}):
 #' \code{min(ref_ref, anchor)}, where \code{ref_ref} is the hierarchy's
-#' identity. Every hierarchy level is
-#' REFERENCE-vs-REFERENCE identity -- including Level 4, whose \code{pid} is
-#' the candidate's reference aligned to the ANCHOR's reference; the query only
-#' locates the anchor range -- so used directly as the query's score it is a
-#' fair proxy only when the query matches its anchor almost exactly. An
-#' imputed score is asserted never to exceed the anchor; measured scores are
-#' not subject to that ceiling.
+#' identity. Every hierarchy level is REFERENCE-vs-REFERENCE identity --
+#' including Level 4, whose \code{pid} is the candidate's reference aligned to
+#' the ANCHOR's reference; the query only locates the anchor range -- so used
+#' directly as the query's score it is a fair proxy only when the query
+#' matches its anchor almost exactly. An imputed score is asserted never to
+#' exceed the anchor; measured scores are not subject to that ceiling.
 #'
 #' A restored score below the training floor \code{1 - max_dist} (scores the
 #' likelihood model never trained on) is kept and flagged
@@ -487,17 +485,15 @@ detect_suppressed_candidates <- function(match_obj,
 #'     \code{id_y}, against anything, not just this genus)? When it doesn't
 #'     (e.g. its only references are out-of-range mitogenomes that never
 #'     entered [build_sequence_matrix()]'s alignment), Levels 1-3 are all
-#'     provably futile, not just unlucky -- route straight to Level 4.
+#'     futile -- route straight to Level 4.
 #'   \item \strong{Level 1 (free):} direct accession-pair \code{p_match}
 #'     lookup in \code{seq_matrix} -- the specific anchor accession vs. the
 #'     specific candidate accession(s).
 #'   \item \strong{Level 2 (free):} any-accession species-pair lookup -- any
 #'     reference accession of the anchor's species vs. any reference
 #'     accession of the candidate species. Rescues a case where Level 1's
-#'     specific accession happens to be an unrepresentative outlier; not a
-#'     universal rescue (several real anchors show zero improvement, when the
-#'     missing pairs are genuinely outside \code{max_dist} rather than an
-#'     accession-pick artifact).
+#'     specific accession is an unrepresentative outlier; it does not help
+#'     when the missing pairs are genuinely outside \code{max_dist}.
 #'   \item \strong{Level 3 (free), one level with an internal preference:} a
 #'     raw genus-wide median and the trained model's own genus-specific
 #'     estimate both answer "typical congener divergence for this genus," at
@@ -517,8 +513,8 @@ detect_suppressed_candidates <- function(match_obj,
 #'     \code{.check_regional_overlap()} uses for the regional-overlap check,
 #'     called with \code{return_detail = TRUE} to also read back a percent-
 #'     identity score (\code{pwalign::pid()}, default \code{PID1}) from the
-#'     same alignment object the position check already builds -- free, no
-#'     extra alignment work. A candidate whose position genuinely does not
+#'     same alignment object the position check already builds, at no extra
+#'     alignment cost. A candidate whose position genuinely does not
 #'     overlap the anchor's hit region is recorded via
 #'     \code{attr(result, "regional_unreferenced")} rather than restored (see
 #'     \code{@return}); one with literally no evidence either way (e.g. no
@@ -528,23 +524,12 @@ detect_suppressed_candidates <- function(match_obj,
 #' }
 #'
 #' @section Level 4 cost control:
-#' A ratio-only compute-budget design, tested against two
-#' real motivating cases -- Mugu \code{Fundulus lima}/\code{parvipinnis},
-#' PtConception \code{Girella simplicidens}/\code{nigricans} -- has a real
-#' hole: BOTH real anchors are themselves occurrence-implausible (absent
-#' from \code{taxaexpect_priors} entirely), which is exactly the case this
-#' whole function exists to handle, but that makes the floor-vs-documented
-#' ratio uncomputable, which would skip Level 4 for every candidate --
-#' including the one that actually matters. Measured real cost of leaving
-#' Level 4 fully unrestricted (the \code{candidate_species_filter = NULL}
-#' default): restoring one marker's real 12S Mugu data goes from
-#' ~38s (filter-gated) to ~276s (unrestricted), because Purpose
-#' A's genus-wide sweep sends every one of \code{Fundulus}'s 20 species to a
-#' live alignment against \code{F. lima}'s 16kb mitogenome.
-#'
-#' Two independent controls gate Level 4, cheapest-decision first (see
-#' \code{.worth_level4_check()}/\code{.level4_attempt_allowed()}'s own
-#' headers for the full derivation):
+#' Level 4 is expensive: with the default \code{candidate_species_filter =
+#' NULL}, Purpose A's genus-wide sweep sends every congener of the anchor's
+#' genus to a live alignment against the anchor's reference (a 16kb
+#' mitogenome in the worst case). Two independent controls gate it,
+#' cheapest-decision first (see \code{.worth_level4_check()}/
+#' \code{.level4_attempt_allowed()} for the derivation):
 #' \enumerate{
 #'   \item \strong{\code{candidate_species_filter} (default gate):} a
 #'     candidate on the filter -- or any candidate, when no filter
@@ -557,23 +542,20 @@ detect_suppressed_candidates <- function(match_obj,
 #'     proportional to likelihood times prior, so a candidate's prior
 #'     disadvantage alone can make it mathematically impossible to ever
 #'     surface. Bounding a restored congener's likelihood at, at best, the
-#'     anchor's own (\code{L_candidate/L_anchor <= 1}, a safe working
-#'     assumption for a budget heuristic, not a correctness gate) gives:
+#'     anchor's own (\code{L_candidate/L_anchor <= 1}, a working assumption
+#'     for a budget heuristic, not a correctness gate) gives:
 #'     worth spending Level 4 budget only when \code{R = P_anchor /
 #'     P_candidate <= 19}, where \code{P_anchor}/\code{P_candidate} are the
 #'     two species' own occurrence-prior means at the observation's grid
 #'     cell. \code{R} not being computable at all (either species absent
-#'     from \code{taxaexpect_priors} at that grid cell) is treated the same
-#'     as \code{R > 19} -- skip.
+#'     from \code{taxaexpect_priors} at that grid cell, including an
+#'     occurrence-implausible anchor) is treated the same as \code{R > 19}
+#'     -- skip.
 #' }
-#' Verified against both real cases: Fundulus goes from ~19 live alignments
-#' per anchor down to 1 (\code{F. parvipinnis}, still correctly rejected on
-#' position grounds); Girella goes from 8 wasted alignments down to 0,
-#' keeping the 1 that matters (\code{G. nigricans}, still correctly admitted
-#' at its real ~98% score). \code{max_level4_per_anchor} (default
-#' \code{10L}) is a separate, independent hard cap on top of both -- insurance
-#' against a large/absent filter or a permissive ratio still admitting an
-#' unbounded number of candidates for one anchor.
+#' \code{max_level4_per_anchor} (default \code{10L}) is a separate,
+#' independent hard cap on top of both, insurance against a large/absent
+#' filter or a permissive ratio still admitting an unbounded number of
+#' candidates for one anchor.
 #'
 #' @return \code{match_obj} with restored \code{"suppressed_candidate"} rows
 #'   appended (or unchanged if nothing qualified), plus new \code{is_restored},

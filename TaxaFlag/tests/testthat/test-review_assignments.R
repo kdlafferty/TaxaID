@@ -1098,12 +1098,73 @@ test_that("the note degrades without the scope columns rather than failing", {
   expect_false(grepl("occurrence records for", note))
 })
 
-test_that("the unreferenced test over-includes, as a caution signal should", {
-  # Any unreferenced_* type flags, not only the species ring: a caution signal
-  # must not miss a rank added to the ladder later.
+test_that("a generic ring call names a clade, not an unreferenced species: no line", {
+  # "Salmo" as an unreferenced_species ring: the genus may well be referenced
+  # (Mugu: 90 12S references); only the read failed to match them.
+  df <- .prov_input(scope = "Salmo", scope_rank = "genus")
+  df$taxon_name <- "Salmo"
+  expect_false(grepl("reference sequence", .prov_note(df)))
   for (ty in paste0("unreferenced_", c("genus", "family", "order", "class"))) {
-    expect_match(.prov_note(.prov_input(type = ty)), "NO reference sequence")
+    df2 <- .prov_input(type = ty)
+    expect_false(grepl("reference sequence", .prov_note(df2)))
   }
+})
+
+# Goldfish shape (Mugu _final1): units sharing the label "Carassius auratus",
+# a referenced species. One unit calls it outright; others call a family ring
+# with Carassius auratus as the first plausible taxon. None of them may tell
+# the reviewer the named taxon has no reference.
+.goldfish <- function() {
+  df <- data.frame(
+    observation_id = c("ASV_139", "ASV_142"),
+    primary_taxon = c("Carassius auratus", "Carassius auratus"),
+    consensus_taxon = c("Carassius auratus", "Cyprinidae"),
+    consensus_rank = c("species", "family"),
+    consensus_hypothesis_type = c("specific_candidate", "unreferenced_genus"),
+    winner_hypothesis_type = c("specific_candidate", "specific_candidate"),
+    consensus_unreferenced_scope = c(NA, "Cyprinidae"),
+    consensus_unreferenced_scope_rank = c(NA, "family"),
+    consensus_scope_n_named = c(NA, 1L),
+    consensus_posterior = c(0.97, 0.97),
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa <- I(list("Carassius auratus", c("Carassius auratus", "Cyprinus carpio")))
+  df
+}
+
+test_that("a referenced label under a ring call gets no 'no reference' line (goldfish)", {
+  df <- .goldfish()
+  ctx <- .summarise_pipeline_context(df$primary_taxon, df, "consensus_posterior", NULL, NULL)
+  expect_false(grepl("reference sequence", ctx$pipeline_note[[1L]]))
+  # the ring unit alone, label = first plausible taxon, winner referenced
+  one <- df[2, ]
+  ctx1 <- .summarise_pipeline_context(one$primary_taxon, one, "consensus_posterior", NULL, NULL)
+  expect_false(grepl("reference sequence", ctx1$pipeline_note[[1L]]))
+})
+
+test_that("a named unreferenced first-plausible label still gets the line", {
+  df <- .goldfish()[2, ]
+  df$primary_taxon <- "Carassius cuvieri"
+  df$winner_hypothesis_type <- "unreferenced_species"
+  df$plausible_taxa <- I(list(c("Carassius cuvieri", "Carassius auratus")))
+  ctx <- .summarise_pipeline_context(df$primary_taxon, df, "consensus_posterior", NULL, NULL)
+  expect_match(ctx$pipeline_note[[1L]], "NO reference sequence")
+  # the scope detail belongs to the call row, so it is not borrowed here
+  expect_false(grepl("occurrence records for", ctx$pipeline_note[[1L]]))
+})
+
+test_that("a label shown as referenced anywhere in its group gets no line", {
+  df <- .goldfish()
+  df$winner_hypothesis_type[2] <- "unreferenced_species"
+  ctx <- .summarise_pipeline_context(df$primary_taxon, df, "consensus_posterior", NULL, NULL)
+  expect_false(grepl("reference sequence", ctx$pipeline_note[[1L]]))
+})
+
+test_that("a label whose row type cannot be read gets no line", {
+  df <- .goldfish()[2, ]
+  df$primary_taxon <- "Cyprinus carpio" # neither the call nor the first plausible taxon
+  ctx <- .summarise_pipeline_context(df$primary_taxon, df, "consensus_posterior", NULL, NULL)
+  expect_false(grepl("reference sequence", ctx$pipeline_note[[1L]]))
 })
 
 test_that("provenance alone is enough context to annotate", {

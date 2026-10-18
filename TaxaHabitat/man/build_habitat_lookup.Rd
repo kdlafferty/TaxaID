@@ -14,7 +14,8 @@ build_habitat_lookup(
   geographic_context = NULL,
   cache_tag = "",
   pause_seconds = 1,
-  verbose = TRUE
+  verbose = TRUE,
+  compound_rule = c("sum", "max")
 )
 }
 \arguments{
@@ -38,6 +39,11 @@ directory, e.g. \code{file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))}.
 cache key; change it to force fresh verdicts (e.g. after a model change).}
 
 \item{pause_seconds, verbose}{Passed to \code{TaxaTools::prompt_api()}.}
+
+\item{compound_rule}{Passed to \code{\link[=build_habitat_prompt]{build_habitat_prompt()}}: \code{"sum"} (default)
+or \code{"max"}. NOT part of the cache key: the cache holds the parts the model
+returned and the compound is re-derived from them on every call, so the
+rule can be changed without a single new model call.}
 }
 \value{
 A data frame with one row per unique taxon in \code{taxon_list}

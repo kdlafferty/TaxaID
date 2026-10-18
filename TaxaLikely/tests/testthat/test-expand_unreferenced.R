@@ -44,12 +44,21 @@ test_that("expand_unreferenced_hypotheses: named H2 species added next to the ge
   expect_equal(gen$score_likelihood, 0.31)
 })
 
-test_that("expand_unreferenced_hypotheses: named H3 species from other genera added next to the generic row", {
-  out <- expand_unreferenced_hypotheses(.make_expand_lik(), .make_unref_df())
+test_that("expand_unreferenced_hypotheses: no species is ever named from the family ring; it is withheld", {
+  out <- suppressMessages(expand_unreferenced_hypotheses(.make_expand_lik(), .make_unref_df()))
   h3 <- out[out$hypothesis_type == "unreferenced_genus" & out$taxon_name_rank == "species", ]
-  expect_equal(h3$taxon_name, "Lucania parva")
-  expect_equal(h3$score_likelihood, 0.04)
+  expect_equal(nrow(h3), 0L)
+  expect_false("Lucania parva" %in% out$taxon_name)
+  # the generic family row stays
   expect_equal(sum(out$taxon_name == "Fundulidae" & out$taxon_name_rank == "family"), 1L)
+  w <- attr(out, "unreferenced_withheld")
+  expect_equal(nrow(w), 1L)
+  expect_equal(w$taxon_name, "Lucania parva")
+  expect_equal(w$genus, "Lucania")
+  expect_equal(w$family, "Fundulidae")
+  expect_equal(w$observation_id, "ESV_001")
+  # Lucania has no reference anywhere in this table and no ring of its own
+  expect_equal(w$reason, "no_own_genus_ring")
 })
 
 test_that("expand_unreferenced_hypotheses: H3 excludes species from H2 genus", {
@@ -65,6 +74,8 @@ test_that("expand_unreferenced_hypotheses: H3 excludes species from H2 genus", {
   expect_false("Fundulus nottatus" %in% h3$taxon_name)
   expect_true("Fundulus nottatus" %in%
     out$taxon_name[out$hypothesis_type == "unreferenced_species"])
+  # named from its own ring, so it is not withheld either
+  expect_false("Fundulus nottatus" %in% attr(out, "unreferenced_withheld")$taxon_name)
 })
 
 test_that("expand_unreferenced_hypotheses: H1 rows passed through unchanged", {
@@ -169,9 +180,13 @@ test_that("expand_unreferenced_hypotheses: H2 suppresses only exact H1 species, 
   expect_false("Fundulus heteroclitus" %in% h2$taxon_name)
 })
 
-test_that("expand_unreferenced_hypotheses: H3 suppresses only exact H1 species, not full genus", {
-  # H1 is Lucania goodei (species-rank). Lucania parva is a DIFFERENT species --
-  # species-level suppression allows it to appear in H3.
+test_that("expand_unreferenced_hypotheses: neither a referenced nor an unreferenced genus is named from the family ring", {
+  # H1 is Lucania goodei (species-rank), so genus Lucania HAS references for
+  # this marker and they were compared with the read: Lucania parva is
+  # withheld as genus_referenced_unmatched. Fundulus has no candidate anywhere
+  # in this table and no ring of its own (the only H2 ring is Atherinops): its
+  # species are withheld as no_own_genus_ring, no longer copied from the family
+  # ring.
   lik_lucania_h1 <- data.frame(
     observation_id = "ESV_001",
     taxon_name = c("Lucania goodei", "Atherinops", "Fundulidae"),
@@ -185,12 +200,18 @@ test_that("expand_unreferenced_hypotheses: H3 suppresses only exact H1 species, 
     score_likelihood_sd = c(0, 0, 0),
     stringsAsFactors = FALSE
   )
-  out <- expand_unreferenced_hypotheses(lik_lucania_h1, .make_unref_df())
+  out <- suppressMessages(expand_unreferenced_hypotheses(lik_lucania_h1, .make_unref_df()))
   h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
-  # Lucania parva is a different species from H1 Lucania goodei -- should appear in H3
-  expect_true("Lucania parva" %in% h3$taxon_name)
-  # Fundulus species should still expand into H3 (their genus is not covered by H1)
-  expect_true(any(grepl("Fundulus", h3$taxon_name)))
+  expect_equal(h3$taxon_name, "Fundulidae") # the generic row only
+  expect_equal(h3$taxon_name_rank, "family")
+  w <- attr(out, "unreferenced_withheld")
+  expect_true(is.data.frame(w))
+  expect_identical(w$taxon_name, c("Fundulus parvipinnis", "Fundulus zebrinus", "Lucania parva"))
+  expect_identical(w$reason, c("no_own_genus_ring", "no_own_genus_ring", "genus_referenced_unmatched"))
+  expect_identical(w$observation_id, rep("ESV_001", 3L))
+  # the generic family ring itself is kept
+  expect_true("Fundulidae" %in% out$taxon_name[out$taxon_name_rank == "family"])
+  expect_false(any(grepl("Fundulus|Lucania parva", out$taxon_name)))
 })
 
 test_that("expand_unreferenced_hypotheses: H2 expands congeners even when one species is H1", {
@@ -213,10 +234,14 @@ test_that("expand_unreferenced_hypotheses: H2 expands congeners even when one sp
   h3 <- out[out$hypothesis_type == "unreferenced_genus" & out$taxon_name_rank == "species", ]
   # H2 expands parvipinnis and zebrinus (not heteroclitus)
   expect_equal(sort(h2$taxon_name), sort(c("Fundulus parvipinnis", "Fundulus zebrinus")))
-  # H3 Lucania parva not covered by H1 -- should appear
-  expect_true("Lucania parva" %in% h3$taxon_name)
+  # Lucania has no ring of its own: not named from the family ring, withheld
+  expect_equal(nrow(h3), 0L)
+  expect_false("Lucania parva" %in% out$taxon_name)
+  w <- attr(out, "unreferenced_withheld")
+  expect_equal(w$taxon_name, "Lucania parva")
+  expect_equal(w$reason, "no_own_genus_ring")
   # H3 should not duplicate H2 genus species
-  expect_false(any(grepl("Fundulus", h3$taxon_name)))
+  expect_false(any(grepl("Fundulus", c(h3$taxon_name, w$taxon_name))))
 })
 
 test_that("expand_unreferenced_hypotheses: species-level suppression -- H1 lima does not block H2 parvipinnis", {
@@ -263,6 +288,8 @@ test_that("expand_unreferenced_hypotheses: score_likelihood_cov/evidence/h2_delt
   expect_true(all(h2$h2_delta_source == "genus_specific"))
 
   h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
+  # only the generic family row remains: no species is named from a family ring
+  expect_equal(h3$taxon_name, "Fundulidae")
   expect_true(all(h3$score_likelihood_cov == 0.03))
   expect_true(all(h3$score_likelihood_evidence == 0.04))
   expect_true(all(h3$h2_delta_source == "global_fallback"))
@@ -397,4 +424,60 @@ test_that("expand_unreferenced_hypotheses: a genus-rank H1 still suppresses the 
   out <- suppressMessages(expand_unreferenced_hypotheses(lik, .make_unref_df()))
   expect_equal(sum(out$hypothesis_type == "unreferenced_species"), 0L)
   expect_true("Fundulidae" %in% out$taxon_name)
+})
+
+# ---- several genus rings / several family rings per observation -------------
+
+.make_expand_lik_multi <- function() {
+  data.frame(
+    observation_id = "ESV_001",
+    taxon_name = c(
+      "Hypsoblennius sordidus", "Parablennius sanguinolentus", "Gobiesox maeandricus",
+      "Hypsoblennius", "Parablennius", "Blenniidae", "Gobiesocidae"
+    ),
+    taxon_name_rank = c("species", "species", "species", "genus", "genus", "family", "family"),
+    hypothesis_type = c(
+      "specific_candidate", "specific_candidate", "specific_candidate",
+      "unreferenced_species", "unreferenced_species",
+      "unreferenced_genus", "unreferenced_genus"
+    ),
+    score_likelihood = c(1, 0.9, 0.5, 0.3, 0.2, 0.04, 0.02),
+    score_likelihood_mean = c(1, 0.9, 0.5, 0.3, 0.2, 0.04, 0.02),
+    score_likelihood_sd = 0,
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("expand: two genus rings copy each onto its own genus; family rings name nothing", {
+  unref <- data.frame(
+    species = c(
+      "Hypsoblennius hentz", "Parablennius incognitus", # genus rings
+      "Hypsoblennius_x_other", # not used
+      "Entomacrodus new", # genus with no reference, Blenniidae -> withheld, no own ring
+      "Gobiesox other", # referenced genus (candidate) but no ring? has ring? no: Gobiesox
+      "Scartichthys viridis" # Blenniidae, genus without reference
+    ),
+    genus = c("Hypsoblennius", "Parablennius", "Hypsoblennius", "Entomacrodus", "Gobiesox", "Scartichthys"),
+    family = c("Blenniidae", "Blenniidae", "Blenniidae", "Blenniidae", "Gobiesocidae", "Blenniidae"),
+    stringsAsFactors = FALSE
+  )
+  lik <- .make_expand_lik_multi()
+  out <- suppressMessages(expand_unreferenced_hypotheses(lik, unref))
+  sp <- out[out$taxon_name_rank == "species" & out$hypothesis_type == "unreferenced_species", ]
+  expect_equal(sp$score_likelihood[sp$taxon_name == "Hypsoblennius hentz"], 0.3)
+  expect_equal(sp$score_likelihood[sp$taxon_name == "Parablennius incognitus"], 0.2)
+  fam <- out[out$taxon_name_rank == "species" & out$hypothesis_type == "unreferenced_genus", ]
+  # no species is named from a family ring, referenced genus or not
+  expect_equal(nrow(fam), 0L)
+  expect_false(any(c("Entomacrodus new", "Scartichthys viridis", "Gobiesox other") %in% out$taxon_name))
+  # genera with no reference for the marker have no ring of their own; a
+  # referenced genus (Gobiesox has a candidate, but no ring was built here)
+  # was compared with the read and did not match
+  w <- attr(out, "unreferenced_withheld")
+  expect_equal(w$taxon_name, c("Entomacrodus new", "Scartichthys viridis", "Gobiesox other"))
+  expect_equal(w$reason, c("no_own_genus_ring", "no_own_genus_ring", "genus_referenced_unmatched"))
+  expect_equal(names(w), c("observation_id", "taxon_name", "genus", "family", "reason"))
+  # all four generic rings kept
+  expect_equal(sum(out$taxon_name_rank %in% c("genus", "family") &
+    out$hypothesis_type != "specific_candidate"), 4L)
 })

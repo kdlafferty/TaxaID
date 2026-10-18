@@ -94,12 +94,28 @@ test_that("family scope excludes the genus already covered by the finer scope", 
   expect_equal(f$unreferenced_n_species, 2L)
 })
 
-test_that("without a genus row, the family scope takes the congeners too", {
+test_that("without a genus row, a species of a REFERENCED genus is withheld from the family scope, not absorbed by it", {
   j <- .upm_joined()[c(1, 3), ]
   out <- suppressMessages(add_unreferenced_prior_mass(j, .upm_priors(), .upm_tax(),
     referenced_names = c("Littorina littorea", "Littorina scutulata")
   ))
-  expect_equal(out$unreferenced_mass[out$taxon_name == "Littorinidae"], 4e-3 + 1e-3 + 5e-4)
+  # Littorina keenae's genus has references (littorea, scutulata) that did not
+  # match this unit (no Littorina ring), so the family ring may not name it;
+  # the two Lacuna (no reference in the genus) still join.
+  expect_equal(out$unreferenced_mass[out$taxon_name == "Littorinidae"], 1e-3 + 5e-4)
+  w <- attr(out, "unreferenced_withheld")
+  expect_true(is.data.frame(w))
+  expect_identical(w$taxon_name, "Littorina keenae")
+  expect_identical(w$scope, "Littorinidae")
+  expect_identical(w$scope_rank, "family")
+  expect_identical(w$reason, "genus_referenced_unmatched")
+})
+
+test_that("the withheld attribute is present and empty when nothing is withheld", {
+  out <- .upm_run()
+  w <- attr(out, "unreferenced_withheld")
+  expect_true(is.data.frame(w))
+  expect_equal(nrow(w), 0L)
 })
 
 test_that("specific candidates are untouched and carry NA diagnostics", {
@@ -224,12 +240,18 @@ test_that("named_rows = TRUE adds one row per recorded unreferenced species with
   expect_equal(k$taxon_name_rank, "species")
   expect_equal(k$score_likelihood, 0.3) # the genus ring's likelihood
   expect_equal(k$prior_mean, 4e-3)
-  lac <- out[out$taxon_name %in% c("Lacuna vincta", "Lacuna unifasciata"), ]
-  expect_equal(nrow(lac), 2L)
-  expect_true(all(lac$score_likelihood == 0.05)) # the family ring's likelihood
-  # ring rows keep their floor priors
+  # Lacuna is claimed by the FAMILY ring, which never names a species: no named
+  # row, and the thetas (1e-3 + 5e-4) are added to the family ring unnamed
+  expect_equal(nrow(out[out$taxon_name %in% c("Lacuna vincta", "Lacuna unifasciata"), ]), 0L)
+  fam <- out[out$taxon_name == "Littorinidae", ]
+  expect_equal(fam$unreferenced_mass, 1e-3 + 5e-4)
+  expect_equal(fam$unreferenced_n_species, 2L)
+  expect_equal(fam$prior_mean, 3e-6 + 1.5e-3)
+  # the genus ring keeps its floor prior (the named row carries keenae's own)
   expect_equal(out$prior_mean[out$taxon_name == "Littorina"], 3e-6)
-  expect_equal(out$prior_mean[out$taxon_name == "Littorinidae"], 3e-6)
+  # every claimed species, named or not, is still listed as a scope member
+  mem <- attr(out, "unreferenced_scope_members")
+  expect_setequal(mem$taxon_name, c("Littorina keenae", "Lacuna vincta", "Lacuna unifasciata"))
 })
 
 test_that("named rows let a local unreferenced species be called by name", {

@@ -6,13 +6,15 @@
 \usage{
 fill_higher_ranks(
   taxon_names,
+  input_rank = NULL,
   local_sources = list(),
-  ranks = "family",
+  fill_ranks = "family",
   record_source = FALSE,
   backbone_id = 4L,
   fallback_backbone_id = 11L,
   verbose = TRUE,
-  decisions = NULL
+  decisions = NULL,
+  lineage = NULL
 )
 }
 \arguments{
@@ -20,6 +22,17 @@ fill_higher_ranks(
 a zero-row table with the usual columns).  Binomial species names
 are expected; genus is extracted as the first word.  Single-word names
 (genus only) are accepted and returned as-is in the \code{genus} column.}
+
+\item{input_rank}{Character vector or \code{NULL} (default). One rank per
+element of \code{taxon_names} (\code{NA} = unknown), e.g. the table's
+\code{taxon_name_rank} column. The backbone query asks the first word of
+each name, which for a species or a genus is its genus and is asked at
+rank genus. A name whose own rank is family, order, class, phylum or
+kingdom is a single word that is the whole name, and asking it at genus
+picks whatever genus shares the spelling (a class-rank Nuda resolved to a
+flagellate genus Nuda); given its rank here it is asked at that rank. A
+word that arrives at two coarse ranks is asked at genus with a message.
+\code{NULL} asks every word at genus.}
 
 \item{local_sources}{List of data frames to consult before any API call.
 Each element must contain at least \code{genus} and the requested rank; elements
@@ -46,7 +59,7 @@ carried competing family circumscriptions for the same organism -- two
 backbones disagreeing about one fish, not a homonym -- which no lineage
 can arbitrate and which the precedence therefore still settles.}
 
-\item{ranks}{Character vector of higher ranks to resolve.  Default
+\item{fill_ranks}{Character vector of higher ranks to resolve.  Default
 \code{"family"}.  Any rank label the backbone reports is accepted, e.g.
 \code{c("family", "class")}.  \code{"genus"} is rejected (it is derived
 from \code{taxon_names}, not looked up) and so is \code{"species"}.
@@ -55,7 +68,7 @@ Each rank is resolved down the same chain and recorded in its own column.}
 \item{record_source}{Logical.  \code{FALSE} (default) returns only the
 \code{taxon_name}, \code{genus} and rank columns.
 \code{TRUE} adds one \code{<rank>_source} column per entry in
-\code{ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
+\code{fill_ranks}, holding \code{"local"}, \code{"backbone_<id>"}, or
 \code{NA} where the rank was never resolved.  It is off by default
 because \code{TaxaAssign::join_priors()} joins EVERY non-\code{taxon_name}
 column of its \code{expansion_taxonomy} argument onto the priors table,
@@ -78,6 +91,15 @@ Default \code{TRUE}.}
 (primary and fallback backbone alike, whichever is \code{4}) -- this
 function grows no prompt or resolution logic of its own for an NCBI
 name collision.}
+
+\item{lineage}{Character vector or \code{NULL} (default). One lineage
+context per element of \code{taxon_names} (\code{NA} = none), a
+pipe-delimited string of ancestor names the caller already knows for the
+taxon (its GBIF phylum, the study's class). Forwarded, per genus, to
+\code{\link{verify_taxon_names}(lineage =)} on both backbones: it
+resolves an NCBI homonym rank alone cannot (two genus-rank nodes in
+different kingdoms) and rejects a fallback-backbone answer that
+contradicts it. The genus queries always carry \code{input_rank = "genus"}.}
 }
 \value{
 A tibble with one row per element of \code{taxon_names} (preserving
@@ -90,7 +112,7 @@ in that case the backbone's own currently-accepted genus name is
 returned instead (see \verb{@section Genus correction} below).
 Local-source-only lookups (no API call needed) always keep the
 locally-extracted genus unchanged.}
-\item{\verb{<rank>}}{One column per entry in \code{ranks} (by default just
+\item{\verb{<rank>}}{One column per entry in \code{fill_ranks} (by default just
 \code{family}), holding the looked-up value or \code{NA} if unresolved.}
 \item{\verb{<rank>_source}}{Only when \code{record_source = TRUE}: where that
 value came from -- \code{"local"}, \code{"backbone_<id>"}, or \code{NA}.}

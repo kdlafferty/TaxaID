@@ -13,7 +13,8 @@ verify_taxon_names(
   decisions = NULL,
   cache_dir = NULL,
   cache_ttl_days = 365,
-  ranks = NULL
+  input_rank = NULL,
+  lineage = NULL
 )
 }
 \arguments{
@@ -95,16 +96,48 @@ the uncached behaviour exactly.}
 than this is asked again, so backbone updates (renames, new synonymy)
 eventually reach a long-lived cache. \code{Inf} never expires.}
 
-\item{ranks}{Character vector or \code{NULL} (default). One rank per
+\item{input_rank}{Character vector or \code{NULL} (default). One rank per
 element of \code{name_list} (\code{"genus"}, \code{"species"}, ...; \code{NA}
 where unknown): the rank the CALLER means each name at. Only used by the
 NCBI path (\code{backbone_id = 4}) and only for a name that resolves to
 more than one NCBI node: when exactly one candidate carries the given
 rank, that node is taken, with no further request and before
 \code{decisions} is consulted. "Etheostoma" is both a genus and a
-subgenus; a consensus table knows which it means. Silently unused by the
-Global Names path. On the NCBI path a rank that is given enters the
-cache key (see \code{cache_dir}); elsewhere the key is unchanged.}
+subgenus; a consensus table knows which it means. On the Global Names
+path it does not change the query (one best match is returned) but it
+decides, with \code{lineage}, whether that match can be gated: a match
+at another rank is gated on its lineage, a match at the asked rank only
+on a kingdom difference (see \code{lineage}). On the NCBI path a rank
+that is given enters the cache key (see \code{cache_dir}); elsewhere
+the key is unchanged.}
+
+\item{lineage}{Character vector or \code{NULL} (default). One lineage
+context per element of \code{name_list} (\code{NA} = none): a
+pipe-delimited string of ancestor names the caller already knows for that
+name, e.g. \code{"Chordata"} or \code{"Metazoa|Chordata|Actinopteri"}.
+Used twice. On the NCBI path (\code{backbone_id = 4}) a homonym is
+resolved, after \code{input_rank} and before \code{decisions}, to the one
+candidate whose own lineage contains any of the context's names (the
+candidates' lineages are already fetched for the ambiguity report, so
+this adds no request); zero or several containing candidates leave it
+ambiguous. Second, a returned classification that contradicts the
+context -- both carry comparable names (kingdoms are ignored, see
+\code{\link[=check_lineage_agreement]{check_lineage_agreement()}}) and share none -- is reported as
+unverified, never accepted, but only where a CHOICE between taxa
+existed: on the NCBI path a name that had several candidates and was
+settled by \code{input_rank} or \code{decisions}; on the Global Names
+path (one best match, no candidate set) a match whose rank differs from
+\code{input_rank}, or any match when no rank was given; a match AT the
+asked rank is gated only when the context names a kingdom (Animalia or
+Metazoa, Plantae or Viridiplantae, Fungi, Chromista, Protozoa, Bacteria,
+Archaea) and the returned path's kingdom differs, since a same-rank
+homonym such as Ulvaria (a fish genus and an alga genus) crosses
+kingdoms while a reclassification never does. A unique node, or a
+same-rank match within one kingdom, is accepted however the backbones
+word its lineage: NCBI carries no phylum rank for many protist lineages, and
+GBIF and NCBI name the same clades differently, which is reclassification,
+not a homonym. A name is not a key; this is the caller's way of saying
+which one it means. Part of the cache key when given.}
 }
 \value{
 A tibble with one row per input name and the following columns:
@@ -155,7 +188,12 @@ better. This measures name-matching quality against the backbone and is
 unrelated to the sequence match scores used elsewhere in the TaxaID
 ecosystem (e.g., percent identity from BLAST).}
 \item{verified}{Logical. \code{TRUE} if the lookup ran and the API
-answered, \code{FALSE} if the API failed and fallback values were used.
+answered, \code{FALSE} if the API failed and fallback values were used
+-- or, when \code{lineage} was given, if the API answered and the
+answer contradicted the caller's lineage (see \code{lineage}). The
+second case is deterministic: the same name with the same context is
+rejected every time, so retrying it is pointless; the message that
+names each rejected name tells the two cases apart.
 It does not say whether the name was found: a name the backbone does
 not hold returns \code{verified = TRUE} with \code{matched_name = NA}.
 Always check rows where \code{verified = FALSE}.}

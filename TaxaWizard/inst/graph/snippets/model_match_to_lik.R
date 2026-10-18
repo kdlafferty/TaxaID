@@ -44,6 +44,15 @@ lik_result <- TaxaLikely::evaluate_likelihoods(
   n_sims       = 200L
 )
 
+# evaluate_likelihoods() also reports the match on its own absolute scale, as
+# unit-level columns repeated on every row of the unit: best_identity (the
+# unit's best raw identity, percent), best_identity_rank (the finest rank
+# whose marker-specific identity threshold it reaches, NA if none) and
+# poor_absolute_fit (TRUE when it reaches no rank threshold). Likelihoods are
+# normalised to the unit maximum, so the best hypothesis always scores 1 even
+# when the match is poor; these three are a FLAG only and never change a
+# likelihood or which hypothesis wins. They travel through the posterior and
+# consensus tables to review_assignments() (see consensus_to_reviewed).
 likelihoods <- TaxaLikely::filter_top_hypotheses(
   lik_result$likelihoods
 )
