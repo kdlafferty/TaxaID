@@ -207,7 +207,12 @@
 #'   \code{TaxaTools::call_api}) every call is made at \code{temperature = 0.2},
 #'   so a re-asked or re-run review agrees with itself more often; a supplied
 #'   \code{llm_fn} is used exactly as given, so pass the temperature in your
-#'   own wrapper if you want the same.
+#'   own wrapper if you want the same. The \code{cache_dir} key covers the
+#'   temperature this function itself sets. It cannot see any argument of a
+#'   caller-supplied \code{llm_fn} -- temperature, model or provider -- so a
+#'   caller who supplies one owns cache correctness for everything that
+#'   function decides: after changing any of them, use a new \code{cache_dir}
+#'   or a new \code{model_label}.
 #' @param model_label Character or \code{NULL}. A name for the model behind
 #'   \code{llm_fn}, recorded in the cache key so a verdict obtained from one
 #'   model is never served to a call asking another. Default \code{NULL}
@@ -496,7 +501,12 @@ review_assignments <- function(input_df,
   # is cached and re-asked, and at the provider default the same prompt gave
   # opposite verdicts on consecutive runs. A caller's own llm_fn (or a
   # TaxaID.llm_fn option naming a different function) is used as given.
+  # The temperature is part of the cache key when it is known: a verdict
+  # sampled at one temperature must not serve a call at another. Only the
+  # default path knows it; a caller's own llm_fn is opaque (see @param llm_fn).
+  review_temperature <- NA_real_
   if (missing(llm_fn) && identical(llm_fn, TaxaTools::call_api)) {
+    review_temperature <- 0.2
     llm_fn <- function(prompt_str, ...) TaxaTools::call_api(prompt_str, ..., temperature = 0.2)
   }
   # --- Input validation ---
@@ -847,7 +857,8 @@ review_assignments <- function(input_df,
     # geography guidelines (a)/(b)/(f), ids on taxa lines, temperature 0.2 on
     # the default llm_fn.
     .shared <- paste(c(
-      "v5", target_group %||% "", marker %||% "", data_type,
+      "v5", paste0("temperature=", format(review_temperature)),
+      target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1254,8 +1265,9 @@ review_assignments <- function(input_df,
   has_scope <- has_prov &&
     all(c("consensus_unreferenced_scope", "consensus_unreferenced_scope_rank") %in%
       names(input_df))
+  has_call <- all(c("consensus_taxon", "consensus_rank") %in% names(input_df))
   if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc && !has_prov &&
-    !has_poorfit) {
+    !has_poorfit && !has_call) {
     return(NULL)
   }
 
@@ -1895,7 +1907,7 @@ review_assignments <- function(input_df,
     "not let it override your independent plausibility assessment itself.\n\n",
     "EXAMPLE OUTPUT FORMAT:\n",
     "[\n",
-    '  {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
+    '  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
     '"geographic_plausibility": "likely", "scope_plausibility": "likely", ',
     '"contamination_risk": "low", "review_alternatives": null, ',
     '"review_lower_hypotheses": null, "review_confidence": "high", ',

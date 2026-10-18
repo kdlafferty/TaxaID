@@ -471,3 +471,39 @@ test_that("id parsing: no id column falls back to exact then normalised name", {
   r <- .parse_review_response(.v5_json(c(.v5_obj("A x", "?"), .v5_obj("B y", "?"), .v5_obj("C z", "?"))), b, NULL, NULL)
   expect_length(attr(r, "missing_taxa"), 0L)
 })
+
+test_that("the default path's temperature is in the cache key: a key built at another temperature is a miss", {
+  cd <- tempfile("v5temp")
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  old <- options(TaxaID.llm_fn = NULL)
+  on.exit(options(old), add = TRUE)
+  n <- 0L
+  testthat::local_mocked_bindings(
+    call_api = function(prompt_str, ..., temperature = NULL) {
+      n <<- n + 1L
+      '[{"id": "T1", "taxon_name": "Gobiosoma bosc", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "ok"}]'
+    },
+    .package = "TaxaTools"
+  )
+  df <- data.frame(observation_id = "ASV_1", consensus_taxon = "Gobiosoma bosc",
+    consensus_rank = "species", consensus_posterior = 0.99, stringsAsFactors = FALSE)
+  run <- function() suppressWarnings(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
+    cache_dir = cd, verbose = FALSE
+  ))
+  run()
+  expect_equal(n, 1L)
+  run()
+  expect_equal(n, 1L) # same temperature: a hit
+  files <- list.files(cd, full.names = TRUE)
+  expect_true(length(files) > 0L)
+  for (f in files) {
+    e <- readRDS(f)
+    expect_true(grepl("temperature=0.2", e$key, fixed = TRUE))
+    e$key <- sub("temperature=0.2", "temperature=NA", e$key, fixed = TRUE)
+    saveRDS(e, f)
+  }
+  run()
+  expect_equal(n, 2L) # a verdict keyed at another temperature is a miss
+})
