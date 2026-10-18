@@ -37,7 +37,9 @@ review_assignments(
   on_unreviewed = c("warn", "error", "ignore"),
   verbose = TRUE,
   poor_absolute_fit_col = "poor_absolute_fit",
-  best_identity_col = "best_identity"
+  best_identity_col = "best_identity",
+  sites = NULL,
+  site_col = "site"
 )
 }
 \arguments{
@@ -320,6 +322,23 @@ skipped when absent. Default \code{"poor_absolute_fit"}. Set to
 \code{best_identity} (percent) quoted in that note. Silently skipped when
 absent (the note then omits the number). Default \code{"best_identity"}.
 Set to \code{NULL} to disable.}
+
+\item{sites}{\code{NULL} (default) or a data frame of study sites with
+columns \code{site} (unique names), \code{lat} and \code{lon} (decimal
+degrees; extra columns are ignored). When supplied the LLM is shown the
+sites (sorted south to north) and asked WHERE among them each taxon is
+geographically plausible, which adds the per-row
+\code{llm_geographic_plausibility_site} column; see
+\code{@section Site-aware geography}. With \code{NULL} nothing changes:
+the prompt, the cache key and the output columns are exactly those of a
+call without this argument.}
+
+\item{site_col}{Character. Column of \code{input_df} whose values match
+\code{sites$site}. Only read when \code{sites} is supplied (an error if
+the column is absent then); non-\code{NA} values not found in
+\code{sites$site} are named in a warning and those rows get the
+study-wide verdict. Not part of the cache key, since it does not change
+the prompt. Default \code{"site"}.}
 }
 \value{
 The input data frame with 8 or 9 columns appended:
@@ -350,6 +369,14 @@ code-computed, not an LLM output: fires whenever
 deterministic column rather than relying on \code{review_comment}
 alone.}
 }
+When \code{sites} is supplied the data frame also carries
+\code{llm_geographic_plausibility_site} (see \code{@section Site-aware
+geography}) and an \code{attr(result, "geographic_by_site")} data frame, one
+row per reviewed taxon, giving the parsed range rule (\code{rule},
+\code{lat_min}, \code{lat_max}, \code{outside}, \code{unlikely_sites} as a
+semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
+records a fallback).
+
 Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
 the taxon/candidate-set labels the LLM never returned a verdict for) and
 \code{"n_unreviewed_rows"} (integer -- input rows left with \code{NA} in
@@ -463,6 +490,59 @@ answer must echo; answers are matched by id first, then by name, so a long
 candidate-set label echoed back reformatted is still matched. A response
 matching none of several sets is treated as failed (halved and retried),
 and an omission a re-ask cannot recover is re-asked one set per call.
+}
+
+\section{Site-aware geography}{
+
+A study that spans a coast or a latitude gradient has no single answer to
+"is this taxon geographically plausible here?": a tropical reef fish is
+plausible at the southern sites and not at the northern ones. With
+\code{sites} supplied the prompt lists the sites (name, latitude,
+longitude; sorted south to north) and the LLM returns, per taxon, a
+\code{geographic_by_site} object of one of three shapes:
+\itemize{
+\item{\code{\{"rule": "all"\}}: the same verdict at every site.}
+\item{\code{\{"rule": "latitude", "lat_min": ., "lat_max": .,
+    "outside": "unlikely" or "possible"\}}: plausible between the two
+latitudes; sites outside get the \code{outside} verdict.}
+\item{\code{\{"rule": "sites", "unlikely_sites": [...]\}}: unlikely at
+the named sites only, for patterns latitude does not describe.}
+}
+The parsed rule is turned into a verdict per site in code, so the sites
+table is applied by the package, not by the model. Inside the range the
+verdict is the taxon's \code{geographic_plausibility}, and a site never gets
+a better verdict than that. Output:
+\itemize{
+\item{\code{llm_geographic_plausibility_site}: the verdict at the site
+named in each row's \code{site_col}. Rows with an \code{NA} site, or a
+site not in \code{sites}, get the study-wide verdict. Unreviewed taxa
+stay \code{NA}.}
+\item{\code{llm_geographic_plausibility} changes meaning when
+\code{sites} is supplied: it is the BEST verdict over all the sites
+(\code{"unlikely"} only if unlikely at every site), not a single
+study-wide judgement. If the model's rule leaves every site worse than
+the verdict it gave, the column is set to the best site verdict.}
+}
+Fallbacks, each giving the study-wide verdict at every site (recorded in
+the \code{how} column of \code{attr(result, "geographic_by_site")}): the
+object is missing or not an object; the rule is unknown; a latitude rule
+has both bounds missing or non-numeric; a sites rule names only sites that
+do not exist. One missing bound means open-ended on that side; reversed
+bounds are swapped; a missing or invalid \code{outside} defaults to
+\code{"possible"}, the conservative choice because \code{"unlikely"} is
+what export filters drop; site names are matched ignoring case and
+surrounding spaces, and names that match no site are ignored and counted
+in \code{n_unknown_sites}.
+
+The cache key gains a digest of the sites (names and coordinates rounded to
+0.01 degree, order-independent) only when \code{sites} is supplied, so a
+cached verdict obtained without sites is never served to a call with sites,
+or the reverse. The parsed rule is cached with each taxon, so a cache hit
+reproduces \code{llm_geographic_plausibility_site}.
+
+In \code{TaxaFlag::screen_assignments()}, \code{geography_col} can point at
+\code{llm_geographic_plausibility_site} so the screen uses the verdict for
+each row's own site.
 }
 
 \section{Pipeline context}{

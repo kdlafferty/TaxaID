@@ -245,7 +245,7 @@ test_that("rows with NA or unknown site get the study-wide verdict; output shape
 
 test_that("an unreviewed taxon stays NA in the site column", {
   fn <- function(prompt_str, ...) "[]"
-  out <- suppressWarnings(.gs_review("Taxon a", fn, site_vec = "North", max_retries = 0L))
+  out <- suppressWarnings(.gs_review("Taxon a", fn, site_vec = "North", max_retries = 0L, on_unreviewed = "ignore"))
   expect_true(is.na(out$llm_geographic_plausibility_site))
   expect_equal(nrow(attr(out, "geographic_by_site")), 0L)
 })
