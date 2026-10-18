@@ -48,6 +48,25 @@ species_reference_df <- if (isTRUE({{include_downranking}})) {
   NULL
 }
 
+# Consensus method: "credible_node" with robust_prior_s = 0 and
+# cross_phylum_eps = 0 is the weighted LCA (node summing): the posterior of
+# every hypothesis under a taxon is summed rank by rank from the finest, and
+# the finest taxon holding at least cumulative_threshold of ALL the
+# observation's posterior is reported. robust_prior_s = 0 turns off the
+# imprecise-Dirichlet prior check and cross_phylum_eps = 0 the cross-phylum
+# withholding, both of which only apply with "credible_node". The PACKAGE
+# default remains consensus_method = "lca" (the lowest common taxon of the
+# smallest top set reaching the threshold); this template sets the weighted
+# form explicitly. Use the same three arguments in both calls below.
+#
+# The posterior table's pooled_n / pooled_prior_mass / pooled_taxa columns
+# (see lik_prior_to_post) stay on the table: a ring row stands for the named
+# unreferenced rows pooled into it, listed in pooled_taxa. posterior_consensus()
+# reads the "pooled_rows" attribute to warn when min_posterior is set below the
+# pooling floor (0.05), which would show those rows only through their ring;
+# min_posterior = 0.05 below is not below it. The likelihoods' best_identity,
+# best_identity_rank and poor_absolute_fit columns are carried onto the
+# consensus table as unit-level columns, for review_assignments().
 consensus <- TaxaAssign::posterior_consensus(
   {{input_var}},
   cumulative_threshold   = {{cumulative_threshold}},
@@ -57,7 +76,10 @@ consensus <- TaxaAssign::posterior_consensus(
   backbone_id             = 4,
   rank_system             = {{rank_system}},
   species_reference       = species_reference_df,
-  group_priors            = group_priors_obj
+  group_priors            = group_priors_obj,
+  consensus_method        = "credible_node",
+  robust_prior_s          = 0,
+  cross_phylum_eps        = 0
 )
 
 # Optional: empirical Bayes refinement
@@ -71,7 +93,10 @@ consensus_final <- TaxaAssign::posterior_consensus(
   backbone_id             = 4,
   rank_system             = {{rank_system}},
   species_reference       = species_reference_df,
-  group_priors            = group_priors_obj
+  group_priors            = group_priors_obj,
+  consensus_method        = "credible_node",
+  robust_prior_s          = 0,
+  cross_phylum_eps        = 0
 ) |> TaxaAssign::add_slash_taxon()
 # add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
 # consensus_taxon is in consensus_final).

@@ -36,7 +36,17 @@ habitat_lookup <- TaxaHabitat::build_habitat_lookup(
   habitat_scheme     = {{habitat_scheme}},
   llm_fn             = {{llm_fn}},
   geographic_context = {{geographic_hint}},
-  cache_dir          = {{habitat_cache_dir}}
+  cache_dir          = {{habitat_cache_dir}},
+  # A scheme label that names several habitats ("Coastal-Marine-Estuary-
+  # Stream") can declare its real parts in the scheme's `parts` column
+  # (pipe-delimited, e.g. "Marine|Estuary|Stream"). The model then weights the
+  # parts, never the compound, and the compound's weight is derived from them:
+  # "sum" (default) = the parts' shares added, capped at 1, so a species using
+  # ANY part of the site counts for the site; "max" keeps only the largest
+  # part and lowers the compound for species spread over several parts. The
+  # rule is not in the cache key, so changing it costs no model calls. It has
+  # no effect when {{habitat_scheme}} declares no parts.
+  compound_rule      = "sum"
 )
 
 # Step 3: Assign habitat to occurrences
