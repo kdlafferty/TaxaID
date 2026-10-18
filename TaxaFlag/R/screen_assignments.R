@@ -124,6 +124,13 @@
 #'     3 and geography is unlikely; FALSE otherwise; NA when `reviewed_df` has
 #'     no `n_tubes` column or the count is missing.}
 #' }
+#' The result also carries `attr(, "rule_counts")`, a data frame with one row
+#' per rule (I1, I2_relative, I2_review, I3_move_up, I3_flag_coarse,
+#' I3_exception, poor_fit_habitat_exclude, I4, blank_evidence) and `n_rows`,
+#' the number of rows on which it fired (0 when none). Rules are exclusive per
+#' row except blank_evidence, which is counted in addition. A message reports
+#' the same counts and states how many rows the relative move (I2_relative,
+#' which depends on `relative_score_gap`) fired on.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -265,15 +272,18 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # ---- identity layer ------------------------------------------------------
   act <- rep("keep", n); rank_after <- cr; tax_after <- tx
   reason <- rep(NA_character_, n); poor_flag <- rep(FALSE, n)
+  rule <- rep(NA_character_, n)
   for (i in seq_len(n)) {
     if (is.na(tx[i])) { reason[i] <- "no call"; next }
-    if (good[i] && geo_plaus[i]) { reason[i] <- "I1: good fit, geography plausible: keep name"; next }
+    if (good[i] && geo_plaus[i]) { reason[i] <- "I1: good fit, geography plausible: keep name"; rule[i] <- "I1"; next }
     if (good[i]) {
       rel <- find_relative(i)
       if (rel$found) {
+        rule[i] <- "I2_relative"
         act[i] <- "move_up"; rank_after[i] <- rel$rank; tax_after[i] <- rel$taxon
         reason[i] <- sprintf("I2: good fit but geography unlikely; local relative scores reasonably (%s): moved to %s", rel$names, rel$rank)
       } else {
+        rule[i] <- "I2_review"
         act[i] <- "review"
         reason[i] <- "I2: good fit but geography unlikely and no relative scores reasonably: kept, flagged for review (range expansion vs error)"
       }
@@ -281,19 +291,22 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     }
     if (geo_plaus[i]) {
       if (wht[i] %in% "unreferenced_species" && cr[i] %in% "species" && geo[i] %in% "likely") {
-        reason[i] <- "I3 exception: poor fit but named unreferenced species with geography likely: keep name"; next }
+        reason[i] <- "I3 exception: poor fit but named unreferenced species with geography likely: keep name"; rule[i] <- "I3_exception"; next }
       if (hab[i] %in% "unlikely" && !is.na(rk(cr[i])) && rk(cr[i]) <= rk(poor_fit_habitat_exclude_max_rank)) {
+        rule[i] <- "poor_fit_habitat_exclude"
         act[i] <- "exclude"; rank_after[i] <- NA_character_; tax_after[i] <- NA_character_
         reason[i] <- "Habitat exclusion: poor fit and habitat unlikely: exclude"; next }
       if (is.na(rk(cr[i]))) { reason[i] <- "I3: call rank not recognised: kept"; next }
       if (rk(cr[i]) > rk(move_up_max_rank)) {
-        poor_flag[i] <- TRUE
+        poor_flag[i] <- TRUE; rule[i] <- "I3_flag_coarse"
         reason[i] <- sprintf("I3: poor fit, geography plausible, call at %s (coarser than %s): kept and flagged, not moved up", cr[i], move_up_max_rank)
         next }
       tr <- if (!is.na(bir[i]) && !is.na(rk(bir[i])) && rk(bir[i]) > rk(cr[i])) bir[i] else RANKS[rk(cr[i]) + 1L]
+      rule[i] <- "I3_move_up"
       act[i] <- "move_up"; rank_after[i] <- tr; tax_after[i] <- lin(tx[i], cr[i], tr)
       reason[i] <- sprintf("I3: poor fit, geography plausible: moved up to %s", tr)
     } else {
+      rule[i] <- "I4"
       act[i] <- "exclude"; rank_after[i] <- NA_character_; tax_after[i] <- NA_character_
       reason[i] <- "I4: poor fit and geography unlikely: exclude"
     }
@@ -301,6 +314,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   sugg <- ifelse(act == "review", "exclude", act)
 
   # ---- blank evidence ------------------------------------------------------
+  bl <- rep(FALSE, n)
   if (!is.null(blank_flag_col)) {
     bl <- d[[blank_flag_col]] %in% TRUE
     sugg[bl] <- "exclude"
@@ -329,5 +343,15 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   d$presence <- presence
   d$poor_fit_flag <- poor_flag
   d$isolated_geography_unlikely <- as.logical(iso)
+
+  rule_names <- c("I1", "I2_relative", "I2_review", "I3_move_up", "I3_flag_coarse",
+                  "I3_exception", "poor_fit_habitat_exclude", "I4", "blank_evidence")
+  counts <- vapply(rule_names, function(r) if (r == "blank_evidence") sum(bl) else sum(rule %in% r), numeric(1))
+  attr(d, "rule_counts") <- data.frame(rule = rule_names, n_rows = as.integer(counts),
+                                       stringsAsFactors = FALSE)
+  message("screen_assignments(): rows by rule: ",
+          paste0(rule_names, " = ", as.integer(counts), collapse = ", "), ". ",
+          "Relative move (relative_score_gap = ", relative_score_gap, ") fired on ",
+          as.integer(counts[["I2_relative"]]), " rows.")
   d
 }

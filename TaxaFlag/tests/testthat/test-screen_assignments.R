@@ -232,3 +232,24 @@ test_that("output keeps every input row, its order and all original column value
   expect_true("exclude" %in% r$suggested_action)
   expect_identical(r[names(d)], d)
 })
+
+test_that("rule_counts attribute lists every rule and matches a small fixture", {
+  d <- mk(taxon = c("A a", "B b", "C c", "D d", "E e", "F f", "G g"),
+          rank = c("species", "species", "species", "species", "family", "species", "species"),
+          poor = c(FALSE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE),
+          geo = c("likely", "unlikely", "likely", "unlikely", "likely", "likely", "likely"),
+          hab = c("likely", "likely", "likely", "likely", "likely", "unlikely", "likely"),
+          blank = c(FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE))
+  d$winner_hypothesis_type <- c(rep("specific_candidate", 6), "unreferenced_species")
+  expect_message(r <- screen_assignments(d, blank_flag_col = "blank"), "fired on 0 rows")
+  rc <- attr(r, "rule_counts")
+  expect_s3_class(rc, "data.frame")
+  expect_equal(rc$rule, c("I1", "I2_relative", "I2_review", "I3_move_up", "I3_flag_coarse",
+                          "I3_exception", "poor_fit_habitat_exclude", "I4", "blank_evidence"))
+  expect_equal(rc$n_rows, c(1L, 0L, 1L, 1L, 1L, 1L, 1L, 1L, 1L))
+  p <- post(obs = "o2", name = c("B b", "B c"), genus = "B")
+  d2 <- d; d2$observation_id <- paste0("o", 1:7)
+  expect_message(r2 <- screen_assignments(d2, p), "relative_score_gap = 0.25) fired on 1 rows")
+  expect_equal(attr(r2, "rule_counts")$n_rows[2], 1L)
+  expect_equal(attr(scr(d[0, ]), "rule_counts")$n_rows, rep(0L, 9))
+})

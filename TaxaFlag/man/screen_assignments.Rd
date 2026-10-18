@@ -93,6 +93,13 @@ the taxon's total tubes across the input (summed \code{n_tubes}) is at most
 3 and geography is unlikely; FALSE otherwise; NA when \code{reviewed_df} has
 no \code{n_tubes} column or the count is missing.}
 }
+The result also carries \code{attr(, "rule_counts")}, a data frame with one row
+per rule (I1, I2_relative, I2_review, I3_move_up, I3_flag_coarse,
+I3_exception, poor_fit_habitat_exclude, I4, blank_evidence) and \code{n_rows},
+the number of rows on which it fired (0 when none). Rules are exclusive per
+row except blank_evidence, which is counted in addition. A message reports
+the same counts and states how many rows the relative move (I2_relative,
+which depends on \code{relative_score_gap}) fired on.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table
