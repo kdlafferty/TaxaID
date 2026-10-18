@@ -45,6 +45,9 @@ likelihoods_ready <- TaxaAssign::join_priors(
 # unchanged.
 likelihoods_combined <- TaxaAssign::combine_multisite_priors(likelihoods_ready)
 
+# compute_posterior() adds pooled_n / pooled_prior_mass / pooled_taxa columns
+# and the attribute "pooled_rows" (named unreferenced rows below 0.05 pooled
+# into their ring); the attribute does not survive a dplyr verb.
 posteriors <- TaxaAssign::compute_posterior(likelihoods_combined, n_sims = 1000L)
 message("Computed posteriors for ", length(unique(posteriors$observation_id)),
         " samples across ", length(unique({{site_table_var}}$spatial_group_id)),

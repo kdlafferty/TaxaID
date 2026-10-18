@@ -413,6 +413,15 @@ lik_result <- TaxaLikely::evaluate_likelihoods(
   n_sims       = 200L
 )
 
+# evaluate_likelihoods() also reports the match on its own absolute scale, as
+# unit-level columns repeated on every row of the unit: best_identity (the
+# unit's best raw identity, percent), best_identity_rank (the finest rank
+# whose marker-specific identity threshold it reaches, NA if none) and
+# poor_absolute_fit (TRUE when it reaches no rank threshold). Likelihoods are
+# normalised to the unit maximum, so the best hypothesis always scores 1 even
+# when the match is poor; these three are a FLAG only and never change a
+# likelihood or which hypothesis wins. They travel through the posterior and
+# consensus tables to review_assignments() (see consensus_to_reviewed).
 likelihoods <- TaxaLikely::filter_top_hypotheses(
   lik_result$likelihoods
 )
@@ -505,7 +514,17 @@ habitat_lookup <- TaxaHabitat::build_habitat_lookup(
   habitat_scheme     = HABITAT_SCHEME,
   llm_fn             = LLM_FN,
   geographic_context = GEOGRAPHIC_HINT,
-  cache_dir          = HABITAT_CACHE_DIR
+  cache_dir          = HABITAT_CACHE_DIR,
+  # A scheme label that names several habitats ("Coastal-Marine-Estuary-
+  # Stream") can declare its real parts in the scheme's `parts` column
+  # (pipe-delimited, e.g. "Marine|Estuary|Stream"). The model then weights the
+  # parts, never the compound, and the compound's weight is derived from them:
+  # "sum" (default) = the parts' shares added, capped at 1, so a species using
+  # ANY part of the site counts for the site; "max" keeps only the largest
+  # part and lowers the compound for species spread over several parts. The
+  # rule is not in the cache key, so changing it costs no model calls. It has
+  # no effect when HABITAT_SCHEME declares no parts.
+  compound_rule      = "sum"
 )
 
 # Step 3: Assign habitat to occurrences
@@ -679,15 +698,30 @@ if (isTRUE(INCLUDE_DOMESTIC_PRIORS)) {
 }
 
 # verify_taxon_names()'s real formals are
-# (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id) --
+# (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id,
+# decisions, cache_dir, cache_ttl_days, input_rank, lineage) --
 # passing the whole `priors` data frame positionally as
 # `name_list` (wrong type: a character vector is expected) and a `taxon_col`
 # argument that does not exist, then discarding `priors` by reassigning it
 # to the verification result, is a real trap. Verify the taxon names
 # informationally without clobbering `priors`.
+#
+# input_rank is the rank the caller means each name at, one per name_list
+# element. A bare name is not a key: "Etheostoma" is a genus and a subgenus,
+# and a class-rank name can match a genus of another kingdom. With the rank
+# given, a name that resolves to several nodes is settled on the node of that
+# rank (NCBI backbone), and a match at another rank is gated on its lineage
+# (Global Names backbone). The rank comes from the priors' own
+# taxon_name_rank column; a table without one is read as species-level.
+# lineage (a pipe-delimited string of ancestor names per name, e.g.
+# "Metazoa|Chordata") is the second disambiguator; the priors table carries
+# no lineage column, so it is left NULL here -- pass it when your table has one.
+.prior_names <- priors[!duplicated(priors$taxon_name) & !is.na(priors$taxon_name), , drop = FALSE]
 taxon_verification <- TaxaTools::verify_taxon_names(
-  name_list   = unique(priors$taxon_name),
-  backbone_id = TARGET_BACKBONE_ID
+  name_list   = .prior_names$taxon_name,
+  backbone_id = TARGET_BACKBONE_ID,
+  input_rank  = if ("taxon_name_rank" %in% names(.prior_names)) .prior_names$taxon_name_rank
+                else rep("species", nrow(.prior_names))
 )
 message(sprintf(
   "Taxon-name verification: %d of %d unique taxon name(s) did not verify against backbone %s",
@@ -733,7 +767,16 @@ likelihoods_ready <- TaxaAssign::join_priors(
   backbone_id       = BACKBONE_ID
 )
 
+# compute_posterior() pools named unreferenced rows whose point posterior is
+# below 0.05 into their ring (the coarser relative they descend from) instead
+# of carrying each as a candidate. Its output always has three pooled columns:
+# pooled_n (rows pooled), pooled_prior_mass (their summed prior) and
+# pooled_taxa (their names joined by "; "); they are NA on rows that are not
+# rings. The pooled rows themselves are in attr(posteriors, "pooled_rows")
+# (observation_id, ring_taxon, taxon_name, prior_mean, posterior_point_est).
+# Attributes do NOT survive a dplyr verb: read it before any join or mutate.
 posteriors <- TaxaAssign::compute_posterior(likelihoods_ready, n_sims = 1000L)
+message("Pooled ", nrow(attr(posteriors, "pooled_rows")), " named unreferenced row(s) into rings")
 message("Computed posteriors for ", length(unique(posteriors$observation_id)), " samples")
 posteriors
 posteriors <- posteriors
@@ -792,6 +835,25 @@ species_reference_df <- if (isTRUE(INCLUDE_DOWNRANKING)) {
   NULL
 }
 
+# Consensus method: "credible_node" with robust_prior_s = 0 and
+# cross_phylum_eps = 0 is the weighted LCA (node summing): the posterior of
+# every hypothesis under a taxon is summed rank by rank from the finest, and
+# the finest taxon holding at least cumulative_threshold of ALL the
+# observation's posterior is reported. robust_prior_s = 0 turns off the
+# imprecise-Dirichlet prior check and cross_phylum_eps = 0 the cross-phylum
+# withholding, both of which only apply with "credible_node". The PACKAGE
+# default remains consensus_method = "lca" (the lowest common taxon of the
+# smallest top set reaching the threshold); this template sets the weighted
+# form explicitly. Use the same three arguments in both calls below.
+#
+# The posterior table's pooled_n / pooled_prior_mass / pooled_taxa columns
+# (see lik_prior_to_post) stay on the table: a ring row stands for the named
+# unreferenced rows pooled into it, listed in pooled_taxa. posterior_consensus()
+# reads the "pooled_rows" attribute to warn when min_posterior is set below the
+# pooling floor (0.05), which would show those rows only through their ring;
+# min_posterior = 0.05 below is not below it. The likelihoods' best_identity,
+# best_identity_rank and poor_absolute_fit columns are carried onto the
+# consensus table as unit-level columns, for review_assignments().
 consensus <- TaxaAssign::posterior_consensus(
   posteriors,
   cumulative_threshold   = CUMULATIVE_THRESHOLD,
@@ -801,7 +863,10 @@ consensus <- TaxaAssign::posterior_consensus(
   backbone_id             = 4,
   rank_system             = RANK_SYSTEM,
   species_reference       = species_reference_df,
-  group_priors            = group_priors_obj
+  group_priors            = group_priors_obj,
+  consensus_method        = "credible_node",
+  robust_prior_s          = 0,
+  cross_phylum_eps        = 0
 )
 
 # Optional: empirical Bayes refinement
@@ -815,7 +880,10 @@ consensus_final <- TaxaAssign::posterior_consensus(
   backbone_id             = 4,
   rank_system             = RANK_SYSTEM,
   species_reference       = species_reference_df,
-  group_priors            = group_priors_obj
+  group_priors            = group_priors_obj,
+  consensus_method        = "credible_node",
+  robust_prior_s          = 0,
+  cross_phylum_eps        = 0
 ) |> TaxaAssign::add_slash_taxon()
 # add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
 # consensus_taxon is in consensus_final).
@@ -871,6 +939,25 @@ reviewed <- TaxaFlag::review_assignments(
   marker         = MARKER,
   llm_fn         = LLM_FN,
   cache_dir      = REVIEW_CACHE_DIR,
+  # Fit columns from evaluate_likelihoods(), carried through
+  # posterior_consensus(). poor_absolute_fit is TRUE when the unit's best raw
+  # match identity (best_identity, percent) reaches no rank threshold for the
+  # marker: likelihoods are normalised to the unit maximum, so such a call can
+  # still carry a high posterior. When it is TRUE the reviewer is told, in one
+  # fact line quoting best_identity. A column that is absent is skipped; both
+  # defaults are shown so the link is visible. NULL turns either off.
+  poor_absolute_fit_col = "poor_absolute_fit",
+  best_identity_col     = "best_identity",
+  # consensus_provenance (default TRUE): a call that landed on an UNREFERENCED
+  # row (no reference sequence; the NAME came from occurrence records) is
+  # labelled as such for the reviewer, with the scope and rank the name came
+  # from. It reads posterior_consensus()'s consensus_hypothesis_type.
+  consensus_provenance  = TRUE,
+  # model_label: names the model behind llm_fn in the cache key, so a verdict
+  # from one model is never served to a call asking another. NULL derives it
+  # from options("TaxaID.provider") and llm_fn; name it yourself when you
+  # compare two models from ONE provider.
+  model_label    = NULL,
   # Abort rather than export a silently short species list. An LLM review can
   # parse cleanly, return the right number of objects, and still OMIT specific
   # taxa -- consistently the long compound slash labels, i.e. the hardest
@@ -890,6 +977,44 @@ if (length(attr(reviewed, "unreviewed_taxa"))) {
   message("  !! unreviewed: ",
           paste(attr(reviewed, "unreviewed_taxa"), collapse = ", "))
 }
+# --- FLAG, do not drop -------------------------------------------------------
+# The review is a judgement: its verdicts can differ between runs on identical
+# input, so it must not remove rows from the products. It only FLAGS. The four
+# ratings stay as columns, and llm_review_flag is TRUE where any of them reads
+# "unlikely" (contamination risk "high"). Every row stays in `reviewed`.
+reviewed$llm_review_flag <-
+  reviewed$llm_habitat_plausibility    %in% "unlikely" |
+  reviewed$llm_geographic_plausibility %in% "unlikely" |
+  reviewed$llm_scope_plausibility      %in% "unlikely" |
+  reviewed$llm_contamination_risk      %in% "high"
+
+# Expert decisions are DATA, not code: lists of observation_id values that a
+# human reviewer decided. Leave both empty until someone has looked at the
+# flagged rows (print them with the call below).
+#   EXPERT_KEEP_IDS     -- flagged by the LLM, but the reviewer keeps the call.
+#   EXPERT_EXCLUDE_IDS  -- withheld from the products, whatever the LLM said.
+# Record the reason for each decision beside the list, in a file the run reads.
+EXPERT_KEEP_IDS    <- character(0)
+EXPERT_EXCLUDE_IDS <- character(0)
+unknown_ids <- setdiff(c(EXPERT_KEEP_IDS, EXPERT_EXCLUDE_IDS), reviewed$observation_id)
+if (length(unknown_ids)) {
+  stop("Expert decision(s) name observation_id(s) not in this run: ",
+       paste(unknown_ids, collapse = ", "), call. = FALSE)
+}
+reviewed$expert_keep      <- reviewed$observation_id %in% EXPERT_KEEP_IDS
+reviewed$expert_excluded  <- reviewed$observation_id %in% EXPERT_EXCLUDE_IDS
+# An LLM flag stands unless the reviewer keeps the call.
+reviewed$review_flag_stands <- reviewed$llm_review_flag & !reviewed$expert_keep
+message("LLM-flagged: ", sum(reviewed$llm_review_flag, na.rm = TRUE),
+        " (", sum(reviewed$review_flag_stands, na.rm = TRUE), " stand after expert keeps); ",
+        "expert-excluded: ", sum(reviewed$expert_excluded))
+# To inspect: reviewed[reviewed$review_flag_stands,
+#   c("observation_id", "consensus_taxon", "llm_habitat_plausibility",
+#     "llm_geographic_plausibility", "llm_scope_plausibility",
+#     "llm_contamination_risk", "review_comment")]
+
+# Products carry the flag columns; only expert exclusions leave them.
+reviewed_products <- reviewed[!reviewed$expert_excluded, , drop = FALSE]
 reviewed
 reviewed <- reviewed
 
