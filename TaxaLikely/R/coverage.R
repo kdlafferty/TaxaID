@@ -184,7 +184,7 @@ audit_reference_coverage <- function(reference_df,
 
         if (!is.na(genus_uid)) {
           # Step 2: find all species-rank taxa in this genus's NCBI subtree
-          sp_res <- rentrez::entrez_search(config = .net_config(), 
+          sp_res <- rentrez::entrez_search(config = .net_config(),
             db     = "taxonomy",
             term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
             retmax = 10000L
@@ -567,7 +567,7 @@ audit_barcode_coverage <- function(match_df,
   # We classify experimental vs. predicted from the Title field in Step 2,
   # so a single search covers both categories without an extra API call.
   nuc_res <- tryCatch(
-    rentrez::entrez_search(config = .net_config(), 
+    rentrez::entrez_search(config = .net_config(),
       db = "nuccore",
       term = sprintf(
         "txid%s[Organism:exp] AND %s AND %d:%d[SLEN]%s",
@@ -691,7 +691,7 @@ audit_barcode_coverage <- function(match_df,
   batch_failed <- FALSE
   out <- tryCatch(
     {
-      sp_res <- rentrez::entrez_search(config = .net_config(), 
+      sp_res <- rentrez::entrez_search(config = .net_config(),
         db     = "taxonomy",
         term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
         retmax = 10000L

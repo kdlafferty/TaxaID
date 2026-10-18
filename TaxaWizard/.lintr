@@ -6,10 +6,19 @@ linters: linters_with_defaults(
     #   header convention and commented-out usage examples in demo scripts --
     #   not dead code.
     indentation_linter = NULL,
+    # Disabled package-wide, matching TaxaAssign's documented set:
+    # - object_name_linter: dot-prefixed SCREAMING_SNAKE_CASE internal constants.
+    # - object_length_linter: long, deliberately descriptive internal/exported names.
+    object_name_linter = NULL,
+    object_length_linter = NULL,
     commented_code_linter = NULL
   )
 encoding: "UTF-8"
 exclusions: list(
+    # <<- here updates an accumulator in the function's OWN enclosing scope
+    # (the documented use), not an unrelated or global environment. Per-file,
+    # not per-line: a line number stops matching the moment the file is edited.
+    "R/pack.R" = list(assignment_linter = Inf),
     # Remaining line-length hits: long generated-UI-code string literals
     # (R/shiny.R) and long function-call lines in template code snippets
     # (inst/graph/snippets/*.R, {{placeholder}}-driven, not hand-wrappable
