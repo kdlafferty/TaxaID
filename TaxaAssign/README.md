@@ -148,7 +148,25 @@ Consensus:
 -   `compute_group_priors()`: aggregate occurrence-model shares to
     genus/family level for use as `posterior_consensus()`'s
     `group_priors`
--   `add_unreferenced_prior_mass()`: give the generic unreferenced rows
+-   `add_unreferenced_prior_mass()`: give the generic unreferenced rows-   `posterior_consensus(pool_tail = )`: `FALSE`, the default, drops
+    hypotheses below `min_posterior` and measures
+    `cumulative_threshold` against the mass that remains. `TRUE`
+    instead gathers them into one tail block, measures the threshold
+    against the total named posterior mass, and admits the whole block
+    when the hypotheses above the floor fall short. `tail_mass` is
+    reported either way, and the pooled rows carry `pooled_n`,
+    `pooled_mass` and `pooled_taxa` with the row set itself in the
+    `"pooled_rows"` attribute, so a pooled call can be read back to the
+    individual hypotheses it stands for.
+-   `add_unreferenced_prior_mass(named_rows = )`: `FALSE`, the default,
+    folds each ring row's recorded unreferenced local species into that
+    row's own prior. `TRUE` instead emits one row per such species, at
+    species rank with `hypothesis_type = "unreferenced_species"`,
+    carrying the ring row's likelihood and the species' own occurrence
+    prior, and leaves the ring row holding only the unrecorded part --
+    which is what lets such a species be reported by name instead of as
+    anonymous mass.
+
     the prior mass of the local relatives that are actually unreferenced,
     instead of the dark-diversity floor `join_priors()` assigns them. A
     posterior is normalised over the hypotheses an observation carries,

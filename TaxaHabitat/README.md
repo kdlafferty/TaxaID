@@ -121,6 +121,13 @@ Habitat classification:
 -   `build_habitat_lookup()`: cached one-call classification (prompt,
     LLM call, parse; a taxon already classified under the same scheme
     is never re-asked)
+-   A compound habitat (a taxon the scheme places in more than one
+    habitat) gets its weight from its parts rather than from a single
+    label, and `compound_rule` says how: `"sum"` (the default, capped at
+    1) treats the parts as alternatives a record could fall in, while
+    `"max"` takes the strongest single part. The scheme's own parts
+    column is what defines those pieces, so a scheme that does not split
+    a habitat has nothing to combine and the two rules agree.
 -   `taxahabitat_clear_cache()`: report or prune this package's cache;
     the shared signature and the cross-package
     `TaxaTools::taxaid_cache_report()` are described in the TaxaID

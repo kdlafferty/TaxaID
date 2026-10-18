@@ -421,6 +421,21 @@ unreferenced species (borrowed from the generic H2/H3 values) and
 expands them so they can join TaxaExpect priors directly; requires a
 TaxaExpect-derived unreferenced-species list, so it runs after both
 TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
+-   An unreferenced species is named on its own genus's ring where this
+    unit has one, rather than on a borrowed family ring: a genus with
+    local reference coverage already says what its members score like,
+    so its own ring is the honest comparison. A genus that is
+    referenced but has no ring in this unit is withheld instead of
+    being given someone else's, and only a genus with no references at
+    all falls back to the family ring.
+-   Alongside the confusion-risk columns, each unit carries
+    `best_identity` (numeric, percent), `best_identity_rank` and
+    `poor_absolute_fit`. These answer a different question from the
+    likelihood ratio: the ratio says which hypothesis fits best
+    relative to the others, while `poor_absolute_fit` says that even
+    the winner sits poorly against its own trained distribution. A unit
+    can win decisively and still be flagged, which is the case worth
+    seeing -- it weakens the name, not the ecology.
 
 Reference preparation: - `match_reference_region()`: trim every
 reference to the stretch of the gene the study's own ESVs cover, learned
