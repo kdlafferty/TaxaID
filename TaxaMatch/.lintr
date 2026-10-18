@@ -1,6 +1,9 @@
 linters: linters_with_defaults(
     line_length_linter(120L),
     indentation_linter = NULL,
+    # Disabled package-wide, matching TaxaAssign's documented set:
+    # - commented_code_linter: prose comments containing "/" or "->" read as code.
+    commented_code_linter = NULL,
     # This package's internal helpers/constants use long, deliberately
     # descriptive names (e.g. .compute_hierarchy_congruence,
     # .ACCESSION_REVIEW_RELEVANT_COLS) and SCREAMING_SNAKE_CASE module

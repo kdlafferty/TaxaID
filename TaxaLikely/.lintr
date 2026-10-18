@@ -23,6 +23,10 @@ linters: linters_with_defaults(
   )
 encoding: "UTF-8"
 exclusions: list(
+    # <<- here updates an accumulator in the function's OWN enclosing scope
+    # (the documented use), not an unrelated or global environment. Per-file,
+    # not per-line: a line number stops matching the moment the file is edited.
+    "R/reference_support.R" = list(assignment_linter = Inf),
     # A single unbroken semicolon-joined PR2 taxonomy-string example inside
     # \code{} -- not sensibly splittable without altering what it documents.
     "R/fetch.R" = list(line_length_linter = Inf),

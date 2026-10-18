@@ -15,6 +15,10 @@ linters: linters_with_defaults(
   )
 encoding: "UTF-8"
 exclusions: list(
+    # <<- here updates an accumulator in the function's OWN enclosing scope
+    # (the documented use), not an unrelated or global environment. Per-file,
+    # not per-line: a line number stops matching the moment the file is edited.
+    "R/review_assignments.R" = list(assignment_linter = Inf),
     # Remaining line-length hits: long cli/sprintf diagnostic strings and
     # test-assertion strings spread thinly across several files -- zero
     # security- or correctness-relevant value; the real findings in this

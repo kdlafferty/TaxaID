@@ -370,7 +370,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(starts)) {
     result <- .retry_fetch(function() {
-      summ <- rentrez::entrez_summary(config = .net_config(), 
+      summ <- rentrez::entrez_summary(config = .net_config(),
         db          = "nucleotide",
         web_history = search_obj$web_history,
         retstart    = starts[i],
@@ -435,7 +435,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
-      xml_raw <- rentrez::entrez_fetch(config = .net_config(), 
+      xml_raw <- rentrez::entrez_fetch(config = .net_config(),
         db = "taxonomy", id = batches[[i]], rettype = "xml"
       )
       xml_doc <- xml2::read_xml(xml_raw)
@@ -770,7 +770,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
-      rentrez::entrez_fetch(config = .net_config(), 
+      rentrez::entrez_fetch(config = .net_config(),
         db = "nucleotide", id = batches[[i]],
         rettype = "fasta", retmode = "text"
       )
@@ -995,7 +995,7 @@ utils::globalVariables(c(
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
-      xml_raw <- rentrez::entrez_fetch(config = .net_config(), 
+      xml_raw <- rentrez::entrez_fetch(config = .net_config(),
         db = "nucleotide", id = batches[[i]], rettype = "gb", retmode = "xml"
       )
       xml_doc <- xml2::read_xml(xml_raw)
@@ -1625,7 +1625,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
     for (attempt in seq_len(count_attempts)) {
       ok <- tryCatch(
         {
-          res <- rentrez::entrez_search(config = .net_config(), 
+          res <- rentrez::entrez_search(config = .net_config(),
             db = "nucleotide", term = term, retmax = 0L
           )
           counts[i] <- as.integer(res$count)
@@ -1791,7 +1791,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
           tryCatch(
             {
               sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
-              res <- rentrez::entrez_search(config = .net_config(), 
+              res <- rentrez::entrez_search(config = .net_config(),
                 db = "nucleotide", term = sp_term,
                 retmax = 0L
               )
@@ -1899,7 +1899,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
       tryCatch(
         {
           sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
-          search_obj <- rentrez::entrez_search(config = .net_config(), 
+          search_obj <- rentrez::entrez_search(config = .net_config(),
             db = "nucleotide", term = sp_term,
             retmax = min(priority_counts[[sp]], 9999L), use_history = TRUE
           )
@@ -1979,7 +1979,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
         term <- .build_search_term(taxa[i], barcode_term, min_date, max_date,
           taxid = resolved_taxids[i]
         )
-        search_obj <- rentrez::entrez_search(config = .net_config(), 
+        search_obj <- rentrez::entrez_search(config = .net_config(),
           db = "nucleotide", term = term,
           retmax = min(fetch_n, 9999L), use_history = TRUE
         )
