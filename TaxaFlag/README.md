@@ -238,14 +238,18 @@ LLM review:
 -   `review_assignments()`: send each unique taxon from a consensus
     table to an LLM for structured expert review of habitat fit,
     geographic plausibility, taxonomic scope, and contamination risk,
-    with suggested plausible alternatives. The review is advisory: it
-    writes `llm_review_flag` and never removes a row, so a verdict
-    cannot silently shorten a species list and an expert keeps the
-    decision. `poor_absolute_fit_col` and `best_identity_col` carry
+    with suggested plausible alternatives. The review is advisory: its
+    ratings are columns and it never removes a row, so a verdict cannot
+    silently shorten a species list and an expert keeps the decision. A
+    workflow can derive a single flag from those verdicts -- the
+    TaxaWizard template does, as `llm_review_flag` -- but this function
+    does not write one. `poor_absolute_fit_col` and `best_identity_col` carry
     TaxaLikely's absolute-fit signal into the prompt (both default to
     the column names TaxaLikely emits; `NULL` disables either), so the
-    reviewer is told when even the winning hypothesis fits its own
-    trained distribution poorly. The default `llm_fn` calls
+    reviewer is told, with the identity, when even the best raw match
+    reaches no rank's marker-specific threshold -- which makes the name
+    uncertain at the called rank, but is not by itself grounds for an
+    "unlikely" habitat, geography or scope rating. The default `llm_fn` calls
     `TaxaTools::call_api()` and sends no temperature at all, keeping the
     provider's own default, because some current models reject that
     parameter. The site context combines the analyst's own wording with
