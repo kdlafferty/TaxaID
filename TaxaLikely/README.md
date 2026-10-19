@@ -345,14 +345,17 @@ model <- train_likelihood_model(
 
 ## Key Functions
 
-Reference acquisition and export (DNA): - `subset_local_database()`:
+Reference acquisition and export (DNA):
+
+- `subset_local_database()`:
 stream a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB,
 Greengenes2) and extract sequences for a user-supplied taxon list;
 memory scales with matches, not database size -
 `write_reference_fasta()`: export any `reference_df` to FASTA + optional
 taxonomy TSV (round-trippable with `read_reference_fasta()`) -
 `read_crabs_output()`: load a CRABS internal-format database (taxonomy
-embedded; no separate file needed) - `fetch_ncbi_reference_sequences()`:
+embedded; no separate file needed)
+- `fetch_ncbi_reference_sequences()`:
 download from NCBI by taxon + barcode marker; `taxa_lineage` resolves
 each name to one NCBI taxid before searching, so a homonym cannot pull
 another lineage's sequences. The cache key encodes the taxid, so
@@ -361,11 +364,14 @@ references once. `max_per_species` and `max_per_genus` (default 500 per
 genus) are applied to cached metadata, so changing them refetches
 nothing already downloaded; `dry_run = TRUE` reports what each choice of
 caps would cost before any sequence is downloaded (see "Sizing the
-Reference Set to Memory" below) - `fetch_bold_reference_sequences()`:
+Reference Set to Memory" below)
+- `fetch_bold_reference_sequences()`:
 download from BOLD Systems by taxon name, the BOLD analog of
-`fetch_ncbi_reference_sequences()` - `read_reference_fasta()`: load
+`fetch_ncbi_reference_sequences()`
+- `read_reference_fasta()`: load
 local FASTA + data-frame taxonomy (or `taxonomy_file` TSV for
-QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()`: in-silico PCR, extract
+QIIME2/RESCRIPt/MIDORI2)
+- `trim_to_amplicon()`: in-silico PCR, extract
 just the amplicon region from an over-length sequence (e.g. a full
 mitogenome swept up by an NCBI fetch) via primer matching, instead of
 discarding it outright; run between `fetch_ncbi_reference_sequences()`/
@@ -376,31 +382,41 @@ primer sets and their known limitations (e.g. `coi-folmer`'s documented
 vertebrate mismatches, `coi-leray`'s reduced discriminatory power
 relative to full-length COI) before trusting a result on real data.
 
-Model training (DNA): - `build_sequence_matrix()`: pairwise distance
+Model training (DNA):
+
+- `build_sequence_matrix()`: pairwise distance
 matrix via DECIPHER; required for `train_likelihood_model()` (screen for
 mislabeled references via TaxaMatch first: see "Detecting Mislabeled
 References" below); checks its predicted memory before aligning and
 stops, naming caps that fit, when it would not fit -
 `estimate_sequence_matrix_size()`: predict that memory for a grid of
 `max_per_species` and `max_per_genus` values, and name the species each
-choice removes - `train_likelihood_model()`: fit hierarchical Bayesian
+choice removes
+- `train_likelihood_model()`: fit hierarchical Bayesian
 model (pair-coverage floor and empirical Bayes shrinkage on by default;
 see "Reference Coverage Quality Filtering" and "Statistical Design"
-below) - `compute_rank_thresholds()`: derive marker-specific
+below)
+- `compute_rank_thresholds()`: derive marker-specific
 percent-identity thresholds at each taxonomic rank from a pairwise
 distance matrix, using per-rank Youden's J
 
-Inference: - `calibrate_query_noise()`: correct H1's mean for
+Inference:
+
+- `calibrate_query_noise()`: correct H1's mean for
 query-vs-reference technical noise invisible to reference-vs-reference
 training pairs; optional `evidence_col` also establishes a baseline for
 `evaluate_likelihoods(evidence_col=)`'s gated sigma rescale -
 `evaluate_likelihoods()`: convert match scores to likelihoods using a
-trained model - `filter_top_hypotheses()`: keep finest-rank candidates
-per query - `unreferenced_candidates()`: expand a consensus assignment
+trained model
+- `filter_top_hypotheses()`: keep finest-rank candidates
+per query
+- `unreferenced_candidates()`: expand a consensus assignment
 with H2/H3 placeholder rows (no model required; used in no-score and
-acoustic/image pathways) - `detect_suppressed_candidates()`: detect
+acoustic/image pathways)
+- `detect_suppressed_candidates()`: detect
 whether an upstream tool suppressed lower-scoring candidate rows in a
-match object - `restore_suppressed_candidates()`: check whether a top
+match object
+- `restore_suppressed_candidates()`: check whether a top
 candidate's apparent win is real or an artifact of upstream suppression,
 and add back same-genus congeners as `suppressed_candidate` rows so
 downstream consensus can back off from a false-precision call -
@@ -412,41 +428,54 @@ rows), ratio-normalised (`"probability"`), softmax
 (`"similarity"`). For the DNA scored pathway, real callers train a model
 (`train_likelihood_model()`) and call `evaluate_likelihoods()` directly
 on the match object rather than continuing from `assign_scores()`'s
-`"similarity"` output - `expand_unreferenced_hypotheses()`: models
+`"similarity"` output
+- `expand_unreferenced_hypotheses()`: models
 likelihoods for named unreferenced species (borrowed from the generic
 H2/H3 values) and expands them so they can join TaxaExpect priors
 directly; requires a TaxaExpect-derived unreferenced-species list, so it
 runs after both TaxaLikely and TaxaExpect and before
-`TaxaAssign::compute_posterior()` - An unreferenced species is named on
+`TaxaAssign::compute_posterior()`
+- An unreferenced species is named on
 its own genus's ring where this unit has one, rather than on a borrowed
 family ring: a genus with local reference coverage already says what its
-members score like, so its own ring is the honest comparison. A genus
-that is referenced but has no ring in this unit is withheld instead of
-being given someone else's, and only a genus with no references at all
-falls back to the family ring. - Alongside the confusion-risk columns,
+members score like, so its own ring is the honest comparison. A species
+whose genus has no ring here is never named from a family ring at all:
+it is listed in `attr(result, "unreferenced_withheld")` with `reason`
+either `"genus_referenced_unmatched"` (the genus has references for this
+marker that did not match the read) or `"no_own_genus_ring"` (it has
+none), and the generic family row still stands for it.
+- Alongside the confusion-risk columns,
 each unit carries `best_identity` (numeric, percent),
 `best_identity_rank` and `poor_absolute_fit`. These answer a different
 question from the likelihood ratio: the ratio says which hypothesis fits
-best relative to the others, while `poor_absolute_fit` says that even
-the winner sits poorly against its own trained distribution. A unit can
-win decisively and still be flagged, which is the case worth seeing --
-it weakens the name, not the ecology.
+best relative to the others, while `poor_absolute_fit` says the best raw
+match identity reaches no rank's marker-specific threshold.
+`score_likelihood` is normalised to the unit's maximum, so an 86%
+identity match can score 0.998 when it is the best of a bad set. The
+three columns are a flag only and never change a likelihood or which
+hypothesis wins. A unit can win decisively and still be flagged, which
+is the case worth seeing -- it weakens the name, not the ecology.
 
-Reference preparation: - `match_reference_region()`: trim every
+Reference preparation:
+
+- `match_reference_region()`: trim every
 reference to the stretch of the gene the study's own ESVs cover, learned
 from the ESVs rather than from primers. The model is trained on
 reference-vs-reference identities and applied to ESV-vs-reference
 identities, and the two scales are comparable only if both describe the
 same region
 
-Reference QC: - `audit_barcode_coverage()`: find unreferenced species
+Reference QC:
+
+- `audit_barcode_coverage()`: find unreferenced species
 (no barcode sequence; eDNA/DNA only). A group NCBI could not be asked
 about is reported with `lookup_failed = TRUE`, is never written to the
 checkpoint, and contributes nothing to `unreferenced`, so the returned
 set is an incomplete census rather than a census; a failure is named in
 a warning by default, and `on_lookup_failure = "error"` stops instead,
 which suits an unattended run whose later steps would otherwise cache
-the gap as an answer - `infer_exclude_predicted()`: infer from accession
+the gap as an answer
+- `infer_exclude_predicted()`: infer from accession
 numbers whether a BLAST reference database excluded computationally
 predicted NCBI sequences, the value `audit_barcode_coverage()`'s
 `exclude_predicted` argument should take -
@@ -454,10 +483,12 @@ predicted NCBI sequences, the value `audit_barcode_coverage()`'s
 `audit_barcode_coverage()` (also supports acoustic/image via
 `data_type`); feeds
 `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`, the LLM-shortcut
-pathway - `audit_acoustic_coverage()`: find plausible species absent
+pathway
+- `audit_acoustic_coverage()`: find plausible species absent
 from classifier's known list (acoustic/image) -
 `fetch_xc_recording_locations()`: fetch per-recording latitude/longitude
-from Xeno-canto for one or more species - `audit_inat_coverage()`: check
+from Xeno-canto for one or more species
+- `audit_inat_coverage()`: check
 whether each species in a list has enough iNaturalist observations to be
 represented in its computer vision training data -
 `audit_reference_coverage()`: taxonomic completeness check -
@@ -471,8 +502,11 @@ multiplies the placeholder's likelihood by `penalty_factor`. Mislabel
 screening and match-object cleaning for flagged accessions live in
 TaxaMatch, not here. See "Detecting Mislabeled References" below.
 
-Diagnostics and reporting: - `interpret_model()`: summarize trained
-model parameters - `check_cross_genus_sampling_noise()`: report how much
+Diagnostics and reporting:
+
+- `interpret_model()`: summarize trained
+model parameters
+- `check_cross_genus_sampling_noise()`: report how much
 a random cross-genus draw (the one
 `build_sequence_matrix(by_genus = TRUE)` uses to build the H3 sample)
 moves the resulting pair distribution across repeated draws -
@@ -772,9 +806,12 @@ source that yields a taxon name but no similarity score,
 builds a degenerate likelihood object that bypasses `TaxaMatch` and
 `evaluate_likelihoods()` entirely.
 
-Two placeholder rows are added per observation: - H2
+Two placeholder rows are added per observation:
+
+- H2
 (unreferenced_species), a placeholder for any species in the same genus
-not in the reference database - H3 (unreferenced_genus), a placeholder
+not in the reference database
+- H3 (unreferenced_genus), a placeholder
 for any genus in the same family not in the reference database
 
 All `score_likelihood` values are set to 1.0 (uniform), so posteriors
