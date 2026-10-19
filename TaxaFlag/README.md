@@ -246,8 +246,10 @@ LLM review:
     does not write one. `poor_absolute_fit_col` and `best_identity_col` carry
     TaxaLikely's absolute-fit signal into the prompt (both default to
     the column names TaxaLikely emits; `NULL` disables either), so the
-    reviewer is told when even the winning hypothesis fits its own
-    trained distribution poorly. The default `llm_fn` calls
+    reviewer is told, with the identity, when even the best raw match
+    reaches no rank's marker-specific threshold -- which makes the name
+    uncertain at the called rank, but is not by itself grounds for an
+    "unlikely" habitat, geography or scope rating. The default `llm_fn` calls
     `TaxaTools::call_api()` and sends no temperature at all, keeping the
     provider's own default, because some current models reject that
     parameter. The site context combines the analyst's own wording with
