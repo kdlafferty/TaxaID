@@ -322,7 +322,7 @@
 #' \code{llm_geographic_plausibility_site} (see \code{@section Site-aware
 #' geography}) and an \code{attr(result, "geographic_by_site")} data frame, one
 #' row per reviewed taxon, giving the parsed range rule (\code{rule},
-#' \code{lat_min}, \code{lat_max}, \code{outside}, \code{unlikely_sites} as a
+#' \code{lat_min}, \code{lat_max}, \code{inside}, \code{outside}, \code{unlikely_sites} as a
 #' semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
 #' records a fallback).
 #'
@@ -415,15 +415,22 @@
 #' \itemize{
 #'   \item{\code{\{"rule": "all"\}}: the same verdict at every site.}
 #'   \item{\code{\{"rule": "latitude", "lat_min": ., "lat_max": .,
-#'     "outside": "unlikely" or "possible"\}}: plausible between the two
-#'     latitudes; sites outside get the \code{outside} verdict.}
-#'   \item{\code{\{"rule": "sites", "unlikely_sites": [...]\}}: unlikely at
-#'     the named sites only, for patterns latitude does not describe.}
+#'     "inside": "likely" or "possible", "outside": "unlikely" or
+#'     "possible"\}}: plausible between the two latitudes; sites inside get the
+#'     \code{inside} verdict and sites outside get the \code{outside} verdict.}
+#'   \item{\code{\{"rule": "sites", "unlikely_sites": [...], "inside":
+#'     "likely" or "possible"\}}: unlikely at the named sites only, for
+#'     patterns latitude does not describe; every other site gets the
+#'     \code{inside} verdict.}
 #' }
 #' The parsed rule is turned into a verdict per site in code, so the sites
 #' table is applied by the package, not by the model. Inside the range the
-#' verdict is the taxon's \code{geographic_plausibility}, and a site never gets
-#' a better verdict than that. Output:
+#' verdict is the rule's own \code{inside} verdict, which is NOT capped by the
+#' taxon's \code{geographic_plausibility}: habitat fit and rarity are rated
+#' separately and must not override the range the model drew. A missing or
+#' invalid \code{inside} is \code{"possible"}; it never falls back to
+#' \code{geographic_plausibility}. With \code{\{"rule": "all"\}} the verdict at
+#' every site is \code{geographic_plausibility}. Output:
 #' \itemize{
 #'   \item{\code{llm_geographic_plausibility_site}: the verdict at the site
 #'     named in each row's \code{site_col}. Rows with an \code{NA} site, or a
@@ -431,9 +438,8 @@
 #'     stay \code{NA}.}
 #'   \item{\code{llm_geographic_plausibility} changes meaning when
 #'     \code{sites} is supplied: it is the BEST verdict over all the sites
-#'     (\code{"unlikely"} only if unlikely at every site), not a single
-#'     study-wide judgement. If the model's rule leaves every site worse than
-#'     the verdict it gave, the column is set to the best site verdict.}
+#'     (\code{"unlikely"} only if unlikely at every site), computed in code from
+#'     the site verdicts, not a single study-wide judgement.}
 #' }
 #' Fallbacks, each giving the study-wide verdict at every site (recorded in
 #' the \code{how} column of \code{attr(result, "geographic_by_site")}): the
@@ -935,9 +941,9 @@ review_assignments <- function(input_df,
     # The sites change the prompt and the parsed output, so they are part of
     # the key -- but ONLY when supplied, which leaves the sites = NULL key
     # byte-identical to a key written before this argument existed. Bump
-    # "geo_sites_v1" whenever the sites wording in the prompt changes.
+    # "geo_sites_v2" whenever the sites wording in the prompt changes.
     if (!is.null(sites)) {
-      shared_parts <- c(shared_parts, "geo_sites_v1", .review_sites_digest(sites))
+      shared_parts <- c(shared_parts, "geo_sites_v2", .review_sites_digest(sites))
     }
     .shared <- paste(shared_parts, collapse = "\u0001")
 
@@ -2039,7 +2045,7 @@ review_assignments <- function(input_df,
         ',\n  {"id": "T3", "taxon_name": "Example tropicus", ',
         '"habitat_plausibility": "likely", "geographic_plausibility": "likely", ',
         '"geographic_by_site": {"rule": "latitude", "lat_min": 20.5, "lat_max": 30.0, ',
-        '"outside": "unlikely"}, "scope_plausibility": "likely", ',
+        '"inside": "likely", "outside": "unlikely"}, "scope_plausibility": "likely", ',
         '"contamination_risk": "low", "review_alternatives": null, ',
         '"review_lower_hypotheses": null, "review_confidence": "moderate", ',
         '"review_comment": "range ends at 30 N"}'
@@ -2620,25 +2626,35 @@ review_assignments <- function(input_df,
 .geo_levels <- c("likely", "possible", "unlikely")
 
 # The prompt's geographic_by_site field. Wording changes must bump
-# "geo_sites_v1" in the cache key (see review_assignments()).
+# "geo_sites_v2" in the cache key (see review_assignments()).
 .geo_field_text <- paste0(
   '  "geographic_by_site": where in the STUDY SITES above this taxon is ',
   "geographically plausible, as ONE object:\n",
   '     {"rule": "all"}  -- the verdict is the same at every site;\n',
   '     {"rule": "latitude", "lat_min": <number or null>, "lat_max": <number or null>, ',
-  '"outside": "unlikely" or "possible"}  -- plausible only between lat_min and lat_max ',
-  '(decimal degrees; null = no limit on that side); sites outside get the "outside" ',
-  "verdict. Use this when the limit is a coastal range limit;\n",
-  '     {"rule": "sites", "unlikely_sites": ["<site name copied exactly>", ...]}  -- ',
-  "list only the sites where it is unlikely, when latitude does not describe the pattern.\n",
-  '     Inside the stated range, the verdict is your "geographic_plausibility" for the ',
-  'taxon. "geographic_plausibility" itself is the BEST verdict over all sites.\n'
+  '"inside": "likely" or "possible", "outside": "unlikely" or "possible"}  -- plausible ',
+  'only between lat_min and lat_max (decimal degrees; null = no limit on that side); ',
+  'sites inside get the "inside" verdict and sites outside get the "outside" ',
+  "verdict. Use this when the limit is a coastal range limit. A \"latitude\" rule MUST give ",
+  "at least one numeric bound (lat_min or lat_max). If no range limit falls within the ",
+  'study\'s latitudes, use {"rule":"all"} (or "sites"), never a latitude rule with both ',
+  "bounds null;\n",
+  '     {"rule": "sites", "unlikely_sites": ["<site name copied exactly>", ...], ',
+  '"inside": "likely" or "possible"}  -- list only the sites where it is unlikely, ',
+  'when latitude does not describe the pattern; all other sites get the "inside" verdict.\n',
+  '     "inside" is the verdict for a site within the range: "likely" if the taxon is ',
+  'expected there, "possible" if it could occur but is not expected. ',
+  '"geographic_plausibility" is your overall geographic verdict for the taxon; with ',
+  '{"rule": "all"} it is the verdict at every site. The study-wide verdict is ',
+  "computed from the sites, so do not try to summarise it in the object.\n"
 )
 
 .geo_guideline_text <- paste0(
   "- Judge geography at each site separately: a taxon can be plausible at some sites ",
   "and unlikely at others. For a genus or family, rate the group (is ANY member ",
-  "plausible there?).\n"
+  "plausible there?).\n",
+  "- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated separately, and a ",
+  "rare but in-range occurrence is 'possible', not 'unlikely'.\n"
 )
 
 #' STUDY SITES block of the prompt, sorted south to north
@@ -2742,7 +2758,8 @@ review_assignments <- function(input_df,
   fb <- function(how, n_unknown = 0L) {
     list(
       rule = "fallback", lat_min = NA_real_, lat_max = NA_real_,
-      outside = NA_character_, unlikely_sites = character(0),
+      inside = NA_character_, outside = NA_character_,
+      unlikely_sites = character(0),
       how = how, n_unknown = as.integer(n_unknown)
     )
   }
@@ -2750,6 +2767,8 @@ review_assignments <- function(input_df,
   if (!is.list(o)) {
     return(fb("missing"))
   }
+  ins <- tolower(trimws(as.character(one(o$inside))))
+  if (is.na(ins) || !ins %in% c("likely", "possible")) ins <- "possible"
   rule <- tolower(trimws(as.character(one(o$rule))))
   if (is.na(rule) || !nzchar(rule)) {
     return(fb("missing"))
@@ -2779,7 +2798,7 @@ review_assignments <- function(input_df,
     out <- tolower(trimws(as.character(one(o$outside))))
     if (is.na(out) || !out %in% c("unlikely", "possible")) out <- "possible"
     return(list(
-      rule = "latitude", lat_min = lo, lat_max = hi, outside = out,
+      rule = "latitude", lat_min = lo, lat_max = hi, inside = ins, outside = out,
       unlikely_sites = character(0), how = how, n_unknown = 0L
     ))
   }
@@ -2794,7 +2813,7 @@ review_assignments <- function(input_df,
     }
     return(list(
       rule = "sites", lat_min = NA_real_, lat_max = NA_real_,
-      outside = NA_character_, unlikely_sites = known,
+      inside = ins, outside = NA_character_, unlikely_sites = known,
       how = if (n_unknown > 0L) "sites_unknown_ignored" else "sites",
       n_unknown = as.integer(n_unknown)
     ))
@@ -2822,6 +2841,7 @@ review_assignments <- function(input_df,
   list(
     rule = x$rule %||% "fallback",
     lat_min = num(x$lat_min), lat_max = num(x$lat_max),
+    inside = x$inside %||% NA_character_,
     outside = x$outside %||% NA_character_,
     unlikely_sites = as.character(unlist(x$unlikely_sites, use.names = FALSE)),
     how = x$how %||% NA_character_,
@@ -2829,25 +2849,38 @@ review_assignments <- function(input_df,
   )
 }
 
-#' Per-site verdicts for one rule spec and one study-wide (inside-range) verdict
+#' Per-site verdicts for one rule spec
 #'
-#' A site never gets a verdict better than the taxon's own
-#' \code{geographic_plausibility}.
+#' Rules "latitude" and "sites" give inside sites the rule's \code{inside}
+#' verdict (missing or invalid: "possible") and outside sites the
+#' \code{outside} verdict; the taxon's own \code{geographic_plausibility}
+#' (\code{base}) does not cap them. Rule "all" and fallbacks give \code{base}
+#' at every site.
 #' @noRd
 .geo_site_verdicts <- function(spec, base, sites) {
   n <- nrow(sites)
   if (is.na(base) || !base %in% .geo_levels || is.null(spec)) {
     return(rep(base, n))
   }
-  v <- rep(base, n)
+  lvl <- function(x, ok) {
+    x <- tolower(trimws(as.character(x)))
+    if (length(x) != 1L || is.na(x) || !x %in% ok) "possible" else x
+  }
   if (identical(spec$rule, "latitude")) {
+    ins <- lvl(spec$inside, c("likely", "possible"))
+    outv <- lvl(spec$outside, c("unlikely", "possible"))
     out <- (!is.na(spec$lat_min) & sites$lat < spec$lat_min) |
       (!is.na(spec$lat_max) & sites$lat > spec$lat_max)
-    v[out] <- spec$outside
-  } else if (identical(spec$rule, "sites")) {
-    v[sites$site %in% spec$unlikely_sites] <- "unlikely"
+    v <- rep(ins, n)
+    v[out] <- outv
+    return(v)
   }
-  .geo_levels[pmax(match(v, .geo_levels), match(base, .geo_levels))]
+  if (identical(spec$rule, "sites")) {
+    v <- rep(lvl(spec$inside, c("likely", "possible")), n)
+    v[sites$site %in% spec$unlikely_sites] <- "unlikely"
+    return(v)
+  }
+  rep(base, n)
 }
 
 #' One row per reviewed taxon with its parsed rule (attr "geographic_by_site")
@@ -2860,6 +2893,7 @@ review_assignments <- function(input_df,
     rule = vapply(specs, function(z) as.character(z$rule), character(1L)),
     lat_min = vapply(specs, function(z) z$lat_min, numeric(1L)),
     lat_max = vapply(specs, function(z) z$lat_max, numeric(1L)),
+    inside = vapply(specs, function(z) as.character(z$inside), character(1L)),
     outside = vapply(specs, function(z) as.character(z$outside), character(1L)),
     unlikely_sites = vapply(specs, function(z) paste(z$unlikely_sites, collapse = "; "), character(1L)),
     n_unknown_sites = vapply(specs, function(z) z$n_unknown, integer(1L)),
@@ -2872,8 +2906,7 @@ review_assignments <- function(input_df,
 #'
 #' Each row takes the verdict of its own site; a row whose site is NA or not in
 #' the table takes the study-wide verdict. The study-wide column is the BEST
-#' verdict over the sites, so it is lowered when the rule leaves every site
-#' worse than the verdict the model gave.
+#' verdict over the sites, computed here, not taken from the model.
 #' @noRd
 .apply_site_verdicts <- function(result, sites, site_col) {
   study <- result$llm_geographic_plausibility
