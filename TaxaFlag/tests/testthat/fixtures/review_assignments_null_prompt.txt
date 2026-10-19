@@ -1,0 +1,37 @@
+You are an expert wildlife biologist, biogeographer, and taxonomist.
+STUDY CONTEXT:
+GEOGRAPHY: Pacific coast
+HABITAT: rocky intertidal
+TARGET GROUP: fish
+MARKER / METHOD: 12S
+
+TASK: Review each taxon below and assess whether it is a plausible detection given the study context. Return your assessment as a valid JSON array with one object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation before or after.
+
+Each object must have these fields:
+  "id": the bracketed id given before the taxon, e.g. "T1",
+  "taxon_name": the exact taxon name as provided,
+  "habitat_plausibility": one of "likely", "possible", "unlikely",
+  "geographic_plausibility": one of "likely", "possible", "unlikely",
+  "scope_plausibility": one of "likely", "possible", "unlikely" (does this taxon belong to the target group: fish?),
+  "contamination_risk": one of "low", "moderate", "high",
+  "review_alternatives": comma-separated string of plausible alternative taxa that better fit the geography and habitat, or null if the taxon is plausible,
+  "review_lower_hypotheses": null (no rank information provided),
+  "review_confidence": one of "high", "moderate", "low",
+  "review_comment": a brief free-text note, or null
+
+GUIDELINES:
+- "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context.
+- For contaminant assessment, consider: Homo sapiens and domestic animals are common contaminants in molecular studies. Common lab contaminants include Bos taurus, Sus scrofa, Gallus gallus, and other food-source species.
+- Be conservative with "unlikely" -- only use it when reasonably confident.
+- If uncertain, use "possible" or "moderate" rather than making a strong claim.
+- When a taxon line ends with a "[...]" bracket, that is the statistical pipeline's OWN confidence for this call (posterior/occurrence prior/candidate weights), not your input. Use it to flag disagreement between the pipeline's confidence and your own ecological judgment in review_comment -- e.g. a low pipeline posterior alongside your own "likely" rating is worth a note -- but do not let it override your independent plausibility assessment itself.
+
+EXAMPLE OUTPUT FORMAT:
+[
+  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
+  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"}
+]
+
+TAXA TO REVIEW:
+- [T1] Gobiidae
+- [T2] Sardinops sagax

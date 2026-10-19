@@ -72,7 +72,7 @@ and the meta-package bumped to **1.0.0** (`dae3b9c`, 29 files) with
 `inst/*_review_response.md` version references deliberately untouched. Installed
 at 1.0.0; the **Step 7 namespace code key did not move**, so the next run
 restores its trained models rather than retraining. `llm_prompts/` regenerated
-(`f644f61`) and the export surface reconciled: **223 = 218 functions + 5 data
+(`f644f61`) and the export surface reconciled: **224 = 219 functions + 5 data
 objects**.
 
 **CI, which was the largest finding.** `main` had been **red for 53 consecutive
