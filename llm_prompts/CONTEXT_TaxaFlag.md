@@ -966,5 +966,23 @@ reviewed <- review_assignments(
 
 # Filter to contamination concerns
 reviewed[reviewed$llm_contamination_risk %in% c("high", "moderate"), ]
+
+# Site-aware geography: one verdict per taxon per site
+reviewed <- review_assignments(
+  input_df     = consensus_results,
+  taxon_col    = "consensus_taxon",
+  context      = list(geography = "Pacific coast", habitat = "Marine"),
+  target_group = "fish",
+  sites        = site_table,          # columns: site, lat, lon
+  site_col     = "site"
+)
+
+# Suggested actions; nothing is dropped
+screened <- screen_assignments(
+  reviewed,
+  posterior_df  = posteriors,
+  geography_col = "llm_geographic_plausibility_site"
+)
+table(screened$suggested_action, screened$presence, useNA = "ifany")
 ```
 
