@@ -920,6 +920,10 @@ describe each in full.
 | TaxaFlag    | 17                 | 22         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
+**Export surface: 224 = 219 functions + 5 data objects.** The per-package counts
+above are checked against the packages themselves on every run of the test suite,
+so this table and the code cannot drift apart.
+
 # U.S. Geological Survey Disclaimer
 
 This software is preliminary or provisional and is subject to revision.
