@@ -232,6 +232,25 @@ test_that("inside is respected with no cap from geographic_plausibility; study-w
   expect_equal(attr(out, "geographic_by_site")$inside, "likely")
 })
 
+test_that("a fallback spec gives every site the study-wide verdict; best-over-sites is idempotent", {
+  for (b in c("unlikely", "likely", "possible")) {
+    for (g in c('{"rule":"latitude","lat_min":null,"lat_max":null,"inside":"likely","outside":"unlikely"}',
+                '{"rule":"latitude","lat_min":null,"lat_max":null}',
+                '{"rule":"bogus"}', '{"rule":"sites","unlikely_sites":["Atlantis"]}', '"text"')) {
+      out <- .gs_review(rep("Taxon a", 3L), .gs_fn(list(`Taxon a` = g), base = b),
+        site_vec = c("North", "Mid", "South")
+      )
+      expect_equal(out$llm_geographic_plausibility_site, rep(b, 3L))
+      expect_equal(out$llm_geographic_plausibility, rep(b, 3L))
+    }
+  }
+  out <- .gs_review(rep("Taxon a", 3L),
+    .gs_fn(list(`Taxon a` = '{"rule":"latitude","lat_min":null,"lat_max":null}'), base = "unlikely"),
+    site_vec = c("North", "Mid", "South"))
+  expect_equal(attr(out, "geographic_by_site")$how, "both_bounds_NA")
+  expect_match(.geo_field_text, "MUST give at least one numeric bound", fixed = TRUE)
+})
+
 # --- 5. per-row join, unknown rows, output shape ---------------------------------
 
 test_that("rows with NA or unknown site get the study-wide verdict; output shape", {
