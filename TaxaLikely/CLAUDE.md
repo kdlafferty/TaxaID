@@ -52,9 +52,23 @@ state only.
 
 ## Current behaviour worth knowing
 
-- An unreferenced species is named on its OWN genus's ring where this unit has one, rather than on a borrowed family ring. A genus that is referenced but has no ring here is withheld instead of being given someone else's; only a genus with no references at all falls back to the family ring.
-- Each unit carries `best_identity`, `best_identity_rank` and `poor_absolute_fit`. These answer a different question from the likelihood ratio: the ratio says which hypothesis fits best relative to the others, `poor_absolute_fit` says the winner sits poorly against its own trained distribution. A unit can win decisively and still be flagged.
-- `apply_coverage_constraints()` defaults to `constraint_behavior = "relabel"`, which sets a marker and leaves likelihoods unchanged; `TaxaAssign::compute_posterior()` is what moves the placeholder's posterior onto the genus's referenced species.
+- An unreferenced species is named only on its OWN genus's ring. A species whose genus
+  has no ring here is NEVER named from a family ring: it is listed in
+  `attr(result, "unreferenced_withheld")` with `reason` either
+  `"genus_referenced_unmatched"` (the genus has references for this marker that did
+  not match the read) or `"no_own_genus_ring"` (it has none), and the generic family
+  row still stands for it.
+- Each unit carries `best_identity` (the best raw match identity among its
+  `specific_candidate` rows, percent scale), `best_identity_rank` (the finest rank whose
+  marker-specific Youden's-J threshold it reaches) and `poor_absolute_fit` (TRUE when it
+  reaches none). They are a FLAG ONLY and never change a likelihood or which hypothesis
+  wins: `score_likelihood` is normalised to the unit maximum, so an 86% identity match
+  can score 0.998 when it is the best of a bad set. A unit can win decisively and still
+  be flagged.
+- `apply_coverage_constraints()` defaults to `constraint_behavior = "relabel"`, which
+  relabels the row `unresolved_species` and leaves likelihoods unchanged;
+  `TaxaAssign::compute_posterior()` then moves that row's posterior onto the genus's
+  referenced species, pro rata by their posteriors.
 
 ## Conventions
 

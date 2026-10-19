@@ -40,7 +40,10 @@ state only.
 - `screen_assignments()` carries `attr(, "rule_counts")`: a fixed nine-row table, `n_rows = 0` for a rule evaluated that fired on nothing and `NA` with `evaluated = FALSE` for one that could not be evaluated. So "did not fire" and "was not evaluated" are distinguishable. It is an attribute, so a dplyr verb drops it -- read it off the call.
 - `relative_score_gap` defaults to 0.25. That is a chosen value, not a calibrated one, and the roxygen says so; the fired count exists so a dataset where it bites announces itself.
 - `review_assignments(sites = , site_col = )` gives site-aware geography: a study sites block in the prompt and a parsed per-taxon range rule, yielding `llm_geographic_plausibility_site` and `attr(, "geographic_by_site")`. With `sites = NULL` the prompt, the cache key and the output columns are byte-identical to a call without the argument, so existing caches are not orphaned.
-- The review is advisory: it writes `llm_review_flag` and never removes a row.
+- `review_assignments()` is advisory: its `llm_*` ratings are columns and it never
+  removes a row. The flag-only reporting pattern (`llm_review_flag`, expert
+  keep/exclude, `review_flag_stands`) lives in the TaxaWizard workflow template, not
+  in this package.
 
 ## Conventions
 
