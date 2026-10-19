@@ -1425,4 +1425,3 @@ verify_removal_candidates <- function(evaluation, ...,
   }
   out
 }
-

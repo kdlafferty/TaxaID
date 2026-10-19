@@ -917,7 +917,7 @@ describe each in full.
 | TaxaLikely  | 33                 | 40         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
 | TaxaAssign  | 14                 | 24         | Yes      |
-| TaxaFlag    | 16                 | 20         | Yes      |
+| TaxaFlag    | 17                 | 22         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 # U.S. Geological Survey Disclaimer

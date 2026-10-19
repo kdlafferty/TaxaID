@@ -9,6 +9,28 @@
 
 ## New features
 
+* `screen_assignments()` is a post-hoc screen over reviewed calls, one row per
+  taxon and site. An identity layer asks whether the name is right, from the
+  sequence fit and the reviewer's geography: a good fit where the geography is
+  plausible is kept; a good fit where it is unlikely moves up to a local,
+  referenced relative that scores as well, or else is marked for review with a
+  suggested exclusion; a poor fit moves up one rank (genus- and species-rank
+  calls only) or is excluded where geography is unlikely or, at family rank or
+  finer, habitat is unlikely. A presence layer then labels each surviving row
+  `resident`, `off_habitat` or `out_of_scope` from the habitat and scope
+  verdicts; it never excludes by itself, so habitat-filtered reporting decides
+  what to drop. `blank_flag_col` adds blank evidence as an exclusion.
+  The screen flags and never drops a row, and `attr(, "rule_counts")` reports
+  how many rows each rule fired on, and which rules could not be evaluated.
+* `review_assignments(sites =, site_col =)` makes geography site-aware. Given
+  the study sites with their coordinates, the reviewer states where in the
+  study area each taxon is plausible -- a latitude range, a list of sites, or
+  everywhere -- and the result is a per-row
+  `llm_geographic_plausibility_site` column, with the parsed rule in
+  `attr(, "geographic_by_site")`. The study-wide
+  `llm_geographic_plausibility` becomes the best verdict across sites. A
+  malformed answer falls back to the study-wide verdict at every site. With
+  `sites = NULL` the prompt, cache key and output are unchanged.
 * `flag_backbone_conflicts()` flags a name that the taxonomy carries at more
   than one rank, or under more than one parent at the same rank, learned from
   the data rather than from a list of taxa. It cannot see synonymy (many names

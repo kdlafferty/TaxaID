@@ -898,8 +898,6 @@ classify_sample_identity <- function(input_df,
   }, character(1))
 }
 
-#' Top taxa by read share, as "Name 34%; Name 12%; ..."
-#' @noRd
 #' The single most abundant feature in each unit and its share of the unit's
 #' reads, on kept libraries (all libraries when none were kept)
 #' @noRd
@@ -938,6 +936,8 @@ classify_sample_identity <- function(input_df,
   out
 }
 
+#' Top taxa by read share, as "Name 34%; Name 12%; ..."
+#' @noRd
 .sig_top_taxa <- function(d, units = NULL, n = 12L, per_unit = TRUE) {
   nm <- d$label_name
   nm[is.na(nm) | !nzchar(nm)] <- "(unassigned)"

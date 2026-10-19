@@ -84,7 +84,7 @@ r2 cites `dafe7a2`, never `main` and never `1.0.0`.
   packages level with `main` @ `72fd6a2`. Verified in the namespaces, not from
   the install's exit code: `TaxaFlag` combines `geographic_hint`; `TaxaAssign`
   breaks both tie classes with `method = "radix"`; `TaxaTools` no longer names
-  the old console URL; no `.mislabel_*` internals remain; 223 exports.
+  the old console URL; no `.mislabel_*` internals remain; 224 exports.
   **The deposit is unaffected** -- `r2` was produced by the tree at `dafe7a2`
   and stays as published. An install changes what a FUTURE run would use, which
   is why row 1 above is the only open drift.

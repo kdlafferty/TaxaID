@@ -275,6 +275,21 @@
 #'   \code{best_identity} (percent) quoted in that note. Silently skipped when
 #'   absent (the note then omits the number). Default \code{"best_identity"}.
 #'   Set to \code{NULL} to disable.
+#' @param sites \code{NULL} (default) or a data frame of study sites with
+#'   columns \code{site} (unique names), \code{lat} and \code{lon} (decimal
+#'   degrees; extra columns are ignored). When supplied the LLM is shown the
+#'   sites (sorted south to north) and asked WHERE among them each taxon is
+#'   geographically plausible, which adds the per-row
+#'   \code{llm_geographic_plausibility_site} column; see
+#'   \code{@section Site-aware geography}. With \code{NULL} nothing changes:
+#'   the prompt, the cache key and the output columns are exactly those of a
+#'   call without this argument.
+#' @param site_col Character. Column of \code{input_df} whose values match
+#'   \code{sites$site}. Only read when \code{sites} is supplied (an error if
+#'   the column is absent then); non-\code{NA} values not found in
+#'   \code{sites$site} are named in a warning and those rows get the
+#'   study-wide verdict. Not part of the cache key, since it does not change
+#'   the prompt. Default \code{"site"}.
 #' @return The input data frame with 8 or 9 columns appended:
 #' \describe{
 #'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
@@ -303,6 +318,14 @@
 #'     deterministic column rather than relying on \code{review_comment}
 #'     alone.}
 #' }
+#' When \code{sites} is supplied the data frame also carries
+#' \code{llm_geographic_plausibility_site} (see \code{@section Site-aware
+#' geography}) and an \code{attr(result, "geographic_by_site")} data frame, one
+#' row per reviewed taxon, giving the parsed range rule (\code{rule},
+#' \code{lat_min}, \code{lat_max}, \code{outside}, \code{unlikely_sites} as a
+#' semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
+#' records a fallback).
+#'
 #' Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
 #' the taxon/candidate-set labels the LLM never returned a verdict for) and
 #' \code{"n_unreviewed_rows"} (integer -- input rows left with \code{NA} in
@@ -381,6 +404,57 @@
 #' candidate-set label echoed back reformatted is still matched. A response
 #' matching none of several sets is treated as failed (halved and retried),
 #' and an omission a re-ask cannot recover is re-asked one set per call.
+#'
+#' @section Site-aware geography:
+#' A study that spans a coast or a latitude gradient has no single answer to
+#' "is this taxon geographically plausible here?": a tropical reef fish is
+#' plausible at the southern sites and not at the northern ones. With
+#' \code{sites} supplied the prompt lists the sites (name, latitude,
+#' longitude; sorted south to north) and the LLM returns, per taxon, a
+#' \code{geographic_by_site} object of one of three shapes:
+#' \itemize{
+#'   \item{\code{\{"rule": "all"\}}: the same verdict at every site.}
+#'   \item{\code{\{"rule": "latitude", "lat_min": ., "lat_max": .,
+#'     "outside": "unlikely" or "possible"\}}: plausible between the two
+#'     latitudes; sites outside get the \code{outside} verdict.}
+#'   \item{\code{\{"rule": "sites", "unlikely_sites": [...]\}}: unlikely at
+#'     the named sites only, for patterns latitude does not describe.}
+#' }
+#' The parsed rule is turned into a verdict per site in code, so the sites
+#' table is applied by the package, not by the model. Inside the range the
+#' verdict is the taxon's \code{geographic_plausibility}, and a site never gets
+#' a better verdict than that. Output:
+#' \itemize{
+#'   \item{\code{llm_geographic_plausibility_site}: the verdict at the site
+#'     named in each row's \code{site_col}. Rows with an \code{NA} site, or a
+#'     site not in \code{sites}, get the study-wide verdict. Unreviewed taxa
+#'     stay \code{NA}.}
+#'   \item{\code{llm_geographic_plausibility} changes meaning when
+#'     \code{sites} is supplied: it is the BEST verdict over all the sites
+#'     (\code{"unlikely"} only if unlikely at every site), not a single
+#'     study-wide judgement. If the model's rule leaves every site worse than
+#'     the verdict it gave, the column is set to the best site verdict.}
+#' }
+#' Fallbacks, each giving the study-wide verdict at every site (recorded in
+#' the \code{how} column of \code{attr(result, "geographic_by_site")}): the
+#' object is missing or not an object; the rule is unknown; a latitude rule
+#' has both bounds missing or non-numeric; a sites rule names only sites that
+#' do not exist. One missing bound means open-ended on that side; reversed
+#' bounds are swapped; a missing or invalid \code{outside} defaults to
+#' \code{"possible"}, the conservative choice because \code{"unlikely"} is
+#' what export filters drop; site names are matched ignoring case and
+#' surrounding spaces, and names that match no site are ignored and counted
+#' in \code{n_unknown_sites}.
+#'
+#' The cache key gains a digest of the sites (names and coordinates rounded to
+#' 0.01 degree, order-independent) only when \code{sites} is supplied, so a
+#' cached verdict obtained without sites is never served to a call with sites,
+#' or the reverse. The parsed rule is cached with each taxon, so a cache hit
+#' reproduces \code{llm_geographic_plausibility_site}.
+#'
+#' In \code{TaxaFlag::screen_assignments()}, \code{geography_col} can point at
+#' \code{llm_geographic_plausibility_site} so the screen uses the verdict for
+#' each row's own site.
 #'
 #' @section Pipeline context:
 #' When \code{consensus_posterior_col}/\code{winner_prior_col}/
@@ -495,7 +569,9 @@ review_assignments <- function(input_df,
                                on_unreviewed = c("warn", "error", "ignore"),
                                verbose = TRUE,
                                poor_absolute_fit_col = "poor_absolute_fit",
-                               best_identity_col = "best_identity") {
+                               best_identity_col = "best_identity",
+                               sites = NULL,
+                               site_col = "site") {
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -558,6 +634,11 @@ review_assignments <- function(input_df,
     stop(sprintf("'data_type' must be one of: %s", paste(valid_types, collapse = ", ")),
       call. = FALSE
     )
+  }
+
+  # --- Site-aware geography: validate the sites table (sites path only) ---
+  if (!is.null(sites)) {
+    sites <- .validate_review_sites(sites, input_df, site_col)
   }
 
   # --- Normalise context ---
@@ -843,14 +924,22 @@ review_assignments <- function(input_df,
     # v3: the poor-absolute-fit guideline. v4: the no-reference line is
     # keyed on the reviewed label's own row type, not the call's. v5: the
     # geography guidelines (a)/(b)/(f), ids on taxa lines.
-    .shared <- paste(c(
+    shared_parts <- c(
       "v5", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
         character(1)
       ), sep = "=", collapse = "|")
-    ), collapse = "\u0001")
+    )
+    # The sites change the prompt and the parsed output, so they are part of
+    # the key -- but ONLY when supplied, which leaves the sites = NULL key
+    # byte-identical to a key written before this argument existed. Bump
+    # "geo_sites_v1" whenever the sites wording in the prompt changes.
+    if (!is.null(sites)) {
+      shared_parts <- c(shared_parts, "geo_sites_v1", .review_sites_digest(sites))
+    }
+    .shared <- paste(shared_parts, collapse = "\u0001")
 
     cache_keys <- vapply(seq_len(nrow(taxa_info)), function(i) {
       paste(
@@ -940,7 +1029,7 @@ review_assignments <- function(input_df,
       taxa_batch, ctx, target_group, marker, data_type, use_candidates,
       llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
       batch_label = as.character(b), max_retries = max_retries,
-      prompt_log = prompt_log
+      prompt_log = prompt_log, sites = sites
     )
 
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -980,6 +1069,24 @@ review_assignments <- function(input_df,
     }
   }
   rownames(review_df) <- NULL
+
+  # The parsed range rule per reviewed taxon (sites path only).
+  geo_attr <- if (!is.null(sites)) .geo_rules_table(review_df) else NULL
+  if (!is.null(geo_attr) && verbose) {
+    n_fb <- sum(geo_attr$rule == "fallback")
+    n_unk <- sum(geo_attr$n_unknown_sites)
+    if (n_fb > 0L) {
+      message(sprintf(
+        "  sites: %d of %d taxa had no usable geographic_by_site rule; the study-wide verdict is used at every site.",
+        n_fb, nrow(geo_attr)
+      ))
+    }
+    if (n_unk > 0L) {
+      message(sprintf(
+        "  sites: %d unlikely_sites name(s) matched no site and were ignored.", n_unk
+      ))
+    }
+  }
 
   if (verbose) {
     message(sprintf(
@@ -1030,6 +1137,7 @@ review_assignments <- function(input_df,
     .has_indistinguishable = review_df$has_indistinguishable,
     stringsAsFactors = FALSE
   )
+  if (!is.null(sites)) merge_key$.geo_json <- review_df$review_geo_json
 
   input_df$.row_id <- seq_len(nrow(input_df))
   result <- merge(input_df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
@@ -1037,6 +1145,11 @@ review_assignments <- function(input_df,
   result$.row_id <- NULL
   result$.join_key <- NULL
   rownames(result) <- NULL
+
+  # --- Per-site verdicts (sites path only) -----------------------------------
+  if (!is.null(sites)) {
+    result <- .apply_site_verdicts(result, sites, site_col)
+  }
 
   # --- Deterministic disagreement flag --------------------------------------
   # NOT computed from review_comment -- an LLM is not guaranteed to mention a
@@ -1063,6 +1176,10 @@ review_assignments <- function(input_df,
   result$geographic_disagreement_basis <- basis
   result$.has_unprecedented <- NULL
   result$.has_indistinguishable <- NULL
+  if (!is.null(sites)) {
+    result$.geo_json <- NULL
+    attr(result, "geographic_by_site") <- geo_attr
+  }
 
   # Named by batch label (including any "a"/"b" retry sub-batch splits) --
   # see @return below.
@@ -1626,7 +1743,8 @@ review_assignments <- function(input_df,
 #' Build Review Prompt for LLM
 #' @noRd
 .build_review_prompt <- function(taxa_batch, ctx, target_group, marker,
-                                 data_type, use_candidates = FALSE) {
+                                 data_type, use_candidates = FALSE,
+                                 sites = NULL) {
   # --- Context block ---
   context_lines <- character(0)
   if (!is.null(ctx$geography) && !is.na(ctx$geography)) {
@@ -1646,6 +1764,9 @@ review_assignments <- function(input_df,
   }
 
   context_block <- paste(context_lines, collapse = "\n")
+
+  # --- Study sites (sites path only) ---
+  sites_block <- if (!is.null(sites)) .sites_prompt_block(sites) else NULL
 
   # --- Candidate notation definition (only when reviewing sets) ---
   notation_block <- if (use_candidates) {
@@ -1761,7 +1882,8 @@ review_assignments <- function(input_df,
       '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
       "local occurrence record in the pipeline's occurrence data): absence of ",
       "a citeable record is NOT evidence of absence. Without specific evidence ",
-      "of a population at or near this site, rate geographic_plausibility at ",
+      "of a population at or near this site, rate geographic_plausibility",
+      if (!is.null(sites)) " (and its verdict at every site)" else "", " at ",
       'most "possible", never "likely", and say in review_comment that the ',
       'evidence is thin. Rate it "unlikely" only with POSITIVE evidence that it ',
       "is out of range here -- for example a native range on another continent ",
@@ -1852,6 +1974,9 @@ review_assignments <- function(input_df,
     "You are an expert wildlife biologist, biogeographer, and taxonomist.\n",
     "STUDY CONTEXT:\n", context_block, "\n"
   )
+  if (!is.null(sites_block)) {
+    header_sections <- c(header_sections, "\n", sites_block)
+  }
   if (!is.null(notation_block)) {
     header_sections <- c(header_sections, "\n", notation_block, "\n")
   }
@@ -1867,6 +1992,7 @@ review_assignments <- function(input_df,
     '  "taxon_name": the exact taxon name as provided,\n',
     '  "habitat_plausibility": one of "likely", "possible", "unlikely",\n',
     '  "geographic_plausibility": one of "likely", "possible", "unlikely",\n',
+    if (!is.null(sites)) .geo_field_text else "",
     scope_instruction, "\n",
     '  "contamination_risk": one of "low", "moderate", "high",\n',
     '  "review_alternatives": comma-separated string of plausible alternative taxa ',
@@ -1880,6 +2006,7 @@ review_assignments <- function(input_df,
     "- ", contaminant_guideline, "\n",
     '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
     '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
+    if (!is.null(sites)) .geo_guideline_text else "",
     if (!is.null(unprecedented_guideline)) unprecedented_guideline else "",
     if (!is.null(indistinguishable_guideline)) indistinguishable_guideline else "",
     if (!is.null(call_rank_guideline)) call_rank_guideline else "",
@@ -1894,16 +2021,33 @@ review_assignments <- function(input_df,
     "EXAMPLE OUTPUT FORMAT:\n",
     "[\n",
     '  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
-    '"geographic_plausibility": "likely", "scope_plausibility": "likely", ',
+    '"geographic_plausibility": "likely", ',
+    if (!is.null(sites)) '"geographic_by_site": {"rule": "all"}, ' else "",
+    '"scope_plausibility": "likely", ',
     '"contamination_risk": "low", "review_alternatives": null, ',
     '"review_lower_hypotheses": null, "review_confidence": "high", ',
     '"review_comment": null},\n',
     '  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", ',
-    '"geographic_plausibility": "likely", "scope_plausibility": "unlikely", ',
+    '"geographic_plausibility": "likely", ',
+    if (!is.null(sites)) '"geographic_by_site": {"rule": "all"}, ' else "",
+    '"scope_plausibility": "unlikely", ',
     '"contamination_risk": "high", "review_alternatives": null, ',
     '"review_lower_hypotheses": null, "review_confidence": "high", ',
-    '"review_comment": "', example_comment, '"}\n',
-    "]\n\n",
+    '"review_comment": "', example_comment, '"}',
+    if (!is.null(sites)) {
+      paste0(
+        ',\n  {"id": "T3", "taxon_name": "Example tropicus", ',
+        '"habitat_plausibility": "likely", "geographic_plausibility": "likely", ',
+        '"geographic_by_site": {"rule": "latitude", "lat_min": 20.5, "lat_max": 30.0, ',
+        '"outside": "unlikely"}, "scope_plausibility": "likely", ',
+        '"contamination_risk": "low", "review_alternatives": null, ',
+        '"review_lower_hypotheses": null, "review_confidence": "moderate", ',
+        '"review_comment": "range ends at 30 N"}'
+      )
+    } else {
+      ""
+    },
+    "\n]\n\n",
     "TAXA TO REVIEW:\n",
     taxa_block
   )
@@ -1928,10 +2072,12 @@ review_assignments <- function(input_df,
                                      data_type, use_candidates, llm_fn,
                                      max_tokens, taxon_rank_col, verbose,
                                      pause_seconds, batch_label, max_retries,
-                                     depth = 0L, prompt_log = NULL) {
+                                     depth = 0L, prompt_log = NULL,
+                                     sites = NULL) {
   prompt <- .build_review_prompt(
     taxa_batch, ctx, target_group, marker,
-    data_type, use_candidates
+    data_type, use_candidates,
+    sites = sites
   )
 
   # Recorded by reference (an environment, not a data-frame attribute) so it
@@ -1956,7 +2102,8 @@ review_assignments <- function(input_df,
     ), call. = FALSE)
     result <- .parse_review_response(
       NULL, taxa_batch, target_group,
-      taxon_rank_col, use_candidates
+      taxon_rank_col, use_candidates,
+      site_names = sites$site
     )
     attr(result, "status") <- NULL
     attr(result, "pending_warnings") <- NULL
@@ -1965,7 +2112,8 @@ review_assignments <- function(input_df,
 
   parsed <- .parse_review_response(
     raw, taxa_batch, target_group,
-    taxon_rank_col, use_candidates
+    taxon_rank_col, use_candidates,
+    site_names = sites$site
   )
   status <- attr(parsed, "status")
   pending <- attr(parsed, "pending_warnings")
@@ -1989,13 +2137,15 @@ review_assignments <- function(input_df,
     left_result <- .review_batch_with_retry(
       left, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
-      paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log
+      paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log,
+      sites = sites
     )
     Sys.sleep(pause_seconds)
     right_result <- .review_batch_with_retry(
       right, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
-      paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log
+      paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log,
+      sites = sites
     )
     # Each half has already re-asked for its own omissions at its leaf, so
     # the residue attributes just need unioning -- rbind() would drop them.
@@ -2045,7 +2195,8 @@ review_assignments <- function(input_df,
       Sys.sleep(pause_seconds)
       reask_label <- paste0(batch_label, "r", attempt, if (singletons) paste0("s", g) else "")
       reask_prompt <- .build_review_prompt(
-        sub_batch, ctx, target_group, marker, data_type, use_candidates
+        sub_batch, ctx, target_group, marker, data_type, use_candidates,
+        sites = sites
       )
       if (!is.null(prompt_log)) assign(reask_label, reask_prompt, envir = prompt_log)
 
@@ -2074,7 +2225,8 @@ review_assignments <- function(input_df,
       }
 
       reask <- .parse_review_response(
-        reask_raw, sub_batch, target_group, taxon_rank_col, use_candidates
+        reask_raw, sub_batch, target_group, taxon_rank_col, use_candidates,
+        site_names = sites$site
       )
       rec <- setdiff(sub_batch$taxon_name, attr(reask, "missing_taxa"))
       if (length(rec) > 0L) {
@@ -2152,13 +2304,15 @@ review_assignments <- function(input_df,
 #' can decide whether to retry with a smaller batch before emitting anything.
 #' @noRd
 .parse_review_response <- function(response, taxa_batch, target_group,
-                                   taxon_rank_col, use_candidates = FALSE) {
+                                   taxon_rank_col, use_candidates = FALSE,
+                                   site_names = NULL) {
   expected_taxa <- taxa_batch$taxon_name
+  with_geo <- !is.null(site_names)
   # names = expected_taxa by default (the whole-batch NA-fill case); also
   # reused below for the narrower "LLM omitted these specific taxa" case, so
   # both NA-filled shapes are built from one place.
   make_default <- function(names = expected_taxa) {
-    data.frame(
+    out <- data.frame(
       taxon_name = names,
       habitat_plausibility = NA_character_,
       geographic_plausibility = NA_character_,
@@ -2170,6 +2324,8 @@ review_assignments <- function(input_df,
       review_comment = NA_character_,
       stringsAsFactors = FALSE
     )
+    if (with_geo) out$review_geo_json <- NA_character_
+    out
   }
 
   .with_status <- function(result, status, pending_warnings = character(0),
@@ -2282,6 +2438,12 @@ review_assignments <- function(input_df,
     review_comment = .safe_col(parsed, "review_comment"),
     stringsAsFactors = FALSE
   )
+  if (with_geo) {
+    g <- if ("geographic_by_site" %in% names(parsed)) parsed$geographic_by_site else NULL
+    result$review_geo_json <- vapply(seq_len(nrow(result)), function(i) {
+      .geo_spec_to_json(.normalise_geo_obj(.geo_obj_at(g, i), site_names))
+    }, character(1L))
+  }
 
   # An echoed id prefix ("[T3] Cottus") is part of the prompt's own notation,
   # not a different name: drop it before any matching, silently.
@@ -2447,4 +2609,297 @@ review_assignments <- function(input_df,
   }
 
   NULL
+}
+
+
+# ==============================================================================
+# Site-aware geography (active only when review_assignments(sites = ) is given)
+# ==============================================================================
+
+# Verdict order, best first.
+.geo_levels <- c("likely", "possible", "unlikely")
+
+# The prompt's geographic_by_site field. Wording changes must bump
+# "geo_sites_v1" in the cache key (see review_assignments()).
+.geo_field_text <- paste0(
+  '  "geographic_by_site": where in the STUDY SITES above this taxon is ',
+  "geographically plausible, as ONE object:\n",
+  '     {"rule": "all"}  -- the verdict is the same at every site;\n',
+  '     {"rule": "latitude", "lat_min": <number or null>, "lat_max": <number or null>, ',
+  '"outside": "unlikely" or "possible"}  -- plausible only between lat_min and lat_max ',
+  '(decimal degrees; null = no limit on that side); sites outside get the "outside" ',
+  "verdict. Use this when the limit is a coastal range limit;\n",
+  '     {"rule": "sites", "unlikely_sites": ["<site name copied exactly>", ...]}  -- ',
+  "list only the sites where it is unlikely, when latitude does not describe the pattern.\n",
+  '     Inside the stated range, the verdict is your "geographic_plausibility" for the ',
+  'taxon. "geographic_plausibility" itself is the BEST verdict over all sites.\n'
+)
+
+.geo_guideline_text <- paste0(
+  "- Judge geography at each site separately: a taxon can be plausible at some sites ",
+  "and unlikely at others. For a genus or family, rate the group (is ANY member ",
+  "plausible there?).\n"
+)
+
+#' STUDY SITES block of the prompt, sorted south to north
+#' @noRd
+.sites_prompt_block <- function(sites) {
+  s <- sites[order(sites$lat, sites$site), , drop = FALSE]
+  paste0(
+    "STUDY SITES (name, latitude, longitude; sorted south to north):\n",
+    paste(sprintf("  %s (%.2f, %.2f)", s$site, s$lat, s$lon), collapse = "\n"),
+    "\n"
+  )
+}
+
+#' Order-independent digest of the sites table, for the cache key
+#' @noRd
+.review_sites_digest <- function(sites) {
+  lines <- sort(sprintf("%s|%.2f|%.2f", sites$site, sites$lat, sites$lon),
+    method = "radix"
+  )
+  .review_cache_hash(paste(lines, collapse = "\n"))
+}
+
+#' Validate the sites table; return it reduced to site/lat/lon
+#' @noRd
+.validate_review_sites <- function(sites, input_df, site_col) {
+  if (!is.data.frame(sites)) {
+    stop("'sites' must be a data frame with columns site, lat, lon, or NULL.", call. = FALSE)
+  }
+  miss <- setdiff(c("site", "lat", "lon"), names(sites))
+  if (length(miss) > 0L) {
+    stop(sprintf("'sites' is missing column(s): %s.", paste(miss, collapse = ", ")), call. = FALSE)
+  }
+  if (nrow(sites) == 0L) stop("'sites' has no rows.", call. = FALSE)
+  if (!is.numeric(sites$lat) || !is.numeric(sites$lon)) {
+    stop("'sites$lat' and 'sites$lon' must be numeric.", call. = FALSE)
+  }
+  if (anyNA(sites$lat) || anyNA(sites$lon) ||
+    any(!is.finite(sites$lat)) || any(!is.finite(sites$lon))) {
+    stop("'sites$lat' and 'sites$lon' must not contain NA or non-finite values.", call. = FALSE)
+  }
+  if (any(abs(sites$lat) > 90) || any(abs(sites$lon) > 180)) {
+    stop("'sites' has latitude outside [-90, 90] or longitude outside [-180, 180].", call. = FALSE)
+  }
+  nm <- as.character(sites$site)
+  if (anyNA(nm) || any(!nzchar(trimws(nm)))) {
+    stop("'sites$site' must not contain NA or empty names.", call. = FALSE)
+  }
+  if (anyDuplicated(nm)) {
+    stop(sprintf(
+      "'sites$site' must be unique; duplicated: %s.",
+      paste(unique(nm[duplicated(nm)]), collapse = ", ")
+    ), call. = FALSE)
+  }
+  if (!is.character(site_col) || length(site_col) != 1L || is.na(site_col)) {
+    stop("'site_col' must be a single character string.", call. = FALSE)
+  }
+  if (!site_col %in% names(input_df)) {
+    stop(sprintf("site_col '%s' not found in input_df.", site_col), call. = FALSE)
+  }
+  vals <- unique(as.character(input_df[[site_col]]))
+  bad <- vals[!is.na(vals) & !vals %in% nm]
+  if (length(bad) > 0L) {
+    warning(sprintf(
+      "%d value(s) of input_df$%s are not in sites$site and get the study-wide geographic verdict: %s",
+      length(bad), site_col, paste(utils::head(bad, 10L), collapse = ", ")
+    ), call. = FALSE)
+  }
+  data.frame(site = nm, lat = as.numeric(sites$lat), lon = as.numeric(sites$lon),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' The i-th geographic_by_site object of a parsed response, as a plain list
+#'
+#' jsonlite (simplifyDataFrame) turns an array of objects carrying a nested
+#' object into a data frame with a nested data-frame column; a malformed field
+#' can instead leave a list or a character vector. NULL means "no object".
+#' @noRd
+.geo_obj_at <- function(g, i) {
+  if (is.null(g)) {
+    return(NULL)
+  }
+  if (is.data.frame(g)) {
+    if (i > nrow(g)) {
+      return(NULL)
+    }
+    return(as.list(g[i, , drop = FALSE]))
+  }
+  if (is.list(g) && i <= length(g) && is.list(g[[i]])) {
+    return(g[[i]])
+  }
+  NULL
+}
+
+#' Normalise one geographic_by_site object into a rule spec
+#'
+#' Fallbacks (rule "fallback", with the reason in \code{how}) give the
+#' study-wide verdict at every site.
+#' @noRd
+.normalise_geo_obj <- function(o, site_names) {
+  fb <- function(how, n_unknown = 0L) {
+    list(
+      rule = "fallback", lat_min = NA_real_, lat_max = NA_real_,
+      outside = NA_character_, unlikely_sites = character(0),
+      how = how, n_unknown = as.integer(n_unknown)
+    )
+  }
+  one <- function(x) if (length(x) >= 1L) x[[1L]] else NA
+  if (!is.list(o)) {
+    return(fb("missing"))
+  }
+  rule <- tolower(trimws(as.character(one(o$rule))))
+  if (is.na(rule) || !nzchar(rule)) {
+    return(fb("missing"))
+  }
+  if (rule == "all") {
+    spec <- fb("all")
+    spec$rule <- "all"
+    return(spec)
+  }
+  if (rule == "latitude") {
+    num <- function(x) {
+      v <- suppressWarnings(as.numeric(one(x)))
+      if (is.na(v) || abs(v) > 90) NA_real_ else v
+    }
+    lo <- num(o$lat_min)
+    hi <- num(o$lat_max)
+    if (is.na(lo) && is.na(hi)) {
+      return(fb("both_bounds_NA"))
+    }
+    how <- "latitude"
+    if (!is.na(lo) && !is.na(hi) && lo > hi) {
+      tmp <- lo
+      lo <- hi
+      hi <- tmp
+      how <- "latitude_swapped"
+    }
+    out <- tolower(trimws(as.character(one(o$outside))))
+    if (is.na(out) || !out %in% c("unlikely", "possible")) out <- "possible"
+    return(list(
+      rule = "latitude", lat_min = lo, lat_max = hi, outside = out,
+      unlikely_sites = character(0), how = how, n_unknown = 0L
+    ))
+  }
+  if (rule == "sites") {
+    u <- trimws(as.character(unlist(o$unlikely_sites, use.names = FALSE)))
+    u <- unique(u[!is.na(u) & nzchar(u)])
+    pos <- match(tolower(u), tolower(trimws(site_names)))
+    n_unknown <- sum(is.na(pos))
+    known <- unique(site_names[pos[!is.na(pos)]])
+    if (length(u) > 0L && length(known) == 0L) {
+      return(fb("all_sites_unknown", n_unknown))
+    }
+    return(list(
+      rule = "sites", lat_min = NA_real_, lat_max = NA_real_,
+      outside = NA_character_, unlikely_sites = known,
+      how = if (n_unknown > 0L) "sites_unknown_ignored" else "sites",
+      n_unknown = as.integer(n_unknown)
+    ))
+  }
+  fb("unknown_rule")
+}
+
+#' @noRd
+.geo_spec_to_json <- function(spec) {
+  as.character(jsonlite::toJSON(spec,
+    auto_unbox = TRUE, null = "null", na = "null", digits = NA
+  ))
+}
+
+#' @noRd
+.geo_spec_from_json <- function(json) {
+  if (is.null(json) || is.na(json)) {
+    return(NULL)
+  }
+  x <- tryCatch(jsonlite::fromJSON(json, simplifyVector = FALSE), error = function(e) NULL)
+  if (!is.list(x)) {
+    return(NULL)
+  }
+  num <- function(v) if (is.null(v)) NA_real_ else as.numeric(v)
+  list(
+    rule = x$rule %||% "fallback",
+    lat_min = num(x$lat_min), lat_max = num(x$lat_max),
+    outside = x$outside %||% NA_character_,
+    unlikely_sites = as.character(unlist(x$unlikely_sites, use.names = FALSE)),
+    how = x$how %||% NA_character_,
+    n_unknown = as.integer(x$n_unknown %||% 0L)
+  )
+}
+
+#' Per-site verdicts for one rule spec and one study-wide (inside-range) verdict
+#'
+#' A site never gets a verdict better than the taxon's own
+#' \code{geographic_plausibility}.
+#' @noRd
+.geo_site_verdicts <- function(spec, base, sites) {
+  n <- nrow(sites)
+  if (is.na(base) || !base %in% .geo_levels || is.null(spec)) {
+    return(rep(base, n))
+  }
+  v <- rep(base, n)
+  if (identical(spec$rule, "latitude")) {
+    out <- (!is.na(spec$lat_min) & sites$lat < spec$lat_min) |
+      (!is.na(spec$lat_max) & sites$lat > spec$lat_max)
+    v[out] <- spec$outside
+  } else if (identical(spec$rule, "sites")) {
+    v[sites$site %in% spec$unlikely_sites] <- "unlikely"
+  }
+  .geo_levels[pmax(match(v, .geo_levels), match(base, .geo_levels))]
+}
+
+#' One row per reviewed taxon with its parsed rule (attr "geographic_by_site")
+#' @noRd
+.geo_rules_table <- function(review_df) {
+  ok <- which(!is.na(review_df$review_geo_json))
+  specs <- lapply(review_df$review_geo_json[ok], .geo_spec_from_json)
+  data.frame(
+    taxon = review_df$taxon_name[ok],
+    rule = vapply(specs, function(z) as.character(z$rule), character(1L)),
+    lat_min = vapply(specs, function(z) z$lat_min, numeric(1L)),
+    lat_max = vapply(specs, function(z) z$lat_max, numeric(1L)),
+    outside = vapply(specs, function(z) as.character(z$outside), character(1L)),
+    unlikely_sites = vapply(specs, function(z) paste(z$unlikely_sites, collapse = "; "), character(1L)),
+    n_unknown_sites = vapply(specs, function(z) z$n_unknown, integer(1L)),
+    how = vapply(specs, function(z) as.character(z$how), character(1L)),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Add llm_geographic_plausibility_site to the joined result
+#'
+#' Each row takes the verdict of its own site; a row whose site is NA or not in
+#' the table takes the study-wide verdict. The study-wide column is the BEST
+#' verdict over the sites, so it is lowered when the rule leaves every site
+#' worse than the verdict the model gave.
+#' @noRd
+.apply_site_verdicts <- function(result, sites, site_col) {
+  study <- result$llm_geographic_plausibility
+  per_site <- study
+  gj <- result$.geo_json
+  idx <- match(as.character(result[[site_col]]), sites$site)
+  combo <- paste(gj, study, sep = "\u0001")
+  for (u in unique(combo[!is.na(gj)])) {
+    rows <- which(combo == u & !is.na(gj))
+    spec <- .geo_spec_from_json(gj[rows[1L]])
+    base <- study[rows[1L]]
+    vec <- .geo_site_verdicts(spec, base, sites)
+    best <- if (all(is.na(vec))) NA_character_ else .geo_levels[min(match(vec, .geo_levels))]
+    sv <- rep(best, length(rows))
+    ok <- !is.na(idx[rows])
+    sv[ok] <- vec[idx[rows][ok]]
+    per_site[rows] <- sv
+    study[rows] <- best
+  }
+  result$llm_geographic_plausibility <- study
+  pos <- match("llm_geographic_plausibility", names(result))
+  result$llm_geographic_plausibility_site <- per_site
+  nm <- names(result)
+  nm <- append(setdiff(nm, "llm_geographic_plausibility_site"),
+    "llm_geographic_plausibility_site",
+    after = pos
+  )
+  result[, nm, drop = FALSE]
 }
