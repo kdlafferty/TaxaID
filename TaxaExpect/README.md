@@ -22,26 +22,26 @@ site and let the posterior weigh it against the match score. TaxaExpect
 estimates those priors from occurrence records.
 
 The prior is theta, a compositional share: the expected relative share
-of a species at a site, P(a random legitimate detection = species X),
-for example (fish A records) / (all fish records). Shares sum to 1
-across the taxa in a model, which makes theta different from the
-occurrence probability an occupancy model estimates (see Shared
+of a species reports at a site, P(a random legitimate detection =
+species X), for example (fish A records) / (all fish records). Shares
+sum to 1 across similar taxa in a model, which makes theta different
+from the occurrence probability an occupancy model estimates (see Shared
 detection effort, below, for the formal definition). In practice a
 species with several nearby records has a theta orders of magnitude
 higher than a similar species from another continent, and that
 difference is enough to rescue species-level resolution that defensive
 upranking would otherwise discard.
 
-The records usually come from GBIF (Global Biodiversity Information
-Facility; GBIF Secretariat, Copenhagen, Denmark) through TaxaFetch,
-which also handles other providers and user-supplied tables. The
-estimate is spatial: each species' theta is its kernel-weighted share of
-the related records around the query site, with weight decaying smoothly
-with distance and, optionally, with a covariate such as depth, altitude
-or temperature, and stratified by habitat. Lightly sampled sites shrink
-toward the surrounding region's composition instead of returning
-nothing. The kernel bandwidth and the regional back-off are chosen from
-the data by leave-one-block-out composition prediction
+The records I use usually come from GBIF (Global Biodiversity
+Information Facility; GBIF Secretariat, Copenhagen, Denmark) through
+TaxaFetch, which also handles other providers and user-supplied tables.
+The estimate is spatial: each species' theta is its kernel-weighted
+share of the related records around the query site, with weight decaying
+smoothly with distance and, optionally, with a covariate such as depth,
+altitude or temperature, and stratified by habitat. Lightly sampled
+sites shrink toward the surrounding region's composition instead of
+returning nothing. The kernel bandwidth and the regional back-off are
+chosen from the data by leave-one-block-out composition prediction
 (`calibrate_kernel_bandwidth()`), not hand-set. Taxa never reported in
 the study area are not treated as impossible: TaxaExpect prices a dark
 diversity prior for them from a Good-Turing/Chao-anchored
@@ -89,7 +89,7 @@ as an estimate of abundance (see the pooling discussion below).
 
 ### Shared detection effort
 
-TaxaExpect models relative abundance: the probability that a randomly
+TaxaExpect models relative reporting: the probability that a randomly
 selected observation/report at a site belongs to a given taxon. The
 denominator `n_total_at_site` is the total count of all "shared"
 observations at a site and serves as the shared effort measure for every
@@ -123,19 +123,18 @@ denominator regardless of detection process, with no warning and no
 error. Grouping must be done by 1) manually choosing similar taxa that
 are sampled in similar ways, or 2) building separate models for each
 survey type and passing the appropriate priors to TaxaAssign for the
-relevant taxonomic hypotheses. Fine grouping reduces the effective
-sample size and widens the standard deviations of the estimate.
+relevant taxonomic hypotheses. Although grouping improves accuracy in
+the prior, overly fine grouping reduces the effective sample size and
+widens the standard deviations of the estimate.
 
-In practice there is a trade-off between the convenience of pooling and
-the accuracy of the shares. The consensus in TaxaAssign is less
-sensitive than the shares themselves: the posterior is renormalized
-within each observation, so a pooling choice that rescales every
-candidate for an observation by the same factor leaves the consensus
-unchanged. Pooling matters when an observation's candidates come from
+Although the priors may not accurately reflect relative abundances among
+taxa, the consensus in TaxaAssign is less sensitive because the
+posterior is renormalized within each observation (which are usually
+related). Inaccuracies remain when an observation's candidates come from
 different detection processes (a marine and a terrestrial candidate for
 the same read), and wherever theta is read as an absolute share rather
-than compared within an observation. Avoid pooling highly dissimilar
-taxa sampled by highly dissimilar methods.
+than compared within an observation. If possible, avoid pooling highly
+dissimilar taxa sampled by highly dissimilar methods.
 
 ## Installation
 
@@ -204,18 +203,19 @@ Calibration:
 Prior estimation:
 
 -   `estimate_kernel_priors()`: site-centered kernel estimation of
-    `kernel_estimated` priors (no grid, no model fit)
+    `kernel_estimated` priors (no grid required, no model fit)
 -   `estimate_kernel_priors_from_counts()`: the same estimator and the
     same prior object from GBIF record counts in distance bands
-    (`TaxaFetch::fetch_gbif_occurrence_counts()`) instead of records --
-    the counts path, for pools too large to download; point records from
-    other sources join the fit via `extra_occurrences`. No record-level
-    habitat, covariate kernel or bandwidth calibration. One site per
-    call: the bands are centred on a single site, so each site needs its
-    own count fetch and fit; the records path downloads a polygon once
-    and serves every site inside it (`estimate_kernel_priors()` per
-    site, `TaxaAssign::combine_multisite_priors()` across them). Under
-    the default habitat mode a taxon of any habitat enters a site's
+    (`TaxaFetch::fetch_gbif_occurrence_counts()`) instead of records.
+    This use of aggregated data may save time when individual records
+    are too numerous to download. Both grouped and point records can be
+    combined via `extra_occurrences`. No record-level habitat, covariate
+    kernel or bandwidth calibration. One site per call: the bands are
+    centered on a single site, so each site needs its own count fetch
+    and fit; the records path downloads a polygon once and serves every
+    site inside it (`estimate_kernel_priors()` per site,
+    `TaxaAssign::combine_multisite_priors()` across them). Under the
+    default habitat mode a taxon of any habitat enters a site's
     composition if the records put it within the bands, so a freshwater
     species can carry a small prior at a marine site: the prior is not a
     habitat filter and should not be read as one. Pass
@@ -239,8 +239,8 @@ Prior estimation:
     their iNaturalist range polygon, sharing the same evidence-mixture
     framework as the other generators
 -   `generate_invasive_watch_evidence()`: evidence rows for a
-    user-supplied invasive/nonindigenous watch list, at a flat
-    caller-chosen weight and confidence
+    user-supplied invasive/nonindigenous watch list, at a flat chosen
+    weight and confidence
 -   `generate_uncertain_habitat_evidence()`: presence evidence for taxa
     whose nearby records all have unresolved habitat, so they are priced
     instead of dropped by the kernel estimator's habitat filter

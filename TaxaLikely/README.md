@@ -33,49 +33,47 @@ applies it to convert per-observation scores into likelihoods. It
 supports three hypothesis types:
 
 -   H1 (Known species): target taxon is in the reference database
--   H2 (Unreferenced species): a congener absent from the
-    reference
--   H3 (Unreferenced genus): a taxon from a different genus
-    entirely
+-   H2 (Unreferenced species): a congener absent from the reference
+-   H3 (Unreferenced genus): a taxon from a different genus entirely
 
 ### How TaxaLikely compares with softmax and Anacapa/BLCA
 
-Softmax over match scores (`assign_scores(score_type =
-"similarity_softmax")`) and Anacapa/BLCA (Gao et al. 2017,
-doi:10.1186/s12859-017-1670-4; Curd et al. 2019,
-doi:10.1111/2041-210X.13214) improve on raw percent identity because
+Softmax over match scores
+(`assign_scores(score_type = "similarity_softmax")`) and Anacapa/BLCA
+(Gao et al. 2017, <doi:10.1186/s12859-017-1670-4>; Curd et al. 2019,
+<doi:10.1111/2041-210X.13214>) improve on raw percent identity because
 they give graded confidence instead of a hard cutoff, and Anacapa also
 curates its reference library and reports bootstrap confidence. But
-neither learns how match scores behave for a given marker: BLCA treats
-a normalised alignment score as its likelihood, with no error model,
-and softmax uses a sharpness constant the user chooses. Neither models
+neither learns how match scores behave for a given marker: BLCA treats a
+normalized alignment score as its likelihood, with no error model, and
+softmax uses a sharpness constant the user chooses. Neither models
 species missing from the reference library: BLCA considers only
 reference hits, and softmax's unreferenced hypotheses borrow the scores
 of their referenced relatives.
 
-The words "prior" and "posterior" also mean different things. BLCA
-calls each reference hit's similarity-based weight a "Bayesian
-posterior probability", but that weight is a normalised alignment
-score, not a posterior in the sense used by TaxaAssign (likelihood x
-prior, normalised over all hypotheses). BLCA's flat prior is meant to
-keep commonly sequenced taxa from dominating the assignment. TaxaID
-accounts for that bias separately, by scoring one hypothesis per taxon
-rather than one per reference sequence: `evaluate_likelihoods()`
-collapses a taxon's reference matches to their median score before any
-likelihood is computed, so a taxon with hundreds of reference
-sequences carries no more weight than one with a single sequence. Its
-prior (from TaxaExpect) is a different parameter altogether: the
-plausibility of each taxon at the site, entered into Bayes' theorem.
+The words "prior" and "posterior" also mean different things. BLCA calls
+each reference hit's similarity-based weight a "Bayesian posterior
+probability", but that weight is a normalised alignment score, not a
+posterior in the sense used by TaxaAssign (likelihood x prior,
+normalised over all hypotheses). BLCA's flat prior is meant to keep
+commonly sequenced taxa from dominating the assignment. TaxaID accounts
+for that bias separately, by scoring one hypothesis per taxon rather
+than one per reference sequence: `evaluate_likelihoods()` collapses a
+taxon's reference matches to their median score before any likelihood is
+computed, so a taxon with hundreds of reference sequences carries no
+more weight than one with a single sequence. Its prior (from TaxaExpect)
+is a different parameter altogether: the plausibility of each taxon at
+the site, entered into Bayes' theorem.
 
 TaxaLikely learns marker-specific score distributions from
 reference-vs-reference pairs and models unreferenced congeners (H2) and
-genera (H3), at the cost of training time, memory and more moving
-parts. No head-to-head benchmark against Anacapa/BLCA has been run. On
-one benchmark (Great Lakes 12S), softmax was less precise than the
-trained model at every sharpness tried.
+genera (H3), at the cost of training time, memory and more moving parts.
+No head-to-head benchmark against Anacapa/BLCA has been run. On one
+benchmark (Great Lakes 12S), softmax was less precise than the trained
+model at every sharpness tried.
 
-| | % identity cutoff | Softmax | Anacapa/BLCA | TaxaLikely |
-|---|---|---|---|---|
+|   | \% identity cutoff | Softmax | Anacapa/BLCA | TaxaLikely |
+|---------------|---------------|---------------|---------------|---------------|
 | Graded confidence | no | yes | yes (bootstrap) | yes |
 | Learned per marker | no | no | no | yes |
 | Missing species | no | borrowed scores | no | modelled (H2/H3) |
@@ -144,13 +142,13 @@ ref <- read_crabs_output(
 )
 ```
 
-CRABS + TaxaLikely are complementary. CRABS excels at bulk
-retrieval, length filtering, primer trimming, and exact-sequence
-dereplication at database-build time. Neither CRABS nor TaxaLikely
-catches mislabeled sequences where the species annotation is wrong but
-the sequence itself is valid: these produce within-species distances
-that look like between-species distances and inflate false-positive
-rates. Screening for this lives in TaxaMatch, not TaxaLikely:
+CRABS + TaxaLikely are complementary. CRABS excels at bulk retrieval,
+length filtering, primer trimming, and exact-sequence dereplication at
+database-build time. Neither CRABS nor TaxaLikely catches mislabeled
+sequences where the species annotation is wrong but the sequence itself
+is valid: these produce within-species distances that look like
+between-species distances and inflate false-positive rates. Screening
+for this lives in TaxaMatch, not TaxaLikely:
 
 ``` r
 ref_matrix <- build_sequence_matrix(ref)
@@ -294,11 +292,11 @@ dry$species_dropped  # which species each choice removes, by name
 estimate_sequence_matrix_size(dry$sequences, max_seqs_per_taxon = 20L)
 ```
 
-The dry run downloads the metadata the real run needs and caches it,
-so running it first costs no extra NCBI requests; the real run then
-downloads sequences only for what the caps keep. The prediction is
-exact about how many pairs the alignment can produce and estimates how
-many survive the distance filter; each `build_sequence_matrix()` result
+The dry run downloads the metadata the real run needs and caches it, so
+running it first costs no extra NCBI requests; the real run then
+downloads sequences only for what the caps keep. The prediction is exact
+about how many pairs the alignment can produce and estimates how many
+survive the distance filter; each `build_sequence_matrix()` result
 records what it measured (`attr(x, "size_calibration")`), and passing
 that to `estimate_sequence_matrix_size(calibration = )` sizes a similar
 reference set from measured rather than default rates.
@@ -351,8 +349,8 @@ Reference acquisition and export (DNA): - `subset_local_database()`:
 stream a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB,
 Greengenes2) and extract sequences for a user-supplied taxon list;
 memory scales with matches, not database size -
-`write_reference_fasta()`: export any `reference_df` to FASTA +
-optional taxonomy TSV (round-trippable with `read_reference_fasta()`) -
+`write_reference_fasta()`: export any `reference_df` to FASTA + optional
+taxonomy TSV (round-trippable with `read_reference_fasta()`) -
 `read_crabs_output()`: load a CRABS internal-format database (taxonomy
 embedded; no separate file needed) - `fetch_ncbi_reference_sequences()`:
 download from NCBI by taxon + barcode marker; `taxa_lineage` resolves
@@ -361,37 +359,36 @@ another lineage's sequences. The cache key encodes the taxid, so
 adopting `taxa_lineage` on an existing project refetches that project's
 references once. `max_per_species` and `max_per_genus` (default 500 per
 genus) are applied to cached metadata, so changing them refetches
-nothing already downloaded; `dry_run = TRUE` reports what each choice
-of caps would cost before any sequence is downloaded (see "Sizing the
-Reference Set to Memory" below) -
-`fetch_bold_reference_sequences()`: download from BOLD Systems by taxon
-name, the BOLD analog of `fetch_ncbi_reference_sequences()` -
-`read_reference_fasta()`: load local FASTA + data-frame taxonomy (or
-`taxonomy_file` TSV for QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()`:
-in-silico PCR, extract just the amplicon region from an over-length
-sequence (e.g. a full mitogenome swept up by an NCBI fetch) via primer
-matching, instead of discarding it outright; run between
-`fetch_ncbi_reference_sequences()`/ `read_reference_fasta()` and
-`build_sequence_matrix()`. Primer pairs come from
-`TaxaTools::barcode_primer_defaults`: see `?barcode_primer_defaults`
-(in TaxaTools) for the full list of verified primer sets and their known
-limitations (e.g. `coi-folmer`'s documented vertebrate mismatches,
-`coi-leray`'s reduced discriminatory power relative to full-length COI)
-before trusting a result on real data.
+nothing already downloaded; `dry_run = TRUE` reports what each choice of
+caps would cost before any sequence is downloaded (see "Sizing the
+Reference Set to Memory" below) - `fetch_bold_reference_sequences()`:
+download from BOLD Systems by taxon name, the BOLD analog of
+`fetch_ncbi_reference_sequences()` - `read_reference_fasta()`: load
+local FASTA + data-frame taxonomy (or `taxonomy_file` TSV for
+QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()`: in-silico PCR, extract
+just the amplicon region from an over-length sequence (e.g. a full
+mitogenome swept up by an NCBI fetch) via primer matching, instead of
+discarding it outright; run between `fetch_ncbi_reference_sequences()`/
+`read_reference_fasta()` and `build_sequence_matrix()`. Primer pairs
+come from `TaxaTools::barcode_primer_defaults`: see
+`?barcode_primer_defaults` (in TaxaTools) for the full list of verified
+primer sets and their known limitations (e.g. `coi-folmer`'s documented
+vertebrate mismatches, `coi-leray`'s reduced discriminatory power
+relative to full-length COI) before trusting a result on real data.
 
-Model training (DNA): - `build_sequence_matrix()`: pairwise
-distance matrix via DECIPHER; required for `train_likelihood_model()`
-(screen for mislabeled references via TaxaMatch first: see "Detecting
-Mislabeled References" below); checks its predicted memory before
-aligning and stops, naming caps that fit, when it would not fit -
+Model training (DNA): - `build_sequence_matrix()`: pairwise distance
+matrix via DECIPHER; required for `train_likelihood_model()` (screen for
+mislabeled references via TaxaMatch first: see "Detecting Mislabeled
+References" below); checks its predicted memory before aligning and
+stops, naming caps that fit, when it would not fit -
 `estimate_sequence_matrix_size()`: predict that memory for a grid of
 `max_per_species` and `max_per_genus` values, and name the species each
-choice removes - `train_likelihood_model()`: fit
-hierarchical Bayesian model (pair-coverage floor and empirical Bayes
-shrinkage on by default; see "Reference Coverage Quality Filtering" and
-"Statistical Design" below) - `compute_rank_thresholds()`: derive
-marker-specific percent-identity thresholds at each taxonomic rank from a
-pairwise distance matrix, using per-rank Youden's J
+choice removes - `train_likelihood_model()`: fit hierarchical Bayesian
+model (pair-coverage floor and empirical Bayes shrinkage on by default;
+see "Reference Coverage Quality Filtering" and "Statistical Design"
+below) - `compute_rank_thresholds()`: derive marker-specific
+percent-identity thresholds at each taxonomic rank from a pairwise
+distance matrix, using per-rank Youden's J
 
 Inference: - `calibrate_query_noise()`: correct H1's mean for
 query-vs-reference technical noise invisible to reference-vs-reference
@@ -401,41 +398,39 @@ training pairs; optional `evidence_col` also establishes a baseline for
 trained model - `filter_top_hypotheses()`: keep finest-rank candidates
 per query - `unreferenced_candidates()`: expand a consensus assignment
 with H2/H3 placeholder rows (no model required; used in no-score and
-acoustic/image pathways) - `detect_suppressed_candidates()`:
-detect whether an upstream tool suppressed lower-scoring candidate rows
-in a match object - `restore_suppressed_candidates()`: check whether a
-top candidate's apparent win is real or an artifact of upstream
-suppression, and add back same-genus congeners as
-`suppressed_candidate` rows so downstream consensus can back off from a
-false-precision call - `assign_scores()`: set `score_likelihood`
-values, uniform (`"none"`), passed through unchanged (`"direct"`, for
-use after `restore_suppressed_candidates()`, which pre-imputes scores
-for restored rows), ratio-normalised (`"probability"`), softmax
+acoustic/image pathways) - `detect_suppressed_candidates()`: detect
+whether an upstream tool suppressed lower-scoring candidate rows in a
+match object - `restore_suppressed_candidates()`: check whether a top
+candidate's apparent win is real or an artifact of upstream suppression,
+and add back same-genus congeners as `suppressed_candidate` rows so
+downstream consensus can back off from a false-precision call -
+`assign_scores()`: set `score_likelihood` values, uniform (`"none"`),
+passed through unchanged (`"direct"`, for use after
+`restore_suppressed_candidates()`, which pre-imputes scores for restored
+rows), ratio-normalised (`"probability"`), softmax
 (`"similarity_softmax"`), or prepare for the bivariate-normal model
-(`"similarity"`). For the DNA scored pathway, real callers train a
-model (`train_likelihood_model()`) and call `evaluate_likelihoods()`
-directly on the match object rather than continuing from
-`assign_scores()`'s `"similarity"` output -
-`expand_unreferenced_hypotheses()`: models likelihoods for named
-unreferenced species (borrowed from the generic H2/H3 values) and
-expands them so they can join TaxaExpect priors directly; requires a
-TaxaExpect-derived unreferenced-species list, so it runs after both
-TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
--   An unreferenced species is named on its own genus's ring where this
-    unit has one, rather than on a borrowed family ring: a genus with
-    local reference coverage already says what its members score like,
-    so its own ring is the honest comparison. A genus that is
-    referenced but has no ring in this unit is withheld instead of
-    being given someone else's, and only a genus with no references at
-    all falls back to the family ring.
--   Alongside the confusion-risk columns, each unit carries
-    `best_identity` (numeric, percent), `best_identity_rank` and
-    `poor_absolute_fit`. These answer a different question from the
-    likelihood ratio: the ratio says which hypothesis fits best
-    relative to the others, while `poor_absolute_fit` says that even
-    the winner sits poorly against its own trained distribution. A unit
-    can win decisively and still be flagged, which is the case worth
-    seeing -- it weakens the name, not the ecology.
+(`"similarity"`). For the DNA scored pathway, real callers train a model
+(`train_likelihood_model()`) and call `evaluate_likelihoods()` directly
+on the match object rather than continuing from `assign_scores()`'s
+`"similarity"` output - `expand_unreferenced_hypotheses()`: models
+likelihoods for named unreferenced species (borrowed from the generic
+H2/H3 values) and expands them so they can join TaxaExpect priors
+directly; requires a TaxaExpect-derived unreferenced-species list, so it
+runs after both TaxaLikely and TaxaExpect and before
+`TaxaAssign::compute_posterior()` - An unreferenced species is named on
+its own genus's ring where this unit has one, rather than on a borrowed
+family ring: a genus with local reference coverage already says what its
+members score like, so its own ring is the honest comparison. A genus
+that is referenced but has no ring in this unit is withheld instead of
+being given someone else's, and only a genus with no references at all
+falls back to the family ring. - Alongside the confusion-risk columns,
+each unit carries `best_identity` (numeric, percent),
+`best_identity_rank` and `poor_absolute_fit`. These answer a different
+question from the likelihood ratio: the ratio says which hypothesis fits
+best relative to the others, while `poor_absolute_fit` says that even
+the winner sits poorly against its own trained distribution. A unit can
+win decisively and still be flagged, which is the case worth seeing --
+it weakens the name, not the ecology.
 
 Reference preparation: - `match_reference_region()`: trim every
 reference to the stretch of the gene the study's own ESVs cover, learned
@@ -444,52 +439,51 @@ reference-vs-reference identities and applied to ESV-vs-reference
 identities, and the two scales are comparable only if both describe the
 same region
 
-Reference QC: - `audit_barcode_coverage()`: find unreferenced
-species (no barcode sequence; eDNA/DNA only). A group NCBI could not be
-asked about is reported with `lookup_failed = TRUE`, is never written to
-the checkpoint, and contributes nothing to `unreferenced`, so the
-returned set is an incomplete census rather than a census; a failure is
-named in a warning by default, and `on_lookup_failure = "error"` stops
-instead, which suits an unattended run whose later steps would otherwise
-cache the gap as an answer -
-`infer_exclude_predicted()`: infer from accession numbers whether a
-BLAST reference database excluded computationally predicted NCBI
-sequences, the value `audit_barcode_coverage()`'s `exclude_predicted`
-argument should take -
+Reference QC: - `audit_barcode_coverage()`: find unreferenced species
+(no barcode sequence; eDNA/DNA only). A group NCBI could not be asked
+about is reported with `lookup_failed = TRUE`, is never written to the
+checkpoint, and contributes nothing to `unreferenced`, so the returned
+set is an incomplete census rather than a census; a failure is named in
+a warning by default, and `on_lookup_failure = "error"` stops instead,
+which suits an unattended run whose later steps would otherwise cache
+the gap as an answer - `infer_exclude_predicted()`: infer from accession
+numbers whether a BLAST reference database excluded computationally
+predicted NCBI sequences, the value `audit_barcode_coverage()`'s
+`exclude_predicted` argument should take -
 `suggest_unreferenced_species()`: fast, LLM-first alternative to
 `audit_barcode_coverage()` (also supports acoustic/image via
 `data_type`); feeds
 `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`, the LLM-shortcut
-pathway -
-`audit_acoustic_coverage()`: find plausible species absent from
-classifier's known list (acoustic/image) -
+pathway - `audit_acoustic_coverage()`: find plausible species absent
+from classifier's known list (acoustic/image) -
 `fetch_xc_recording_locations()`: fetch per-recording latitude/longitude
-from Xeno-canto for one or more species -
-`audit_inat_coverage()`: check whether each species in a list has
-enough iNaturalist observations to be represented in its computer
-vision training data - `audit_reference_coverage()`:
-taxonomic completeness check - `apply_coverage_constraints()`:
-constrain the unsequenced-congener hypothesis for a genus whose species
-are all referenced.
-<!-- TODO: describe the closed-genus rule here once the fix that moves
-the placeholder's mass to the referenced member has landed; the current
-behaviour is being changed, so no description is given yet. --> Mislabel screening and
-match-object cleaning for flagged accessions live in TaxaMatch, not here.
-See "Detecting Mislabeled References" below.
+from Xeno-canto for one or more species - `audit_inat_coverage()`: check
+whether each species in a list has enough iNaturalist observations to be
+represented in its computer vision training data -
+`audit_reference_coverage()`: taxonomic completeness check -
+`apply_coverage_constraints()`: constrain the unsequenced-congener
+hypothesis for a genus whose species are all referenced.
+For such a "closed" genus there is no unsequenced congener for the
+query to be, so by default (`constraint_behavior = "relabel"`) the
+placeholder's posterior is moved onto the genus's referenced species
+(`TaxaAssign::compute_posterior()` makes the move); `"zero"` instead
+multiplies the placeholder's likelihood by `penalty_factor`. Mislabel
+screening and match-object cleaning for flagged accessions live in
+TaxaMatch, not here. See "Detecting Mislabeled References" below.
 
-Diagnostics and reporting: - `interpret_model()`: summarize
-trained model parameters -
-`check_cross_genus_sampling_noise()`: report how much a random
-cross-genus draw (the one `build_sequence_matrix(by_genus = TRUE)`
-uses to build the H3 sample) moves the resulting pair distribution
-across repeated draws - `report_likelihood()`: generate report
-section for `assemble_report()` -
-`annotate_reference_support()`: add information-only columns saying how much
-per-species reference data the model had for each call's taxon. Nothing
-thresholds or filters on them, and a low count is not evidence a call is
-wrong; read the `reference_basis` column, since a missing count marks taxa
-too thinly referenced for a per-species row at all, and a count at the
-model's maximum is censored by the matrix build's `max_seqs_per_taxon`.
+Diagnostics and reporting: - `interpret_model()`: summarize trained
+model parameters - `check_cross_genus_sampling_noise()`: report how much
+a random cross-genus draw (the one
+`build_sequence_matrix(by_genus = TRUE)` uses to build the H3 sample)
+moves the resulting pair distribution across repeated draws -
+`report_likelihood()`: generate report section for `assemble_report()` -
+`annotate_reference_support()`: add information-only columns saying how
+much per-species reference data the model had for each call's taxon.
+Nothing thresholds or filters on them, and a low count is not evidence a
+call is wrong; read the `reference_basis` column, since a missing count
+marks taxa too thinly referenced for a per-species row at all, and a
+count at the model's maximum is censored by the matrix build's
+`max_seqs_per_taxon`.
 
 Cache: `fetch_ncbi_reference_sequences()` and `audit_barcode_coverage()`
 cache to a persistent, per-user directory so re-running the same
@@ -535,18 +529,18 @@ sequence length. Values near 1.0 indicate nearly complete overlap;
 values near 0.0 indicate highly gappy or partial alignments.
 
 `train_likelihood_model()` uses that column itself: its
-`min_pair_coverage` floor (default `0.8`) decides which pairs may
-define a reference's best foreign, best congener and best conspecific
-match. It removes no pair from the data and drops no species: a
-reference with no conspecific pair above the floor falls back to its
-best one. The floor exists because a pairwise alignment between a short
-deposit and an unrelated sequence can be 100% identical over a few
-percent of the sequence; on real 12S data that was the "best foreign
-match" for 86% of references, so the trained gap was negative for 89% of
-them while every real BLAST candidate at inference had coverage of at
-least 80. The floor must equal the coverage floor the match object was
-built under (`TaxaMatch::blast_sequences(min_query_coverage = 80)` is
-`0.8`); `blast_sequences()` records that value in the match object and
+`min_pair_coverage` floor (default `0.8`) decides which pairs may define
+a reference's best foreign, best congener and best conspecific match. It
+removes no pair from the data and drops no species: a reference with no
+conspecific pair above the floor falls back to its best one. The floor
+exists because a pairwise alignment between a short deposit and an
+unrelated sequence can be 100% identical over a few percent of the
+sequence; on real 12S data that was the "best foreign match" for 86% of
+references, so the trained gap was negative for 89% of them while every
+real BLAST candidate at inference had coverage of at least 80. The floor
+must equal the coverage floor the match object was built under
+(`TaxaMatch::blast_sequences(min_query_coverage = 80)` is `0.8`);
+`blast_sequences()` records that value in the match object and
 `evaluate_likelihoods()` warns if the two disagree.
 
 ``` r
@@ -566,218 +560,110 @@ concentrated in particular species before trusting the result.
 
 ## Statistical Design
 
-TaxaLikely models the joint distribution of two features: the
-transformed match score (absolute fit) and the gap to the best
-alternative (relative uniqueness), as a bivariate normal for each
-hypothesis type:
+TaxaLikely models two features of each match, for each hypothesis type,
+as a bivariate normal: the transformed match score (absolute fit) and
+the gap to the best alternative (relative uniqueness). The joint density
+captures their interaction: a small gap is more tolerable when the score
+is very high. Derivations and validation are in
+[`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md);
+section numbers are given below. As in TaxaAssign, each argument is
+written as `function(argument = default)`.
 
--   Score + gap features: Raw scores are transformed to an unbounded
-    (or near-unbounded) domain; the gap is computed on the same scale so
-    that differences near 100% are amplified appropriately
+### Features
 
--   Transform choice (`score_transform`): `"logit"` (default,
-    `ln(p/(1-p))`) or `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's (1948)
-    classical rare-event-count variance stabilizer, applied to the match
-    mismatch). Logit's derivative diverges fastest exactly where real
-    barcode matches concentrate (near 100% identity), which was found to
-    reverse the sign of genus-tightness comparisons for the H2/H3
-    unreferenced-relative hypotheses below. This was confirmed on real
-    12S congener data (Pearson r = +0.465 under logit vs. the correct r
-    = -0.55 on the raw proportion scale). `sqrt_mismatch` recovers the
-    correct direction (r = -0.235) and is opt-in; H1/H2/H3 always share
-    one transform (mixing them would require an explicit
-    change-of-variables correction that is not implemented). See
-    [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md)
-    Section 3A-i for the full derivation and validation.
+-   Transform (`train_likelihood_model(score_transform = "logit")`):
+    scores are moved to an unbounded scale, and the gap is computed on
+    the same scale, so differences near 100% are amplified.
+    `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's (1948) variance
+    stabilizer) is an opt-in alternative. Logit stretches the scale most
+    near 100% identity, where real matches concentrate; on real 12S
+    congener data this reversed the sign of genus-tightness comparisons
+    (r = +0.47 under logit against -0.55 on the raw scale;
+    `sqrt_mismatch` gives -0.24). H1, H2 and H3 always share one
+    transform. Supplemental Section 3A-i.
+-   Pair coverage (`train_likelihood_model(min_pair_coverage = 0.8)`):
+    only reference pairs aligned over at least this fraction define the
+    gap during training, matching what queries see at inference. No pair
+    or species is removed. On Great Lakes, scored against the
+    independent Lamar species list, precision rose from 0.805 to 0.818
+    and species detected from 29 to 41 of 61, with none lost.
 
--   Benchmarked, not argued: a score-only softmax, BLAST-derived training
-    pairs, pooled per-species parameters, thinned reference depth and an
-    uncalibrated model were each scored against a held-out survey benchmark
-    and each lost to the model as shipped. The comparisons, and what they
-    show the per-species parameters actually carry, are in
-    [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md)
-    Section 17.
+### Training: `train_likelihood_model()`
 
--   Bivariate normal likelihood: The joint (score, gap) density
-    captures interactions; small gap is more tolerable when the score is
-    very high
+-   H1 (the query is the referenced species) is fitted from
+    reference-vs-reference pairs.
+-   Shrinkage (`train_likelihood_model(shrinkage = "empirical_bayes")`):
+    each species' mean score and mean gap are shrunk toward the global
+    mean (Efron and Morris 1973) with weight
+    `tau^2 / (tau^2 + sigma^2/N)`, where `tau^2`, the real
+    between-species variance, is estimated from the data. Without real
+    between-species signal, every species gets the global mean. On 12S,
+    score means carry none (weight 0) while gap means do (0.34-0.72).
+    `"fixed"` uses `N / (N + prior_weight)` instead. Variances always
+    use the fixed weight.
+-   H2 and H3 (an unreferenced species or genus) use the H1 distribution
+    shifted down by learned offsets, anchored on the best-matching
+    referenced species. Where a genus has a real congener pair,
+    `H2_Lookup` supplies a genus-specific offset; otherwise a pooled one
+    is used. `h2_delta_source` (`"genus_specific"` or
+    `"global_fallback"`) says which.
+-   Perfect-match anchoring: synthetic 100% matches stop the density
+    from peaking below 100%.
 
--   Empirical Bayes shrinkage: Per-species parameters are shrunk
-    toward the global mean (Efron and Morris 1973), with weight
-    inversely proportional to sample size, preventing poorly sampled
-    species from having unreliable estimates
+### Calibration: `calibrate_query_noise()`
 
--   Per-species sigma floor: At inference, the per-species
-    `sigma_score` from `H1_Lookup` is floored at the global
-    `H1_Sigma[1,1]`. Reference-vs-reference training pairs for
-    well-sampled species can be artificially tight (many near-identical
-    NCBI accessions from the same voucher), producing a sigma smaller
-    than the global estimate. Real query-vs-reference scores span a
-    wider range due to intraspecific variation and sequencing error. The
-    floor ensures those species still receive non-zero H1 likelihoods at
-    realistic eDNA query scores
+Reference pairs carry none of the noise a real query picks up (PCR,
+sequencing, degradation, ASV inference), so a correct match often scores
+below the trained H1 mean and loses to the unreferenced hypotheses.
+`calibrate_query_noise()` estimates one marker-wide offset from
+observations identified independently, by occurrence priors rather than
+by the match scores being calibrated, and shifts H1; H2 and H3 move with
+it. The offset must be re-estimated for each marker and dataset. With
+`calibrate_query_noise(evidence_col = )` (e.g., read depth),
+`evaluate_likelihoods(evidence_col = )` also widens H1 for
+lower-evidence observations, but only where that cannot lower the
+candidate's density.
 
--   Score-only outlier filter (`alpha = 0.001`): Before computing H1
-    density, the query score is tested for consistency with the H1
-    species distribution using a univariate
-    chi-squared test (df = 1, score only). If the p-value is below
-    `alpha`, the candidate is treated as a score outlier and receives
-    likelihood 0. The gap feature is deliberately excluded from this
-    test: a small gap (a closely-scoring congener is present) is
-    correctly handled by the bivariate density, which returns a lower H1
-    value in that case. Including the gap in the outlier test would
-    incorrectly reject legitimate H1 candidates in species-rich families
-    where confusable congeners exist. The default `alpha = 0.001` (\~3.3
-    sigma, 1-in-1000) drops genuinely inconsistent cross-family BLAST
-    artefacts (e.g. freshwater Cyprinidae at 91-93% identity in a marine
-    sample, \>4 sigma from H1 mean) while retaining legitimate
-    borderline H1s (e.g. a coastal species at 99% identity, \~2.7 sigma
-    from H1 mean, p ≈ 0.006). This test is H1-intrinsic: no
-    comparison to H2/H3 densities
+### Inference: `evaluate_likelihoods()`
 
--   H2/H3 offset distributions: Unreferenced species and genus
-    hypotheses use the H1 distribution shifted left by learned delta
-    offsets, estimated from cross-species match scores in training data.
-    The mean anchors on the specific best-matching referenced species'
-    own resolved mean (not just the population-wide average), and where
-    a genus has a real congener pair, `H2_Lookup` supplies a
-    genus-specific delta and variance shrunk toward the pooled default,
-    rather than every genus sharing one pooled offset and width
-    regardless of how tightly or loosely its species cluster.
-    `evaluate_likelihoods()` marks each H2/H3 row with `h2_delta_source`
-    (`"genus_specific"` or `"global_fallback"`) so a row using the
-    cruder pooled approximation can be identified.
+-   Sigma floor: each species' sigma is floored at the global H1 sigma,
+    because tight reference pairs (many near-identical accessions)
+    understate the variation real queries show.
+-   Outlier filter (`evaluate_likelihoods(alpha = 0.001)`): a candidate
+    whose score is inconsistent with its species' H1 distribution (a
+    score-only chi-squared test, df = 1) gets likelihood 0. The gap is
+    left out of the test so that confusable congeners are not rejected;
+    the bivariate density already handles them. 0.001 is about 3.3
+    sigma: it drops, e.g., freshwater Cyprinidae at 91-93% identity in a
+    marine sample, and keeps a coastal species at 99% (about 2.7 sigma).
+-   Monte Carlo uncertainty: each candidate's trained mean is perturbed
+    by its estimation uncertainty (`Var(mu) ~= w^2 * sigma^2 / N`, with
+    the shrinkage weight `w`), and the observed score is re-evaluated
+    against each draw, giving `score_likelihood_mean` and
+    `score_likelihood_sd`. H2 and H3, which borrow a shifted mean, come
+    out wider than a well-referenced H1.
+-   Coverage filter (`evaluate_likelihoods(min_coverage = NULL)`):
+    optionally drops low-coverage candidates before scoring; acoustic
+    and image data can supply a quality grade instead. See "Reference
+    Coverage Quality Filtering" above.
+-   Coverage-adjusted likelihood (`score_likelihood_cov`): when the
+    match object has a `coverage` column, H1 sigma is widened by
+    `1 / sqrt(coverage)`, because a proportion estimated from fewer
+    aligned positions is less precise. A good match at partial coverage
+    then scores lower than the same match at full coverage; a poor match
+    scores slightly higher (the crossover is at one sigma), which rarely
+    changes a call. It is applied at inference rather than fitted,
+    because training pairs are nearly all full-length. To use it, pass
+    `score_likelihood_cov` in place of `score_likelihood` to
+    `TaxaAssign::compute_posterior()`. Without coverage, or at coverage
+    1, the two columns are identical.
 
--   Perfect-match anchoring: Synthetic 100% match pseudo-data
-    prevent the "perfection penalty" where the Gaussian density peaks
-    below 100%
+### Benchmarked, not argued
 
--   Query-vs-reference noise calibration
-    (`calibrate_query_noise()`): `train_likelihood_model()` estimates
-    H1 entirely from reference-vs-reference pairs (two clean, curated
-    database accessions compared to each other), which carries none of
-    the technical noise (PCR/sequencing/degradation/ ASV-inference) a
-    real query picks up, so a genuinely correct match routinely scores
-    below the trained H1 mean and loses to the unreferenced hypotheses.
-    `calibrate_query_noise()` estimates one marker-wide additive offset
-    from observations whose species can be identified with high
-    confidence from independent occurrence-prior data (non-circular,
-    since it never touches the match scores or likelihood model being
-    calibrated) and shifts `H1_Global_Mu`/`H1_Lookup$mu_score`
-    uniformly; H2/H3 move automatically since their means are defined
-    relative to H1's. This offset does not transfer between markers
-    or datasets and must be re-estimated for each. An optional
-    `evidence_col` (e.g. real per-observation DNA read depth)
-    additionally establishes a baseline that
-    `evaluate_likelihoods(evidence_col=)` uses to selectively widen H1
-    sigma for lower-evidence observations, via a closed-form crossover
-    gate (only applied when doing so is provably non-decreasing for that
-    candidate's density) rather than an unconditional rescale.
-
--   Monte Carlo uncertainty: Each candidate's trained mean (not
-    the query's own fixed, already-known observed score) is perturbed
-    across simulations by its shrinkage-consistent estimation
-    uncertainty (`Var(mu) ~= w^2 * sigma^2 / N`, using the same
-    Empirical Bayes weight `w` as the point estimate), and the query's
-    real observed point is re-evaluated against each draw. This yields
-    `score_likelihood_mean` and `score_likelihood_sd`, measuring how
-    confidently the candidate's own parameters are known. H2/H3, which
-    borrow a shifted mean rather than observing their own species
-    directly, correctly come out wider than a well-referenced H1
-    candidate.
-
--   Pair-coverage floor (`min_pair_coverage`, default 0.8): only a
-    reference pair at or above the match object's own coverage floor may
-    define a reference's best foreign/congener/conspecific match when
-    the gap feature is trained. Train/inference distribution matching
-    for one feature, not a data filter, no pair removed, no species
-    dropped. Validated on the real GreatLakes workflow code path against
-    the independent Lamar species list: species co-detections 593 to
-    798, precision 0.805 to 0.818, 29 to 41 of 61 species, none lost.
-
--   Shrinkage weights (`shrinkage`, default `"empirical_bayes"`):
-    each species' H1 mean score and mean gap are shrunk toward the
-    global mean with weight `tau^2 / (tau^2 + sigma^2/N)`, where `tau^2`
-    (the real between-species variance of the means) is estimated by
-    method of moments, per dimension. No signal beyond noise collapses
-    every species to the global mean; real signal lets well-referenced
-    species keep more of their own. On real 12S data the score means
-    carry no such signal (weight 0 for every species) while the gap
-    means do (weights 0.34-0.72). `"fixed"` restores the original
-    `N / (N + prior_weight)` weight exactly. Variance shrinkage always
-    uses the fixed weight.
-
--   Alignment coverage filter (optional): A `min_coverage` threshold
-    can be passed to `evaluate_likelihoods()` to drop low-coverage
-    candidates before scoring. Acoustic and image data can supply a
-    categorical quality column (e.g. Xeno-canto grade) encoded as an
-    integer for the same pre-filter. See "Reference Coverage Quality
-    Filtering" above.
-
--   Coverage-adjusted likelihood (`score_likelihood_cov`): When the
-    match object contains a `coverage` column, `evaluate_likelihoods()`
-    produces a second point-estimate column `score_likelihood_cov`
-    alongside the standard `score_likelihood`. For each H1 candidate the
-    model sigma is widened by `1 / sqrt(coverage)` before the likelihood
-    is evaluated (grounded in binomial sampling theory): the standard
-    error of a proportion estimated from `N` aligned positions scales as
-    `1 / sqrt(N)`, and `N_aligned = coverage × N_total`. H2 and H3
-    sigmas are global fixed parameters and are not inflated.
-
-    Widening sigma changes the point estimate of the likelihood (not
-    its SD), because it changes the density value returned by the
-    bivariate normal at the observed score. The direction of the change
-    depends on where the observed score falls relative to the H1 mean:
-
-    -   Score near the H1 mean (good match): the density at the peak
-        decreases as the distribution flattens → `score_likelihood_cov`
-        \< `score_likelihood`. This is the primary intended effect: a
-        98% match at 60% coverage is penalised relative to the same
-        score at full coverage, reducing overconfidence in partial
-        alignments.
-    -   Score far below the H1 mean (poor cross-species match): the
-        distribution flattens into a wider tail, increasing the density
-        at that low score → `score_likelihood_cov` \>
-        `score_likelihood`. This is a secondary effect: the model is
-        saying "with low coverage I cannot rule out H1 as strongly."
-        These candidates are already ranked low and the effect rarely
-        changes downstream assignments.
-
-    The crossover is at exactly ±1 sigma from the mean; a useful check
-    is whether the best H1 candidate is a good match (expect negative
-    delta) or a poor match (expect positive delta).
-
-    Why this is not a model parameter: Reference-vs-reference
-    training pairs (from `build_sequence_matrix()`) are nearly always
-    full-length alignments: same-species sequences share the same
-    amplicon and align completely. There is therefore no within-H1
-    coverage variation in the training data from which to estimate a
-    coverage-score relationship. The `1 / sqrt(coverage)` inflation is
-    applied as a principled prior at inference time rather than a fitted
-    parameter.
-
-    How to use it: Pass `score_likelihood_cov` to
-    `TaxaAssign::compute_posterior()` instead of `score_likelihood` to
-    apply the adjustment. Compare the two columns to find queries where
-    coverage meaningfully shifts the likelihood ratios:
-
-    ``` r
-    likelihoods |>
-      dplyr::filter(
-        hypothesis_type == "specific_candidate",
-        abs(score_likelihood_cov - score_likelihood) > 0.05
-      ) |>
-      dplyr::arrange(dplyr::desc(abs(score_likelihood_cov - score_likelihood)))
-    ```
-
-    When coverage is absent from the match object or equals 1 for all
-    candidates, `score_likelihood_cov` is identical to
-    `score_likelihood`.
-
-For a detailed treatment of the statistical framework, feature
-engineering, hypothesis definitions, parameter estimation, and reference
-quality control, see
-[`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md).
+A score-only softmax, BLAST-derived training pairs, pooled per-species
+parameters, thinned reference depth and an uncalibrated model were each
+scored against a held-out survey benchmark, and each lost to the model
+as shipped. Supplemental Section 17.
 
 ## Acoustic and Image Workflows
 
@@ -821,15 +707,14 @@ likelihoods <- result$likelihoods
 
 ### Single best candidate with a score (e.g., BirdNET top-1)
 
-`assign_scores()` anchors H2/H3 likelihoods at the median H1
-likelihood across all candidates for that observation. With only one
-H1 row per observation (top-1 output), that median is always 1.0, so the
-confidence score has no effect and all three rows receive
-`score_likelihood = 1.0`.
+`assign_scores()` anchors H2/H3 likelihoods at the median H1 likelihood
+across all candidates for that observation. With only one H1 row per
+observation (top-1 output), that median is always 1.0, so the confidence
+score has no effect and all three rows receive `score_likelihood = 1.0`.
 
-Recommendation: keep BirdNET's full ranked output (multiple
-candidates per segment) and use `score_type = "probability"`. BirdNET's
-default output already includes ranked species with confidence scores:
+Recommendation: keep BirdNET's full ranked output (multiple candidates
+per segment) and use `score_type = "probability"`. BirdNET's default
+output already includes ranked species with confidence scores:
 
 ``` r
 library(TaxaLikely)
@@ -888,10 +773,9 @@ builds a degenerate likelihood object that bypasses `TaxaMatch` and
 `evaluate_likelihoods()` entirely.
 
 Two placeholder rows are added per observation: - H2
-(unreferenced_species), a placeholder for any species in the same
-genus not in the reference database - H3 (unreferenced_genus), a
-placeholder for any genus in the same family not in the reference
-database
+(unreferenced_species), a placeholder for any species in the same genus
+not in the reference database - H3 (unreferenced_genus), a placeholder
+for any genus in the same family not in the reference database
 
 All `score_likelihood` values are set to 1.0 (uniform), so posteriors
 are proportional to TaxaExpect priors once joined by
@@ -975,8 +859,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 

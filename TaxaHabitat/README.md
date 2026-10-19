@@ -37,25 +37,24 @@ view which observations have incorrect coordinates. The function
 review and correct errant points, flagged upstream by
 `flag_habitat_inconsistencies()`, before model building begins. For
 instance, a point on the map in the middle of the ocean labeled
-"Terrestrial" is likely an error in habitat assignment that would
-weaken a species distribution
-model. This tool makes it possible to delete that point or reassign it
-to "Marine". And the selection tool means this can be done in bulk.
-TaxaHabitat thus can be a standalone database QAQC for biodiversity
-databases and helpful for creating species distribution models from
-occupancy data.
+"Terrestrial" is likely an error in habitat assignment that would weaken
+a species distribution model. This tool makes it possible to delete that
+point or reassign it to "Marine". And the selection tool means this can
+be done in bulk. TaxaHabitat thus can be a standalone database QAQC for
+biodiversity databases and helpful for creating species distribution
+models from occupancy data.
 
 ## Habitat Schemes
 
 | Scheme | Categories | Use case |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | 3-category (default) | Marine / Freshwater / Terrestrial | Most biodiversity surveys (eDNA, camera-trap, acoustic) |
 | IUCN Level 1 | 18 IUCN habitat categories | Fine-grained habitat mapping |
 | Custom | User-defined | Specialized study designs |
 
 A custom scheme is a plain data frame (`l1_name` required; `l2_name`,
-`l2_code`, `realm` optional: see `example_habitat_scheme` for the
-exact shape):
+`l2_code`, `realm` optional: see `example_habitat_scheme` for the exact
+shape):
 
 ``` r
 my_scheme <- data.frame(
@@ -119,31 +118,37 @@ flagged <- flag_habitat_inconsistencies(occurrences_with_habitat)
 Habitat classification:
 
 -   `build_habitat_lookup()`: cached one-call classification (prompt,
-    LLM call, parse; a taxon already classified under the same scheme
-    is never re-asked)
--   A compound habitat (a taxon the scheme places in more than one
-    habitat) gets its weight from its parts rather than from a single
-    label, and `compound_rule` says how: `"sum"` (the default, capped at
-    1) treats the parts as alternatives a record could fall in, while
-    `"max"` takes the strongest single part. The scheme's own parts
-    column is what defines those pieces, so a scheme that does not split
-    a habitat has nothing to combine and the two rules agree.
+    LLM call, parse; a taxon already classified under the same scheme is
+    never re-asked)
+-   Compound habitats: some scheme labels name several habitats at
+    once (e.g., "Coastal-Marine-Estuary-Stream" for a stream-fed
+    lagoon). An LLM tends to score such a label by its most familiar
+    word, so a stream fish can score lower on the lagoon than on
+    "Coastal-Stream". The scheme's optional `parts` column therefore
+    lists the real habitats a label contains (e.g.,
+    `Marine|Estuary|Stream`). The LLM scores each part, and
+    `build_habitat_lookup(compound_rule = )` sets how the compound's
+    weight is built from them: `"sum"` (the default) adds the parts,
+    capped at 1, because a species that uses any part uses the site
+    (0.5 Estuary + 0.3 Marine + 0.1 Stream = 0.9); `"max"` takes the
+    largest part (0.5). Without a `parts` column there is nothing to
+    combine, and the rule has no effect.
 -   `taxahabitat_clear_cache()`: report or prune this package's cache;
     the shared signature and the cross-package
     `TaxaTools::taxaid_cache_report()` are described in the TaxaID
     README's Caching and resources section
 -   `build_habitat_prompt()`: create LLM prompt for species habitat
     weights
--   `parse_hierarchical_habitat_response()`: parse LLM output to
-    numeric weights
+-   `parse_hierarchical_habitat_response()`: parse LLM output to numeric
+    weights
 -   `assign_habitat_biological()`: assign site habitat from species
     composition
 -   `consensus_habitat()`: assemblage-level consensus with ecoregion
     extraction
--   `resolve_habitat_by_geography()`: fill in `main_habitat` for
-    points the assemblage consensus left unresolved, from the point's
-    own location, resolving only where exactly one candidate habitat
-    is admissible there
+-   `resolve_habitat_by_geography()`: fill in `main_habitat` for points
+    the assemblage consensus left unresolved, from the point's own
+    location, resolving only where exactly one candidate habitat is
+    admissible
 
 Custom schemes:
 
@@ -153,25 +158,24 @@ Spatial QC:
 
 -   `flag_habitat_inconsistencies()`: flag records inconsistent with
     site habitat
--   `review_spatial_flags()`: interactive Leaflet map for manual
-    review
+-   `review_spatial_flags()`: interactive Leaflet map for manual review
 -   `save_spatial_review_decisions()`: save a reviewer's spatial-flag
     decisions from `review_spatial_flags()`'s output to a decisions
     file, keyed by point and taxon
 -   `apply_spatial_review_decisions()`: apply saved decisions to
     `flag_habitat_inconsistencies()`'s output before, or instead of,
-    opening the review gadget, and report how many flagged points
-    still need a reviewer
+    opening the review gadget, and report how many flagged points still
+    need a reviewer
 
-Institution-proximity flags:
+Institution-proximity flags (when a record comes from non-habitat):
 
 -   `flag_institution_candidates()`: tier records
     `TaxaFetch::filter_gbif_quality()` flagged as near a biodiversity
     institution by how suspicious the match actually is, using the
     matched institution's type and the record's kingdom
--   `review_institution_flags()`: interactive Shiny gadget for
-    reviewing institution-proximity flags on a map alongside the
-    matched institution's own location
+-   `review_institution_flags()`: interactive Shiny gadget for reviewing
+    institution-proximity flags on a map alongside the matched
+    institution's own location
 
 Reporting:
 
@@ -186,9 +190,8 @@ Rather than assign each species to a single habitat, TaxaHabitat asks
 the LLM to distribute habitat affinity as continuous weights across all
 habitat categories (e.g., Marine 0.85, Freshwater 0.15, Terrestrial
 0.0), summing to 1.0 per species. This captures habitat generalism (an
-estuarine fish contributes partial signal to both Marine and
-Freshwater) and avoids the information loss of a categorical
-assignment.
+estuarine fish contributes partial signal to both Marine and Freshwater)
+and avoids the information loss of a categorical assignment.
 
 Prompts are constructed by `build_habitat_prompt()` (which inputs
 habitat types) and sent to an LLM provider via TaxaTools. For large
@@ -271,11 +274,11 @@ misclassified point without leaving the map.
 ### Reviewing at scale
 
 Real selection boundaries follow coastlines, lake shores and basins, so
-the draw toolbar offers a polygon as well as a rectangle. Both
-select every visible point of the current view inside the shape; in Flag
-mode the shape applies immediately, in Reassign Habitat mode it selects
-and Confirm applies. Each bulk action is one entry in the undo
-history, so Undo Last reverses a whole selection in a single click.
+the draw toolbar offers a polygon as well as a rectangle. Both select
+every visible point of the current view inside the shape; in Flag mode
+the shape applies immediately, in Reassign Habitat mode it selects and
+Confirm applies. Each bulk action is one entry in the undo history, so
+Undo Last reverses a whole selection in a single click.
 
 At or below `bulk_confirm_threshold` (default 10,000) an action applies
 straight away; above it a dialog reports the exact count and requires an
@@ -328,8 +331,8 @@ vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 TaxaHabitat receives occurrence data from TaxaFetch and produces
 habitat-annotated records for TaxaExpect (prior estimation).
 
-Ecosystem: TaxaTools -\> TaxaFetch -\> TaxaHabitat -\>
-TaxaExpect -\> TaxaAssign
+Ecosystem: TaxaTools -\> TaxaFetch -\> TaxaHabitat -\> TaxaExpect -\>
+TaxaAssign
 
 See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
@@ -353,8 +356,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 

@@ -14,11 +14,11 @@ sources: GBIF (Global Biodiversity Information Facility; GBIF
 Secretariat, Copenhagen, Denmark), DataONE (Data Observation Network for
 Earth; University of New Mexico, Albuquerque, New Mexico), and BioTIME
 (database maintained by the University of St Andrews, St Andrews,
-Scotland, United Kingdom). It will search the published literature for
-species records. And it will also extract records from uploaded PDFs. It
-then combines occurrence records into a standardized format for
-downstream habitat assignment (TaxaHabitat) and prior estimation
-(TaxaExpect).
+Scotland, United Kingdom). It can search the published literature for
+species records. And it can also extract records from uploaded PDFs.
+TaxaFetch then combines occurrence records and standardizes them into a
+format for downstream habitat assignment (TaxaHabitat) and prior
+estimation (TaxaExpect).
 
 ## Data Sources
 
@@ -82,8 +82,8 @@ GBIF pipeline:
     and price the records path (download every record) against the
     counts path (`fetch_gbif_occurrence_counts()`, feeding
     `TaxaExpect::estimate_kernel_priors_from_counts()`); cost grows with
-    records on the first and with species on the second. The counts
-    path is priced for one site; a multi-site study should compare one
+    records on the first and with species on the second. The counts path
+    is priced for one site; a multi-site study should compare one
     records download against as many count fetches as it has sites
 
 DataONE pipeline:
@@ -138,27 +138,26 @@ For this reason, `download_gbif_occurrences()`,
 to a persistent, per-user directory
 (`tools::R_user_dir("TaxaFetch", "cache")`) so re-running the same query
 skips the GBIF wait. GBIF download zips in particular can be
-multi-gigabyte and are cached permanently, with no automatic
-expiration. But to avoid filling up your hard drive, re-running a
-query with `overwrite = TRUE` replaces the cached zip (with
-`allow_prompts = TRUE`, asking for confirmation first in an
-interactive session), but otherwise nothing is automatically cleared.
-If GBIF itself refuses the download request
-(a transient 5xx), the request is retried with backoff, and with
+multi-gigabyte and are cached permanently, with no automatic expiration.
+But to avoid filling up your hard drive, re-running a query with
+`overwrite = TRUE` replaces the cached zip (with `allow_prompts = TRUE`,
+asking for confirmation first in an interactive session), but otherwise
+nothing is automatically cleared. If GBIF itself refuses the download
+request (a transient 5xx), the request is retried with backoff, and with
 `overwrite = TRUE` a verified cached zip for the identical query is used
 instead, with a warning, never silently. So a long run does not die at
 the fetch step (`on_submit_failure = "error"` fails instead).
 
 `taxafetch_clear_cache()`: report or prune this package's cache; the
-shared signature and the cross-package `TaxaTools::taxaid_cache_report()`
-are described in the TaxaID README's Caching and resources section.
-`download_gbif_occurrences()` also reports the cache's total size after
-every run and offers to clear it once it passes 5 GB.
+shared signature and the cross-package
+`TaxaTools::taxaid_cache_report()` are described in the TaxaID README's
+Caching and resources section. `download_gbif_occurrences()` also
+reports the cache's total size after every run and offers to clear it
+once it passes 5 GB.
 
 ## Vignettes
 
--   [Data Acquisition](vignettes/data-acquisition.Rmd): end-to-end
-    guide
+-   [Data Acquisition](vignettes/data-acquisition.Rmd): end-to-end guide
 
 ## Part of TaxaID
 
@@ -166,8 +165,8 @@ TaxaFetch is the data acquisition layer in the TaxaID ecosystem. Its
 output feeds into TaxaHabitat (habitat assignment) and TaxaExpect (prior
 estimation).
 
-Ecosystem: TaxaTools -\> TaxaFetch -\> TaxaHabitat -\>
-TaxaExpect -\> TaxaAssign
+Ecosystem: TaxaTools -\> TaxaFetch -\> TaxaHabitat -\> TaxaExpect -\>
+TaxaAssign
 
 See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
@@ -193,8 +192,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 

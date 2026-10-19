@@ -936,6 +936,20 @@ Non-endorsement of commercial products and services: Any use of trade,
 firm, or product names is for descriptive purposes only and does not
 imply endorsement by the U.S. Government.
 
+# Acknowledgements
+
+TaxaID has been a three-year project motivated by errors in my own
+metabarcoding datasets that I wanted to fix before analysis. The U.S.
+Geological Survey provided my salary. In the last year of the project,
+Dr. Richard Erickson (USGS) found support for me to adapt TaxaID to help
+the U.S. Fish and Wildlife Service improve taxonomic assignment for
+metabarcoding studies of Great Lakes fish communities. Throughout, Joe
+Craine and Nick Schulte helped me understand how Jonah Ventures computes
+taxonomic assignment. Claude Code was used in the last year of the
+project to increase robustness, reduce redundancies, strengthen tests,
+and write the documentation required to make TaxaID useful to others as
+an R package. Micah Wright (USGS) performed the code review.
+
 # References
 
 Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J.
