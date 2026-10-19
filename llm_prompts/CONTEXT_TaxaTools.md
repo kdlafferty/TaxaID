@@ -1366,10 +1366,10 @@ verified <- verify_taxon_names(cleaned, backbone_id = 11)  # GBIF
 ### Verify the same name against different taxonomic backbones
 
 `backbone_id` selects which authority resolves a name. Backbones don't
-always agree: a name can be a live species in one and a retired
-synonym in another (`is_synonym`/`matched_rank` will differ), which is
-exactly why downstream packages let the caller choose rather than
-hardcoding one:
+always agree: a name can be a live species in one and a retired synonym
+in another (`is_synonym`/`matched_rank` will differ), which is exactly
+why downstream packages let the caller choose rather than hardcoding
+one:
 
 | `backbone_id` | Backbone                                       |
 |---------------|------------------------------------------------|

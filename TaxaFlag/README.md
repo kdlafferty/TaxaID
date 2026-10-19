@@ -27,8 +27,8 @@ of lines by eye is tedious, so TaxaFlag provides three independent
 -   LLM expert review uses a language model to act as an "expert" to
     assess whether each assignment is plausible given the habitat and
     geographic location, flagging unusual detections for closer
-    inspection. This includes contaminants that were not found screening
-    blanks.
+    inspection. This includes contaminants that were not found in
+    screening blanks.
 
 ## Flagging Methods
 
@@ -37,14 +37,15 @@ of lines by eye is tedious, so TaxaFlag provides three independent
 | Control validation | `validate_controls()` | Detection counts + control labels (+ site, ideally) |
 | Contamination | `flag_contaminant()` | Detection counts + control samples |
 | Handler artifacts | `flag_handler()` | Timestamps + setup/retrieval times |
-| Expert review | `review_assignments()` | Assignments + LLM API key |
+| Expert review | `review_assignments()` | Assignments + LLM API key (+ site coordinates for site-aware geography) |
+| Identity and presence screen | `screen_assignments()` | Reviewed assignments (+ posterior table) |
 
-Each method is independent; use one, two, or all three depending on your
-data type and available metadata. Flags are additive columns, not
-filters. Together, these checks target false positives that survive
-upstream statistical assignment: contamination, handler artifacts,
-allochthonous transport (e.g., eDNA carried by currents from outside the
-sampling area), and other ecologically implausible detections.
+Each method is independent; use any combination depending on your data
+type and available metadata. Flags are additive columns, not filters.
+Together, these checks target false positives that survive upstream
+statistical assignment: contamination, handler artifacts, allochthonous
+transport (e.g., eDNA carried by currents from outside the sampling
+area), and other ecologically implausible detections.
 
 ## Methods
 
@@ -75,10 +76,9 @@ score = field_rate / (field_rate + control_rate)
 ```
 
 shrunk toward 0.5 by `prior_weight` (default 20, in read-equivalent
-units) so taxa with little total read support aren't scored
-confidently. Scores range from 0 (taxon found only in controls) to 1
-(taxon found only in field samples). Default thresholds classify scores
-as `"high"`
+units) so taxa with little total read support aren't scored confidently.
+Scores range from 0 (taxon found only in controls) to 1 (taxon found
+only in field samples). Default thresholds classify scores as `"high"`
 risk (score ≤ 0.5, probable contaminant), `"moderate"` risk (0.5 \<
 score ≤ 0.9, ambiguous), or `"low"` risk (score \> 0.9, likely genuine
 detection). For positive controls, the interpretation inverts: taxa from
@@ -108,7 +108,7 @@ supports:
 | `no_control_evidence` | never detected in a control: an honest unknown, and normally the large majority |
 | `invalid_{type}` | control rate above sample rate, on at least `min_control_obs` controls, at `min_sites_systemic` or more sites. Name retained so existing `invalid_*` filters keep working |
 | `insufficient_control_evidence` | in fewer than `min_control_obs` controls (default 2). Not assessable. Do not filter |
-| `not_control_enriched` | in a control at or below its sample rate: signal leaking sample -> control. Do not filter |
+| `not_control_enriched` | in a control at or below its sample rate: signal leaking sample -\> control. Do not filter |
 | `single_site_enriched` | control-enriched, but at one site whose samples also carry it: local, not systemic. Do not filter |
 | `questionable_{type}` | in a control, rates do not separate |
 
@@ -149,49 +149,132 @@ acoustic, and image data via the `data_type` param. This review is
 intended as a structured second opinion, not an automated filter. Users
 should treat the flags as candidates for closer inspection.
 
+Site-aware geography
+(`review_assignments(sites = , site_col = "site")`): when a study spans
+a range where a taxon is plausible at some sites but not others, pass a
+table of the study's sites with their latitude and longitude. For each
+taxon, the LLM then says where in the study area it is plausible
+(everywhere, a latitude range, or a list of unlikely sites), returned
+per row as `llm_geographic_plausibility_site`. A site verdict is never
+more plausible than the taxon's study-wide verdict. Without `sites`, the
+review is unchanged.
+
+### Screening reviewed assignments
+
+`screen_assignments()` turns the review's verdicts into suggested
+actions, using two separate questions.
+
+Identity: can the assignment be trusted? This depends on how well the
+best reference match fits (TaxaLikely's absolute-fit flag) and on
+geography (and, for a poor fit, habitat):
+
+| Rule | Fit | Geography | Suggested action |
+|------------------|------------------|------------------|------------------|
+| I1 | good | plausible | keep |
+| I2 | good | unlikely | move up to a genus or family shared with a local, referenced relative that scores nearly as well; otherwise "review", suggested exclude |
+| I3 | poor | plausible | move up one rank (genus and species calls only); coarser calls are kept with `poor_fit_flag` |
+|  | poor | plausible, habitat unlikely | exclude (family or finer) |
+| I4 | poor | unlikely | exclude |
+
+Because TaxaFlag was designed with eDNA in mind, it separates out the
+presence of a sequence at a location from the presence of an organism
+that produced the sequence. Sequences often "bleed" across habitats,
+thus an assignment to a sequence may be correct even if the taxon does
+not occur where the sample was taken. After the identity of a sequence
+is determined, it then becomes relevant to assess if the organism that
+produced the sequence is likely at the location. Often this
+determination comes down to appropriate habitat.
+
+Presence: does the organism live at the collection site? This depends on
+habitat and scope only, and never excludes a row by itself:
+`"resident"`, `"off_habitat"` (e.g., DNA carried from elsewhere), or
+`"out_of_scope"`. Reports filtered by habitat or scope use it.
+
+Every input row (likely or unlikely) is returned, in order, with
+`identity_action`, `identity_taxon_after`, `identity_rank_after`,
+`identity_reason`, `suggested_action`, `presence` and `poor_fit_flag`
+appended. Filtering out unlikely consensus assignments is a separate,
+deliberate step, and an expert's own keep or exclude list should
+override it. With
+`screen_assignments(geography_col = "llm_geographic_plausibility_site")`
+the rules judge each taxon at each site. With
+`screen_assignments(blank_flag_col = )`, rows with blank (contamination)
+evidence also suggest exclude. `relative_score_gap = 0.25`, the margin
+for rule I2, is a chosen value, not calibrated; the screen reports how
+many rows each rule acted on.
+
 ## Key Functions
 
 Control validation and contamination:
 
--   `validate_controls()`: test whether samples labelled as controls
-    are compositionally consistent with being controls, and whether
-    any field sample looks like a control instead
--   `flag_contaminant()`: compare detection rates between field
-    samples and controls and score each taxon as a probable
-    contaminant, ambiguous, or likely genuine detection
+-   `validate_controls()`: test whether samples labelled as controls are
+    compositionally consistent with being controls, and whether any
+    field sample looks like a control instead
+-   `flag_contaminant()`: compare detection rates between field samples
+    and controls and score each taxon as a probable contaminant,
+    ambiguous, or likely genuine detection
 -   `flag_hopped_detections()`: flag detections a sequencing run's own
     read spillover explains, from the run's control samples or its spike
     taxa, and report the spillover rate it fitted for each run
 
 Sequencing-run and sample checks:
 
--   `flag_failed_libraries()`: flag libraries and whole runs that failed to
-    sequence, reading the same extract's other markers as the control
+-   `flag_failed_libraries()`: flag libraries and whole runs that failed
+    to sequence, reading the same extract's other markers as the control
 -   `classify_sample_identity()`: gate each sample on whether its
-    composition looks like the label it carries, so a mislabelled blank or
-    a swapped tube is caught before it is used as a control
--   `review_sample_identity()`: send the samples that do not look like their
-    label to an LLM for a second opinion, with the run's spike-in taxa in
-    the prompt
+    composition looks like the label it carries, so a mislabelled blank
+    or a swapped tube is caught before it is used as a control
+-   `review_sample_identity()`: send the samples that do not look like
+    their label to an LLM for a second opinion, with the run's spike-in
+    taxa in the prompt
 
 Handler artifacts:
 
--   `flag_handler()`: flag detections that fall within a time buffer
-    of camera setup or retrieval, when human handler activity is
-    expected
+-   `flag_handler()`: flag detections that fall within a time buffer of
+    camera setup or retrieval, when human handler activity is expected
 
 LLM review:
 
 -   `review_assignments()`: send each unique taxon from a consensus
     table to an LLM for structured expert review of habitat fit,
     geographic plausibility, taxonomic scope, and contamination risk,
-    with suggested plausible alternatives
+    with suggested plausible alternatives. The review is advisory: it
+    writes `llm_review_flag` and never removes a row, so a verdict
+    cannot silently shorten a species list and an expert keeps the
+    decision. `poor_absolute_fit_col` and `best_identity_col` carry
+    TaxaLikely's absolute-fit signal into the prompt (both default to
+    the column names TaxaLikely emits; `NULL` disables either), so the
+    reviewer is told when even the winning hypothesis fits its own
+    trained distribution poorly. The default `llm_fn` calls
+    `TaxaTools::call_api()` and sends no temperature at all, keeping the
+    provider's own default, because some current models reject that
+    parameter. The site context combines the analyst's own wording with
+    an ecoregion synthesised from the site table, so the reviewer is
+    told where the samples came from rather than inferring it from the
+    taxon names. A call whose name came from the local records rather
+    than from the sequence is marked as such, since judging it as a
+    sequence match would ask the reviewer the wrong question
+
+-   `screen_assignments()`: suggested keep, move-up or exclude actions
+    from the review's verdicts and the match's absolute fit, plus a
+    presence label (resident, off-habitat, out of scope). Flags only;
+    see *Screening reviewed assignments* above
+
+-   `flag_backbone_conflicts()`: report names whose own backbone
+    placement disagrees with itself -- one name carried at more than one
+    rank, or under more than one parent at the same rank -- learned from
+    the backbone present in the data rather than from any list of taxa.
+    The inverse, many names for one organism, is invisible to it by
+    construction, so zero conflicts says nothing about synonymy
 
 Spatial and watch-list checks:
 
 -   `check_gbif_tile_range()`: download GBIF's occurrence-density map
     tiles around a query point and report how isolated that point is
-    from the taxon's known range
+    from the taxon's known range. `cache_dir` keeps one entry per key so
+    a re-run asks GBIF nothing twice; a verdict built on a tile that
+    could not be fetched carries `attr(x, "tile_fetch_failed") = TRUE`
+    and is never cached, so a failure is not served later as a range
 -   `compute_local_occurrence_distance()`: for each taxon, find the
     nearest already-fetched occurrence record and report its distance
     from the query point, at no cost of a new GBIF call
@@ -201,8 +284,7 @@ Spatial and watch-list checks:
     not otherwise surface it
 -   `review_spatial_context()`: open an interactive Shiny gadget for
     scrolling through consensus taxa by plausibility and viewing each
-    flagged taxon's live GBIF occurrence-density map and spatial
-    context
+    flagged taxon's live GBIF occurrence-density map and spatial context
 
 Reporting and cache:
 
@@ -211,8 +293,8 @@ Reporting and cache:
     reported separately for the primary and consensus taxon
 -   `report_flags()`: summarize the quality flags applied by TaxaFlag
     into a report section for `assemble_report()`
--   `taxaflag_clear_cache()`: report or prune this package's cache;
-    the shared signature and the cross-package
+-   `taxaflag_clear_cache()`: report or prune this package's cache; the
+    shared signature and the cross-package
     `TaxaTools::taxaid_cache_report()` are described in the TaxaID
     README's Caching and resources section
 
@@ -314,6 +396,24 @@ reviewed <- review_assignments(
 
 # Filter to contamination concerns
 reviewed[reviewed$llm_contamination_risk %in% c("high", "moderate"), ]
+
+# Site-aware geography: one verdict per taxon per site
+reviewed <- review_assignments(
+  input_df     = consensus_results,
+  taxon_col    = "consensus_taxon",
+  context      = list(geography = "Pacific coast", habitat = "Marine"),
+  target_group = "fish",
+  sites        = site_table,          # columns: site, lat, lon
+  site_col     = "site"
+)
+
+# Suggested actions; nothing is dropped
+screened <- screen_assignments(
+  reviewed,
+  posterior_df  = posteriors,
+  geography_col = "llm_geographic_plausibility_site"
+)
+table(screened$suggested_action, screened$presence, useNA = "ifany")
 ```
 
 ## Reporting
@@ -359,8 +459,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 

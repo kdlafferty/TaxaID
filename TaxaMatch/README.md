@@ -14,12 +14,13 @@ or TaxaAssign (direct assignment).
 
 The main input to TaxaID is a table where each row pairs an observation
 (sequence, image, or sound recording) with a candidate taxon from a
-reference database and a match score indicating their similarity.
-TaxaMatch standardizes column names and taxonomy so that downstream
-packages can interpret this table. Standardization is a prerequisite for
-calibrating scores into likelihoods: without it, raw scores may be
-mistaken for probabilities, leading to overconfident or inconsistent
-assignments.
+reference database and a match score indicating their similarity. An
+observation often matches more than one candidate (typically \>1 row per
+observation). TaxaMatch standardizes column names and taxonomy so that
+downstream packages can interpret this table. Standardization is a
+prerequisite for calibrating scores into likelihoods: without it, raw
+scores may be mistaken for probabilities, leading to overconfident or
+inconsistent assignments.
 
 TaxaMatch can also produce match tables from raw sequence data via NCBI
 (National Center for Biotechnology Information, U.S. National Library of
@@ -96,14 +97,23 @@ match_df <- filter_redundant_hypotheses(match_df)
 -   `filter_redundant_hypotheses()`: drop coarser-rank rows superseded
     by finer-rank rows within the same lineage and observation
 -   `report_match()`: summarize matching for `assemble_report()`
--   `corroborate_references_locally()`: free, zero-NCBI-cost
-    first-pass reference check using your own reference set; see
-    [Reference Accession Quality](#reference-accession-quality)
+-   `corroborate_references_locally()`: free, zero-NCBI-cost first-pass
+    reference check using your own reference set; see [Reference
+    Accession Quality](#reference-accession-quality)
 -   `evaluate_reference_accessions()`: BLAST-based reference-accession
     quality screen; see [Reference Accession
-    Quality](#reference-accession-quality)
--   `score_reference_labels()`: combines the local and BLAST checks
-    into one `reference_action` verdict per accession
+    Quality](#reference-accession-quality). The trimming gate asks
+    whether a deposit exceeds its marker's longest plausible length, not
+    the amplicon the queries actually cover, so a full-length deposit
+    can be screened whole and its percent identities then describe a
+    wider region than the queries. `query_over_amplicon` marks every
+    such row and a call containing any of them warns once with the count
+    and the median and longest submitted length; `query_len_submitted`
+    and `query_trim_path` report what was submitted and how it was
+    trimmed. What is submitted is unchanged -- this makes the
+    miscalibration visible rather than correcting it
+-   `score_reference_labels()`: combines the local and BLAST checks into
+    one `reference_action` verdict per accession
 -   `flag_incongruent_references()` / `remove_incongruent_references()`:
     annotate or remove candidates flagged by
     `evaluate_reference_accessions()`
@@ -129,9 +139,9 @@ Taxonomy backbone:
 
 -   `add_lowest_consistent_rank()`: find the finest taxonomic rank that
     is unambiguous across all of an observation's candidate rows
--   `convert_taxonomy_backbone()`: replace a match object's rank
-    columns with a target taxonomic backbone's hierarchy, column by
-    column, wherever the target backbone provides a value
+-   `convert_taxonomy_backbone()`: replace a match object's rank columns
+    with a target taxonomic backbone's hierarchy, column by column,
+    wherever the target backbone provides a value
 
 Reference accession quality, additional tools:
 
@@ -255,9 +265,9 @@ match_df <- standardize_match_data(match_df,
                                    score_col          = "score")
 ```
 
-Expected Animl output format (long): one or more CSV files with
-columns `FileName`, `prediction`, `confidence`. `FileName` is the image
-path; `prediction` is the species label (scientific name, `"empty"`,
+Expected Animl output format (long): one or more CSV files with columns
+`FileName`, `prediction`, `confidence`. `FileName` is the image path;
+`prediction` is the species label (scientific name, `"empty"`,
 `"human"`, or `"vehicle"`); `confidence` is the classifier posterior
 (0--1). Column names are configurable via `file_col`, `species_col`, and
 `score_col`.
@@ -275,24 +285,23 @@ Animl output typically contains two classes of predictions: confident
 species-level assignments and lower-confidence results where SpeciesNet
 falls back to a coarse "Animal" label. TaxaID handles both:
 
--   Confirmed species proceed directly through the likelihood
-    pipeline
--   "Animal" / unconfirmed can be re-scored with
-    `score_image_inat()` (iNaturalist CV API), flagged for manual
-    review, or carried forward as prior-only assignments
+-   Confirmed species proceed directly through the likelihood pipeline
+-   "Animal" / unconfirmed can be re-scored with `score_image_inat()`
+    (iNaturalist CV API), flagged for manual review, or carried forward
+    as prior-only assignments
 
 ### MegaDetector
 
-MegaDetector (Microsoft AI for Earth) detects whether an image
-contains an animal, human, or vehicle. It does not classify to species.
-Animl wraps MegaDetector as its first stage to remove empty frames
-before species classification. If you run MegaDetector standalone
-(without Animl), filter its output to `detection_conf >= threshold`
-before passing images to a species classifier; TaxaID does not read
+MegaDetector (Microsoft AI for Earth) detects whether an image contains
+an animal, human, or vehicle. It does not classify to species. Animl
+wraps MegaDetector as its first stage to remove empty frames before
+species classification. If you run MegaDetector standalone (without
+Animl), filter its output to `detection_conf >= threshold` before
+passing images to a species classifier; TaxaID does not read
 MegaDetector output directly.
 
-Coverage column: `read_animl_output()` can retain the bounding box
-area (width × height, normalised 0--1) as a `coverage` column when
+Coverage column: `read_animl_output()` can retain the bounding box area
+(width × height, normalised 0--1) as a `coverage` column when
 `bbox_cols` are specified. Smaller bounding boxes indicate a partially
 visible or distant animal: lower evidence per detection, directly
 analogous to DNA alignment coverage and acoustic recording quality.
@@ -309,8 +318,8 @@ The match object format is classifier-agnostic. Three dedicated reader
 functions are available; any other tool that returns a species label and
 a confidence score per image can be adapted manually.
 
-iNaturalist computer vision (direct submission): iNaturalist (a
-joint initiative of the California Academy of Sciences and the National
+iNaturalist computer vision (direct submission): iNaturalist (a joint
+initiative of the California Academy of Sciences and the National
 Geographic Society, San Francisco, California). `score_image_inat()`
 submits image files directly to the iNaturalist CV API and returns a
 match object in one step. Supply a directory, file vector, or single
@@ -327,12 +336,11 @@ match_df <- score_image_inat(
 )
 ```
 
-iNaturalist computer vision (saved JSON): returns a ranked list of
-up to 10 candidate taxa (species, genus, or family) with softmax
-confidence scores (0--1) via the public API
-(`https://api.inaturalist.org/v2/`). Its 108,000+ taxon training set
-covers general wildlife globally. Use `read_inaturalist_cv_output()` on
-saved JSON response files:
+iNaturalist computer vision (saved JSON): returns a ranked list of up to
+10 candidate taxa (species, genus, or family) with softmax confidence
+scores (0--1) via the public API (`https://api.inaturalist.org/v2/`).
+Its 108,000+ taxon training set covers general wildlife globally. Use
+`read_inaturalist_cv_output()` on saved JSON response files:
 
 ``` r
 # Save API response as JSON (one file per image), then:
@@ -344,11 +352,11 @@ inat_df <- read_inaturalist_cv_output(
 ) |> subset(taxon_rank == "species")
 ```
 
-SpeciesNet (Google, `google/cameratrapai`) processes camera trap
-images with an EfficientNetV2-M classifier + MegaDetector ensemble,
-covering 2,000+ labels spanning any taxonomic rank (species down to
-class) plus non-animal categories. Use `read_speciesnet_output()` on the
-batch predictions JSON:
+SpeciesNet (Google, `google/cameratrapai`) processes camera trap images
+with an EfficientNetV2-M classifier + MegaDetector ensemble, covering
+2,000+ labels spanning any taxonomic rank (species down to class) plus
+non-animal categories. Use `read_speciesnet_output()` on the batch
+predictions JSON:
 
 ``` r
 # Run SpeciesNet: python -m speciesnet.scripts.run_model \
@@ -359,17 +367,17 @@ sn_df <- read_speciesnet_output(
 ) |> subset(!is.na(taxon_rank))
 ```
 
-InsectNet (Chiranjeevi et al. 2025; Iowa State University, Ames,
-Iowa; <https://insectapp.las.iastate.edu>) targets insects (2,526
-species, 17 orders) with 96.4% top-1 accuracy. Unlike the classifiers
-above, it returns conformal prediction sets rather than a single
-ranked-confidence list: a set of species guaranteed to contain the true
-species with ≥97.5% probability. It also flags out-of-distribution
-images with an energy-based OOD score. The conformal output format is
-not currently compatible with the score-based likelihood model in
-TaxaLikely without access to the underlying softmax scores. A web
-interface is available; programmatic access to model weights is
-described in the paper but no public API exists at time of writing.
+InsectNet (Chiranjeevi et al. 2025; Iowa State University, Ames, Iowa;
+<https://insectapp.las.iastate.edu>) targets insects (2,526 species, 17
+orders) with 96.4% top-1 accuracy. Unlike the classifiers above, it
+returns conformal prediction sets rather than a single ranked-confidence
+list: a set of species guaranteed to contain the true species with
+≥97.5% probability. It also flags out-of-distribution images with an
+energy-based OOD score. The conformal output format is not currently
+compatible with the score-based likelihood model in TaxaLikely without
+access to the underlying softmax scores. A web interface is available;
+programmatic access to model weights is described in the paper but no
+public API exists at time of writing.
 
 | Classifier | Reader function | Score type | R package |
 |------------------|------------------|------------------|------------------|
@@ -381,8 +389,14 @@ described in the paper but no public API exists at time of writing.
 
 ## Reference Accession Quality {#reference-accession-quality}
 
-A mislabeled reference in the underlying NCBI database produces
-confident wrong assignments that propagate to every query matching it.
+A mislabeled reference in the underlying database produces confident
+wrong assignments that propagate to every query matching it. Yet
+mislables are rare, and defining a mislabel is a serious accusation.
+Mistakenly removing evidence that is not mislabled can weaken downstream
+likelihood models by making evidence appear more discriminating than it
+is. Thus, I recommend taking time to assess suspicious references before
+condemning them.
+
 TaxaMatch screens the actual candidate accessions your queries match
 against, before they're trusted as candidates or used to train a
 likelihood model, independent of whatever else happens to be in a
@@ -392,22 +406,25 @@ set (screen it before
 have no built-in reference-quality screening of their own) and to the
 accessions your query candidates actually matched.
 
-### The recommended screen: a free check first, then BLAST only where needed
+Unfortunately, screening many thousands of references by for mislabeling
+can be very time consuming.
 
-`corroborate_references_locally()` is a free, zero-NCBI-cost first
-pass: does an independent conspecific (a different submission batch)
-already in your own reference set corroborate each accession's label at
-high identity over real sequence overlap? Run this before BLASTing
+### The recommended screen: a free check first, then investigate only where needed
+
+`corroborate_references_locally()` is a free, low-effort first pass:
+does an independent conspecific (a different submission batch) already
+in your own reference set corroborate each accession's label at high
+identity over real sequence overlap? Here it is tuned for DNA sequences
+but should be adaptable to other data types. Run this before BLASTing
 anything. `evaluate_reference_accessions()`'s
 `skip_locally_corroborated = TRUE` (the default) skips every accession
 this step already resolves, so only the genuinely ambiguous remainder
 ever costs a BLAST call.
 
-How much this saves depends on how densely your own reference set covers
-the taxa in it, so measure it rather than assume. On one real multi-marker
-set of 6,618 accessions it resolved 3,507 of them -- 53% -- in about three
-tenths of a second, and those 3,507 never reached BLAST. Note that
-`same_batch_only` is deliberately not counted as corroborated: a
+How much effort this saves depends on how densely your own reference set
+covers the taxa in it. On one real multi-marker set of 6,618 accessions
+it resolved 53% in about three tenths of a second without BLAST. Note
+that `same_batch_only` is deliberately not counted as corroborated: a
 submission corroborating itself is not independent evidence.
 
 ``` r
@@ -437,7 +454,7 @@ reference_df_clean <- reference_df[!reference_df$composite_id %in% bad_accession
 On a real Great Lakes fish reference set (\~2,650 accessions), this
 pattern resolved most accessions for free via local corroboration and
 BLASTed only the remainder: of the \~230 accessions that ever looked
-questionable under any measure tried, only 3 (\~1.3%) were confirmed
+questionable under any measure tried, only 3 of these were confirmed
 genuine mislabels. Most apparent problems are same-submission-batch
 artifacts or tight-congener confusion a broad, independent database can
 correctly clear.
@@ -458,13 +475,12 @@ are genuinely independent (not the same submission batch), and asks
 whether the closest independent hits agree with the accession's own
 listed taxon.
 
-Getting an accession list from your own downloaded/BLASTed
-sequences: `evaluate_reference_accessions()` takes NCBI accessions,
-not sequences directly, but you don't need to look any up by hand.
-`blast_sequences()` (see [Quick Start](#quick-start) above) already
-returns the reference database's own accession for every hit, so the
-accessions worth screening are just the candidates your own queries
-actually matched:
+Getting an accession list from your own downloaded/BLASTed sequences:
+`evaluate_reference_accessions()` takes NCBI accessions, not sequences
+directly, but you don't need to look any up by hand. `blast_sequences()`
+(see [Quick Start](#quick-start) above) already returns the reference
+database's own accession for every hit, so the accessions worth
+screening are just the candidates your own queries actually matched:
 
 ``` r
 blast_hits <- blast_sequences(filtered, database = "nt", barcode_term = "12S")
@@ -494,10 +510,10 @@ only needs the accession strings, not the downloaded sequence content
 itself.
 
 `hierarchy_flag` is `"congruent"` / `"incongruent"` /
-`"insufficient_independent_evidence"`. `"incongruent"` is not a
-verdict on its own: a genuine mislabel and "this marker has poor
-resolving power for this lineage" produce the same flag. The identity
-diagnostics (`best_agreeing_pident`, `best_disagreeing_pident`,
+`"insufficient_independent_evidence"`. `"incongruent"` is not a verdict
+on its own: a genuine mislabel and "this marker has poor resolving power
+for this lineage" produce the same flag. The identity diagnostics
+(`best_agreeing_pident`, `best_disagreeing_pident`,
 `best_disagreeing_taxon`, `congruent_evidence_exists_anywhere`)
 distinguish them. Read
 [`inst/reference_accession_evaluation_guide.md`](inst/reference_accession_evaluation_guide.md)
@@ -555,14 +571,13 @@ look, the same "narrative judgment layer on top of statistical flags,
 never replacing them" pattern `TaxaFlag::review_assignments()` uses for
 posterior assignments. It adds what the statistical check can't,
 recognizing a known hybrid-cross name or an informal specimen code, but
-never re-decides `hierarchy_flag` itself. LLM calls are real, billed API
-cost, so this also caches: an accession already reviewed with
-unchanged inputs is served from `cache_dir` instead of a fresh call,
-but a genuine change (e.g. re-running `evaluate_reference_accessions()`
+never re-decides `hierarchy_flag` itself. LLM calls require the expense
+of an API, so this also caches: an accession already reviewed with
+unchanged inputs is served from `cache_dir` instead of a fresh call, but
+a genuine change (e.g. re-running `evaluate_reference_accessions()`
 flips `hierarchy_flag` or `best_disagreeing_taxon` for that accession)
-triggers a real re-review automatically. The cache is keyed on a
-content fingerprint of the review-relevant columns, not just the
-accession name:
+triggers a real re-review automatically. The cache is keyed on a content
+fingerprint of the review-relevant columns, not just the accession name:
 
 ``` r
 qc_reviewed <- review_flagged_accessions(qc, cache_dir = my_cache_dir)
@@ -579,11 +594,11 @@ qc_reviewed[!is.na(qc_reviewed$accession_review_comment),
 TaxaMatch produces a match object; TaxaLikely converts scores to
 likelihoods; TaxaAssign computes Bayesian posteriors. From there:
 
--   cameratrappr: detection rates, activity patterns, survey
-    design from camera trap data
+-   cameratrappr: detection rates, activity patterns, survey design from
+    camera trap data
 -   Distance / unmarked: occupancy and abundance modeling
--   TaxaFlag: flags anomalous detections (lab contamination,
-    geographic outliers)
+-   TaxaFlag: flags anomalous detections (lab contamination, geographic
+    outliers)
 
 TaxaMatch's `observation_id` (image filename stem for camera traps,
 `{recording}_{start}-{end}` for acoustics) links posteriors back to the
@@ -647,8 +662,7 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San
-Francisco, California).
+Developed with Claude Code (Anthropic PBC, San Francisco, California).
 
 ## References
 
