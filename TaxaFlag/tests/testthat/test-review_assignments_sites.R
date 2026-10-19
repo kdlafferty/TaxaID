@@ -113,7 +113,8 @@ test_that("the prompt lists sites south to north and asks for geographic_by_site
     regexpr("  North (38.00, -123.00)", p, fixed = TRUE))
   expect_match(p, '"geographic_by_site": where in the STUDY SITES', fixed = TRUE)
   expect_match(p, '"geographic_by_site": {"rule": "all"}', fixed = TRUE)
-  expect_match(p, "best verdict over all sites|BEST verdict over all sites")
+  expect_match(p, "\"inside\" is the verdict for a site within the range", fixed = TRUE)
+  expect_match(p, "Judge GEOGRAPHY (range) only", fixed = TRUE)
 })
 
 # --- 3. the three rule shapes --------------------------------------------------
