@@ -26,12 +26,11 @@ way it is; read this file to know what is true now.
 | TaxaFlag | Flagging anomalous detections; expert review; the post-hoc screen |
 | TaxaWizard | Workflow designer; generates `llm_prompts/` and the canonical workflow template |
 
-**Export surface: 224 = 219 functions + 5 data objects**, ratified. Per package:
-TaxaTools 57, TaxaFetch 32, TaxaHabitat 15, TaxaMatch 30, TaxaLikely 33, TaxaExpect 17,
-TaxaAssign 14, TaxaFlag 17, TaxaWizard 9. The root README's Software Inventory table
-states the same numbers and is guarded against the tree by
-`TaxaWizard/tests/testthat/test-pack.R`, which checks BOTH the export and test-file
-columns.
+The ratified export surface and the per-package counts are stated ONCE, in the root
+README's Software Inventory table, which `TaxaWizard/tests/testthat/test-pack.R` checks
+against the tree on both the export and test-file columns. Read it there rather than
+from a second copy here: a number asserted in two places can drift, and only one of them
+is guarded.
 
 ## Dependency chain
 
