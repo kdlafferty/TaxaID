@@ -373,7 +373,7 @@ When \code{sites} is supplied the data frame also carries
 \code{llm_geographic_plausibility_site} (see \code{@section Site-aware
 geography}) and an \code{attr(result, "geographic_by_site")} data frame, one
 row per reviewed taxon, giving the parsed range rule (\code{rule},
-\code{lat_min}, \code{lat_max}, \code{outside}, \code{unlikely_sites} as a
+\code{lat_min}, \code{lat_max}, \code{inside}, \code{outside}, \code{unlikely_sites} as a
 semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
 records a fallback).
 
@@ -503,15 +503,22 @@ longitude; sorted south to north) and the LLM returns, per taxon, a
 \itemize{
 \item{\code{\{"rule": "all"\}}: the same verdict at every site.}
 \item{\code{\{"rule": "latitude", "lat_min": ., "lat_max": .,
-    "outside": "unlikely" or "possible"\}}: plausible between the two
-latitudes; sites outside get the \code{outside} verdict.}
-\item{\code{\{"rule": "sites", "unlikely_sites": [...]\}}: unlikely at
-the named sites only, for patterns latitude does not describe.}
+    "inside": "likely" or "possible", "outside": "unlikely" or
+    "possible"\}}: plausible between the two latitudes; sites inside get the
+\code{inside} verdict and sites outside get the \code{outside} verdict.}
+\item{\code{\{"rule": "sites", "unlikely_sites": [...], "inside":
+    "likely" or "possible"\}}: unlikely at the named sites only, for
+patterns latitude does not describe; every other site gets the
+\code{inside} verdict.}
 }
 The parsed rule is turned into a verdict per site in code, so the sites
 table is applied by the package, not by the model. Inside the range the
-verdict is the taxon's \code{geographic_plausibility}, and a site never gets
-a better verdict than that. Output:
+verdict is the rule's own \code{inside} verdict, which is NOT capped by the
+taxon's \code{geographic_plausibility}: habitat fit and rarity are rated
+separately and must not override the range the model drew. A missing or
+invalid \code{inside} is \code{"possible"}; it never falls back to
+\code{geographic_plausibility}. With \code{\{"rule": "all"\}} the verdict at
+every site is \code{geographic_plausibility}. Output:
 \itemize{
 \item{\code{llm_geographic_plausibility_site}: the verdict at the site
 named in each row's \code{site_col}. Rows with an \code{NA} site, or a
@@ -519,9 +526,8 @@ site not in \code{sites}, get the study-wide verdict. Unreviewed taxa
 stay \code{NA}.}
 \item{\code{llm_geographic_plausibility} changes meaning when
 \code{sites} is supplied: it is the BEST verdict over all the sites
-(\code{"unlikely"} only if unlikely at every site), not a single
-study-wide judgement. If the model's rule leaves every site worse than
-the verdict it gave, the column is set to the best site verdict.}
+(\code{"unlikely"} only if unlikely at every site), computed in code from
+the site verdicts, not a single study-wide judgement.}
 }
 Fallbacks, each giving the study-wide verdict at every site (recorded in
 the \code{how} column of \code{attr(result, "geographic_by_site")}): the
