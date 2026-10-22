@@ -692,3 +692,19 @@ test_that("editing a file reached through file.path() recomputes the step (end t
   expect_match(out, "inputs changed since the cached run", fixed = TRUE)
   expect_equal(readRDS(step1), 5L)
 })
+
+test_that("an evaluated composed path does not also fingerprint its bare fragments", {
+  # A file called esv.csv in the working directory is not the file
+  # file.path(data_dir, "esv.csv") reads; editing it must not re-run the step.
+  h <- .ck_helpers()
+  d <- tempfile("ckfrag_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  sub <- file.path(d, "data"); dir.create(sub)
+  writeLines("x", file.path(sub, "esv.csv"))
+  old_wd <- setwd(d); on.exit(setwd(old_wd), add = TRUE)
+  writeLines("decoy 1", "esv.csv")                      # same name, in the cwd
+  env <- .ck_sig_env(h, list(data_dir = sub))
+  code <- quote(x <- read.csv(file.path(data_dir, "esv.csv")))
+  before <- h$.taxaid_step_signature(code, env)
+  writeLines("decoy 2", "esv.csv")
+  expect_identical(h$.taxaid_step_signature(code, env), before)
+})
