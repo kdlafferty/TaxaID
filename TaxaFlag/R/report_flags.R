@@ -36,6 +36,13 @@
 #' rather than an exact total. Read the basis column, never a bare
 #' \code{NA}.
 #'
+#' The report says "expert review" only where a human review is evidenced:
+#' an \code{expert_} column, or \code{review_flag_stands}, which is derived
+#' from \code{expert_keep}. \code{review_assignments()}'s own
+#' \code{review_confidence} and \code{review_comment} are LLM output and are
+#' reported as LLM review metadata, so a report never claims a review that
+#' did not happen.
+#'
 #' @param flagged_data Data frame. Assignment data with flag columns from
 #'   \code{\link{flag_contaminant}}, \code{\link{flag_handler}}, and/or
 #'   \code{\link{review_assignments}}, optionally also carrying
@@ -120,8 +127,24 @@ report_flags <- function(flagged_data,
   # suffix-matched, so the llm_ prefix needs no change here:
   plausibility_cols <- grep("_plausibility$", all_cols, value = TRUE)
 
-  # Review metadata columns: review_confidence, review_comment, etc.
-  review_cols <- grep("^review_", all_cols, value = TRUE)
+  # Expert review is a HUMAN step, and only two things evidence it: the
+  # `expert_` columns a workflow writes from the reviewer's keep/exclude
+  # lists, and `review_flag_stands`, which is derived from `expert_keep`
+  # and so cannot exist unless that step ran. Everything else matching
+  # "^review_" -- review_confidence, review_comment, review_alternatives,
+  # review_lower_hypotheses -- is review_assignments() metadata from the
+  # LLM. Reporting those as an expert review states something that did not
+  # happen, which in a methods section is a misrepresentation and not
+  # merely an imprecision.
+  expert_cols <- unique(c(
+    grep("^expert_", all_cols, value = TRUE),
+    intersect("review_flag_stands", all_cols)
+  ))
+  # LLM reviewer metadata. Kept separate rather than dropped, because
+  # review_confidence still contributes the review_low_confidence count
+  # below, and a count belonging to no declared type is worse than a
+  # redundant one.
+  llm_review_cols <- setdiff(grep("^review_", all_cols, value = TRUE), expert_cols)
 
   # Reference-support columns from TaxaLikely::annotate_reference_support().
   # Suffix-matched on the count column, so any prefix is picked up (the
@@ -157,7 +180,8 @@ report_flags <- function(flagged_data,
     flag_types <- c(flag_types, "handler artifacts")
   }
   if (length(plausibility_cols) > 0L) flag_types <- c(flag_types, "plausibility review")
-  if (length(review_cols) > 0L) flag_types <- c(flag_types, "expert review")
+  if (length(expert_cols) > 0L) flag_types <- c(flag_types, "expert review")
+  if (length(llm_review_cols) > 0L) flag_types <- c(flag_types, "LLM review metadata")
   # Any validity_type not already covered above (e.g. a future flag_*()
   # mechanism this function doesn't have specific wording for yet) still
   # counts toward "flagging was applied", generically.
