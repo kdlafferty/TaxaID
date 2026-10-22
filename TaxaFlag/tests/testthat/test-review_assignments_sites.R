@@ -350,12 +350,12 @@ test_that("cache: sites and no-sites never serve each other; a hit reproduces th
   .gs_review(rep("Taxon a", 3L), fn, site_vec = sv, cache_dir = cd)
   expect_equal(log$n, 3L)
   keys <- vapply(list.files(cd, full.names = TRUE), function(f) readRDS(f)$key, character(1))
-  expect_equal(sum(grepl("geo_sites_v3", keys, fixed = TRUE)), 2L)
-  expect_equal(sum(!grepl("geo_sites_v3", keys, fixed = TRUE)), 1L)
-  expect_false(any(grepl("geo_sites_v2", keys, fixed = TRUE)))
-  # a v2-keyed entry is a miss: the v3 key differs from the v2 key
-  v3 <- keys[grepl("geo_sites_v3", keys, fixed = TRUE)][1L]
-  expect_false(identical(v3, sub("geo_sites_v3", "geo_sites_v2", v3, fixed = TRUE)))
+  expect_equal(sum(grepl("geo_sites_v4", keys, fixed = TRUE)), 2L)
+  expect_equal(sum(!grepl("geo_sites_v4", keys, fixed = TRUE)), 1L)
+  expect_false(any(grepl("geo_sites_v3", keys, fixed = TRUE)))
+  # an entry keyed on an older sites wording is a miss, not a stale hit
+  v4 <- keys[grepl("geo_sites_v4", keys, fixed = TRUE)][1L]
+  expect_false(identical(v4, sub("geo_sites_v4", "geo_sites_v3", v4, fixed = TRUE)))
 })
 
 # --- 8. truncated JSON with the nested object ---------------------------------------------
