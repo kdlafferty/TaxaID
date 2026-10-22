@@ -290,6 +290,23 @@
 #'   \code{sites$site} are named in a warning and those rows get the
 #'   study-wide verdict. Not part of the cache key, since it does not change
 #'   the prompt. Default \code{"site"}.
+#' @param llm_batch_fn Function or \code{NULL} (default). A callable that
+#'   answers many prompts at once, \code{function(prompts, ...)}, returning a
+#'   character vector the length of \code{prompts} with \code{NA} where a
+#'   prompt has no answer -- for example
+#'   \code{function(p, ...) TaxaTools::call_anthropic_batch(p, model = "claude-sonnet-5-5", ...)},
+#'   which is billed at half the synchronous price. When supplied, every
+#'   uncached batch's prompt is built first and sent in ONE call
+#'   (\code{max_tokens} is forwarded when set). Any batch whose answer is
+#'   \code{NA}, truncated or unparseable then goes through the ordinary
+#'   synchronous path with \code{llm_fn} -- the same split-and-retry and
+#'   omitted-taxa re-asks -- so \code{llm_fn} must still be a working caller
+#'   for the same model. The prompts, the cache key and the output are those
+#'   of the synchronous path, so a verdict is cached and served identically
+#'   whichever route answered it. If the call itself fails, or returns the
+#'   wrong shape, the whole run falls back to \code{llm_fn} with a warning.
+#'   Nothing is passed to it but the prompts and \code{max_tokens}: an API key
+#'   stays inside the callable.
 #' @return The input data frame with 8 or 9 columns appended:
 #' \describe{
 #'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
@@ -579,7 +596,8 @@ review_assignments <- function(input_df,
                                poor_absolute_fit_col = "poor_absolute_fit",
                                best_identity_col = "best_identity",
                                sites = NULL,
-                               site_col = "site") {
+                               site_col = "site",
+                               llm_batch_fn = NULL) {
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -1022,6 +1040,57 @@ review_assignments <- function(input_df,
   batch_results <- vector("list", n_batches)
   prompt_log <- new.env(parent = emptyenv())
 
+  # Batch route: one call for every batch's first answer. Anything it leaves
+  # unanswered falls through to the synchronous path below, unchanged.
+  first_responses <- NULL
+  if (!is.null(llm_batch_fn) && n_batches > 0L) {
+    if (!is.function(llm_batch_fn)) {
+      stop("'llm_batch_fn' must be a function or NULL.", call. = FALSE)
+    }
+    batch_prompts <- vapply(seq_along(batch_idx), function(b) {
+      .build_review_prompt(
+        taxa_to_call[batch_idx[[b]], , drop = FALSE], ctx, target_group, marker,
+        data_type, use_candidates,
+        sites = sites
+      )
+    }, character(1))
+    if (verbose) {
+      message(sprintf("  Sending %d prompt(s) as one batch (llm_batch_fn)...", n_batches))
+    }
+    batch_error <- NULL
+    batch_raw <- tryCatch(
+      if (is.null(max_tokens)) {
+        llm_batch_fn(batch_prompts)
+      } else {
+        llm_batch_fn(batch_prompts, max_tokens = max_tokens)
+      },
+      error = function(e) {
+        batch_error <<- conditionMessage(e)
+        NULL
+      }
+    )
+    if (!is.null(batch_error)) {
+      warning(sprintf(
+        "llm_batch_fn failed (%s); answering every batch through llm_fn instead.",
+        batch_error
+      ), call. = FALSE)
+    } else if (!is.character(batch_raw) || length(batch_raw) != n_batches) {
+      warning(sprintf(
+        "llm_batch_fn returned %s, not %d character answer(s); answering every batch through llm_fn instead.",
+        if (is.character(batch_raw)) sprintf("%d answer(s)", length(batch_raw)) else class(batch_raw)[1L],
+        n_batches
+      ), call. = FALSE)
+    } else {
+      first_responses <- as.character(batch_raw)
+      if (verbose) {
+        message(sprintf(
+          "  Batch answered %d of %d; the rest go through llm_fn.",
+          sum(!is.na(first_responses)), n_batches
+        ))
+      }
+    }
+  }
+
   for (b in seq_along(batch_idx)) {
     taxa_batch <- taxa_to_call[batch_idx[[b]], , drop = FALSE]
 
@@ -1033,14 +1102,24 @@ review_assignments <- function(input_df,
       ))
     }
 
-    batch_results[[b]] <- .review_batch_with_retry(
-      taxa_batch, ctx, target_group, marker, data_type, use_candidates,
-      llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
-      batch_label = as.character(b), max_retries = max_retries,
-      prompt_log = prompt_log, sites = sites
-    )
+    if (is.null(first_responses)) {
+      batch_results[[b]] <- .review_batch_with_retry(
+        taxa_batch, ctx, target_group, marker, data_type, use_candidates,
+        llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
+        batch_label = as.character(b), max_retries = max_retries,
+        prompt_log = prompt_log, sites = sites
+      )
+    } else {
+      batch_results[[b]] <- .review_batch_with_retry(
+        taxa_batch, ctx, target_group, marker, data_type, use_candidates,
+        llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
+        batch_label = as.character(b), max_retries = max_retries,
+        prompt_log = prompt_log, sites = sites,
+        first_response = first_responses[b]
+      )
+    }
 
-    if (b < n_batches) Sys.sleep(pause_seconds)
+    if (b < n_batches && is.null(first_responses)) Sys.sleep(pause_seconds)
   }
 
   review_df <- do.call(rbind, batch_results)
@@ -2081,7 +2160,7 @@ review_assignments <- function(input_df,
                                      max_tokens, taxon_rank_col, verbose,
                                      pause_seconds, batch_label, max_retries,
                                      depth = 0L, prompt_log = NULL,
-                                     sites = NULL) {
+                                     sites = NULL, first_response = NULL) {
   prompt <- .build_review_prompt(
     taxa_batch, ctx, target_group, marker,
     data_type, use_candidates,
@@ -2095,13 +2174,20 @@ review_assignments <- function(input_df,
   if (!is.null(prompt_log)) assign(batch_label, prompt, envir = prompt_log)
 
   call_error <- NULL
-  raw <- tryCatch(
-    if (is.null(max_tokens)) llm_fn(prompt) else llm_fn(prompt, max_tokens = max_tokens),
-    error = function(e) {
-      call_error <<- conditionMessage(e)
-      NULL
-    }
-  )
+  # first_response: this batch's answer from llm_batch_fn, already paid for.
+  # NA (no answer) is asked again here through llm_fn, as is any answer that
+  # parses as truncated or failed (the split-and-retry below).
+  raw <- if (!is.null(first_response) && !is.na(first_response)) {
+    first_response
+  } else {
+    tryCatch(
+      if (is.null(max_tokens)) llm_fn(prompt) else llm_fn(prompt, max_tokens = max_tokens),
+      error = function(e) {
+        call_error <<- conditionMessage(e)
+        NULL
+      }
+    )
+  }
 
   if (!is.null(call_error)) {
     warning(sprintf(

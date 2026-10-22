@@ -39,7 +39,8 @@ review_assignments(
   poor_absolute_fit_col = "poor_absolute_fit",
   best_identity_col = "best_identity",
   sites = NULL,
-  site_col = "site"
+  site_col = "site",
+  llm_batch_fn = NULL
 )
 }
 \arguments{
@@ -339,6 +340,24 @@ the column is absent then); non-\code{NA} values not found in
 \code{sites$site} are named in a warning and those rows get the
 study-wide verdict. Not part of the cache key, since it does not change
 the prompt. Default \code{"site"}.}
+
+\item{llm_batch_fn}{Function or \code{NULL} (default). A callable that
+answers many prompts at once, \code{function(prompts, ...)}, returning a
+character vector the length of \code{prompts} with \code{NA} where a
+prompt has no answer -- for example
+\code{function(p, ...) TaxaTools::call_anthropic_batch(p, model = "claude-sonnet-5-5", ...)},
+which is billed at half the synchronous price. When supplied, every
+uncached batch's prompt is built first and sent in ONE call
+(\code{max_tokens} is forwarded when set). Any batch whose answer is
+\code{NA}, truncated or unparseable then goes through the ordinary
+synchronous path with \code{llm_fn} -- the same split-and-retry and
+omitted-taxa re-asks -- so \code{llm_fn} must still be a working caller
+for the same model. The prompts, the cache key and the output are those
+of the synchronous path, so a verdict is cached and served identically
+whichever route answered it. If the call itself fails, or returns the
+wrong shape, the whole run falls back to \code{llm_fn} with a warning.
+Nothing is passed to it but the prompts and \code{max_tokens}: an API key
+stays inside the callable.}
 }
 \value{
 The input data frame with 8 or 9 columns appended:
