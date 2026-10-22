@@ -8,6 +8,29 @@ utils::globalVariables(c(
 # outliers relative to a species' own global GBIF distribution
 # ==============================================================================
 
+#' Content hash naming one check_geographic_outliers() verdict file
+#'
+#' The sorted species-key set plus every parameter that changes a verdict.
+#' `local_ids` are the requested local gbifIDs: the stored verdicts are the
+#' subset of the global cloud those records join to, so a different local set
+#' is a different question. `on_cap` decides whether a capped key's cloud was
+#' re-fetched in full or kept as a truncated prefix, so a verdict made from a
+#' prefix is never served to a call that asked for the full cloud.
+#' @noRd
+.outlier_verdict_hash <- function(rare_keys, year_range, method, min_occs,
+                                  tdi, mltpl, local_ids, on_cap) {
+  rlang::hash(list(
+    rare_keys  = sort(rare_keys),
+    year_range = year_range,
+    method     = method,
+    min_occs   = min_occs,
+    tdi        = tdi,
+    mltpl      = mltpl,
+    local_ids  = sort(unique(as.character(local_ids))),
+    on_cap     = on_cap
+  ))
+}
+
 #' Flag Geographically Isolated Occurrence Records Against a Species' Global Range
 #'
 #' A bbox-scoped GBIF search (see \code{\link{get_gbif_occurrences}}) can
@@ -87,16 +110,31 @@ utils::globalVariables(c(
 #'   one integer per species and one logical per local record and then
 #'   discarded, so caching it stores millions of records to preserve a few
 #'   thousand numbers. The verdict file is keyed on a content hash
-#'   (\code{rlang::hash()}) of the sorted species-key set plus every
-#'   parameter that changes the verdict (\code{year_range}, \code{method},
-#'   \code{min_occs}, \code{tdi}, \code{mltpl}), so changing any of them
-#'   recomputes. A loaded cache file that shares none of the current call's
+#'   (\code{rlang::hash()}) of the sorted species-key set, the requested local
+#'   \code{gbifID}s, and every parameter that changes the verdict
+#'   (\code{year_range}, \code{method}, \code{min_occs}, \code{tdi},
+#'   \code{mltpl}, \code{on_cap}), so changing any of them recomputes. The
+#'   file also records the keys whose global cloud was truncated
+#'   (\code{attr(, "capped_keys")}), the fetch backend and the fetch date. A loaded cache file that shares none of the current call's
 #'   requested \code{gbifID}s (a stale or foreign file) is treated as a miss
 #'   and recomputed, with a \code{message()} naming the skipped file.
 #' @param verbose Logical. Forwarded to \code{cc_outl()}. Default
 #'   \code{FALSE}.
+#' @param on_cap Character, forwarded to \code{\link{get_gbif_occurrences}}:
+#'   what to do when a species' global fetch returns exactly the direct API's
+#'   per-key limit (10,000) and was therefore TRUNCATED. Fewer than
+#'   \code{key_threshold} (50) rare species use the direct API, and a
+#'   truncated cloud is GBIF's return order, a non-random prefix -- the very
+#'   reference this test measures "normal range" against. \code{"escalate"}
+#'   (default) re-fetches the capped species through the download API with
+#'   no limit; it needs GBIF credentials and falls back to a warning without
+#'   them. \code{"warn"} keeps the truncated cloud and warns; \code{"error"}
+#'   stops. Escalation downloads a species' full GLOBAL record set, which for
+#'   a globally common species can run to millions of records.
 #'
-#' @return \code{local_occurrences} with three columns added:
+#' @return \code{local_occurrences} with three columns added, and
+#'   \code{attr(, "capped_keys")}: the species keys whose verdict came from a
+#'   truncated global cloud (\code{integer(0)} when none):
 #'   \describe{
 #'     \item{\code{local_n}}{Number of records for this species in
 #'       \code{local_occurrences}.}
@@ -178,9 +216,11 @@ check_geographic_outliers <- function(
   candidate_taxa = NULL,
   candidate_scope = c("genus", "species", "all"),
   verdict_cache = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  on_cap = c("escalate", "warn", "error")
 ) {
   candidate_scope <- match.arg(candidate_scope)
+  on_cap <- match.arg(on_cap)
 
   # --- Dependency check ---------------------------------------------------
   if (!requireNamespace("CoordinateCleaner", quietly = TRUE)) {
@@ -317,14 +357,10 @@ check_geographic_outliers <- function(
   # read.
   .verdict_path <- if (isTRUE(verdict_cache) && !is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    key_hash <- rlang::hash(list(
-      rare_keys  = sort(rare_keys),
-      year_range = year_range,
-      method     = method,
-      min_occs   = min_occs,
-      tdi        = tdi,
-      mltpl      = mltpl
-    ))
+    key_hash <- .outlier_verdict_hash(
+      rare_keys, year_range, method, min_occs, tdi, mltpl,
+      local_ids = local_occurrences$gbifID[is_rare_row], on_cap = on_cap
+    )
     file.path(cache_dir, sprintf("gbif_outlier_verdicts_%s.rds", key_hash))
   } else {
     NULL
@@ -376,6 +412,7 @@ check_geographic_outliers <- function(
       geometry = NULL,
       year_range = year_range,
       limit = NULL,
+      on_cap = on_cap,
       # rank_filter = NULL, NOT the wrapper's "species" default: this call
       # must apply no rank filter, since it only switches backend (one HTTP
       # request per key vs the async bulk download), not which records
@@ -388,8 +425,12 @@ check_geographic_outliers <- function(
 
     if (nrow(global_occ) == 0L) {
       local_occurrences$outlier_status[is_rare_row] <- "insufficient_global_data"
+      attr(local_occurrences, "capped_keys") <- integer(0)
       return(local_occurrences)
     }
+    # Empty after a successful escalation; under "warn", the keys whose cloud
+    # is still a truncated prefix.
+    capped_keys <- as.integer(attr(global_occ, "capped_keys") %||% integer(0))
 
     global_counts <- global_occ |>
       dplyr::distinct(species, decimalLongitude, decimalLatitude) |>
@@ -448,6 +489,11 @@ check_geographic_outliers <- function(
       cached_verdicts$gbifID %in% local_occurrences$gbifID[is_rare_row], ,
       drop = FALSE
     ]
+    # Set after the subset above, which drops attributes. Travels with the
+    # file, so a cache hit reports the same provenance as the run that made it.
+    attr(cached_verdicts, "capped_keys") <- capped_keys
+    attr(cached_verdicts, "backend") <- if (length(rare_keys) >= 50L) "download" else "fetch"
+    attr(cached_verdicts, "fetch_date") <- Sys.Date()
     if (!is.null(.verdict_path)) {
       saveRDS(cached_verdicts, .verdict_path)
       message(sprintf(
@@ -471,5 +517,16 @@ check_geographic_outliers <- function(
   local_occurrences$global_n_unique[is_rare_row] <- matched_n_unique
   local_occurrences$outlier_status[is_rare_row] <- status
 
+  capped_keys <- as.integer(attr(cached_verdicts, "capped_keys") %||% integer(0))
+  if (length(capped_keys) > 0L) {
+    message(sprintf(
+      paste0(
+        "check_geographic_outliers: %d species' verdict(s) came from a TRUNCATED ",
+        "global cloud (on_cap = \"%s\"); see attr(, \"capped_keys\")."
+      ),
+      length(capped_keys), on_cap
+    ))
+  }
+  attr(local_occurrences, "capped_keys") <- capped_keys
   local_occurrences
 }
