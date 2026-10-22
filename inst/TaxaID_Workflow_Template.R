@@ -976,6 +976,26 @@ reviewed <- TaxaFlag::review_assignments(
 )
 message("Reviewed ", nrow(reviewed), " assignments")
 
+# --- Multi-site studies: per-site geography ----------------------------------
+# This path reviews one site, so it leaves review_assignments(sites=) unset.
+# A study with several sites passes sites = <site table> and site_col =, and
+# gets a per-taxon, per-site verdict in llm_geographic_plausibility_site plus
+# the parsed rules in attr(reviewed, "geographic_by_site").
+#
+# Read `how` in that attribute before trusting a per-site verdict. One case
+# needs handling outside the package: a rule can name a single latitude bound
+# on the wrong side, so a southern range limit written as lat_max puts every
+# northern site outside the band. The taxon's study-wide verdict then says
+# "likely" while its per-site verdict says "unlikely" everywhere it was
+# actually detected. TaxaFlag holds no occurrence data and cannot tell that
+# from a correct exclusion, so the check belongs here, where the records and
+# the site table already are: count distinct record locations near the site,
+# and where there are enough, screen on the study-wide verdict instead.
+# Keep the reviewer's own column untouched and write the adjusted verdict to
+# its own column, so a report can still say what it did. The worked pattern,
+# with the NA-versus-0 rule and the row-count assertion, is in TaxaFlag's
+# README under "Overriding a per-site verdict with local records".
+
 # Always check: attributes do NOT survive a dplyr verb, so read this before
 # any join or mutate.
 if (length(attr(reviewed, "unreviewed_taxa"))) {
