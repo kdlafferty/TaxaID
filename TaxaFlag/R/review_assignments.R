@@ -943,9 +943,9 @@ review_assignments <- function(input_df,
     # The sites change the prompt and the parsed output, so they are part of
     # the key -- but ONLY when supplied, which leaves the sites = NULL key
     # byte-identical to a key written before this argument existed. Bump
-    # "geo_sites_v3" whenever the sites wording in the prompt changes.
+    # "geo_sites_v4" whenever the sites wording in the prompt changes.
     if (!is.null(sites)) {
-      shared_parts <- c(shared_parts, "geo_sites_v3", .review_sites_digest(sites))
+      shared_parts <- c(shared_parts, "geo_sites_v4", .review_sites_digest(sites))
     }
     .shared <- paste(shared_parts, collapse = "\u0001")
 
@@ -2628,14 +2628,20 @@ review_assignments <- function(input_df,
 .geo_levels <- c("likely", "possible", "unlikely")
 
 # The prompt's geographic_by_site field. Wording changes must bump
-# "geo_sites_v3" in the cache key (see review_assignments()).
+# "geo_sites_v4" in the cache key (see review_assignments()).
 .geo_field_text <- paste0(
   '  "geographic_by_site": where in the STUDY SITES above this taxon is ',
   "geographically plausible, as ONE object:\n",
   '     {"rule": "all"}  -- the verdict is the same at every site;\n',
-  '     {"rule": "latitude", "lat_min": <number or null>, "lat_max": <number or null>, ',
+  '     {"rule": "latitude", "lat_min": <southern limit, number or null>, ',
+  '"lat_max": <northern limit, number or null>, ',
   '"inside": "likely" or "possible", "outside": "unlikely" or "possible"}  -- plausible ',
-  'only between lat_min and lat_max (decimal degrees; null = no limit on that side); ',
+  'only between lat_min, the SOUTHERN limit of the range, and lat_max, the NORTHERN ',
+  'limit (decimal degrees, negative south of the equator; null = no limit on that ',
+  'side). A taxon ranging north from a southern limit gives lat_min only; one ranging ',
+  'south from a northern limit gives lat_max only. A southern limit placed in lat_max ',
+  '(or a northern limit in lat_min) inverts the band and marks every site unlikely, ',
+  'so decide which side the limit is on before you answer; ',
   'sites inside get the "inside" verdict and sites outside get the "outside" ',
   "verdict. Use this when the limit is a coastal range limit. A \"latitude\" rule MUST give ",
   "at least one numeric bound (lat_min or lat_max). If no range limit falls within the ",
