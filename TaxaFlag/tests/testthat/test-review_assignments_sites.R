@@ -169,8 +169,6 @@ test_that("every fallback gives the study-wide verdict at every site and is reco
     missing = NULL,
     not_object = '"all"',
     unknown_rule = '{"rule":"everywhere"}',
-    both_bounds_NA = '{"rule":"latitude","inside":"likely","lat_min":null,"lat_max":null,"outside":"unlikely"}',
-    bad_bounds = '{"rule":"latitude","inside":"likely","lat_min":"29N","lat_max":"far","outside":"unlikely"}',
     all_sites_unknown = '{"rule":"sites","inside":"likely","unlikely_sites":["Atlantis","Mu"]}'
   )
   for (nm in names(cases)) {
@@ -234,9 +232,7 @@ test_that("inside is respected with no cap from geographic_plausibility; study-w
 
 test_that("a fallback spec gives every site the study-wide verdict; best-over-sites is idempotent", {
   for (b in c("unlikely", "likely", "possible")) {
-    for (g in c('{"rule":"latitude","lat_min":null,"lat_max":null,"inside":"likely","outside":"unlikely"}',
-                '{"rule":"latitude","lat_min":null,"lat_max":null}',
-                '{"rule":"bogus"}', '{"rule":"sites","unlikely_sites":["Atlantis"]}', '"text"')) {
+    for (g in c('{"rule":"bogus"}', '{"rule":"sites","unlikely_sites":["Atlantis"]}', '"text"')) {
       out <- .gs_review(rep("Taxon a", 3L), .gs_fn(list(`Taxon a` = g), base = b),
         site_vec = c("North", "Mid", "South")
       )
@@ -244,10 +240,6 @@ test_that("a fallback spec gives every site the study-wide verdict; best-over-si
       expect_equal(out$llm_geographic_plausibility, rep(b, 3L))
     }
   }
-  out <- .gs_review(rep("Taxon a", 3L),
-    .gs_fn(list(`Taxon a` = '{"rule":"latitude","lat_min":null,"lat_max":null}'), base = "unlikely"),
-    site_vec = c("North", "Mid", "South"))
-  expect_equal(attr(out, "geographic_by_site")$how, "both_bounds_NA")
   expect_match(.geo_field_text, "MUST give at least one numeric bound", fixed = TRUE)
 })
 
@@ -358,12 +350,12 @@ test_that("cache: sites and no-sites never serve each other; a hit reproduces th
   .gs_review(rep("Taxon a", 3L), fn, site_vec = sv, cache_dir = cd)
   expect_equal(log$n, 3L)
   keys <- vapply(list.files(cd, full.names = TRUE), function(f) readRDS(f)$key, character(1))
-  expect_equal(sum(grepl("geo_sites_v2", keys, fixed = TRUE)), 2L)
-  expect_equal(sum(!grepl("geo_sites_v2", keys, fixed = TRUE)), 1L)
-  expect_false(any(grepl("geo_sites_v1", keys, fixed = TRUE)))
-  # a v1-keyed entry is a miss: the v2 key differs from the v1 key
-  v2 <- keys[grepl("geo_sites_v2", keys, fixed = TRUE)][1L]
-  expect_false(identical(v2, sub("geo_sites_v2", "geo_sites_v1", v2, fixed = TRUE)))
+  expect_equal(sum(grepl("geo_sites_v3", keys, fixed = TRUE)), 2L)
+  expect_equal(sum(!grepl("geo_sites_v3", keys, fixed = TRUE)), 1L)
+  expect_false(any(grepl("geo_sites_v2", keys, fixed = TRUE)))
+  # a v2-keyed entry is a miss: the v3 key differs from the v2 key
+  v3 <- keys[grepl("geo_sites_v3", keys, fixed = TRUE)][1L]
+  expect_false(identical(v3, sub("geo_sites_v3", "geo_sites_v2", v3, fixed = TRUE)))
 })
 
 # --- 8. truncated JSON with the nested object ---------------------------------------------
@@ -417,4 +409,27 @@ test_that("the parser tolerates geographic_by_site as a string, a list or mixed 
   res <- TaxaFlag:::.parse_review_response(txt, tb, NULL, NULL, site_names = .gs_sites$site)
   rules <- vapply(res$review_geo_json, function(j) TaxaFlag:::.geo_spec_from_json(j)$rule, "")
   expect_equal(unname(rules), c("fallback", "all", "fallback", "fallback"))
+})
+
+test_that("a both-bounds-NA latitude rule is read as 'all' carrying inside (the study-wide verdict if missing/invalid)", {
+  nb <- c("North", "Mid", "South")
+  cases <- list(
+    likely = '{"rule":"latitude","inside":"likely","lat_min":null,"lat_max":null,"outside":"unlikely"}',
+    possible = '{"rule":"latitude","inside":"possible","lat_min":null,"lat_max":null}',
+    missing = '{"rule":"latitude","lat_min":null,"lat_max":null}',
+    invalid = '{"rule":"latitude","inside":"unlikely","lat_min":"29N","lat_max":"far"}'
+  )
+  for (nm in names(cases)) {
+    for (b in c("unlikely", "possible", "likely")) {
+      want <- c(likely = "likely", possible = "possible", missing = b, invalid = b)
+      out <- .gs_review(rep("Taxon a", 3L), .gs_fn(list(`Taxon a` = cases[[nm]]), base = b), site_vec = nb)
+      expect_equal(out$llm_geographic_plausibility_site, rep(want[[nm]], 3L), info = nm)
+      expect_equal(out$llm_geographic_plausibility, rep(want[[nm]], 3L), info = nm)
+      expect_equal(attr(out, "geographic_by_site")$how, "both_bounds_NA_as_all", info = nm)
+    }
+  }
+  # plain 'all' is unchanged: the model's own verdict, how = "all"
+  out <- .gs_review(rep("Taxon a", 3L), .gs_fn(list(`Taxon a` = '{"rule":"all","inside":"likely"}'), base = "unlikely"), site_vec = nb)
+  expect_equal(out$llm_geographic_plausibility_site, rep("unlikely", 3L))
+  expect_equal(attr(out, "geographic_by_site")$how, "all")
 })
