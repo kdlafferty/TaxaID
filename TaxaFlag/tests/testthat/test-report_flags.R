@@ -54,7 +54,7 @@ test_that("report_flags reports zero flags correctly", {
   expect_true(grepl("none were flagged", sec$results))
 })
 
-test_that("report_flags detects review columns", {
+test_that("report_flags detects review columns, as LLM metadata not expert review", {
   df <- data.frame(
     observation_id = paste0("S", 1:3),
     review_confidence = c("high", "low", "medium"),
@@ -63,7 +63,8 @@ test_that("report_flags detects review columns", {
   )
 
   sec <- report_flags(df)
-  expect_true("expert review" %in% sec$params$flag_types)
+  expect_true("LLM review metadata" %in% sec$params$flag_types)
+  expect_false("expert review" %in% sec$params$flag_types)
 })
 
 test_that("report_flags handles data with no flag columns", {
@@ -224,4 +225,63 @@ test_that("data with no reference-support columns reports none", {
   sec <- report_flags(.rf_ref()[, c("taxon_name", "validity_flag")])
   expect_null(sec$statistics$reference_support)
   expect_false(grepl("Reference support", sec$results, fixed = TRUE))
+})
+
+test_that("LLM reviewer metadata alone is never reported as an expert review", {
+  d <- data.frame(
+    taxon_name       = c("Gadus morhua", "Homo sapiens"),
+    review_confidence = c("low", "high"),
+    review_comment    = c("uncertain", "clear"),
+    stringsAsFactors = FALSE
+  )
+  sec <- report_flags(d)
+  expect_false(any(grepl("expert review", sec$params$flag_types, fixed = TRUE)))
+  expect_true(any(grepl("LLM review metadata", sec$params$flag_types, fixed = TRUE)))
+  expect_false(grepl("expert review", sec$methods, fixed = TRUE))
+})
+
+test_that("an expert_ column or review_flag_stands does report an expert review", {
+  base <- data.frame(
+    taxon_name        = c("Gadus morhua", "Homo sapiens"),
+    review_confidence = c("low", "high"),
+    stringsAsFactors  = FALSE
+  )
+  for (col in c("expert_keep", "expert_excluded", "review_flag_stands")) {
+    d <- base
+    d[[col]] <- c(TRUE, FALSE)
+    sec <- report_flags(d)
+    expect_true(any(grepl("expert review", sec$params$flag_types, fixed = TRUE)),
+                info = col)
+  }
+})
+
+test_that("the per-site geography verdict is reported, and .is_flagged reads its values", {
+  d <- data.frame(
+    taxon_name                        = paste0("Taxon ", 1:4),
+    Site                              = c("A", "B", "A", "B"),
+    llm_geographic_plausibility       = c("likely", "likely", "likely", "likely"),
+    llm_geographic_plausibility_site  = c("unlikely", "possible", "likely", "unlikely"),
+    stringsAsFactors                  = FALSE
+  )
+  sec <- report_flags(d)
+
+  # counted at all, and counted with the plausibility vocabulary:
+  # "unlikely" x2 + "possible" x1 are flagged, "likely" is not
+  expect_equal(sec$statistics$flag_counts[["llm_geographic_plausibility_site"]], 3L)
+  expect_true("plausibility review" %in% sec$params$flag_types)
+
+  # the study-wide column is all "likely", so every flagged row here comes
+  # from the per-site verdict -- which is the case that used to report zero
+  expect_equal(sec$statistics$n_flagged, 3L)
+})
+
+test_that("a row flagged on both the study-wide and per-site verdict counts once", {
+  d <- data.frame(
+    taxon_name                       = paste0("Taxon ", 1:2),
+    llm_geographic_plausibility      = c("unlikely", "likely"),
+    llm_geographic_plausibility_site = c("unlikely", "likely"),
+    stringsAsFactors                 = FALSE
+  )
+  sec <- report_flags(d)
+  expect_equal(sec$statistics$n_flagged, 1L)
 })

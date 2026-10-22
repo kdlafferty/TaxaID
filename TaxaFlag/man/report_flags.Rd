@@ -60,6 +60,13 @@ sequence), not more; and a count sitting at the model's maximum is
 censored by the sequence-matrix build, so it means "this many or more"
 rather than an exact total. Read the basis column, never a bare
 \code{NA}.
+
+The report says "expert review" only where a human review is evidenced:
+an \code{expert_} column, or \code{review_flag_stands}, which is derived
+from \code{expert_keep}. \code{review_assignments()}'s own
+\code{review_confidence} and \code{review_comment} are LLM output and are
+reported as LLM review metadata, so a report never claims a review that
+did not happen.
 }
 \examples{
 flagged <- data.frame(
