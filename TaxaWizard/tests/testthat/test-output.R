@@ -608,3 +608,87 @@ test_that("editing an input file in place recomputes the step that reads it", {
   expect_match(out, "inputs changed since the cached run", fixed = TRUE)
   expect_equal(readRDS(step1), 5L)
 })
+
+# --- Composed paths, and readers anchored ------------------------------------
+# read.csv(file.path(data_dir, "esv.csv")) names its file only once the path is
+# built: the fragments alone ("esv.csv") exist nowhere, so the path must be
+# evaluated from the workflow's parameters before it can be fingerprinted.
+
+.ck_sig_env <- function(h, params) {
+  env <- new.env()
+  for (nm in names(params)) assign(nm, params[[nm]], envir = env)
+  h$.workflow_params <- names(params)
+  env
+}
+
+test_that(".taxaid_read_args() keeps a composed path whole and ignores non-readers", {
+  h <- .ck_helpers()
+  r <- h$.taxaid_read_args(quote({
+    a <- read.csv(file.path(data_dir, "esv.csv"))
+    b <- readRDS(paste0(out_dir, "/x.rds"))
+    s <- spread(df, "key", "value")           # "spread" contains "read"
+    t <- thread_count("cores.txt")            # and so does 'thread'
+  }))
+  composed <- vapply(r$composed, function(x) paste(deparse(x), collapse = ""), "")
+  expect_setequal(composed, c('file.path(data_dir, "esv.csv")', 'paste0(out_dir, "/x.rds")'))
+  expect_false(any(c("key", "value", "cores.txt") %in% r$literals))
+})
+
+for (.case in list(
+  list(label = "file.path()", code = quote(x <- read.csv(file.path(data_dir, "esv.csv")))),
+  list(label = "paste0()",    code = quote(x <- readRDS(paste0(data_dir, "/esv.csv")))),
+  list(label = "sprintf()",   code = quote(x <- read.csv(sprintf("%s/esv.csv", data_dir))))
+)) {
+  local({
+    case <- .case
+    test_that(paste("editing a file reached through", case$label, "changes the signature"), {
+      h <- .ck_helpers()
+      d <- tempfile("ckcomp_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+      f <- file.path(d, "esv.csv")
+      writeLines(c("observation_id", 1:3), f)
+      env <- .ck_sig_env(h, list(data_dir = d))
+      before <- h$.taxaid_step_signature(case$code, env)
+      expect_identical(h$.taxaid_step_signature(case$code, env), before)  # stable when unchanged
+      writeLines(c("observation_id", 1:5), f)                             # same path, new content
+      expect_false(identical(h$.taxaid_step_signature(case$code, env), before))
+    })
+  })
+}
+
+test_that("a composed path calling anything but path-building functions is not evaluated", {
+  h <- .ck_helpers()
+  hit <- new.env(); hit$n <- 0L
+  env <- .ck_sig_env(h, list(data_dir = tempdir()))
+  assign("side_effect", function(...) { hit$n <- hit$n + 1L; "x" }, envir = env)
+  h$.taxaid_step_signature(quote(x <- read.csv(file.path(side_effect(), "a.csv"))), env)
+  expect_equal(hit$n, 0L)
+})
+
+test_that("editing a file reached through file.path() recomputes the step (end to end)", {
+  skip_on_cran()
+  skip_if_not(.ck_subprocess_can_load(),
+              "a fresh R process cannot load TaxaWizard (e.g. under R CMD check)")
+  d <- tempfile("ckfp_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines(c("observation_id", 1:3), file.path(d, "esv.csv"))
+  dag <- list(
+    parameters = list(list(name = "data_dir", value = deparse(d))),
+    steps = list(
+      list(step_id = 1, edge_id = "match_to_consensus_score", package = "TaxaTools",
+           function_name = "f", description = "read", inputs = list(), output_var = "n_in",
+           code = "n_in <- nrow(read.csv(file.path(data_dir, \"esv.csv\")))\nn_in")
+    )
+  )
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d))
+  script <- list.files(d, pattern = "\\.R$", full.names = TRUE)[1]
+  run <- function() paste(system2(.ck_rscript(), shQuote(script), stdout = TRUE, stderr = TRUE),
+                          collapse = "\n")
+  step1 <- file.path(d, ".workflow_checkpoints", "step_01.rds")
+
+  run()
+  expect_equal(readRDS(step1), 3L)
+  expect_match(run(), "Step 1: read [cached, skipping]", fixed = TRUE)
+  writeLines(c("observation_id", 1:5), file.path(d, "esv.csv"))
+  out <- run()
+  expect_match(out, "inputs changed since the cached run", fixed = TRUE)
+  expect_equal(readRDS(step1), 5L)
+})
