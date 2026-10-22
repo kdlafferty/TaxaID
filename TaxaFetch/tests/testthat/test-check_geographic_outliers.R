@@ -486,10 +486,11 @@ test_that("a verdict cache file matching this call's key but holding none of its
   )
   local_mocked_bindings(get_gbif_occurrences = function(...) global)
 
-  key_hash <- rlang::hash(list(
+  key_hash <- .outlier_verdict_hash(
     rare_keys = 999L, year_range = .gbif_default_year_range(),
-    method = "distance", min_occs = 1L, tdi = 1000, mltpl = 5
-  ))
+    method = "distance", min_occs = 1L, tdi = 1000, mltpl = 5,
+    local_ids = "q1", on_cap = "escalate"
+  )
   stale_path <- file.path(cd, sprintf("gbif_outlier_verdicts_%s.rds", key_hash))
   saveRDS(
     data.frame(gbifID = "not-a-real-id", global_n_unique = 9L, cc_pass = TRUE),
@@ -501,4 +502,107 @@ test_that("a verdict cache file matching this call's key but holding none of its
     "stale or foreign cache"
   )
   expect_equal(out$outlier_status, "consistent")
+})
+
+
+# =============================================================================
+# on_cap: a truncated global cloud must not pass as a full one
+# =============================================================================
+# Fewer than 50 rare species take the direct API, which caps each key at
+# 10,000 records in GBIF's return order. The verdict is measured against that
+# cloud, so a prefix-derived verdict must be escalated, or at least reported,
+# and never served from cache to a call that asked for the full cloud.
+
+.cap_glob <- function() {
+  data.frame(
+    gbifID = as.character(1:3),
+    species = "Cand alpha",
+    decimalLatitude = c(34.01, 34.02, 60.0),
+    decimalLongitude = c(-120.01, -120.02, 10.0),
+    stringsAsFactors = FALSE
+  )
+}
+.cap_args <- function(cd, ...) {
+  c(list(.cgo_local(),
+    min_local_n = 5L, cache_dir = cd,
+    candidate_taxa = "Cand alpha", candidate_scope = "species", min_occs = 1L
+  ), list(...))
+}
+.cap_dir <- function() {
+  cd <- file.path(tempdir(), paste0("cgo_cap_", as.integer(runif(1, 1, 1e9))))
+  dir.create(cd, recursive = TRUE)
+  cd
+}
+
+test_that("on_cap defaults to 'escalate' and is forwarded to the global fetch", {
+  seen <- new.env()
+  local_mocked_bindings(get_gbif_occurrences = function(..., on_cap) {
+    seen$on_cap <- on_cap
+    .cap_glob()
+  })
+  suppressMessages(do.call(check_geographic_outliers, .cap_args(.cap_dir())))
+  expect_identical(seen$on_cap, "escalate")
+  suppressMessages(do.call(check_geographic_outliers, .cap_args(.cap_dir(), on_cap = "warn")))
+  expect_identical(seen$on_cap, "warn")
+})
+
+test_that("keys left truncated are reported on the result, and again on a cache hit", {
+  cd <- .cap_dir()
+  n_calls <- new.env()
+  n_calls$n <- 0L
+  local_mocked_bindings(get_gbif_occurrences = function(...) {
+    n_calls$n <- n_calls$n + 1L
+    g <- .cap_glob()
+    attr(g, "capped_keys") <- 101L # as under on_cap = "warn" with a capped key
+    g
+  })
+  args <- .cap_args(cd, on_cap = "warn")
+  expect_message(out <- do.call(check_geographic_outliers, args), "TRUNCATED")
+  expect_identical(attr(out, "capped_keys"), 101L)
+
+  v <- list.files(cd, pattern = "outlier_verdicts", full.names = TRUE)
+  expect_length(v, 1L)
+  saved <- readRDS(v)
+  expect_identical(attr(saved, "capped_keys"), 101L)
+  expect_identical(attr(saved, "backend"), "fetch")
+  expect_s3_class(attr(saved, "fetch_date"), "Date")
+
+  expect_message(again <- do.call(check_geographic_outliers, args), "TRUNCATED")
+  expect_equal(n_calls$n, 1L) # served from cache
+  expect_identical(attr(again, "capped_keys"), 101L)
+})
+
+test_that("no truncation reports capped_keys as integer(0), not absent", {
+  local_mocked_bindings(get_gbif_occurrences = function(...) .cap_glob())
+  out <- suppressMessages(do.call(check_geographic_outliers, .cap_args(.cap_dir())))
+  expect_identical(attr(out, "capped_keys"), integer(0))
+})
+
+test_that("a verdict cached under on_cap = 'warn' is not served to an 'escalate' call", {
+  cd <- .cap_dir()
+  n_calls <- new.env()
+  n_calls$n <- 0L
+  local_mocked_bindings(get_gbif_occurrences = function(...) {
+    n_calls$n <- n_calls$n + 1L
+    .cap_glob()
+  })
+  suppressMessages(do.call(check_geographic_outliers, .cap_args(cd, on_cap = "warn")))
+  suppressMessages(do.call(check_geographic_outliers, .cap_args(cd, on_cap = "escalate")))
+  expect_equal(n_calls$n, 2L)
+  expect_length(list.files(cd, pattern = "outlier_verdicts"), 2L)
+})
+
+test_that("the same species keys with different local records are a different cache entry", {
+  cd <- .cap_dir()
+  n_calls <- new.env()
+  n_calls$n <- 0L
+  local_mocked_bindings(get_gbif_occurrences = function(...) {
+    n_calls$n <- n_calls$n + 1L
+    .cap_glob()
+  })
+  suppressMessages(do.call(check_geographic_outliers, .cap_args(cd)))
+  other <- .cap_args(cd)
+  other[[1]]$gbifID[1] <- "2" # Cand alpha's one local record is now a different gbifID
+  suppressMessages(do.call(check_geographic_outliers, other))
+  expect_equal(n_calls$n, 2L)
 })

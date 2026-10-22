@@ -16,7 +16,8 @@ check_geographic_outliers(
   candidate_taxa = NULL,
   candidate_scope = c("genus", "species", "all"),
   verdict_cache = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  on_cap = c("escalate", "warn", "error")
 )
 }
 \arguments{
@@ -95,18 +96,37 @@ VERDICTS rather than the global occurrence cloud. The cloud is reduced to
 one integer per species and one logical per local record and then
 discarded, so caching it stores millions of records to preserve a few
 thousand numbers. The verdict file is keyed on a content hash
-(\code{rlang::hash()}) of the sorted species-key set plus every
-parameter that changes the verdict (\code{year_range}, \code{method},
-\code{min_occs}, \code{tdi}, \code{mltpl}), so changing any of them
-recomputes. A loaded cache file that shares none of the current call's
+(\code{rlang::hash()}) of the sorted species-key set, the requested local
+\code{gbifID}s, and every parameter that changes the verdict
+(\code{year_range}, \code{method}, \code{min_occs}, \code{tdi},
+\code{mltpl}, \code{on_cap}), so changing any of them recomputes. The
+file also records the keys whose global cloud was truncated
+(\code{attr(, "capped_keys")}), the fetch backend and the fetch date.
+The file name is the key, so a verdict file written under any other key
+-- including one from a TaxaFetch version that keyed on fewer inputs --
+is never matched, and the first such run re-fetches every global cloud. A loaded cache file that shares none of the current call's
 requested \code{gbifID}s (a stale or foreign file) is treated as a miss
 and recomputed, with a \code{message()} naming the skipped file.}
 
 \item{verbose}{Logical. Forwarded to \code{cc_outl()}. Default
 \code{FALSE}.}
+
+\item{on_cap}{Character, forwarded to \code{\link{get_gbif_occurrences}}:
+what to do when a species' global fetch returns exactly the direct API's
+per-key limit (10,000) and was therefore TRUNCATED. Fewer than
+\code{key_threshold} (50) rare species use the direct API, and a
+truncated cloud is GBIF's return order, a non-random prefix -- the very
+reference this test measures "normal range" against. \code{"escalate"}
+(default) re-fetches the capped species through the download API with
+no limit; it needs GBIF credentials and falls back to a warning without
+them. \code{"warn"} keeps the truncated cloud and warns; \code{"error"}
+stops. Escalation downloads a species' full GLOBAL record set, which for
+a globally common species can run to millions of records.}
 }
 \value{
-\code{local_occurrences} with three columns added:
+\code{local_occurrences} with three columns added, and
+\code{attr(, "capped_keys")}: the species keys whose verdict came from a
+truncated global cloud (\code{integer(0)} when none):
 \describe{
 \item{\code{local_n}}{Number of records for this species in
 \code{local_occurrences}.}
