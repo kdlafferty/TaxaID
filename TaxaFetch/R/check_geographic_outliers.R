@@ -115,7 +115,10 @@ utils::globalVariables(c(
 #'   (\code{year_range}, \code{method}, \code{min_occs}, \code{tdi},
 #'   \code{mltpl}, \code{on_cap}), so changing any of them recomputes. The
 #'   file also records the keys whose global cloud was truncated
-#'   (\code{attr(, "capped_keys")}), the fetch backend and the fetch date. A loaded cache file that shares none of the current call's
+#'   (\code{attr(, "capped_keys")}), the fetch backend and the fetch date.
+#'   The file name is the key, so a verdict file written under any other key
+#'   -- including one from a TaxaFetch version that keyed on fewer inputs --
+#'   is never matched, and the first such run re-fetches every global cloud. A loaded cache file that shares none of the current call's
 #'   requested \code{gbifID}s (a stale or foreign file) is treated as a miss
 #'   and recomputed, with a \code{message()} naming the skipped file.
 #' @param verbose Logical. Forwarded to \code{cc_outl()}. Default
