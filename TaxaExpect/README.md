@@ -252,6 +252,30 @@ Prior estimation:
 -   `generate_domestic_food_priors()`: `transport`-branch priors for
     domestic, food, and cultivar species
 
+### External environmental layers and SDMs (not built in)
+
+The Boettiger lab's GLEN server (`hexsdm`,
+<https://github.com/boettiger-lab/glen-sdm>) publishes environmental
+layers on an H3 hexagon grid. These include Bio-ORACLE ocean temperature,
+salinity and seafloor depth at about 5.5 km. It also fits species
+distribution models on request, in a terrestrial mode and a prototype
+marine mode. Two uses fit TaxaExpect:
+
+-   **A layer as the kernel covariate.** The covariate in
+    `estimate_kernel_priors(covariate_col =)` is a value at a place: each
+    record is compared with the site, as depth is now. A layer value read
+    at each record's location and at the site can therefore serve as the
+    covariate, and the layer can fill in a value for records that report
+    none.
+-   **Modelled suitability as an evidence weight.** A species' modelled
+    suitability at the site is one value per species, so it is not a
+    kernel covariate. It can weight that species' regional evidence in
+    the same way `condition_evidence_on_habitat()` uses habitat weights.
+
+Neither use is built in. Both change priors, so validate before use.
+GLEN writes the results of every fit to a public bucket, so send it
+published records only.
+
 Diagnostics and reporting:
 
 -   `plot_theta_surface()`: continuous prior-field map, evaluating the

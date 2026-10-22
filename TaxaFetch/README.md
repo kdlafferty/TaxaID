@@ -32,6 +32,18 @@ estimation (TaxaExpect).
 | PDFs | `extract_pdf_text()` | Extract occurrence data from published PDFs |
 | iNaturalist | `fetch_inat_occurrence_counts()`, `check_inat_range()` | Local observation counts and known-range checks via the iNaturalist API |
 
+**Other GBIF access routes considered.** TaxaFetch reaches GBIF through
+`rgbif`: the direct search API for small queries and the asynchronous
+download API for large ones, which also returns a citable DOI for every
+query. We compared this with the GBIF GeoParquet mirror on Source
+Cooperative, queried with DuckDB through the `gbifdb` package. Querying
+the mirror remotely (`gbifdb::gbif_remote()`) was about ten times slower
+than TaxaFetch. Querying a local copy (`gbifdb::gbif_local()`) took
+about three quarters of TaxaFetch's time, but first needed a one-time
+download of 120-150 GB, about two days. TaxaFetch therefore keeps the
+`rgbif` route. A user who already holds a local snapshot can still use
+it for exploratory queries, but records from it carry no download DOI.
+
 ## Installation
 
 ``` r

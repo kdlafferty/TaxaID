@@ -93,6 +93,46 @@ automatically, so no downstream function needs its own
 provider-detection logic. Rscript and other non-interactive sessions
 skip this: pass `provider =` explicitly or set the option yourself.
 
+### Lower-cost and free LLM routes
+
+Any endpoint that speaks the OpenAI Chat Completions format works
+through `register_provider()` with no code changes. `call_api()` then
+posts to `base_url` + `/v1/chat/completions`, so give `base_url` without
+the trailing `/v1`, and name the model explicitly:
+
+``` r
+# National Research Platform (free for US nonprofit research and
+# education; open-weight models; key from the NRP portal)
+register_provider("nrp", api_key_var = "NRP_API_KEY",
+                  base_url = "https://ellm.nrp-nautilus.io")
+call_api("What phylum do sea urchins belong to?", provider = "nrp",
+         model = "gpt-oss")
+
+# OpenRouter (one key for many providers' models, at the providers' prices)
+register_provider("openrouter", api_key_var = "OPENROUTER_API_KEY",
+                  base_url = "https://openrouter.ai/api")
+```
+
+A campus gateway with an OpenAI-compatible API, such as the UC Santa
+Barbara AI Commons, registers the same way with its own base URL. For a
+local model, `call_ollama_api()` is built in.
+
+Check each provider's own documentation for its current endpoint, models
+and terms; TaxaID has not validated these routes against its reference
+runs. Three cautions apply:
+
+-   **A different model gives different answers.** An LLM step (habitat
+    lookup, expert review, LLM priors) run on another model is a
+    different method. Compare its output with a run on your usual model
+    before relying on it. Habitat weights feed the priors, so changing
+    the habitat model changes calls.
+-   **Leave `temperature` at `NULL`** unless the model is known to
+    accept it. Some reject the field outright.
+-   **Gateway time limits.** A gateway that cuts requests off after a
+    short time (30 seconds, for example) can fail calls from models that
+    think at length before answering. Use a smaller prompt, a faster
+    model, or a direct provider key for those steps.
+
 ### Rank and barcode utilities
 
 | Function | Purpose |
