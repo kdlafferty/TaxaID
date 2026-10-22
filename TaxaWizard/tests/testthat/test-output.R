@@ -486,3 +486,225 @@ test_that(".widen_workflow_params() leaves a script without that line alone", {
   dag <- list(parameters = list(list(name = "c", value = "2")))
   expect_identical(.widen_workflow_params(legacy, dag), legacy)
 })
+
+
+# --- A signature must also see debug mode, package code and input files -----
+# Code + parameters missed three inputs. Debug subsetting runs AFTER step 1,
+# outside its checkpoint, so switching debug_mode off replayed every later
+# step's 20-row result for the full data. A package update leaves the step's
+# code text unchanged. And a path is a string, so editing data.csv in place
+# left the signature unchanged too.
+
+# The script's own helpers, evaluated alone (no Step 0, no steps), so they can
+# be unit-tested without running the generated workflow.
+.ck_helpers <- function() {
+  g <- .ck_generate(); on.exit(unlink(g$dir, recursive = TRUE), add = TRUE)
+  exprs <- parse(g$script, keep.source = FALSE)
+  env <- new.env()
+  for (e in exprs) {
+    if (is.call(e) && identical(e[[1L]], as.name("<-")) &&
+        startsWith(as.character(e[[2L]]), ".taxaid_")) {
+      eval(e, envir = env)
+    }
+  }
+  env
+}
+
+test_that(".taxaid_read_args() finds the paths a step reads, literally or by parameter", {
+  h <- .ck_helpers()
+  code <- quote({
+    a <- read.csv("sites.csv")
+    b <- readRDS(file = seq_path)
+    x <- a[, 1]                            # an empty argument must not error
+    out <- paste("not", "a", "path")       # a string outside a read call
+  })
+  r <- h$.taxaid_read_args(code)
+  expect_setequal(r$literals, "sites.csv")
+  expect_setequal(r$symbols, "seq_path")
+})
+
+test_that(".taxaid_file_fingerprint() changes when a file's content changes", {
+  h <- .ck_helpers()
+  f <- tempfile(fileext = ".csv"); on.exit(unlink(f), add = TRUE)
+  writeLines("x\n1", f)
+  before <- h$.taxaid_file_fingerprint(f)
+  writeLines("x\n2", f)
+  expect_false(identical(before, h$.taxaid_file_fingerprint(f)))
+  # a path that is not an existing file contributes nothing
+  expect_length(h$.taxaid_file_fingerprint(c("no_such_file.csv", tempdir())), 0L)
+})
+
+test_that(".taxaid_pkg_fingerprint() records the version of a package the step calls", {
+  h <- .ck_helpers()
+  fp <- h$.taxaid_pkg_fingerprint(quote(x <- jsonlite::toJSON(1)))
+  expect_length(grep("^jsonlite = ", fp), 1L)
+  expect_match(fp[grep("^jsonlite = ", fp)], as.character(utils::packageVersion("jsonlite")),
+               fixed = TRUE)
+  # a step calling no package records none
+  expect_length(h$.taxaid_pkg_fingerprint(quote(y <- 1 + 1)), 0L)
+})
+
+test_that("switching debug_mode off recomputes every step after the first", {
+  skip_on_cran()
+  skip_if_not(.ck_subprocess_can_load(),
+              "a fresh R process cannot load TaxaWizard (e.g. under R CMD check)")
+  d <- tempfile("ckdbg_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  dag <- list(
+    parameters = list(),
+    steps = list(
+      list(step_id = 1, edge_id = "match_to_consensus_score", package = "TaxaTools",
+           function_name = "f", description = "load", inputs = list(), output_var = "obs",
+           code = "obs <- data.frame(observation_id = 1:50)\nobs"),
+      list(step_id = 2, edge_id = "match_to_consensus_score", package = "TaxaTools",
+           function_name = "g", description = "count", inputs = list(), output_var = "n_obs",
+           code = "n_obs <- nrow(obs)\nn_obs")
+    )
+  )
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d))
+  script <- list.files(d, pattern = "\\.R$", full.names = TRUE)[1]
+  run <- function() paste(system2(.ck_rscript(), shQuote(script), stdout = TRUE, stderr = TRUE),
+                          collapse = "\n")
+  step2 <- file.path(d, ".workflow_checkpoints", "step_02.rds")
+
+  run()                                   # debug_mode <- TRUE, the generated default
+  expect_equal(readRDS(step2), 20L)
+
+  txt <- readLines(script, warn = FALSE)
+  txt[txt == "debug_mode <- TRUE"] <- "debug_mode <- FALSE"
+  writeLines(txt, script)
+  out <- run()
+
+  expect_match(out, "Step 1: load [cached, skipping]", fixed = TRUE)
+  expect_equal(readRDS(step2), 50L)       # the full data, not the debug subset
+})
+
+test_that("editing an input file in place recomputes the step that reads it", {
+  skip_on_cran()
+  skip_if_not(.ck_subprocess_can_load(),
+              "a fresh R process cannot load TaxaWizard (e.g. under R CMD check)")
+  d <- tempfile("ckfile_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  csv <- file.path(d, "input.csv")
+  writeLines(c("observation_id", 1:3), csv)
+  dag <- list(
+    parameters = list(list(name = "input_file", value = deparse(csv))),
+    steps = list(
+      list(step_id = 1, edge_id = "match_to_consensus_score", package = "TaxaTools",
+           function_name = "f", description = "read", inputs = list(), output_var = "n_in",
+           code = "n_in <- nrow(read.csv(input_file))\nn_in")
+    )
+  )
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d))
+  script <- list.files(d, pattern = "\\.R$", full.names = TRUE)[1]
+  run <- function() paste(system2(.ck_rscript(), shQuote(script), stdout = TRUE, stderr = TRUE),
+                          collapse = "\n")
+  step1 <- file.path(d, ".workflow_checkpoints", "step_01.rds")
+
+  run()
+  expect_equal(readRDS(step1), 3L)
+  expect_match(run(), "Step 1: read [cached, skipping]", fixed = TRUE)   # unchanged file: reused
+
+  writeLines(c("observation_id", 1:5), csv)  # same path, new content
+  out <- run()
+  expect_match(out, "inputs changed since the cached run", fixed = TRUE)
+  expect_equal(readRDS(step1), 5L)
+})
+
+# --- Composed paths, and readers anchored ------------------------------------
+# read.csv(file.path(data_dir, "esv.csv")) names its file only once the path is
+# built: the fragments alone ("esv.csv") exist nowhere, so the path must be
+# evaluated from the workflow's parameters before it can be fingerprinted.
+
+.ck_sig_env <- function(h, params) {
+  env <- new.env()
+  for (nm in names(params)) assign(nm, params[[nm]], envir = env)
+  h$.workflow_params <- names(params)
+  env
+}
+
+test_that(".taxaid_read_args() keeps a composed path whole and ignores non-readers", {
+  h <- .ck_helpers()
+  r <- h$.taxaid_read_args(quote({
+    a <- read.csv(file.path(data_dir, "esv.csv"))
+    b <- readRDS(paste0(out_dir, "/x.rds"))
+    s <- spread(df, "key", "value")           # "spread" contains "read"
+    t <- thread_count("cores.txt")            # and so does 'thread'
+  }))
+  composed <- vapply(r$composed, function(x) paste(deparse(x), collapse = ""), "")
+  expect_setequal(composed, c('file.path(data_dir, "esv.csv")', 'paste0(out_dir, "/x.rds")'))
+  expect_false(any(c("key", "value", "cores.txt") %in% r$literals))
+})
+
+for (.case in list(
+  list(label = "file.path()", code = quote(x <- read.csv(file.path(data_dir, "esv.csv")))),
+  list(label = "paste0()",    code = quote(x <- readRDS(paste0(data_dir, "/esv.csv")))),
+  list(label = "sprintf()",   code = quote(x <- read.csv(sprintf("%s/esv.csv", data_dir))))
+)) {
+  local({
+    case <- .case
+    test_that(paste("editing a file reached through", case$label, "changes the signature"), {
+      h <- .ck_helpers()
+      d <- tempfile("ckcomp_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+      f <- file.path(d, "esv.csv")
+      writeLines(c("observation_id", 1:3), f)
+      env <- .ck_sig_env(h, list(data_dir = d))
+      before <- h$.taxaid_step_signature(case$code, env)
+      expect_identical(h$.taxaid_step_signature(case$code, env), before)  # stable when unchanged
+      writeLines(c("observation_id", 1:5), f)                             # same path, new content
+      expect_false(identical(h$.taxaid_step_signature(case$code, env), before))
+    })
+  })
+}
+
+test_that("a composed path calling anything but path-building functions is not evaluated", {
+  h <- .ck_helpers()
+  hit <- new.env(); hit$n <- 0L
+  env <- .ck_sig_env(h, list(data_dir = tempdir()))
+  assign("side_effect", function(...) { hit$n <- hit$n + 1L; "x" }, envir = env)
+  h$.taxaid_step_signature(quote(x <- read.csv(file.path(side_effect(), "a.csv"))), env)
+  expect_equal(hit$n, 0L)
+})
+
+test_that("editing a file reached through file.path() recomputes the step (end to end)", {
+  skip_on_cran()
+  skip_if_not(.ck_subprocess_can_load(),
+              "a fresh R process cannot load TaxaWizard (e.g. under R CMD check)")
+  d <- tempfile("ckfp_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines(c("observation_id", 1:3), file.path(d, "esv.csv"))
+  dag <- list(
+    parameters = list(list(name = "data_dir", value = deparse(d))),
+    steps = list(
+      list(step_id = 1, edge_id = "match_to_consensus_score", package = "TaxaTools",
+           function_name = "f", description = "read", inputs = list(), output_var = "n_in",
+           code = "n_in <- nrow(read.csv(file.path(data_dir, \"esv.csv\")))\nn_in")
+    )
+  )
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d))
+  script <- list.files(d, pattern = "\\.R$", full.names = TRUE)[1]
+  run <- function() paste(system2(.ck_rscript(), shQuote(script), stdout = TRUE, stderr = TRUE),
+                          collapse = "\n")
+  step1 <- file.path(d, ".workflow_checkpoints", "step_01.rds")
+
+  run()
+  expect_equal(readRDS(step1), 3L)
+  expect_match(run(), "Step 1: read [cached, skipping]", fixed = TRUE)
+  writeLines(c("observation_id", 1:5), file.path(d, "esv.csv"))
+  out <- run()
+  expect_match(out, "inputs changed since the cached run", fixed = TRUE)
+  expect_equal(readRDS(step1), 5L)
+})
+
+test_that("an evaluated composed path does not also fingerprint its bare fragments", {
+  # A file called esv.csv in the working directory is not the file
+  # file.path(data_dir, "esv.csv") reads; editing it must not re-run the step.
+  h <- .ck_helpers()
+  d <- tempfile("ckfrag_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  sub <- file.path(d, "data"); dir.create(sub)
+  writeLines("x", file.path(sub, "esv.csv"))
+  old_wd <- setwd(d); on.exit(setwd(old_wd), add = TRUE)
+  writeLines("decoy 1", "esv.csv")                      # same name, in the cwd
+  env <- .ck_sig_env(h, list(data_dir = sub))
+  code <- quote(x <- read.csv(file.path(data_dir, "esv.csv")))
+  before <- h$.taxaid_step_signature(code, env)
+  writeLines("decoy 2", "esv.csv")
+  expect_identical(h$.taxaid_step_signature(code, env), before)
+})
