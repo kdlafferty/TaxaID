@@ -254,3 +254,34 @@ test_that("an expert_ column or review_flag_stands does report an expert review"
                 info = col)
   }
 })
+
+test_that("the per-site geography verdict is reported, and .is_flagged reads its values", {
+  d <- data.frame(
+    taxon_name                        = paste0("Taxon ", 1:4),
+    Site                              = c("A", "B", "A", "B"),
+    llm_geographic_plausibility       = c("likely", "likely", "likely", "likely"),
+    llm_geographic_plausibility_site  = c("unlikely", "possible", "likely", "unlikely"),
+    stringsAsFactors                  = FALSE
+  )
+  sec <- report_flags(d)
+
+  # counted at all, and counted with the plausibility vocabulary:
+  # "unlikely" x2 + "possible" x1 are flagged, "likely" is not
+  expect_equal(sec$statistics$flag_counts[["llm_geographic_plausibility_site"]], 3L)
+  expect_true("plausibility review" %in% sec$params$flag_types)
+
+  # the study-wide column is all "likely", so every flagged row here comes
+  # from the per-site verdict -- which is the case that used to report zero
+  expect_equal(sec$statistics$n_flagged, 3L)
+})
+
+test_that("a row flagged on both the study-wide and per-site verdict counts once", {
+  d <- data.frame(
+    taxon_name                       = paste0("Taxon ", 1:2),
+    llm_geographic_plausibility      = c("unlikely", "likely"),
+    llm_geographic_plausibility_site = c("unlikely", "likely"),
+    stringsAsFactors                 = FALSE
+  )
+  sec <- report_flags(d)
+  expect_equal(sec$statistics$n_flagged, 1L)
+})

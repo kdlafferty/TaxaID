@@ -124,8 +124,15 @@ report_flags <- function(flagged_data,
 
   # Plausibility columns from review_assignments() -- these are
   # llm_habitat_plausibility/llm_geographic_plausibility/llm_scope_plausibility;
-  # suffix-matched, so the llm_ prefix needs no change here:
-  plausibility_cols <- grep("_plausibility$", all_cols, value = TRUE)
+  # suffix-matched, so the llm_ prefix needs no change here. The optional
+  # per-site geography verdict is llm_geographic_plausibility_site, so the
+  # suffix is matched with that ending too: anchored on "_plausibility$"
+  # alone it was invisible here, and a report omitted the site-aware
+  # geography entirely. It carries the same likely/possible/unlikely
+  # vocabulary, so .is_flagged() reads it unchanged, and the "at least one
+  # flag" total below is a union over unique ROWS, so a row flagged on both
+  # the study-wide and the per-site verdict still counts once.
+  plausibility_cols <- grep("_plausibility(_site)?$", all_cols, value = TRUE)
 
   # Expert review is a HUMAN step, and only two things evidence it: the
   # `expert_` columns a workflow writes from the reviewer's keep/exclude
