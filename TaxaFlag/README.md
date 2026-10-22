@@ -203,6 +203,106 @@ evidence also suggest exclude. `relative_score_gap = 0.25`, the margin
 for rule I2, is a chosen value, not calibrated; the screen reports how
 many rows each rule acted on.
 
+### Overriding a per-site verdict with local records
+
+A per-taxon geographic rule can name one latitude bound, and the bound can
+arrive on the wrong side: a southern range limit written as `lat_max` puts
+every northern site outside the band. The reviewer's own study-wide verdict
+then says `"likely"` while the per-site verdict says `"unlikely"` at every
+site the taxon was actually detected at. Nothing inside TaxaFlag can tell
+that apart from a correct exclusion, because the question is empirical --
+is the taxon recorded near this site? -- and TaxaFlag holds no occurrence
+data.
+
+So the override belongs in the workflow, which already has the occurrence
+records and the site table, and it is passed in as a column. The shape
+below keeps the evidence visible rather than quietly rewriting a verdict.
+
+``` r
+# Thresholds are yours to measure on your own data, not constants to copy:
+# a minimum count high enough that one or two records (or a single
+# misidentification) cannot rescue a row, and a radius with a reason --
+# here the prior kernel's calibrated lambda_km.
+RECORDS_MIN <- 3L
+RECORDS_KM  <- 50
+
+# Great-circle km. TaxaFlag has no "count records within a radius" helper:
+# compute_local_occurrence_distance() returns the distance to the NEAREST
+# record, which is a different question -- one close record is not evidence
+# of an established population.
+.km <- function(lat1, lon1, lat2, lon2) {
+  r <- pi / 180
+  a <- sin((lat2 - lat1) * r / 2)^2 +
+    cos(lat1 * r) * cos(lat2 * r) * sin((lon2 - lon1) * r / 2)^2
+  12742 * asin(pmin(1, sqrt(a)))
+}
+
+# Only rows the per-site verdict calls unlikely are even asked about.
+ask <- unique(reviewed[reviewed$llm_geographic_plausibility_site %in% "unlikely" &
+                         !is.na(reviewed$consensus_taxon),
+                       c("consensus_taxon", "consensus_rank", "Site")])
+
+ask$geo_local_record_location_n <- vapply(seq_len(nrow(ask)), function(i) {
+  rank_col <- if (ask$consensus_rank[i] == "species") "taxon_name" else ask$consensus_rank[i]
+  if (!rank_col %in% names(occurrences)) return(0L)
+  o <- occurrences[occurrences[[rank_col]] %in% ask$consensus_taxon[i], ]
+  s <- site_table[site_table$Site == ask$Site[i], ]
+  stopifnot("one site-table row per Site" = nrow(s) == 1)
+  km <- .km(s$lat, s$lon, o$decimalLatitude, o$decimalLongitude)
+  length(unique(o$point_id[km <= RECORDS_KM]))
+}, integer(1))
+
+reviewed <- dplyr::left_join(reviewed, ask,
+                             by = c("consensus_taxon", "consensus_rank", "Site"))
+# A join that adds a column is only a lookup when the right side is unique
+# on the key. Assert it, or a duplicate key multiplies rows silently.
+stopifnot(nrow(reviewed) == nrow(.reviewed_before_join))
+
+reviewed$geo_unlikely_overridden_by_records <-
+  reviewed$llm_geographic_plausibility_site %in% "unlikely" &
+  !is.na(reviewed$geo_local_record_location_n) &
+  reviewed$geo_local_record_location_n >= RECORDS_MIN &
+  reviewed$llm_geographic_plausibility %in% c("likely", "possible")
+
+# The adjusted verdict lives in its own column. The screen reads this one;
+# the reviewer's own column is never written to.
+reviewed$geo_site_for_screen <- ifelse(
+  reviewed$geo_unlikely_overridden_by_records,
+  reviewed$llm_geographic_plausibility,
+  reviewed$llm_geographic_plausibility_site
+)
+
+screened <- TaxaFlag::screen_assignments(
+  reviewed, posterior_df = post,
+  geography_col = "geo_site_for_screen"
+)
+```
+
+Four columns, each doing one job:
+
+| Column | Role |
+|--------|------|
+| `llm_geographic_plausibility_site` | the reviewer's own per-site verdict, never written to |
+| `geo_local_record_location_n` | distinct record locations within the radius |
+| `geo_unlikely_overridden_by_records` | whether the override fired, and so the audit trail |
+| `geo_site_for_screen` | the adjusted verdict the screen reads |
+
+Three properties worth keeping if you adapt this:
+
+- **`NA` and `0` mean different things.** `geo_local_record_location_n` is
+  `NA` for a row that was never asked about, and `0` for a row that was
+  asked and had no records nearby. Flattening `NA` to `0` destroys that
+  distinction, and "not evaluated" then reads as "no evidence found".
+- **The override can only relax an exclusion, never create one.** It moves
+  a verdict from `"unlikely"` toward the study-wide `"likely"` or
+  `"possible"` and never the other way, so it cannot introduce a new false
+  exclusion. Its risk runs the other way: a genuinely absent taxon kept
+  because records happen to sit nearby.
+- **Keep the model's own verdict.** Overwriting
+  `llm_geographic_plausibility_site` in place would leave nothing able to
+  tell a model verdict from an overridden one, and a report built on it
+  could not describe what it had done.
+
 ## Key Functions
 
 Control validation and contamination:
