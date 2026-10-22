@@ -531,9 +531,8 @@ the site verdicts, not a single study-wide judgement.}
 }
 Fallbacks, each giving the study-wide verdict at every site (recorded in
 the \code{how} column of \code{attr(result, "geographic_by_site")}): the
-object is missing or not an object; the rule is unknown; a latitude rule
-has both bounds missing or non-numeric; a sites rule names only sites that
-do not exist. One missing bound means open-ended on that side; reversed
+object is missing or not an object; the rule is unknown; a sites rule names
+only sites that do not exist. One missing bound means open-ended on that side; reversed
 bounds are swapped; a missing or invalid \code{outside} defaults to
 \code{"possible"}, the conservative choice because \code{"unlikely"} is
 what export filters drop; site names are matched ignoring case and

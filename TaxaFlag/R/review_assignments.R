@@ -443,9 +443,8 @@
 #' }
 #' Fallbacks, each giving the study-wide verdict at every site (recorded in
 #' the \code{how} column of \code{attr(result, "geographic_by_site")}): the
-#' object is missing or not an object; the rule is unknown; a latitude rule
-#' has both bounds missing or non-numeric; a sites rule names only sites that
-#' do not exist. One missing bound means open-ended on that side; reversed
+#' object is missing or not an object; the rule is unknown; a sites rule names
+#' only sites that do not exist. One missing bound means open-ended on that side; reversed
 #' bounds are swapped; a missing or invalid \code{outside} defaults to
 #' \code{"possible"}, the conservative choice because \code{"unlikely"} is
 #' what export filters drop; site names are matched ignoring case and
@@ -941,9 +940,9 @@ review_assignments <- function(input_df,
     # The sites change the prompt and the parsed output, so they are part of
     # the key -- but ONLY when supplied, which leaves the sites = NULL key
     # byte-identical to a key written before this argument existed. Bump
-    # "geo_sites_v2" whenever the sites wording in the prompt changes.
+    # "geo_sites_v3" whenever the sites wording in the prompt changes.
     if (!is.null(sites)) {
-      shared_parts <- c(shared_parts, "geo_sites_v2", .review_sites_digest(sites))
+      shared_parts <- c(shared_parts, "geo_sites_v3", .review_sites_digest(sites))
     }
     .shared <- paste(shared_parts, collapse = "\u0001")
 
@@ -2626,7 +2625,7 @@ review_assignments <- function(input_df,
 .geo_levels <- c("likely", "possible", "unlikely")
 
 # The prompt's geographic_by_site field. Wording changes must bump
-# "geo_sites_v2" in the cache key (see review_assignments()).
+# "geo_sites_v3" in the cache key (see review_assignments()).
 .geo_field_text <- paste0(
   '  "geographic_by_site": where in the STUDY SITES above this taxon is ',
   "geographically plausible, as ONE object:\n",
@@ -2752,7 +2751,9 @@ review_assignments <- function(input_df,
 #' Normalise one geographic_by_site object into a rule spec
 #'
 #' Fallbacks (rule "fallback", with the reason in \code{how}) give the
-#' study-wide verdict at every site.
+#' study-wide verdict at every site. A latitude rule with both bounds missing
+#' is read as rule "all" carrying its \code{inside} verdict (missing or
+#' invalid: "possible"), recorded as how = "both_bounds_NA_as_all".
 #' @noRd
 .normalise_geo_obj <- function(o, site_names) {
   fb <- function(how, n_unknown = 0L) {
@@ -2786,7 +2787,10 @@ review_assignments <- function(input_df,
     lo <- num(o$lat_min)
     hi <- num(o$lat_max)
     if (is.na(lo) && is.na(hi)) {
-      return(fb("both_bounds_NA"))
+      spec <- fb("both_bounds_NA_as_all")
+      spec$rule <- "all"
+      spec$inside <- ins
+      return(spec)
     }
     how <- "latitude"
     if (!is.na(lo) && !is.na(hi) && lo > hi) {
@@ -2854,8 +2858,9 @@ review_assignments <- function(input_df,
 #' Rules "latitude" and "sites" give inside sites the rule's \code{inside}
 #' verdict (missing or invalid: "possible") and outside sites the
 #' \code{outside} verdict; the taxon's own \code{geographic_plausibility}
-#' (\code{base}) does not cap them. Rule "all" and fallbacks give \code{base}
-#' at every site.
+#' (\code{base}) does not cap them. A both-bounds-missing latitude rule
+#' (how = "both_bounds_NA_as_all") gives its \code{inside} verdict at every
+#' site. Plain rule "all" and fallbacks give \code{base} at every site.
 #' @noRd
 .geo_site_verdicts <- function(spec, base, sites) {
   n <- nrow(sites)
@@ -2874,6 +2879,9 @@ review_assignments <- function(input_df,
     v <- rep(ins, n)
     v[out] <- outv
     return(v)
+  }
+  if (identical(spec$rule, "all") && identical(spec$how, "both_bounds_NA_as_all")) {
+    return(rep(lvl(spec$inside, c("likely", "possible")), n))
   }
   if (identical(spec$rule, "sites")) {
     v <- rep(lvl(spec$inside, c("likely", "possible")), n)
