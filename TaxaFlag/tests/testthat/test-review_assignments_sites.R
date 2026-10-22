@@ -411,7 +411,7 @@ test_that("the parser tolerates geographic_by_site as a string, a list or mixed 
   expect_equal(unname(rules), c("fallback", "all", "fallback", "fallback"))
 })
 
-test_that("a both-bounds-NA latitude rule is read as 'all' carrying inside (possible if missing/invalid)", {
+test_that("a both-bounds-NA latitude rule is read as 'all' carrying inside (the study-wide verdict if missing/invalid)", {
   nb <- c("North", "Mid", "South")
   cases <- list(
     likely = '{"rule":"latitude","inside":"likely","lat_min":null,"lat_max":null,"outside":"unlikely"}',
@@ -419,9 +419,9 @@ test_that("a both-bounds-NA latitude rule is read as 'all' carrying inside (poss
     missing = '{"rule":"latitude","lat_min":null,"lat_max":null}',
     invalid = '{"rule":"latitude","inside":"unlikely","lat_min":"29N","lat_max":"far"}'
   )
-  want <- c(likely = "likely", possible = "possible", missing = "possible", invalid = "possible")
   for (nm in names(cases)) {
-    for (b in c("unlikely", "likely")) {
+    for (b in c("unlikely", "possible", "likely")) {
+      want <- c(likely = "likely", possible = "possible", missing = b, invalid = b)
       out <- .gs_review(rep("Taxon a", 3L), .gs_fn(list(`Taxon a` = cases[[nm]]), base = b), site_vec = nb)
       expect_equal(out$llm_geographic_plausibility_site, rep(want[[nm]], 3L), info = nm)
       expect_equal(out$llm_geographic_plausibility, rep(want[[nm]], 3L), info = nm)

@@ -444,7 +444,10 @@
 #' Fallbacks, each giving the study-wide verdict at every site (recorded in
 #' the \code{how} column of \code{attr(result, "geographic_by_site")}): the
 #' object is missing or not an object; the rule is unknown; a sites rule names
-#' only sites that do not exist. One missing bound means open-ended on that side; reversed
+#' only sites that do not exist. A latitude rule with neither bound is read as
+#' \code{"all"} carrying its \code{inside} verdict at every site, or the
+#' study-wide verdict when that \code{inside} is missing or invalid (recorded
+#' as \code{how = "both_bounds_NA_as_all"}). One missing bound means open-ended on that side; reversed
 #' bounds are swapped; a missing or invalid \code{outside} defaults to
 #' \code{"possible"}, the conservative choice because \code{"unlikely"} is
 #' what export filters drop; site names are matched ignoring case and
@@ -2753,7 +2756,7 @@ review_assignments <- function(input_df,
 #' Fallbacks (rule "fallback", with the reason in \code{how}) give the
 #' study-wide verdict at every site. A latitude rule with both bounds missing
 #' is read as rule "all" carrying its \code{inside} verdict (missing or
-#' invalid: "possible"), recorded as how = "both_bounds_NA_as_all".
+#' invalid: the study-wide verdict), recorded as how = "both_bounds_NA_as_all".
 #' @noRd
 .normalise_geo_obj <- function(o, site_names) {
   fb <- function(how, n_unknown = 0L) {
@@ -2769,7 +2772,8 @@ review_assignments <- function(input_df,
     return(fb("missing"))
   }
   ins <- tolower(trimws(as.character(one(o$inside))))
-  if (is.na(ins) || !ins %in% c("likely", "possible")) ins <- "possible"
+  ins_ok <- !is.na(ins) && ins %in% c("likely", "possible")
+  if (!ins_ok) ins <- "possible"
   rule <- tolower(trimws(as.character(one(o$rule))))
   if (is.na(rule) || !nzchar(rule)) {
     return(fb("missing"))
@@ -2789,7 +2793,8 @@ review_assignments <- function(input_df,
     if (is.na(lo) && is.na(hi)) {
       spec <- fb("both_bounds_NA_as_all")
       spec$rule <- "all"
-      spec$inside <- ins
+      # NA when unusable, so the site verdicts keep the study-wide verdict.
+      spec$inside <- if (ins_ok) ins else NA_character_
       return(spec)
     }
     how <- "latitude"
@@ -2860,7 +2865,8 @@ review_assignments <- function(input_df,
 #' \code{outside} verdict; the taxon's own \code{geographic_plausibility}
 #' (\code{base}) does not cap them. A both-bounds-missing latitude rule
 #' (how = "both_bounds_NA_as_all") gives its \code{inside} verdict at every
-#' site. Plain rule "all" and fallbacks give \code{base} at every site.
+#' site, or \code{base} when it has no usable \code{inside}. Plain rule "all"
+#' and fallbacks give \code{base} at every site.
 #' @noRd
 .geo_site_verdicts <- function(spec, base, sites) {
   n <- nrow(sites)
@@ -2881,7 +2887,11 @@ review_assignments <- function(input_df,
     return(v)
   }
   if (identical(spec$rule, "all") && identical(spec$how, "both_bounds_NA_as_all")) {
-    return(rep(lvl(spec$inside, c("likely", "possible")), n))
+    # No usable inside: keep the model's own study-wide verdict rather than
+    # substituting a constant for it.
+    ins <- tolower(trimws(as.character(spec$inside)))
+    ok <- length(ins) == 1L && !is.na(ins) && ins %in% c("likely", "possible")
+    return(rep(if (ok) ins else base, n))
   }
   if (identical(spec$rule, "sites")) {
     v <- rep(lvl(spec$inside, c("likely", "possible")), n)
