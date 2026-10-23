@@ -7,6 +7,48 @@ key_matches <- TaxaFetch::get_keys_from_context({{input_var}})
 # frame cannot be coerced to integer. Passing the table raises
 # "'list' object cannot be coerced to type 'integer'".
 keys <- key_matches$usageKey[!is.na(key_matches$usageKey)]
+
+# --- Check GBIF match quality BEFORE requesting anything ---------------------
+# A populated but WRONG key is worse than a missing one, and neither announces
+# itself downstream: fetch_gbif_occurrences() drops NA keys silently, so an
+# unresolved taxon leaves the occurrence pool without a word, and a FUZZY or
+# HIGHERRANK match fetches a DIFFERENT taxon's records under this taxon's name.
+# get_keys_from_context()'s own documentation says to review these matchTypes
+# before downstream use; this is that review, and it is deliberately a stop.
+# A real CalIntertidal run requested the family "Alopiidae" for Carcharodon
+# carcharias -- NCBI and GBIF both say Lamnidae -- and nothing in the fetch
+# path questioned it, because the name was populated.
+# ERROR and NO_DATA rows carry an NA usageKey, so the NA check below covers
+# them too. To proceed deliberately, inspect `key_matches`, fix or drop the
+# named rows, and re-run -- do not widen the accepted matchTypes.
+.key_label <- function(df) {
+  out <- rep(NA_character_, nrow(df))
+  for (.r in c("species", "genus", "family", "order", "class", "phylum", "kingdom")) {
+    .hit <- names(df)[tolower(names(df)) == .r]
+    if (!length(.hit)) next
+    .v <- trimws(as.character(df[[.hit[1L]]]))
+    .fill <- is.na(out) & !is.na(.v) & nzchar(.v)
+    out[.fill] <- .v[.fill]
+  }
+  out
+}
+.suspect <- key_matches$matchType %in%
+  c("NONE", "FUZZY", "HIGHERRANK", "LOOKUP_RECOVERED")
+.unresolved <- is.na(key_matches$usageKey)
+if (any(.suspect | .unresolved)) {
+  .bad <- which(.suspect | .unresolved)
+  .labels <- .key_label(key_matches)
+  stop(
+    "GBIF key lookup: ", length(.bad), " of ", nrow(key_matches),
+    " taxa did not resolve to a trustworthy GBIF key.\n",
+    paste0("  ", .labels[.bad], " -- matchType ", key_matches$matchType[.bad],
+           ", usageKey ", key_matches$usageKey[.bad], collapse = "\n"),
+    "\nAn NA key is dropped silently by fetch_gbif_occurrences(); a FUZZY or ",
+    "HIGHERRANK key fetches another taxon's records. Resolve or drop these ",
+    "rows deliberately, then re-run.",
+    call. = FALSE
+  )
+}
 bbox_wkt <- TaxaFetch::make_bbox_wkt(
   lat = {{lat}}, lon = {{lon}},
   radius_deg = {{search_radius_deg}}
