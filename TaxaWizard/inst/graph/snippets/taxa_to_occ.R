@@ -1,7 +1,12 @@
 # Edge: taxa -> occurrences
 # Source: TaxaFetch/inst/GBIF_workflow.R + Define_search_workflow.R
 
-keys <- TaxaFetch::get_keys_from_context({{input_var}})
+key_matches <- TaxaFetch::get_keys_from_context({{input_var}})
+# fetch_gbif_occurrences() takes the usageKey COLUMN, not the whole table that
+# get_keys_from_context() returns: it begins with as.integer(keys), and a data
+# frame cannot be coerced to integer. Passing the table raises
+# "'list' object cannot be coerced to type 'integer'".
+keys <- key_matches$usageKey[!is.na(key_matches$usageKey)]
 bbox_wkt <- TaxaFetch::make_bbox_wkt(
   lat = {{lat}}, lon = {{lon}},
   radius_deg = {{search_radius_deg}}
