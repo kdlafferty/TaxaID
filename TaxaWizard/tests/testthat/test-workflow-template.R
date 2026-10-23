@@ -289,3 +289,52 @@ test_that("every {{placeholder}} used by a CANONICAL_PATH snippet is declared in
     )
   )
 })
+
+# --- GBIF key handling -------------------------------------------------------
+# Both failures guarded here shipped in the generated template: the occurrence
+# step passed get_keys_from_context()'s RESULT TABLE where an integer vector
+# was required (as.integer() on a data frame is an error, so the step could not
+# run), and nothing ever inspected matchType, so an unresolved or fuzzily
+# matched taxon reached the fetch -- where an NA key is dropped silently and a
+# FUZZY or HIGHERRANK key returns another taxon's records.
+
+test_that("the template passes a usageKey vector to fetch_gbif_occurrences, not the key table", {
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+  txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
+  skip_if_not(grepl("get_keys_from_context", txt, fixed = TRUE),
+              "this template does not fetch GBIF occurrences")
+
+  # The variable get_keys_from_context() is assigned to.
+  m <- regmatches(txt, regexpr(
+    "[A-Za-z_.][A-Za-z_.0-9]*[ \t]*<-[ \t]*TaxaFetch::get_keys_from_context", txt))
+  expect_length(m, 1L)
+  v <- sub("[ \t]*<-.*", "", m)
+  expect_true(nzchar(v))
+
+  # It must be subset by usageKey before use ...
+  expect_true(grepl(paste0(v, "$usageKey"), txt, fixed = TRUE))
+  # ... and the table itself must never be handed to the fetch, which would
+  # raise "'list' object cannot be coerced to type 'integer'".
+  expect_false(grepl(paste0("keys[ \t]*=[ \t]*", v, "[ \t]*(,|\\))"), txt))
+})
+
+test_that("the template refuses a GBIF key that did not resolve exactly, before fetching", {
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+  txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
+  skip_if_not(grepl("get_keys_from_context", txt, fixed = TRUE),
+              "this template does not fetch GBIF occurrences")
+
+  expect_true(grepl("matchType", txt, fixed = TRUE))
+  # Every matchType that must not pass unexamined is named.
+  for (mt in c("NONE", "FUZZY", "HIGHERRANK", "LOOKUP_RECOVERED")) {
+    expect_true(grepl(mt, txt, fixed = TRUE), info = mt)
+  }
+  # An unresolved key is caught too, not left to be dropped silently.
+  expect_true(grepl("is.na(key_matches$usageKey)", txt, fixed = TRUE))
+
+  # The check must come BEFORE the request, or it guards nothing.
+  expect_lt(regexpr("matchType", txt, fixed = TRUE)[[1L]],
+            regexpr("fetch_gbif_occurrences", txt, fixed = TRUE)[[1L]])
+})
