@@ -3139,24 +3139,22 @@ review_assignments <- function(input_df,
 #' @noRd
 .p_to_level <- function(p) {
   p <- suppressWarnings(as.numeric(p))
-  out <- rep(NA_character_, length(p))
-  ok <- !is.na(p)
-  out[ok] <- ifelse(p[ok] < .p_cut_unlikely, "unlikely",
-    ifelse(p[ok] < .p_cut_likely, "possible", "likely")
+  dplyr::if_else(
+    p < .p_cut_unlikely, "unlikely",
+    dplyr::if_else(p < .p_cut_likely, "possible", "likely"),
+    missing = NA_character_
   )
-  out
 }
 
 #' Contamination risk level from a probability
 #' @noRd
 .p_to_risk <- function(p) {
   p <- suppressWarnings(as.numeric(p))
-  out <- rep(NA_character_, length(p))
-  ok <- !is.na(p)
-  out[ok] <- ifelse(p[ok] < .p_cut_contam_moderate, "low",
-    ifelse(p[ok] < .p_cut_contam_high, "moderate", "high")
+  dplyr::if_else(
+    p < .p_cut_contam_moderate, "low",
+    dplyr::if_else(p < .p_cut_contam_high, "moderate", "high"),
+    missing = NA_character_
   )
-  out
 }
 
 #' A probability column of a review frame, or all-NA when the path never asked
@@ -3188,7 +3186,7 @@ review_assignments <- function(input_df,
     # which would lose the observation without a word.
     ins <- .p_col(df, "p_inside_range")
     alt <- .p_col(df, "p_geographic")
-    ifelse(is.na(ins), alt, ins)
+    dplyr::if_else(is.na(ins), alt, ins, missing = NA_real_)
   } else {
     .p_col(df, "p_geographic")
   }
