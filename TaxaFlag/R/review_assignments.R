@@ -579,9 +579,24 @@ review_assignments <- function(input_df,
                                poor_absolute_fit_col = "poor_absolute_fit",
                                best_identity_col = "best_identity",
                                sites = NULL,
-                               site_col = "site") {
+                               site_col = "site",
+                               occurrence_data = NULL) {
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
+  # The occurrence facts are per taxon AND per detected site: the distance to
+  # the nearest record and the record locations within 50 km of each site are
+  # most of their measured value. With no site table there are no sites for
+  # them to be about, and the per-taxon counts alone were never scored. Half
+  # the data silently dropped is the worse outcome, so this is refused.
+  if (!is.null(occurrence_data) && is.null(sites)) {
+    stop(
+      "'occurrence_data' needs 'sites' too: its facts are per detected site ",
+      "(nearest record, record locations within 50 km), so there is nothing ",
+      "for them to be about without a site table. Pass sites=, or leave ",
+      "occurrence_data = NULL.",
+      call. = FALSE
+    )
+  }
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
   if (!taxon_col %in% names(input_df)) {
@@ -647,6 +662,9 @@ review_assignments <- function(input_df,
   # --- Site-aware geography: validate the sites table (sites path only) ---
   if (!is.null(sites)) {
     sites <- .validate_review_sites(sites, input_df, site_col)
+    if (!is.null(occurrence_data)) {
+      occurrence_data <- .validate_occurrence_data(occurrence_data)
+    }
   }
 
   # --- Normalise context ---
@@ -866,6 +884,46 @@ review_assignments <- function(input_df,
   taxa_info$has_unprecedented[is.na(taxa_info$has_unprecedented)] <- FALSE
   taxa_info$has_indistinguishable[is.na(taxa_info$has_indistinguishable)] <- FALSE
 
+  # --- Per-taxon prompt brackets (sites path) -------------------------------
+  # Attached as columns of taxa_info, which is where the cache key is built
+  # from: every column of it already enters the key, so the sites a taxon was
+  # detected at and the occurrence facts shown alongside them key themselves.
+  # They change the question asked, so a verdict obtained without them must
+  # not be served as a hit for a call that includes them.
+  occurrence_guideline <- NULL
+  if (!is.null(sites)) {
+    det <- .review_detected_sites(
+      taxa_info$taxon_name, input_df, site_col, sites, label_canon_map
+    )
+    taxa_info$detected_note <- vapply(
+      det, .detected_sites_bracket, character(1L), sites = sites
+    )
+    if (!is.null(occurrence_data)) {
+      occurrence_guideline <- .occurrence_guideline_text(occurrence_data)
+      taxa_info$occurrence_note <- vapply(seq_len(nrow(taxa_info)), function(i) {
+        .occurrence_bracket(
+          taxa_info$taxon_name[i], taxa_info$taxon_rank[i], det[[i]],
+          occurrence_data, sites
+        )
+      }, character(1L))
+      if (verbose) {
+        n_none <- sum(grepl("no records of this taxon", taxa_info$occurrence_note,
+          fixed = TRUE
+        ))
+        n_rank <- sum(grepl("rank not available", taxa_info$occurrence_note,
+          fixed = TRUE
+        ))
+        message(sprintf(
+          paste0(
+            "  occurrence facts: %d of %d taxa matched the pool; %d had no ",
+            "records and %d a rank the pool does not carry."
+          ),
+          nrow(taxa_info) - n_none - n_rank, nrow(taxa_info), n_none, n_rank
+        ))
+      }
+    }
+  }
+
   if (verbose) {
     message(sprintf(
       "review_assignments: %d unique %s to review.",
@@ -931,9 +989,11 @@ review_assignments <- function(input_df,
     # verdict from the old wording would otherwise be served as a hit.
     # v3: the poor-absolute-fit guideline. v4: the no-reference line is
     # keyed on the reviewed label's own row type, not the call's. v5: the
-    # geography guidelines (a)/(b)/(f), ids on taxa lines.
+    # geography guidelines (a)/(b)/(f), ids on taxa lines. v6: the answer is a
+    # probability under the guardrail definitions, so EVERY cached verdict --
+    # on every path, sites or not -- is a miss once and is re-asked.
     shared_parts <- c(
-      "v5", target_group %||% "", marker %||% "", data_type,
+      "v6", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -943,9 +1003,15 @@ review_assignments <- function(input_df,
     # The sites change the prompt and the parsed output, so they are part of
     # the key -- but ONLY when supplied, which leaves the sites = NULL key
     # byte-identical to a key written before this argument existed. Bump
-    # "geo_sites_v4" whenever the sites wording in the prompt changes.
+    # "geo_sites_v5" whenever the sites wording in the prompt changes.
+    # The occurrence guideline is keyed here too, because the pool's latitude
+    # extent is quoted in it: a different pool asks a different question even
+    # when the per-taxon facts happen to match.
     if (!is.null(sites)) {
-      shared_parts <- c(shared_parts, "geo_sites_v4", .review_sites_digest(sites))
+      shared_parts <- c(shared_parts, "geo_sites_v5", .review_sites_digest(sites))
+      if (!is.null(occurrence_guideline)) {
+        shared_parts <- c(shared_parts, occurrence_guideline)
+      }
     }
     .shared <- paste(shared_parts, collapse = "\u0001")
 
@@ -1037,7 +1103,8 @@ review_assignments <- function(input_df,
       taxa_batch, ctx, target_group, marker, data_type, use_candidates,
       llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
       batch_label = as.character(b), max_retries = max_retries,
-      prompt_log = prompt_log, sites = sites
+      prompt_log = prompt_log, sites = sites,
+      occurrence_guideline = occurrence_guideline
     )
 
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -1842,6 +1909,13 @@ review_assignments <- function(input_df,
     # params found a matching column.
     note <- if ("pipeline_note" %in% names(taxa_batch)) taxa_batch$pipeline_note[i] else NA_character_
     if (!is.na(note)) base <- paste0(base, " [", note, "]")
+    # The run's own facts, in the order the guidelines introduce them: where
+    # this taxon was actually detected, then what the occurrence pool holds
+    # about it near those sites.
+    for (fact in c("detected_note", "occurrence_note")) {
+      v <- if (fact %in% names(taxa_batch)) taxa_batch[[fact]][i] else NA_character_
+      if (!is.na(v)) base <- paste0(base, " ", v)
+    }
     # The id is how the answer is matched back (see .parse_review_response()):
     # a long candidate-set label echoed back reformatted cannot be matched by
     # name, and one such label could unmatch a whole batch.
