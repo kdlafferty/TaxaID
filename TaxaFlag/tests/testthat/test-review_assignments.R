@@ -1749,3 +1749,55 @@ test_that("the guideline names whichever of the two forms the batch holds", {
   expect_match(g2, "that the sequence did not resolve the call to species", fixed = TRUE)
   expect_false(grepl("on only part of their detections", g2, fixed = TRUE))
 })
+
+test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
+  # It used to live inside the UNPRECEDENTED guideline, so it reached only the
+  # taxa the occurrence data had flagged -- and it left with that guideline.
+  # What a low probability ASSERTS is true of every taxon, so it is not
+  # behind a flag any more. Pinned on a frame with no pipeline columns at all,
+  # which is the case that proves "unconditional".
+  bare <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = bare, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  ))
+  p <- paste(seen, collapse = "\n")
+  expect_match(p, "0.05 or lower is a STRONG claim", fixed = TRUE)
+  expect_match(p, "POSITIVE evidence that the taxon is out of range here", fixed = TRUE)
+  # ... and it is nowhere near the deleted UNPRECEDENTED wording.
+  expect_false(grepl("absence of a citeable record", p, fixed = TRUE))
+  expect_false(grepl("pipeline flags UNPRECEDENTED", p, fixed = TRUE))
+
+  # Same on the sites path, which has its own geography text.
+  sites <- data.frame(
+    site = c("North", "South"), lat = c(38, 32), lon = c(-123, -117),
+    stringsAsFactors = FALSE
+  )
+  bare$site <- "North"
+  seen <- character(0)
+  fn2 <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0(
+      '[{"taxon_name": "Bos taurus", "p_habitat": 0.03, "p_geographic": 0.03,',
+      ' "p_scope": 0.03, "p_contamination": 0.95, "range_known": false,',
+      ' "p_inside_range": 0.4, "p_outside_range": 0.4,',
+      ' "review_confidence": "low", "review_comment": null}]'
+    )
+  }
+  suppressWarnings(invisible(review_assignments(
+    data_type = "eDNA", input_df = bare, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn2, verbose = FALSE,
+    sites = sites, site_col = "site", on_unreviewed = "ignore"
+  )))
+  expect_match(
+    paste(seen, collapse = "\n"), "0.05 or lower is a STRONG claim", fixed = TRUE
+  )
+})

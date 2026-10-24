@@ -96,6 +96,13 @@
   label that is itself a named unreferenced species. The line follows the
   label, not the call, so a referenced species that some units call at a
   family ring does not carry it.
+* `review_assignments()` tells the reviewer, for every taxon, that a
+  probability of 0.05 or lower is a strong claim needing positive evidence of
+  being out of range -- a native range elsewhere with no known introduction, or
+  an unusable habitat -- and asks for an intermediate value with a note that the
+  evidence is thin where there is none. The guidance is unconditional: what a
+  low probability asserts does not depend on whether the occurrence data
+  flagged the taxon.
 * `review_assignments()` judges geography on evidence and at the call's rank.
   An "unprecedented" pipeline flag caps the rating at "possible" unless there
   is specific local evidence and never inverts it ("unlikely" needs positive

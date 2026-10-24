@@ -467,14 +467,19 @@
 #' There is no UNPRECEDENTED bullet, because there is no UNPRECEDENTED note:
 #' "no local occurrence record at all" is a statement about the occurrence
 #' data and the flag is read without being shown (see \emph{What the review is
-#' shown, and what it is not}). What that bullet used to say -- that absence of
-#' a citeable record is not evidence of absence, and that an unrecalled range
-#' deserves an intermediate probability rather than a low one -- is in the
-#' UNCONDITIONAL geography text, which is the right place for it: it is true of
-#' every rare taxon, not only of the ones the pipeline flagged. The harder
-#' earlier form of that rule ("cite a local record or rate it unlikely") rated
-#' widely introduced species out of range whenever the model could not recall a
-#' record on that draw, which is why it is guidance and not a rule.
+#' shown, and what it is not}). Everything that bullet used to say is now in
+#' the UNCONDITIONAL geography text, which is the right place for it, because
+#' all of it is true of every taxon rather than only of the ones the
+#' occurrence data flagged: that no records is not evidence of absence, that
+#' an unrecalled range deserves an intermediate probability rather than a low
+#' one, and that \strong{a probability of 0.05 or lower is a strong claim and
+#' needs positive evidence of being out of range} -- a native range on another
+#' continent with no known introduction here, or a habitat the taxon cannot
+#' use -- with an intermediate value and a note that the evidence is thin
+#' where there is none. The harder earlier form of that rule ("cite a local
+#' record or rate it unlikely") rated widely introduced species out of range
+#' whenever the model could not recall a record on that draw, which is why
+#' this is guidance and not a rule.
 #'
 #' Prompt compliance is never guaranteed, and the model is not shown the
 #' UNPRECEDENTED flag at all, so the deterministic
@@ -1289,8 +1294,14 @@ review_assignments <- function(input_df,
     # rank-expansion note lost its second clause. Nothing is known to have
     # been asked under v10, but the key holds the inputs and not the prompt,
     # so a bump is the only thing that can tell -- and it costs one re-ask.
+    # v12: the "0.05 or lower is a strong claim" steer is now UNCONDITIONAL,
+    # on both the sites and the study-wide path. It was previously inside the
+    # UNPRECEDENTED guideline, so it reached only the taxa the occurrence data
+    # had flagged -- and when that guideline went, it went with it. It is
+    # guidance about what a low probability asserts, which is true of every
+    # taxon, so it does not belong behind a flag.
     shared_parts <- c(
-      "v11", target_group %||% "", marker %||% "", data_type,
+      "v12", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1660,7 +1671,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v11} key prefix already orphans; such a row falls back to
+#' which the \code{v12} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -3303,7 +3314,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v11" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v12" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
@@ -3415,7 +3426,14 @@ review_assignments <- function(input_df,
   "- If you cannot recall a rare or poorly known taxon's range, say so: ",
   "range_known false, and p_inside_range = p_outside_range = an intermediate ",
   "value with low confidence. Do not reconstruct a range from the genus or ",
-  "from similar species. No records is not evidence of absence.\n"
+  "from similar species. No records is not evidence of absence.\n",
+  "- A probability of 0.05 or lower is a STRONG claim. Give one only with ",
+  "POSITIVE evidence that the taxon is out of range here -- for example a ",
+  "native range on another continent with no known introduction to this ",
+  "region, or a habitat it cannot use. Without such evidence, give an ",
+  "intermediate value (about 0.3-0.6) and say in review_comment that the ",
+  "evidence is thin. A widely introduced species, or one known from the ",
+  "region, is at least intermediate.\n"
 )
 
 .p_study_geo_guideline_text <- paste0(
@@ -3424,7 +3442,14 @@ review_assignments <- function(input_df,
   "geographic probability, not a low one.\n",
   "- If you cannot recall a rare or poorly known taxon's range, give an ",
   "intermediate probability with low confidence rather than recalling one. ",
-  "No records is not evidence of absence.\n"
+  "No records is not evidence of absence.\n",
+  "- A probability of 0.05 or lower is a STRONG claim. Give one only with ",
+  "POSITIVE evidence that the taxon is out of range here -- for example a ",
+  "native range on another continent with no known introduction to this ",
+  "region, or a habitat it cannot use. Without such evidence, give an ",
+  "intermediate value (about 0.3-0.6) and say in review_comment that the ",
+  "evidence is thin. A widely introduced species, or one known from the ",
+  "region, is at least intermediate.\n"
 )
 
 # Worked examples (G5). Deliberately generic: a named species here would teach

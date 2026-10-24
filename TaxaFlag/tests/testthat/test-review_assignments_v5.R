@@ -302,14 +302,14 @@ test_that("verdicts cached under an older prompt version are a miss", {
   run()
   expect_equal(n, 1L)
   run()
-  expect_equal(n, 1L) # a hit under v11
+  expect_equal(n, 1L) # a hit under v12
   files <- list.files(cd, full.names = TRUE)
   expect_gt(length(files), 0L)
   rekeyed <- 0L
   for (f in files) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v11", "v10", e$key, fixed = TRUE)
+      e$key <- sub("v12", "v11", e$key, fixed = TRUE)
       saveRDS(e, f)
       rekeyed <- rekeyed + 1L
     }
@@ -495,7 +495,7 @@ test_that("the review cache key carries no temperature field", {
   for (f in files) {
     k <- readRDS(f)$key
     expect_false(grepl("temperature", k, fixed = TRUE))
-    expect_true(startsWith(k, "v11\u0001"))
+    expect_true(startsWith(k, "v12\u0001"))
   }
 })
 

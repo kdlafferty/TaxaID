@@ -553,14 +553,19 @@ within it.}
 There is no UNPRECEDENTED bullet, because there is no UNPRECEDENTED note:
 "no local occurrence record at all" is a statement about the occurrence
 data and the flag is read without being shown (see \emph{What the review is
-shown, and what it is not}). What that bullet used to say -- that absence of
-a citeable record is not evidence of absence, and that an unrecalled range
-deserves an intermediate probability rather than a low one -- is in the
-UNCONDITIONAL geography text, which is the right place for it: it is true of
-every rare taxon, not only of the ones the pipeline flagged. The harder
-earlier form of that rule ("cite a local record or rate it unlikely") rated
-widely introduced species out of range whenever the model could not recall a
-record on that draw, which is why it is guidance and not a rule.
+shown, and what it is not}). Everything that bullet used to say is now in
+the UNCONDITIONAL geography text, which is the right place for it, because
+all of it is true of every taxon rather than only of the ones the
+occurrence data flagged: that no records is not evidence of absence, that
+an unrecalled range deserves an intermediate probability rather than a low
+one, and that \strong{a probability of 0.05 or lower is a strong claim and
+needs positive evidence of being out of range} -- a native range on another
+continent with no known introduction here, or a habitat the taxon cannot
+use -- with an intermediate value and a note that the evidence is thin
+where there is none. The harder earlier form of that rule ("cite a local
+record or rate it unlikely") rated widely introduced species out of range
+whenever the model could not recall a record on that draw, which is why
+this is guidance and not a rule.
 
 Prompt compliance is never guaranteed, and the model is not shown the
 UNPRECEDENTED flag at all, so the deterministic
