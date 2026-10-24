@@ -83,11 +83,12 @@
   grounds for an "unlikely" habitat, geography or scope rating. Likelihoods are
   normalised to the unit maximum, so a poor best match can otherwise be called
   confidently.
-* `review_assignments(consensus_provenance = TRUE)` tells the reviewer when a
-  call's name came from the occurrence records rather than the sequence: the
-  call landed on an unreferenced relative, with the scope and its rank, and
-  whether the records offered one candidate or several. The sequence settled
-  only that an unreferenced relative beats every referenced candidate.
+* `review_assignments(consensus_provenance = TRUE)` tells the reviewer when no
+  reference sequence exists for a call's name, with one note: `"named taxon has
+  NO reference sequence"`. The sequence settled only that an unreferenced
+  relative beats every referenced candidate, so the name did not come from it.
+  Which scope the name came from, and how many species the records held there,
+  are deliberately not said -- see "the review is shown DNA evidence" above.
 
 ## Changed behaviour
 

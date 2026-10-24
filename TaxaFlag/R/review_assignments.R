@@ -1771,11 +1771,14 @@ review_assignments <- function(input_df,
 #' mention them, which is exactly the real case that prompted this: an LLM
 #' rated a taxon "likely" despite the pipeline recording zero local records
 #' for it, and an LLM cannot be trusted to reliably self-flag its own
-#' disagreement). \code{isTRUE(any(...))} per group, matching
-#' \code{winner_rank_expanded}'s own existing any-row-flags-it convention just
-#' below -- if ANY observation sharing this label was found unprecedented/
-#' indistinguishable, the whole reviewed group is treated as warranting
-#' skepticism (a caution signal should over-include, not under-include).
+#' disagreement). \code{isTRUE(any(...))} per group for these two and for poor
+#' absolute fit: if ANY observation sharing this label was found
+#' unprecedented/indistinguishable/poorly fitting, the whole reviewed group is
+#' treated as warranting skepticism, because a caution signal should
+#' over-include rather than under-include. The rank-expansion flag is the
+#' exception and is no longer any-row: it distinguishes all of a taxon's rows
+#' from only some, since there the note is a statement about the evidence
+#' rather than a caution, and "some" said as "all" would overstate it.
 #' @noRd
 .summarise_pipeline_context <- function(label_vec, input_df, consensus_posterior_col,
                                         winner_prior_col, winner_rank_expanded_col,
@@ -1837,11 +1840,12 @@ review_assignments <- function(input_df,
     # sequence never reached species at all.
     #
     # The flag is per ROW and the note is per TAXON, so a taxon whose
-    # detections disagree needs its own wording: in one real study 86 of 170
-    # taxon-by-marker pairs are mixed, and collapsing those to the flat
-    # sentence would overstate the case on every one of them. NA counts as
-    # unflagged, so a column that is NA where it was never computed does not
-    # manufacture a note.
+    # detections disagree needs its own wording. In one real study the mixed
+    # taxa were exactly as common as the fully flagged ones -- 85 taxon lines
+    # each, against 1,019 carrying no flag -- so collapsing "some" into the
+    # flat sentence would have overstated the case on half of the lines it
+    # touched, not on an edge case. NA counts as unflagged, so a column that
+    # is NA where it was never computed does not manufacture a note.
     if (has_rexp) {
       rexp_flagged <- input_df[[winner_rank_expanded_col]][rows] %in% TRUE
       if (any(rexp_flagged)) {
@@ -1867,9 +1871,10 @@ review_assignments <- function(input_df,
     # Where poor_absolute_fit is TRUE the wording says so as well, because
     # "below every rank threshold for this marker" is a fact about thresholds
     # that the percentage alone does not carry. Any row sharing the label
-    # flagging it counts, as for the rank-expansion flag; the quoted identity
-    # is then the median over the flagged rows, so the number and the claim
-    # describe the same rows.
+    # flagging it counts -- a caution signal over-includes -- and the quoted
+    # identity is then the median over the flagged rows, so the number and the
+    # claim describe the same rows. (The rank-expansion flag below does NOT
+    # work this way: it separates all from some.)
     pf <- if (has_poorfit) input_df[[poor_absolute_fit_col]][rows] else logical(0)
     poor_here <- length(pf) > 0L && isTRUE(any(pf, na.rm = TRUE))
     id_rows <- if (poor_here) which(pf %in% TRUE) else seq_along(rows)
@@ -2463,6 +2468,11 @@ review_assignments <- function(input_df,
     },
     # Two wordings, so two clauses: a taxon flagged on every detection and one
     # flagged on only some are different claims, and the batch can hold both.
+    # The "on only part of their detections" phrasing is a KNOWN nit -- two
+    # reviewers read it as a possible claim about the study -- and is on the
+    # 1.1 board rather than fixed here: these prompts are the ones validated
+    # line by line against a real run under v11, and rewording them would
+    # discard that evidence for a clumsiness, not an error.
     if (rexp_all) "that the sequence did not resolve the call to species",
     if (rexp_some) {
       paste0(
