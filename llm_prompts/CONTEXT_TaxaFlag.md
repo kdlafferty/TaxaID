@@ -666,7 +666,7 @@ Each taxon line carries an id ([T1], [T2], ...) that the answer must echo; answe
 
 The LLM is asked for a probability for each judgement, not a category, and the llm_*_plausibility / llm_contamination_risk columns are derived from those probabilities here. The cuts are unlikely < 0.10 <= possible < 0.70 <= likely, and for contamination low < 0.20 <= moderate < 0.70 <= high.
 
-Why: a category is the least reproducible part of the review. Asking for a probability and cutting it in code was measured to be both steadier between two asks and closer to the maintainer's own labels than asking for the category itself. The figures, and what they were and were not measured on, are in What was measured below, which is the only place in this package that states them.
+Why: a category is the least reproducible part of the review. Asking for a probability and cutting it in code was measured to be steadier between two asks than asking for the category itself. The figures, and what they were and were not measured on, are in What was measured below, which is the only place in this package that states them.
 
 The cut is applied AFTER the cache, never before it. What a cache entry holds is the probability -- the model's answer -- and a cut is this function's reading of it. So changing a cut takes effect for taxa already cached, with no new LLM calls, and the cuts are deliberately not part of the cache key.
 
@@ -674,19 +674,21 @@ Four judgements are asked separately, which is the point of the format: habitat 
 
 #### What was measured
 
-Every accuracy figure this package states is here, and nowhere else: one copy, so that a later measurement is one edit. All of it is claude-opus-5-5 on one real study's 12S panel.
+Every accuracy figure this package states is here, and nowhere else: one copy, so that a later measurement is one edit. All of it is claude-opus-5-5 on one real study's 12S panel, and every interval given is a 95% bootstrap interval over taxa.
 
-Reproducibility of the answer format, over 150 taxa: re-asking the same categorical prompt repeated 90% of the decisions the verdicts drive; asking for a probability and cutting it in code repeats 97%. That is the reason the answer is a probability. Both of those arms were asked WITHOUT the site block and without the guardrail definitions, so the pair isolates the answer format and nothing else. Neither is a measurement of this prompt's own repeat stability, which has both of those things in it.
+This prompt against the maintainer's own labels, over the 34 hardest taxa of that study, with sites supplied, as same-decision / precision / recall: 73% (60-85) / 70% (51-89) / 73% (54-90). The same guardrails and site block, asked with habitat and scope wording written for that one study rather than taken from context$habitat and target_group, scored 75% / 80% / 66%. The gap between those two is the only measurement of what generalising the wording cost, and it sits inside the intervals. A plain probability prompt with neither the site block nor the guardrail definitions scored 67% / 75% / 44%; that one also carried the study-specific wording, and it differs from the first two arms in BOTH the guardrails and the site block, so the difference belongs to the pair and is not an isolated effect of sites.
 
-Agreement with the maintainer's own labels, over the 34 hardest taxa of that study, as same-decision / precision / recall: the guardrail definitions with sites, 75% / 80% / 66%; a plain probability prompt with neither the site block nor the guardrail definitions, 67% / 75% / 44%. Both arms were asked with habitat and scope wording written for that one study, where this prompt takes those words from context$habitat and target_group. So the pair measures the guardrails and the site block, and neither arm measures the general wording.
+Repeat stability of this prompt, over 150 taxa, as the share of the decisions the verdicts drive that a second ask repeats: 90.0% (82.5-96.1). The study-specific wording repeats 96.9% (93.8-98.9), so the generalised wording is the less stable of the two. Repeat pairs are correlated within a taxon, so the taxon count and not the pair count is what limits those intervals.
 
-The cuts: of the extra rows the margin cuts act on and hard cuts (0.20/0.70, contamination 0.50) do not, 54% were rows the maintainer also acted on, against 32% for the hard cuts.
+Why the answer is a probability: re-asking the same CATEGORICAL prompt repeated 90% of those decisions, against 97% for asking a probability and cutting it in code. Both of those arms were asked without the site block and without the guardrail definitions, so the pair isolates the answer format and nothing else, and neither figure is this prompt's own stability -- that is the paragraph above.
 
-Two limits on all of it. The two arms above differ in BOTH the guardrail definitions and the site block, so the difference between them belongs to the pair and is not an isolated effect of sites. And in both arms the taxon lines carried the pipeline's own posterior and occurrence prior, so neither arm measures the model's unaided judgement.
+The cuts: of the extra rows the margin cuts act on and hard cuts (0.20/0.70, contamination 0.50) do not, 54% were rows the maintainer also acted on, against 32% for the hard cuts, measured on the study-specific wording. No alternative to the 0.10 cut improves repeat stability. The 0.70 cut does decide rows: most of this prompt's repeat disagreements are a probability crossing it.
+
+What the pipeline's own numbers add: the taxon lines carry the posterior and the occurrence prior. Asked without them, on the same 34 labels, the model scored 74% / 70% / 65% -- the same within the intervals. So those notes are not measured to help, and a review asked with them is not independent of the pipeline it reviews.
 
 #### Site-aware geography
 
-Supply a site table when you have one: it is the more accurate of the two configurations that were scored. See What was measured.
+Supply a site table when you have one: of the two configurations that were scored against the maintainer's labels, the one with it agreed more often and recovered far more of his calls. See What was measured.
 
 A study that spans a coast or a latitude gradient has no single answer to "is this taxon geographically plausible here?": a tropical reef fish is plausible at the southern sites and not at the northern ones. With sites supplied the prompt lists the sites (name, latitude, longitude; sorted south to north), tells each taxon line which of them it was detected at, and asks for the taxon's range LIMITS rather than for a verdict:
 
