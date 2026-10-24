@@ -1264,6 +1264,10 @@ test_that(".normalise_context() combines the analyst's wording with the synthesi
   n_observations = 1275L,
   matched_name = "Bos taurus",
   winner_rank_expanded = TRUE,
+  # Still ON by default, so the DEFAULT prompt carries a bracket -- which is
+  # the case the bracket guideline has to describe correctly.
+  poor_absolute_fit = TRUE,
+  best_identity = 89.6,
   stringsAsFactors = FALSE
 )
 
@@ -1320,7 +1324,10 @@ test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", 
   # posterior and an occurrence prior in its own text, so an ungated copy of
   # it would tell the model to look for numbers that are not there.
   expect_false(grepl("nearest occurrence", p, fixed = TRUE))
-  expect_false(grepl("OWN confidence for this call", p, fixed = TRUE))
+  # The bracket's NUMERIC guideline is the one that names a posterior and an
+  # occurrence prior, so an ungated copy would tell the model to look for
+  # numbers that are not there.
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
 })
 
 test_that("no rank-expansion note is sent by default", {
@@ -1375,10 +1382,12 @@ test_that("naming the columns puts every one of those notes back", {
   expect_match(p, "occurrence prior=0.42", fixed = TRUE)
   expect_match(p, "GBIF: nearest occurrence", fixed = TRUE)
   expect_match(p, "iNat: in range", fixed = TRUE)
-  # ... and the two guidelines that explain the bracket come back with it,
-  # which is the other half of the gate: the notes and the words that tell the
-  # model how to read them travel together.
-  expect_match(p, "OWN confidence for this call", fixed = TRUE)
+  # ... and the guidelines that explain the bracket come back with it, which
+  # is the other half of the gate: the notes and the words that tell the model
+  # how to read them travel together. With a posterior in the batch that
+  # includes the NUMERIC piece, which is gated separately.
+  expect_match(p, "holds FACTS this pipeline recorded", fixed = TRUE)
+  expect_match(p, "OWN statistical confidence", fixed = TRUE)
   expect_match(p, "GBIF's density map is RAW", fixed = TRUE)
 })
 
@@ -1415,4 +1424,59 @@ test_that("a verdict cached WITH the notes is not served to a blind call", {
   # ... and the blind call's own verdict caches and is served back.
   invisible(do.call(review_assignments, base))
   expect_equal(get("n", ctr), n2)
+})
+
+
+# ===========================================================================
+# The bracket guideline describes what the bracket actually carries
+# ===========================================================================
+
+# Under the shipped defaults a bracket never holds a number, only notes about
+# the NAME. A single guideline calling the bracket "the pipeline's OWN
+# confidence (posterior/occurrence prior/candidate weights)" therefore told
+# the model to read a sequence fact as a confidence and to look for a
+# posterior that was not in the prompt. Found on a live run, not by a test,
+# which is why both sides are pinned here.
+
+test_that("a bracket with no number gets the facts guideline and not the numeric one", {
+  p <- .prompt_sent()
+  # The fixture's poor_absolute_fit is TRUE, so a bracket IS present.
+  expect_match(p, "(poor absolute fit)", fixed = TRUE)
+  expect_match(p, "holds FACTS this pipeline recorded", fixed = TRUE)
+  # ... and nothing claims that bracket is a confidence, or names a number
+  # the model cannot see.
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
+  expect_false(grepl("pipeline posterior alongside your own", p, fixed = TRUE))
+})
+
+test_that("a bracket carrying a number gets both guidelines", {
+  p <- .prompt_sent(
+    consensus_posterior_col = "consensus_posterior",
+    winner_prior_col = "winner_prior"
+  )
+  expect_match(p, "pipeline posterior=0.81", fixed = TRUE)
+  expect_match(p, "holds FACTS this pipeline recorded", fixed = TRUE)
+  expect_match(p, "OWN statistical confidence", fixed = TRUE)
+  expect_match(p, "pipeline posterior alongside your own", fixed = TRUE)
+})
+
+test_that("no bracket at all means neither guideline", {
+  # A frame with none of the note columns: nothing to describe, so the prompt
+  # says nothing about brackets.
+  bare <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = bare, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  ))
+  p <- paste(seen, collapse = "\n")
+  expect_false(grepl("holds FACTS this pipeline recorded", p, fixed = TRUE))
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
 })

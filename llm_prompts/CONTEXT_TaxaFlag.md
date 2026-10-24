@@ -748,7 +748,7 @@ Three pipeline notes are NOT switched off, and an input_df that carries the colu
 
 - the poor-absolute-fit note (poor_absolute_fit_col, with best_identity_col for the number in it).
 
-Each of those three is read for an output column or a gate as well as for the prompt: consensus_plausibility_col and consensus_discrimination_col populate geographic_disagreement_basis, and the UNPRECEDENTED flag also decides whether that guideline is assembled. Switching them off is a decision about an output column, not only about the prompt, which is why it is left to the caller.
+They are all three notes about the NAME -- what the reference data and the records could settle about which organism this is -- rather than numbers scoring it, which is why they are on while the numbers are off. Only the second of them reaches anything but the prompt: consensus_plausibility_col and consensus_discrimination_col populate geographic_disagreement_basis, and the UNPRECEDENTED flag also decides whether that guideline is assembled, so switching those two off is a decision about an output column and not only about the prompt. consensus_provenance and poor_absolute_fit_col reach nothing but the prompt, and are on because the review is meant to see what the sequence could not settle.
 
 For a prompt with no pipeline-derived text in it at all, set consensus_provenance = FALSE and both of consensus_plausibility_col and consensus_discrimination_col, and poor_absolute_fit_col, to NULL. That is the configuration the second arm in What was measured was asked in, and those three notes are now the only way the shipped prompt differs from it. The cost is geographic_disagreement_basis, which is then NA throughout.
 

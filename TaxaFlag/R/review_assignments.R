@@ -709,13 +709,17 @@
 #'   \item{the poor-absolute-fit note (\code{poor_absolute_fit_col}, with
 #'     \code{best_identity_col} for the number in it).}
 #' }
-#' Each of those three is read for an output column or a gate as well as for
-#' the prompt: \code{consensus_plausibility_col} and
-#' \code{consensus_discrimination_col} populate
-#' \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag also
-#' decides whether that guideline is assembled. Switching them off is a
-#' decision about an output column, not only about the prompt, which is why it
-#' is left to the caller.
+#' They are all three notes about the NAME -- what the reference data and the
+#' records could settle about which organism this is -- rather than numbers
+#' scoring it, which is why they are on while the numbers are off. Only the
+#' second of them reaches anything but the prompt:
+#' \code{consensus_plausibility_col} and \code{consensus_discrimination_col}
+#' populate \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag
+#' also decides whether that guideline is assembled, so switching those two
+#' off is a decision about an output column and not only about the prompt.
+#' \code{consensus_provenance} and \code{poor_absolute_fit_col} reach nothing
+#' but the prompt, and are on because the review is meant to see what the
+#' sequence could not settle.
 #'
 #' For a prompt with no pipeline-derived text in it at all, set
 #' \code{consensus_provenance = FALSE} and both of
@@ -1231,9 +1235,13 @@ review_assignments <- function(input_df,
     # carried either is a miss on its own key and needs nothing. The bump is
     # for its NEIGHBOURS: the bracket guideline is assembled per BATCH, so
     # dropping the last note in a batch changes the prompt of every other
-    # taxon in it while their keys do not move.
+    # taxon in it while their keys do not move. v10: the bracket guideline
+    # described the bracket as the pipeline's own numeric confidence, which
+    # under the shipped defaults no bracket carries. It is now two pieces,
+    # the numeric one gated on a number actually being in the batch, so the
+    # wording a taxon was asked under changed.
     shared_parts <- c(
-      "v9", target_group %||% "", marker %||% "", data_type,
+      "v10", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1603,7 +1611,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v9} key prefix already orphans; such a row falls back to
+#' which the \code{v10} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -2349,14 +2357,43 @@ review_assignments <- function(input_df,
   # every other conditional guideline above.
   has_bracket_note <- "pipeline_note" %in% names(taxa_batch) &&
     any(!is.na(taxa_batch$pipeline_note))
+  # The bracket holds whatever notes are switched on, and under the shipped
+  # defaults that is never a number (see "What the review is not told"). One
+  # guideline calling the bracket "the pipeline's OWN confidence
+  # (posterior/occurrence prior/candidate weights)" therefore described
+  # something no line carried: it told the model to read a sequence fact as a
+  # confidence and sent it looking for a posterior that was not in the prompt.
+  # Found on a live run, where the bracket read "[named taxon has NO reference
+  # sequence -- name supplied by the occurrence records for Albula (genus);
+  # pipeline flags INDISTINGUISHABLE: ...]" and the guideline called that a
+  # confidence. So the text is split: what is true of EVERY bracket, and what
+  # is true only when a number is actually in this batch.
+  has_numeric_note <- has_bracket_note && any(grepl(
+    "pipeline posterior=|occurrence prior=|candidate weights: ",
+    taxa_batch$pipeline_note
+  ))
   bracket_guideline <- if (has_bracket_note) {
     paste0(
-      '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
-      "pipeline's OWN confidence for this call (posterior/occurrence prior/candidate ",
-      "weights), not your input. Use it to flag disagreement between the pipeline's ",
-      "confidence and your own ecological judgment in review_comment -- e.g. a low ",
-      "pipeline posterior alongside your own high probabilities is worth a note -- ",
-      "but do not let it override your independent assessment itself.\n"
+      '- A "[...]" bracket at the end of a taxon line holds FACTS this ',
+      "pipeline recorded about that call -- what the reference data and the ",
+      "records could and could not settle about the NAME. Each note says what ",
+      "it means. None of them is your input, and none is a verdict on the ",
+      "ecology: how a name was arrived at does not by itself make the taxon ",
+      "more or less plausible here. Note any inconsistency between a bracket ",
+      "and your own judgment in review_comment, and do not let one override ",
+      "that judgment.\n"
+    )
+  } else {
+    NULL
+  }
+  numeric_bracket_guideline <- if (has_numeric_note) {
+    paste0(
+      '- Where a bracket carries "pipeline posterior", "occurrence prior" or ',
+      '"candidate weights", that is this pipeline\'s OWN statistical ',
+      "confidence in the call. A low pipeline posterior alongside your own ",
+      "high probabilities is worth a note in review_comment -- but it is the ",
+      "pipeline's number, not evidence about the organism, and it must not ",
+      "replace your independent assessment.\n"
     )
   } else {
     NULL
@@ -2418,6 +2455,7 @@ review_assignments <- function(input_df,
     if (!is.null(spatial_guideline)) spatial_guideline else "",
     if (!is.null(poorfit_guideline)) poorfit_guideline else "",
     if (!is.null(bracket_guideline)) bracket_guideline else "",
+    if (!is.null(numeric_bracket_guideline)) numeric_bracket_guideline else "",
     if (!is.null(sites)) .p_detected_guideline_text else "",
     "\n",
     .p_worked_examples_text,
@@ -3147,7 +3185,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v9" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v10" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
