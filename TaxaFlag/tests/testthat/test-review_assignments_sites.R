@@ -282,16 +282,26 @@ test_that("range_known = FALSE gives every site the inside probability", {
   expect_equal(unname(v[c("North", "Mid", "South")]), c("unlikely", "possible", "possible"))
 })
 
-test_that("no usable inside probability leaves geography unanswered, not guessed", {
-  for (bad in c("", "null", '"high"', "1.5")) {
-    v <- .gs_by_site(.gs_geo(south = "33", p_in = bad))
-    expect_true(all(is.na(v)), info = bad)
+test_that("no usable inside probability yields no geography, and is re-asked", {
+  # the spec itself: no probability in, no probability out, never a guess
+  for (bad in list(NULL, NA, "high", 1.5, -0.2)) {
+    spec <- TaxaFlag:::.normalise_range_answer(
+      list(range_known = TRUE, range_south_lat = 33, p_inside_range = bad),
+      .gs_sites$site
+    )
+    expect_equal(spec$rule, "fallback")
+    expect_equal(spec$how, "no_inside_probability")
+    expect_true(all(is.na(TaxaFlag:::.geo_site_probs(spec, .gs_sites))))
   }
-  a <- attr(.gs_review("Taxon a", .gs_fn(list(
-    `Taxon a` = .gs_geo(p_in = "null")
-  )), site_vec = "North"), "geographic_by_site")
-  expect_equal(a$rule, "fallback")
-  expect_equal(a$how, "no_inside_probability")
+  # and through the function, such a row is an omission: geography drives a
+  # decision, so it is re-asked rather than left as an NA the export filters
+  # would discard
+  out <- suppressWarnings(.gs_review("Taxon a",
+    .gs_fn(list(`Taxon a` = .gs_geo(p_in = "null"))),
+    site_vec = "North", max_retries = 0L, on_unreviewed = "ignore"
+  ))
+  expect_equal(attr(out, "unreviewed_taxa"), "Taxon a")
+  expect_equal(nrow(attr(out, "geographic_by_site")), 0L)
 })
 
 test_that("a volunteered study-wide probability rescues a missing p_inside_range", {
@@ -539,9 +549,20 @@ test_that("cache: sites and no-sites never serve each other; a hit reproduces th
   .gs_review(rep("Taxon a", 2L), fn, site_vec = c("North", "Mid"), cache_dir = cd)
   expect_equal(log$n, 3L)
   df <- data.frame(tx = "Taxon a", stringsAsFactors = FALSE)
+  # the no-sites schema asks for p_geographic, not range limits
+  fn_ns <- function(prompt_str, ...) {
+    log$n <- (log$n %||% 0L) + 1L
+    a <- .gs_asked(prompt_str)
+    paste0(
+      '[{"id": "', a$id[1], '", "taxon_name": "', a$label[1], '", ',
+      '"p_habitat": 0.95, "p_scope": 0.95, "p_contamination": 0.02, ',
+      '"p_geographic": 0.95, "review_confidence": "high", ',
+      '"review_comment": "ok"}]'
+    )
+  }
   nosite <- function() {
     review_assignments(df,
-      taxon_col = "tx", context = .gs_ctx, data_type = "eDNA", llm_fn = fn,
+      taxon_col = "tx", context = .gs_ctx, data_type = "eDNA", llm_fn = fn_ns,
       model_label = "frozen", pause_seconds = 0, verbose = FALSE, cache_dir = cd
     )
   }
@@ -621,12 +642,13 @@ test_that(".recover_truncated_json keeps complete objects carrying arrays", {
 })
 
 test_that("the parser reads the range fields in whatever shape they arrive", {
+  ok <- '"p_habitat":0.9,"p_contamination":0.02,'
   txt <- paste0(
-    '[{"id":"T1","taxon_name":"A","p_inside_range":0.9,"p_outside_range":0.05,',
+    '[{"id":"T1","taxon_name":"A",', ok, '"p_inside_range":0.9,"p_outside_range":0.05,',
     '"range_known":true,"range_south_lat":33,"sites_outside_range":["North"]},',
-    '{"id":"T2","taxon_name":"B","p_inside_range":0.9,"range_known":"true",',
+    '{"id":"T2","taxon_name":"B",', ok, '"p_inside_range":0.9,"range_known":"true",',
     '"range_south_lat":null,"sites_outside_range":[]},',
-    '{"id":"T3","taxon_name":"C","p_inside_range":0.9,"range_known":false},',
+    '{"id":"T3","taxon_name":"C",', ok, '"p_inside_range":0.9,"range_known":false},',
     '{"id":"T4","taxon_name":"D"}]'
   )
   tb <- data.frame(
@@ -877,9 +899,9 @@ test_that("a probability that is not a probability is re-asked, never cached", {
   }
 })
 
-test_that("a partial answer is still an answer", {
-  # three questions answered, the fourth fumbled: the row stays, and the NA in
-  # that one column is honest rather than hidden
+test_that("ANY unusable decision-driving probability is re-asked, not kept", {
+  # three questions answered and the fourth fumbled still leaves one NA that
+  # the "!= unlikely" export filters discard silently, so the row is re-asked
   partial <- function(prompt_str, ...) {
     a <- .gs_asked(prompt_str)
     paste0(
@@ -891,10 +913,102 @@ test_that("a partial answer is still an answer", {
       '"review_comment": null}]'
     )
   }
-  out <- .gs_review("Taxon a", partial, site_vec = "North")
+  cd <- tempfile("gs_partial")
+  out <- suppressWarnings(.gs_review("Taxon a", partial,
+    site_vec = "North", max_retries = 0L, on_unreviewed = "ignore",
+    cache_dir = cd
+  ))
+  expect_equal(attr(out, "unreviewed_taxa"), "Taxon a")
+  expect_equal(attr(out, "n_unreviewed_rows"), 1L)
+  expect_equal(length(list.files(cd, pattern = "_review\\.rds$")), 0L)
+  # the warning names the count and the field, so a non-verbose run sees it
+  expect_warning(
+    .gs_review("Taxon a", partial,
+      site_vec = "North", max_retries = 0L, on_unreviewed = "ignore"
+    ),
+    "unusable probability.*p_contamination",
+    all = FALSE
+  )
+})
+
+test_that("p_habitat alone, and p_inside_range alone, each trigger a re-ask", {
+  one_bad <- function(field, value) {
+    function(prompt_str, ...) {
+      a <- .gs_asked(prompt_str)
+      f <- list(p_habitat = "0.9", p_scope = "0.9", p_contamination = "0.02",
+                p_inside_range = "0.9")
+      f[[field]] <- value
+      paste0(
+        '[{"id": "', a$id[1], '", "taxon_name": "', a$label[1], '", ',
+        '"p_habitat": ', f$p_habitat, ', "p_scope": ', f$p_scope, ', ',
+        '"p_contamination": ', f$p_contamination, ', "range_known": true, ',
+        '"range_south_lat": null, "range_north_lat": null, ',
+        '"sites_outside_range": [], "p_inside_range": ', f$p_inside_range,
+        ', "p_outside_range": 0.05, "review_confidence": "high", ',
+        '"review_comment": null}]'
+      )
+    }
+  }
+  for (case in list(c("p_habitat", '"high"'), c("p_inside_range", "85"),
+                    c("p_contamination", '"low"'))) {
+    out <- suppressWarnings(.gs_review("Taxon a", one_bad(case[1], case[2]),
+      site_vec = "North", max_retries = 0L, on_unreviewed = "ignore"
+    ))
+    expect_equal(attr(out, "unreviewed_taxa"), "Taxon a", info = case[1])
+  }
+  # p_scope is asked ONLY when target_group is set, so a bad one is not a
+  # non-answer without it -- the scope question was never put
+  out <- .gs_review("Taxon a", one_bad("p_scope", "-1"), site_vec = "North")
   expect_equal(attr(out, "unreviewed_taxa"), character(0))
-  expect_equal(out$llm_habitat_plausibility, "likely")
-  expect_true(is.na(out$llm_contamination_risk))
+  expect_true(is.na(out$llm_scope_plausibility))
+  out <- suppressWarnings(.gs_review("Taxon a", one_bad("p_scope", "-1"),
+    site_vec = "North", target_group = "fish", max_retries = 0L,
+    on_unreviewed = "ignore"
+  ))
+  expect_equal(attr(out, "unreviewed_taxa"), "Taxon a")
+  # p_outside_range is NOT decision-driving: its absence gives the inside
+  # probability everywhere, which is the stated conservative reading
+  no_out <- function(prompt_str, ...) {
+    a <- .gs_asked(prompt_str)
+    paste0(
+      '[{"id": "', a$id[1], '", "taxon_name": "', a$label[1], '", ',
+      '"p_habitat": 0.9, "p_scope": 0.9, "p_contamination": 0.02, ',
+      '"range_known": true, "range_south_lat": 33, "range_north_lat": null, ',
+      '"sites_outside_range": [], "p_inside_range": 0.9, ',
+      '"review_confidence": "high", "review_comment": null}]'
+    )
+  }
+  out <- .gs_review("Taxon a", no_out, site_vec = "North")
+  expect_equal(attr(out, "unreviewed_taxa"), character(0))
+  expect_equal(out$llm_geographic_plausibility_site, "likely")
+})
+
+test_that("a row that still fails every re-ask is counted, never dropped quietly", {
+  n <- 0L
+  always_bad <- function(prompt_str, ...) {
+    n <<- n + 1L
+    a <- .gs_asked(prompt_str)
+    paste0(
+      '[{"id": "', a$id[1], '", "taxon_name": "', a$label[1], '", ',
+      '"p_habitat": "high", "p_scope": 0.9, "p_contamination": 0.02, ',
+      '"range_known": true, "range_south_lat": null, ',
+      '"range_north_lat": null, "sites_outside_range": [], ',
+      '"p_inside_range": 0.9, "p_outside_range": 0.05, ',
+      '"review_confidence": "high", "review_comment": null}]'
+    )
+  }
+  cd <- tempfile("gs_persist")
+  expect_warning(
+    out <- .gs_review("Taxon a", always_bad,
+      site_vec = "North", max_retries = 2L, cache_dir = cd
+    ),
+    "NO LLM verdict"
+  )
+  expect_gt(n, 1L) # it was re-asked
+  expect_equal(attr(out, "unreviewed_taxa"), "Taxon a")
+  expect_equal(attr(out, "n_unreviewed_rows"), 1L)
+  expect_true(is.na(out$llm_habitat_plausibility))
+  expect_equal(length(list.files(cd, pattern = "_review\\.rds$")), 0L)
 })
 
 test_that("a cached non-answer from before this fix is a miss, not a hit", {

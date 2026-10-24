@@ -404,6 +404,24 @@
 #' an unreviewed observation would be silently removed from the final species
 #' list.
 #'
+#' A taxon the model answered for but whose answer is unusable counts as
+#' omitted too, and for the same reason. The probabilities are the answer, so a
+#' value outside 0--1, or one that is not a number at all -- \code{85} for a
+#' percentage, \code{"high"} for a category -- leaves that verdict \code{NA}
+#' while \code{review_confidence} and \code{review_comment} arrive intact.
+#' Such a row is treated as omitted: it is re-asked and it is never cached.
+#'
+#' The test is ANY of the probabilities that drive a decision, not all of them:
+#' \code{p_habitat}, \code{p_contamination}, geography, and \code{p_scope}
+#' when \code{target_group} is supplied. A row that answered three questions
+#' and fumbled the fourth still carries one \code{NA} that the export filters
+#' discard without a word. \code{p_outside_range} is deliberately NOT in that
+#' set: its absence gives the inside probability at every site, which never
+#' manufactures an "outside" the model did not state. Each unusable answer is
+#' named, with its failing fields, in a \code{warning()} -- not only when
+#' \code{verbose} -- and a row still failing after every re-ask is counted in
+#' \code{attr(result, "n_unreviewed_rows")} like any other omission.
+#'
 #' Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
 #' to \code{max_retries} times; the cost is pay-per-failure, and the re-asking
 #' stops early when a re-ask recovers nothing. (2) An unreviewed taxon is
@@ -2862,37 +2880,50 @@ review_assignments <- function(input_df,
     }
   }
 
-  # A row present in the response but carrying no usable probability at all is
-  # an OMISSION, not an answer. The probabilities are now the answer, so a
-  # model that returned p_habitat = 85 (out of range) or "high" (not a number)
-  # leaves every derived verdict NA while review_confidence and review_comment
-  # are perfectly present -- which made the row look reviewed, cached it, and
-  # reported n_unreviewed_rows = 0, while every downstream "!= unlikely" export
-  # filter dropped the NA without a word. Treating it as omitted puts it back
-  # on the re-ask path and keeps it out of the cache, which is the invariant
-  # the unreviewed machinery exists to hold.
+  # A row present in the response but missing ANY probability that drives a
+  # decision is an OMISSION, not an answer.
   #
-  # ALL of the asked probabilities, not any: a model that answered three
-  # questions and fumbled the fourth has still answered, and the NA in that
-  # one column is honest.
-  asked_p <- c("p_habitat", "p_contamination")
+  # The probabilities are the answer now, so a model that returned
+  # p_habitat = 85 (out of range) or "high" (not a number) leaves that verdict
+  # NA while review_confidence and review_comment arrive perfectly intact.
+  # That row looked reviewed: it was cached, it never reached the re-ask path,
+  # n_unreviewed_rows reported 0, and the NA was discarded by every downstream
+  # "!= unlikely" export filter without a word.
+  #
+  # ANY, not all. A row that answered three questions and fumbled the fourth
+  # still carries one NA that those filters silently drop, and a silently
+  # dropped observation is the failure class this project rules out. The cost
+  # is calls, and only when the model fails: 0 of 15 taxa in the live probe.
+  # A row that still fails after the re-asks is NA-filled, counted in
+  # n_unreviewed_rows and named in the unreviewed warning, so the loss is
+  # always reported rather than absorbed.
+  #
+  # Geography is checked on p_geographic AFTER .derive_levels(), which is the
+  # field that actually drives the verdict on both paths -- so a sites-path row
+  # whose p_inside_range failed but which volunteered a study-wide probability
+  # is kept, not re-asked for an answer it already gave.
+  asked_p <- c("p_habitat", "p_contamination", "p_geographic")
   if (!is.null(target_group)) asked_p <- c(asked_p, "p_scope")
-  asked_p <- c(asked_p, if (with_geo) "p_inside_range" else "p_geographic")
   asked_p <- intersect(asked_p, names(result))
-  no_answer <- if (length(asked_p) == 0L) {
-    rep(FALSE, nrow(result))
-  } else {
-    rowSums(!is.na(result[, asked_p, drop = FALSE])) == 0L
-  }
-  if (any(no_answer)) {
-    pending <- c(pending, sprintf(
-      paste0(
-        "LLM returned %d taxa with no usable probability (a value outside ",
-        "0-1, or not a number): %s. Treated as omitted and re-asked."
-      ),
-      sum(no_answer), paste(result$taxon_name[no_answer], collapse = ", ")
-    ))
-    result <- result[!no_answer, , drop = FALSE]
+  if (length(asked_p) > 0L && nrow(result) > 0L) {
+    bad <- is.na(result[, asked_p, drop = FALSE])
+    no_answer <- rowSums(bad) > 0L
+    if (any(no_answer)) {
+      detail <- vapply(which(no_answer), function(i) {
+        sprintf("%s (%s)", result$taxon_name[i],
+          paste(asked_p[bad[i, ]], collapse = ", ")
+        )
+      }, character(1L))
+      pending <- c(pending, sprintf(
+        paste0(
+          "LLM returned %d taxa with an unusable probability -- a value ",
+          "outside 0-1, or not a number -- in: %s. Treated as omitted, so ",
+          "they are re-asked and not cached."
+        ),
+        sum(no_answer), paste(detail, collapse = "; ")
+      ))
+      result <- result[!no_answer, , drop = FALSE]
+    }
   }
 
   # Fill any remaining missing taxa (truly absent from LLM response) with NAs

@@ -488,6 +488,24 @@ chains filter with \code{!= "unlikely"}, which \strong{discards \code{NA}},
 an unreviewed observation would be silently removed from the final species
 list.
 
+A taxon the model answered for but whose answer is unusable counts as
+omitted too, and for the same reason. The probabilities are the answer, so a
+value outside 0--1, or one that is not a number at all -- \code{85} for a
+percentage, \code{"high"} for a category -- leaves that verdict \code{NA}
+while \code{review_confidence} and \code{review_comment} arrive intact.
+Such a row is treated as omitted: it is re-asked and it is never cached.
+
+The test is ANY of the probabilities that drive a decision, not all of them:
+\code{p_habitat}, \code{p_contamination}, geography, and \code{p_scope}
+when \code{target_group} is supplied. A row that answered three questions
+and fumbled the fourth still carries one \code{NA} that the export filters
+discard without a word. \code{p_outside_range} is deliberately NOT in that
+set: its absence gives the inside probability at every site, which never
+manufactures an "outside" the model did not state. Each unusable answer is
+named, with its failing fields, in a \code{warning()} -- not only when
+\code{verbose} -- and a row still failing after every re-ask is counted in
+\code{attr(result, "n_unreviewed_rows")} like any other omission.
+
 Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
 to \code{max_retries} times; the cost is pay-per-failure, and the re-asking
 stops early when a re-ask recovers nothing. (2) An unreviewed taxon is
