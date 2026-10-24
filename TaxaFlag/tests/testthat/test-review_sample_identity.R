@@ -64,15 +64,15 @@ test_that("the cache serves repeat calls and never stores a non-answer", {
   gate <- .sir_gate()
   a <- .fake_llm(skip = "PLANKTON")
   suppressWarnings(review_sample_identity(gate, context = "x", llm_fn = a$fn,
-    cache_dir = dir, max_retries = 0L, verbose = FALSE))
+    model_label = "test-model", cache_dir = dir, max_retries = 0L, verbose = FALSE))
   expect_length(list.files(dir, pattern = "_identity_review\\.rds$"), 1)
   b <- .fake_llm()
-  q <- review_sample_identity(gate, context = "x", llm_fn = b$fn, cache_dir = dir, verbose = FALSE)
+  q <- review_sample_identity(gate, context = "x", llm_fn = b$fn, model_label = "test-model", cache_dir = dir, verbose = FALSE)
   expect_equal(b$calls(), 1L)
   expect_false(grepl("TUBE MISLABEL", attr(q, "llm_prompts")[[1]]))
   # a changed context is a miss
   cc <- .fake_llm()
-  review_sample_identity(gate, context = "y", llm_fn = cc$fn, cache_dir = dir, verbose = FALSE)
+  review_sample_identity(gate, context = "y", llm_fn = cc$fn, model_label = "test-model", cache_dir = dir, verbose = FALSE)
   expect_equal(cc$calls(), 1L)
 })
 
@@ -124,14 +124,14 @@ test_that("blank_medium reaches the prompt and the cache key; an explicit role w
     paste0("[", paste(sprintf('{"sample": "%s", "verdict": "clean_blank", "role": "blank", "confidence": "moderate", "rationale": "tap-water taxa"}', ids), collapse = ","), "]")
   }
   q <- review_sample_identity(gate, context = "x", blank_medium = "tap water", llm_fn = f,
-    cache_dir = dir, verbose = FALSE)
+    model_label = "test-model", cache_dir = dir, verbose = FALSE)
   expect_match(attr(q, "llm_prompts")[[1]], "BLANK MEDIUM \\(what a blank is filled with\\): tap water")
   expect_true(all(q$llm_role[!is.na(q$llm_verdict)] == "blank"))
   # a different medium is a cache miss
   n <- 0L
   g <- function(prompt, ...) { n <<- n + 1L; f(prompt) }
   review_sample_identity(gate, context = "x", blank_medium = "distilled water", llm_fn = g,
-    cache_dir = dir, verbose = FALSE)
+    model_label = "test-model", cache_dir = dir, verbose = FALSE)
   expect_gt(n, 0L)
   expect_error(review_sample_identity(gate, context = "x", blank_medium = "", llm_fn = f), "blank_medium")
 })
@@ -145,7 +145,7 @@ test_that("target_groups reaches the prompt and the cache key, and a medium neve
     paste0("[", paste(sprintf('{"sample": "%s", "verdict": "contaminated_blank", "role": "exclude", "confidence": "moderate", "rationale": "kelp"}', ids), collapse = ","), "]")
   }
   q <- review_sample_identity(gate, context = "x", blank_medium = "tap water",
-    target_groups = "macroalgae, macroinvertebrates", llm_fn = f, cache_dir = dir, verbose = FALSE)
+    target_groups = "macroalgae, macroinvertebrates", llm_fn = f, model_label = "test-model", cache_dir = dir, verbose = FALSE)
   p <- attr(q, "llm_prompts")[[1]]
   expect_match(p, "STUDY TARGET GROUPS \\(what the samples are meant to measure\\): macroalgae, macroinvertebrates")
   expect_match(p, "A medium explains its OWN community, never the study's target groups")
@@ -156,7 +156,7 @@ test_that("target_groups reaches the prompt and the cache key, and a medium neve
   n <- 0L
   g <- function(prompt, ...) { n <<- n + 1L; f(prompt) }
   review_sample_identity(gate, context = "x", blank_medium = "tap water",
-    target_groups = "fishes", llm_fn = g, cache_dir = dir, verbose = FALSE)
+    target_groups = "fishes", llm_fn = g, model_label = "test-model", cache_dir = dir, verbose = FALSE)
   expect_gt(n, 0L)
   expect_error(review_sample_identity(gate, context = "x", target_groups = c("a", "b"), llm_fn = f),
     "target_groups")
@@ -179,10 +179,10 @@ test_that("blank_medium can differ per tube, and a purified medium is not an exc
   dir <- tempfile(); on.exit(unlink(dir, recursive = TRUE))
   n <- 0L
   g <- function(prompt, ...) { n <<- n + 1L; llm$fn(prompt) }
-  review_sample_identity(gate, context = "x", llm_fn = g, verbose = FALSE, cache_dir = dir,
+  review_sample_identity(gate, context = "x", llm_fn = g, verbose = FALSE, model_label = "test-model", cache_dir = dir,
     blank_medium = c(PLANKTON = "tap water", MISLABEL = "tap water"))
   n <- 0L
-  q2 <- review_sample_identity(gate, context = "x", llm_fn = g, verbose = FALSE, cache_dir = dir,
+  q2 <- review_sample_identity(gate, context = "x", llm_fn = g, verbose = FALSE, model_label = "test-model", cache_dir = dir,
     blank_medium = c(PLANKTON = "reverse-osmosis water", MISLABEL = "tap water"))
   expect_equal(n, 1L)
   expect_match(attr(q2, "llm_prompts")[[1]], "TUBE PLANKTON")

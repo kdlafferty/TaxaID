@@ -3,7 +3,7 @@
 
 .af_json <- function(taxa) {
   rows <- vapply(taxa, function(t) sprintf(
-    '{"taxon_name": "%s", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "ok"}', t
+    '{"taxon_name": "%s", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "ok"}', t
   ), character(1))
   paste0("[", paste(rows, collapse = ","), "]")
 }
@@ -92,7 +92,7 @@ test_that("a change in poor_absolute_fit is a cache miss", {
     review_assignments(
       data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
       context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
-      llm_fn = fn, cache_dir = cd, verbose = FALSE
+      llm_fn = fn, model_label = "test-model", cache_dir = cd, verbose = FALSE
     )
   }
   run(.af_input())
@@ -109,7 +109,9 @@ test_that("a batch with a poor-fit note gets the name-not-ecology guideline", {
   txt <- paste(pr$p, collapse = "\n")
   guide <- sub("TAXA TO REVIEW.*", "", txt)
   expect_match(guide, 'A "(poor absolute fit)" note means the best reference match is weak', fixed = TRUE)
-  expect_match(guide, 'must not by itself justify "unlikely" habitat, geography or scope', fixed = TRUE)
+  expect_match(guide, "must not by itself lower your habitat, geography or scope",
+    fixed = TRUE
+  )
 })
 
 test_that("a batch without a poor-fit note gets no such guideline", {
@@ -132,7 +134,7 @@ test_that("verdicts cached under the old prompt version are a miss", {
     review_assignments(
       data_type = "eDNA", input_df = .af_input(), taxon_col = "consensus_taxon",
       context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
-      llm_fn = fn, cache_dir = cd, verbose = FALSE
+      llm_fn = fn, model_label = "test-model", cache_dir = cd, verbose = FALSE
     )
   }
   run()
@@ -141,7 +143,7 @@ test_that("verdicts cached under the old prompt version are a miss", {
   for (f in list.files(cd, full.names = TRUE)) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v5", "v4", e$key, fixed = TRUE)
+      e$key <- sub("v6", "v5", e$key, fixed = TRUE)
       saveRDS(e, f)
     }
   }

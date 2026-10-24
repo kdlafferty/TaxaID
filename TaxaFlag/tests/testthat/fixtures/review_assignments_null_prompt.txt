@@ -7,29 +7,42 @@ MARKER / METHOD: 12S
 
 TASK: Review each taxon below and assess whether it is a plausible detection given the study context. Return your assessment as a valid JSON array with one object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation before or after.
 
-Each object must have these fields:
+Each object must have these fields. Every probability is a number from 0 to 1 with two decimals:
   "id": the bracketed id given before the taxon, e.g. "T1",
   "taxon_name": the exact taxon name as provided,
-  "habitat_plausibility": one of "likely", "possible", "unlikely",
-  "geographic_plausibility": one of "likely", "possible", "unlikely",
-  "scope_plausibility": one of "likely", "possible", "unlikely" (does this taxon belong to the target group: fish?),
-  "contamination_risk": one of "low", "moderate", "high",
-  "review_alternatives": comma-separated string of plausible alternative taxa that better fit the geography and habitat, or null if the taxon is plausible,
+  "p_habitat": probability that the taxon's LIVING CONDITIONS match the study habitat (rocky intertidal): that it lives (any life stage) in this kind of habitat, wherever its range is. Judge the habitat type only; whether it occurs in the study region is geography (the range fields), not habitat. High = regularly; intermediate = occasionally, marginally, or only some life stages or places (e.g. juveniles only); low = does not live in this kind of habitat,
+  "p_habitat_range": [low, high], your 90% range,
+  "p_transported": probability that the taxon's DNA could plausibly reach these samples from adjacent habitats or waters (e.g. currents, inflowing water, predators, nearby habitats). This is separate from residency: a non-resident can have a high value,
+  "p_scope": probability that the taxon is in the target group (fish) by the KIND OF ORGANISM and its depth or habitat zone only; whether it occurs in the study region is geography, not scope. High = the kind of organism and its normal depth or zone fit the target group; intermediate = mainly outside it but with a regular life stage inside it, or a group containing both kinds; low = a kind of organism, realm or depth the target group excludes,
+  "p_scope_range": [low, high],
+  "p_geographic": probability that the study area lies within this taxon's geographic range (overall, across the study area),
+  "p_geographic_range": [low, high],
+  "p_contamination": probability that this detection is contamination rather than DNA from the sampled environment. Anchors: high (about 0.7 or more) = a food, lab or aquarium species with no wild population in the region; intermediate (about 0.2-0.5) = a commercial food or bait species that also lives wild in the region, or a human-associated taxon; low (under 0.2) = otherwise,
+  "review_alternatives": comma-separated string of plausible alternative taxa that better fit the geography and habitat, or null,
   "review_lower_hypotheses": null (no rank information provided),
   "review_confidence": one of "high", "moderate", "low",
   "review_comment": a brief free-text note, or null
 
 GUIDELINES:
+- For a genus or family, judge the group: does ANY member qualify?
+- Answer the four questions separately. Residency (p_habitat) is not detectability (p_transported); range (geography) is not habitat or scope; rarity within the range is not absence.
 - "review_alternatives" means "you might have the wrong taxon" -- suggest relatives that better fit the context.
 - For contaminant assessment, consider: Homo sapiens and domestic animals are common contaminants in molecular studies. Common lab contaminants include Bos taurus, Sus scrofa, Gallus gallus, and other food-source species.
-- Be conservative with "unlikely" -- only use it when reasonably confident.
-- If uncertain, use "possible" or "moderate" rather than making a strong claim.
-- When a taxon line ends with a "[...]" bracket, that is the statistical pipeline's OWN confidence for this call (posterior/occurrence prior/candidate weights), not your input. Use it to flag disagreement between the pipeline's confidence and your own ecological judgment in review_comment -- e.g. a low pipeline posterior alongside your own "likely" rating is worth a note -- but do not let it override your independent plausibility assessment itself.
+- Give a low probability only when reasonably confident. If uncertain, give an intermediate probability with a wide 90% range rather than making a strong claim.
+- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated separately, and a rare but in-range occurrence has an intermediate geographic probability, not a low one.
+- If you cannot recall a rare or poorly known taxon's range, give an intermediate probability with low confidence rather than recalling one. No records is not evidence of absence.
+- When a taxon line ends with a "[...]" bracket, that is the statistical pipeline's OWN confidence for this call (posterior/occurrence prior/candidate weights), not your input. Use it to flag disagreement between the pipeline's confidence and your own ecological judgment in review_comment -- e.g. a low pipeline posterior alongside your own high probabilities is worth a note -- but do not let it override your independent assessment itself.
+
+WORKED EXAMPLES (invented taxa):
+- A taxon from a very different habitat (e.g. a deep-sea fish in a shore study, or a marine species in a freshwater study): p_habitat 0.03 (not resident), p_transported set by how its DNA could arrive (e.g. 0.6 with currents or predators, 0.05 with no route), p_scope low if the target group excludes its kind or depth.
+- A taxon whose habitat fits but whose range ends part-way through the study area, detected beyond that limit: p_habitat 0.8, the limit stated as a number on the correct side, p_inside_range 0.7, p_outside_range 0.05.
+- A commercial food species that also lives wild in the region: p_contamination 0.3. A farmed species with no wild population in the region: p_contamination 0.85.
+- A rare taxon you cannot place: range_known false, p_inside_range 0.5, p_outside_range 0.5, review_confidence "low".
 
 EXAMPLE OUTPUT FORMAT:
 [
-  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
-  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"}
+  {"id": "T1", "taxon_name": "Example residentus", "p_habitat": 0.95, "p_habitat_range": [0.90, 0.99], "p_transported": 0.90, "p_scope": 0.97, "p_scope_range": [0.93, 0.99], "p_geographic": 0.97, "p_geographic_range": [0.92, 0.99], "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
+  {"id": "T2", "taxon_name": "Homo sapiens", "p_habitat": 0.01, "p_habitat_range": [0.00, 0.05], "p_transported": 0.20, "p_scope": 0.01, "p_scope_range": [0.00, 0.02], "p_geographic": 0.99, "p_geographic_range": [0.95, 1.00], "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"}
 ]
 
 TAXA TO REVIEW:

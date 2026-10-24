@@ -39,7 +39,8 @@ review_assignments(
   poor_absolute_fit_col = "poor_absolute_fit",
   best_identity_col = "best_identity",
   sites = NULL,
-  site_col = "site"
+  site_col = "site",
+  occurrence_data = NULL
 )
 }
 \arguments{
@@ -241,13 +242,22 @@ invisible to the key; after changing such a value, use a new
 
 \item{model_label}{Character or \code{NULL}. A name for the model behind
 \code{llm_fn}, recorded in the cache key so a verdict obtained from one
-model is never served to a call asking another. Default \code{NULL}
-derives an identity from \code{options("TaxaID.provider")} and from
-\code{llm_fn} itself, which separates the providers and any wrapper that
-pins a model. What it cannot separate is two models from ONE provider,
-switched through \code{TaxaTools::set_model()} or a pinned tier: name
-them here when you compare them, or the second run is served the first
-model's verdicts from cache.}
+model is never served to a call asking another. \strong{Required whenever
+\code{cache_dir} is set and \code{llm_fn} is a function you wrote}: all
+that can be seen of such a closure is its source text, and a wrapper
+written \code{function(p, ...) call_api(p, model = MODEL, ...)} deparses
+to the variable NAME \code{"MODEL"}, not to the model it holds -- so
+switching \code{MODEL} would give a byte-identical key and serve the
+first model's verdicts to the second run, silently. That call now stops
+and asks for this argument. Default \code{NULL} is still accepted with no
+cache, and for an \code{llm_fn} a loaded namespace can name (such as
+\code{TaxaTools::call_api} itself), where the identity is derived from
+\code{options("TaxaID.provider")} and the function. Even then it names the
+FUNCTION, not the model a tier resolves to, so a cached call warns and
+points here. What it does NOT capture is anything else your wrapper
+pins -- temperature, \code{max_tokens}, a system prompt, a reasoning
+effort. Two runs that differ only in one of those share a key, so give
+them different \code{model_label}s when you compare them.}
 
 \item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
 Default \code{15L}. Candidate-set entries are longer than single taxon
@@ -326,9 +336,9 @@ Set to \code{NULL} to disable.}
 \item{sites}{\code{NULL} (default) or a data frame of study sites with
 columns \code{site} (unique names), \code{lat} and \code{lon} (decimal
 degrees; extra columns are ignored). When supplied the LLM is shown the
-sites (sorted south to north) and asked WHERE among them each taxon is
-geographically plausible, which adds the per-row
-\code{llm_geographic_plausibility_site} column; see
+sites (sorted south to north) and asked for each taxon's range LIMITS;
+the site and study verdicts are computed from them here, which adds the
+per-row \code{llm_geographic_plausibility_site} column; see
 \code{@section Site-aware geography}. With \code{NULL} nothing changes:
 the prompt, the cache key and the output columns are exactly those of a
 call without this argument.}
@@ -339,13 +349,33 @@ the column is absent then); non-\code{NA} values not found in
 \code{sites$site} are named in a warning and those rows get the
 study-wide verdict. Not part of the cache key, since it does not change
 the prompt. Default \code{"site"}.}
+
+\item{occurrence_data}{\code{NULL} (default) or a data frame of occurrence
+records for the study region -- an occurrence table as
+\code{TaxaFetch} writes one, with \code{decimalLatitude},
+\code{decimalLongitude}, optionally \code{point_id}, and the rank columns
+to match on (\code{taxon_name}, \code{genus}, \code{family},
+\code{order}, \code{class}, \code{phylum}). When supplied, each taxon
+line in the prompt gains the pool's facts about that taxon -- record and
+location counts, the latitude extent, and per detected site the nearest
+record and the record locations within 50 km -- and the guidelines gain a
+bullet on how to read them. Requires \code{sites}: the facts are per
+detected site, so there is nothing for most of them to be about without a
+site table, and the per-taxon counts alone have not been evaluated. A
+missing coordinate column is an error rather than an empty bracket,
+because an empty bracket reads as "no records" and "we could not look"
+must never be served as "nothing there". Measured on the maintainer's own
+labels for the 34 hardest taxa: agreement 75\% -> 78\%, precision
+80\% -> 84\%, and the rows it newly acted on were 94\% rows he also
+acted on. Part of the cache key, including the pool's latitude extent.}
 }
 \value{
-The input data frame with 8 or 9 columns appended:
+The input data frame with the review columns appended:
 \describe{
-\item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
-\code{@section Column naming} below for why this and the next three
-columns carry an \code{llm_} prefix.}
+\item{\code{llm_habitat_plausibility}}{likely / possible / unlikely,
+derived in code from \code{llm_p_habitat}; see \code{@section The
+    answer is a probability}. See \code{@section Column naming} below for
+why this and the next three columns carry an \code{llm_} prefix.}
 \item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.}
 \item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
 \code{NA} if \code{target_group} not supplied.}
@@ -368,14 +398,40 @@ code-computed, not an LLM output: fires whenever
 \code{@section Geography guidelines} below for why this exists as a
 deterministic column rather than relying on \code{review_comment}
 alone.}
+\item{\code{llm_p_habitat}, \code{llm_p_habitat_lo},
+\code{llm_p_habitat_hi}}{The habitat probability the model gave and the
+90\% range it stated for it.}
+\item{\code{llm_p_transported}}{Probability that the taxon's DNA could
+plausibly reach these samples from adjacent habitats. Asked separately
+from residency so that "could have washed in" is not scored as "lives
+here". Output only: no rule reads it.}
+\item{\code{llm_p_scope}, \code{llm_p_scope_lo},
+\code{llm_p_scope_hi}}{Likewise for scope.}
+\item{\code{llm_p_contamination}}{The contamination probability.}
+\item{\code{llm_p_geographic}}{The study-wide geographic probability:
+with \code{sites}, the MAXIMUM over the taxon's detected sites.}
 }
+The stated 90\% ranges feed no rule either. They are kept because they were
+measured to be 5--10 times the model's own run-to-run spread, so they
+express uncertainty about the TAXON rather than noise, which is worth having
+in front of a reviewer.
 When \code{sites} is supplied the data frame also carries
 \code{llm_geographic_plausibility_site} (see \code{@section Site-aware
 geography}) and an \code{attr(result, "geographic_by_site")} data frame, one
-row per reviewed taxon, giving the parsed range rule (\code{rule},
-\code{lat_min}, \code{lat_max}, \code{inside}, \code{outside}, \code{unlikely_sites} as a
+row per reviewed taxon, giving the parsed range answer (\code{rule},
+\code{range_south_lat}, \code{range_north_lat}, \code{p_inside_range},
+\code{p_outside_range}, \code{sites_outside_range} as a
 semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
-records a fallback).
+records a swap, an ignored site name or a fallback). \code{sites} alone
+also adds \code{llm_p_geographic_site}, \code{llm_p_inside_range},
+\code{llm_p_outside_range}, \code{llm_range_known},
+\code{llm_range_south_lat} and \code{llm_range_north_lat};
+\code{occurrence_data} adds no column of its own, only facts to the prompt.
+
+Also carries a \code{"review_cuts"} attribute naming the four cut points
+the verdicts were derived with. The cuts are code rather than part of the
+cache key, so a saved result would otherwise carry verdicts with no record
+of how they were read off the probabilities.
 
 Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
 the taxon/candidate-set labels the LLM never returned a verdict for) and
@@ -432,6 +488,24 @@ chains filter with \code{!= "unlikely"}, which \strong{discards \code{NA}},
 an unreviewed observation would be silently removed from the final species
 list.
 
+A taxon the model answered for but whose answer is unusable counts as
+omitted too, and for the same reason. The probabilities are the answer, so a
+value outside 0--1, or one that is not a number at all -- \code{85} for a
+percentage, \code{"high"} for a category -- leaves that verdict \code{NA}
+while \code{review_confidence} and \code{review_comment} arrive intact.
+Such a row is treated as omitted: it is re-asked and it is never cached.
+
+The test is ANY of the probabilities that drive a decision, not all of them:
+\code{p_habitat}, \code{p_contamination}, geography, and \code{p_scope}
+when \code{target_group} is supplied. A row that answered three questions
+and fumbled the fourth still carries one \code{NA} that the export filters
+discard without a word. \code{p_outside_range} is deliberately NOT in that
+set: its absence gives the inside probability at every site, which never
+manufactures an "outside" the model did not state. Each unusable answer is
+named, with its failing fields, in a \code{warning()} -- not only when
+\code{verbose} -- and a row still failing after every re-ask is counted in
+\code{attr(result, "n_unreviewed_rows")} like any other omission.
+
 Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
 to \code{max_retries} times; the cost is pay-per-failure, and the re-asking
 stops early when a re-ask recovers nothing. (2) An unreviewed taxon is
@@ -468,13 +542,17 @@ added only when a taxon in the batch carries the matching bracket fact:
 \enumerate{
 \item{\code{"pipeline flags UNPRECEDENTED"} (no local record in the
 pipeline's occurrence data): absence of a citeable record is not
-evidence of absence. Without specific local evidence the rating is at
-most \code{"possible"}, never \code{"likely"}; \code{"unlikely"} needs
-positive evidence of being out of range (a native range elsewhere with no
-known introduction to the region, or a habitat the taxon cannot use).}
+evidence of absence. Without specific local evidence the geographic
+probability is intermediate, not high; a low one needs positive
+evidence of being out of range (a native range elsewhere with no known
+introduction to the region, or a habitat the taxon cannot use). This
+bullet exists because an earlier, harder rule ("cite a local record or
+rate it unlikely") rated widely introduced species out of range whenever
+the model could not recall a record on that draw.}
 \item{\code{"pipeline flags INDISTINGUISHABLE"} (a confusable relative
 could score as well) weakens confidence in the name only and must not by
-itself justify an \code{"unlikely"} rating.}
+itself lower the habitat, geographic or scope probability. The same
+holds for a \code{"(poor absolute fit)"} note.}
 \item{\code{"pipeline call: <taxon> (<rank>)"}, shown when the reviewed
 label is not the call itself (a species label on a genus or family
 call): the call at its rank is the claim, and the species are candidates
@@ -482,8 +560,8 @@ within it.}
 }
 Prompt compliance is never guaranteed, so the deterministic
 \code{geographic_disagreement_basis} output column (see \code{@return}) still
-marks every row rated likely/possible despite either flag; filter on it to
-audit those rows.
+marks every row whose derived geographic verdict is likely or possible
+despite either flag; filter on it to audit those rows.
 
 Each taxon line carries an id (\code{[T1]}, \code{[T2]}, ...) that the
 answer must echo; answers are matched by id first, then by name, so a long
@@ -492,61 +570,118 @@ matching none of several sets is treated as failed (halved and retried),
 and an omission a re-ask cannot recover is re-asked one set per call.
 }
 
+\section{The answer is a probability}{
+
+The LLM is asked for a probability for each judgement, not a category, and
+the \code{llm_*_plausibility} / \code{llm_contamination_risk} columns are
+derived from those probabilities here. The cuts are
+\code{unlikely < 0.10 <= possible < 0.70 <= likely}, and for contamination
+\code{low < 0.20 <= moderate < 0.70 <= high}.
+
+Why: a category is the least reproducible part of the review. Measured on
+150 taxa of a real study with \code{claude-opus-5-5}, re-asking the same
+categorical prompt changed 10\% of the decisions the verdicts drive. Asking
+for a probability and cutting it here leaves 3\%, and agrees with the
+maintainer's own labels on 78\% of rows against 67\%.
+
+The cut is applied AFTER the cache, never before it. What a cache entry
+holds is the probability -- the model's answer -- and a cut is this
+function's reading of it. So changing a cut takes effect for taxa already
+cached, with no new LLM calls, and the cuts are deliberately not part of the
+cache key.
+
+Four judgements are asked separately, which is the point of the format:
+habitat is LIVING CONDITIONS only ("does it live in this kind of habitat,
+wherever its range is"), scope is the KIND OF ORGANISM and its depth or zone
+only, and whether the taxon occurs in the study region is geography in both
+cases. \code{llm_p_transported} carries "its DNA could have reached these
+samples" separately from "it lives here", so a taxon washed in from adjacent
+water is not scored as a resident. The habitat and target-group wording in
+the prompt comes from \code{context$habitat} and \code{target_group}, so
+nothing about any particular study is built in; the worked examples name no
+real taxon for the same reason.
+}
+
 \section{Site-aware geography}{
+
+\strong{The review is measurably more accurate with \code{sites} than
+without.} On the maintainer's own labels for the hardest 34 taxa of a real
+study, agreement with him was 78\% with \code{sites} and
+\code{occurrence_data} against 67\% without either, precision 84\% against
+75\%, and recall 65\% against 44\%. Supply a site table when you have one.
 
 A study that spans a coast or a latitude gradient has no single answer to
 "is this taxon geographically plausible here?": a tropical reef fish is
 plausible at the southern sites and not at the northern ones. With
-\code{sites} supplied the prompt lists the sites (name, latitude,
-longitude; sorted south to north) and the LLM returns, per taxon, a
-\code{geographic_by_site} object of one of three shapes:
+\code{sites} supplied the prompt lists the sites (name, latitude, longitude;
+sorted south to north), tells each taxon line which of them it was detected
+at, and asks for the taxon's range LIMITS rather than for a verdict:
 \itemize{
-\item{\code{\{"rule": "all"\}}: the same verdict at every site.}
-\item{\code{\{"rule": "latitude", "lat_min": ., "lat_max": .,
-    "inside": "likely" or "possible", "outside": "unlikely" or
-    "possible"\}}: plausible between the two latitudes; sites inside get the
-\code{inside} verdict and sites outside get the \code{outside} verdict.}
-\item{\code{\{"rule": "sites", "unlikely_sites": [...], "inside":
-    "likely" or "possible"\}}: unlikely at the named sites only, for
-patterns latitude does not describe; every other site gets the
-\code{inside} verdict.}
+\item{\code{range_known}: whether the model can state the limits at all.}
+\item{\code{range_south_lat}, \code{range_north_lat}: the limits in
+decimal degrees N, either or both \code{null} for "no limit within the
+study on that side".}
+\item{\code{sites_outside_range}: sites outside the range when latitude
+cannot describe it (island-only, a gap, or a study that runs east to
+west).}
+\item{\code{p_inside_range}, \code{p_outside_range}: the probability of
+occurrence at a site inside, and at a site outside, those limits.}
 }
-The parsed rule is turned into a verdict per site in code, so the sites
-table is applied by the package, not by the model. Inside the range the
-verdict is the rule's own \code{inside} verdict, which is NOT capped by the
-taxon's \code{geographic_plausibility}: habitat fit and rarity are rated
-separately and must not override the range the model drew. A missing or
-invalid \code{inside} is \code{"possible"}; it never falls back to
-\code{geographic_plausibility}. With \code{\{"rule": "all"\}} the verdict at
-every site is \code{geographic_plausibility}. Output:
+The site probability is then computed here: a site beyond a stated limit, or
+named in \code{sites_outside_range}, takes \code{p_outside_range}; every
+other site takes \code{p_inside_range}. The cuts turn that into the site
+verdict. Asking for limits instead of a per-site verdict removes the model's
+choice between rule shapes and gives "study-wide" a definition it did not
+have.
+
+Output:
 \itemize{
-\item{\code{llm_geographic_plausibility_site}: the verdict at the site
+\item{\code{llm_geographic_plausibility_site} and
+\code{llm_p_geographic_site}: the verdict and probability at the site
 named in each row's \code{site_col}. Rows with an \code{NA} site, or a
-site not in \code{sites}, get the study-wide verdict. Unreviewed taxa
-stay \code{NA}.}
-\item{\code{llm_geographic_plausibility} changes meaning when
-\code{sites} is supplied: it is the BEST verdict over all the sites
-(\code{"unlikely"} only if unlikely at every site), computed in code from
-the site verdicts, not a single study-wide judgement.}
+site not in \code{sites}, get the study-wide pair. Unreviewed taxa stay
+\code{NA}.}
+\item{\code{llm_geographic_plausibility} and \code{llm_p_geographic}
+change meaning when \code{sites} is supplied: the probability is the
+MAXIMUM over the taxon's detected sites and the verdict is its level,
+computed here rather than asked for. Because the cut is monotone, that
+verdict is also the best site verdict, so \code{"unlikely"} study-wide
+means unlikely at every site.}
 }
-Fallbacks, each giving the study-wide verdict at every site (recorded in
-the \code{how} column of \code{attr(result, "geographic_by_site")}): the
-object is missing or not an object; the rule is unknown; a sites rule names
-only sites that do not exist. A latitude rule with neither bound is read as
-\code{"all"} carrying its \code{inside} verdict at every site, or the
-study-wide verdict when that \code{inside} is missing or invalid (recorded
-as \code{how = "both_bounds_NA_as_all"}). One missing bound means open-ended on that side; reversed
-bounds are swapped; a missing or invalid \code{outside} defaults to
-\code{"possible"}, the conservative choice because \code{"unlikely"} is
-what export filters drop; site names are matched ignoring case and
-surrounding spaces, and names that match no site are ignored and counted
-in \code{n_unknown_sites}.
+Guards on the answer, each recorded in the \code{how} column of
+\code{attr(result, "geographic_by_site")}: a value that is not a latitude in
+\code{[-90, 90]} is dropped; an INVERTED band -- a southern limit given as
+\code{range_north_lat} -- is swapped rather than obeyed, since obeying it
+would put every site outside the range and mark the taxon unlikely
+everywhere; site names are matched ignoring case and surrounding spaces, and
+names matching no site are ignored and counted in \code{n_unknown_sites}; a
+list in which NO name is recognised is dropped whole, so it cannot appear to
+have moved something while moving nothing; and a missing
+\code{p_outside_range} gives \code{p_inside_range} everywhere, which never
+manufactures an "outside" the model did not state.
+
+\code{range_known = FALSE} is a real answer, not a failure: it means the
+model cannot place the taxon, so every site takes \code{p_inside_range},
+which the guidelines tell it to make intermediate. Sites it named explicitly
+are still honoured -- "I do not know the limits" and "not at that site" are
+different claims. With no usable \code{p_inside_range} at all, geography is
+\code{NA} unless the model volunteered a study-wide \code{p_geographic}; the
+count of such taxa is reported when \code{verbose}.
+
+\strong{Known limitation.} Latitude limits suit a study that runs mostly
+north to south, which is what this was evaluated on. For a study running
+east to west, or at a single latitude, a range limit cannot be stated as a
+latitude at all, and the prompt tells the model to use
+\code{sites_outside_range} instead. That path works but has not been
+measured.
 
 The cache key gains a digest of the sites (names and coordinates rounded to
 0.01 degree, order-independent) only when \code{sites} is supplied, so a
 cached verdict obtained without sites is never served to a call with sites,
-or the reverse. The parsed rule is cached with each taxon, so a cache hit
-reproduces \code{llm_geographic_plausibility_site}.
+or the reverse. The sites a taxon was detected at are part of its own key,
+because they are part of its prompt line. The parsed range answer is cached
+with each taxon, so a cache hit reproduces
+\code{llm_geographic_plausibility_site}.
 
 In \code{TaxaFlag::screen_assignments()}, \code{geography_col} can point at
 \code{llm_geographic_plausibility_site} so the screen uses the verdict for
