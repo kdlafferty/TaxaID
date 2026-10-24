@@ -1752,7 +1752,7 @@ review_assignments <- function(input_df,
 #' @noRd
 .build_review_prompt <- function(taxa_batch, ctx, target_group, marker,
                                  data_type, use_candidates = FALSE,
-                                 sites = NULL) {
+                                 sites = NULL, occurrence_guideline = NULL) {
   # --- Context block ---
   context_lines <- character(0)
   if (!is.null(ctx$geography) && !is.na(ctx$geography)) {
@@ -1830,14 +1830,12 @@ review_assignments <- function(input_df,
   taxa_block <- paste(taxa_lines, collapse = "\n")
 
   # --- Scope instructions ---
-  scope_instruction <- if (!is.null(target_group)) {
-    sprintf(
-      '  "scope_plausibility": one of "likely", "possible", "unlikely" (does this taxon belong to the target group: %s?),',
-      target_group
-    )
-  } else {
-    '  "scope_plausibility": null (no target group specified),'
-  }
+  scope_instruction <- .p_scope_field_text(target_group)
+
+  # Which field the geography guidelines below should name. With a site table
+  # the model states range limits and a probability inside/outside them; with
+  # no sites it gives the study-wide probability directly.
+  geo_p_name <- if (!is.null(sites)) "p_inside_range" else "p_geographic"
 
   # --- Lower hypotheses instructions ---
   # Suppressed when reviewing candidate sets (species already known to pipeline)
@@ -1890,13 +1888,14 @@ review_assignments <- function(input_df,
       '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
       "local occurrence record in the pipeline's occurrence data): absence of ",
       "a citeable record is NOT evidence of absence. Without specific evidence ",
-      "of a population at or near this site, rate geographic_plausibility",
-      if (!is.null(sites)) " (and its verdict at every site)" else "", " at ",
-      'most "possible", never "likely", and say in review_comment that the ',
-      'evidence is thin. Rate it "unlikely" only with POSITIVE evidence that it ',
-      "is out of range here -- for example a native range on another continent ",
-      "with no known introduction to this region, or a habitat it cannot use. A ",
-      'widely introduced species, or one known from the region, is at least "possible".\n'
+      "of a population at or near this site, give an intermediate geographic ",
+      "probability (", geo_p_name, " about 0.3-0.6), not a high one, and say ",
+      "in review_comment that the evidence is thin. Give a low probability ",
+      "(under 0.1) only with POSITIVE evidence that it is out of range here ",
+      "-- for example a native range on another continent with no known ",
+      "introduction to this region, or a habitat it cannot use. A widely ",
+      "introduced species, or one known from the region, is at least ",
+      "intermediate.\n"
     )
   } else {
     NULL
@@ -1909,7 +1908,8 @@ review_assignments <- function(input_df,
     paste0(
       '- "pipeline flags INDISTINGUISHABLE" means a confusable relative could ',
       "match the sequence equally well. It weakens confidence in the NAME, not ",
-      'the ecology: it must not by itself justify "unlikely" habitat, geography or scope.\n'
+      "the ecology: it must not by itself lower your habitat, geography or ",
+      "scope probabilities.\n"
     )
   } else {
     NULL
@@ -1925,7 +1925,7 @@ review_assignments <- function(input_df,
       '- When a bracket gives "pipeline call: <taxon> (<rank>)", that taxon at that ',
       "rank is the claim: rate habitat and geography for it. The species names shown ",
       "are candidates within it, not the claim, so a candidate you cannot place ",
-      "locally does not make a genus or family call unlikely.\n"
+      "locally does not lower a genus or family call's probabilities.\n"
     )
   } else {
     NULL
@@ -1946,8 +1946,8 @@ review_assignments <- function(input_df,
       "verdict may describe a DIFFERENT (often more common) species due to a ",
       "fuzzy name match, not the taxon actually being assessed -- treat that ",
       "verdict with real suspicion rather than as confirmation. Use both to ",
-      "inform geographic_plausibility, and note any inconsistency you notice ",
-      "in review_comment.\n"
+      "inform your geographic probability, and note any inconsistency you ",
+      "notice in review_comment.\n"
     )
   } else {
     NULL
@@ -1964,7 +1964,8 @@ review_assignments <- function(input_df,
       '- A "(poor absolute fit)" note means the best reference match is weak, ',
       "so the NAME at the called rank is uncertain. It says nothing about ",
       "whether that group is ecologically or geographically plausible here: ",
-      'it must not by itself justify "unlikely" habitat, geography or scope.\n'
+      "it must not by itself lower your habitat, geography or scope ",
+      "probabilities.\n"
     )
   } else {
     NULL
@@ -1995,26 +1996,31 @@ review_assignments <- function(input_df,
     "given the study context. Return your assessment as a valid JSON array with one ",
     "object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ",
     "before or after.\n\n",
-    "Each object must have these fields:\n",
+    "Each object must have these fields. Every probability is a number from 0 ",
+    "to 1 with two decimals:\n",
     '  "id": the bracketed id given before the taxon, e.g. "T1",\n',
     '  "taxon_name": the exact taxon name as provided,\n',
-    '  "habitat_plausibility": one of "likely", "possible", "unlikely",\n',
-    '  "geographic_plausibility": one of "likely", "possible", "unlikely",\n',
-    if (!is.null(sites)) .geo_field_text else "",
+    .p_habitat_field_text(ctx$habitat), "\n",
+    '  "p_habitat_range": [low, high], your 90% range,\n',
+    .p_transported_field_text, "\n",
     scope_instruction, "\n",
-    '  "contamination_risk": one of "low", "moderate", "high",\n',
-    '  "review_alternatives": comma-separated string of plausible alternative taxa ',
-    "that better fit the geography and habitat, or null if the taxon is plausible,\n",
+    '  "p_scope_range": [low, high],\n',
+    if (!is.null(sites)) .p_range_field_text else .p_study_geo_field_text,
+    .p_contamination_field_text, "\n",
+    '  "review_alternatives": comma-separated string of plausible alternative ',
+    "taxa that better fit the geography and habitat, or null,\n",
     lower_instruction, "\n",
     '  "review_confidence": one of "high", "moderate", "low",\n',
     '  "review_comment": a brief free-text note, or null\n\n',
     "GUIDELINES:\n",
+    .p_guideline_text,
     '- "review_alternatives" means "you might have the wrong taxon" -- suggest ',
     "relatives that better fit the context.\n",
     "- ", contaminant_guideline, "\n",
-    '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
-    '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
-    if (!is.null(sites)) .geo_guideline_text else "",
+    "- Give a low probability only when reasonably confident. If uncertain, ",
+    "give an intermediate probability with a wide 90% range rather than making ",
+    "a strong claim.\n",
+    if (!is.null(sites)) .p_range_guideline_text else .p_study_geo_guideline_text,
     if (!is.null(unprecedented_guideline)) unprecedented_guideline else "",
     if (!is.null(indistinguishable_guideline)) indistinguishable_guideline else "",
     if (!is.null(call_rank_guideline)) call_rank_guideline else "",
@@ -2024,38 +2030,14 @@ review_assignments <- function(input_df,
     "pipeline's OWN confidence for this call (posterior/occurrence prior/candidate ",
     "weights), not your input. Use it to flag disagreement between the pipeline's ",
     "confidence and your own ecological judgment in review_comment -- e.g. a low ",
-    'pipeline posterior alongside your own "likely" rating is worth a note -- but do ',
-    "not let it override your independent plausibility assessment itself.\n\n",
+    "pipeline posterior alongside your own high probabilities is worth a note -- ",
+    "but do not let it override your independent assessment itself.\n",
+    if (!is.null(sites)) .p_detected_guideline_text else "",
+    occurrence_guideline %||% "",
+    "\n",
+    .p_worked_examples_text,
     "EXAMPLE OUTPUT FORMAT:\n",
-    "[\n",
-    '  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
-    '"geographic_plausibility": "likely", ',
-    if (!is.null(sites)) '"geographic_by_site": {"rule": "all"}, ' else "",
-    '"scope_plausibility": "likely", ',
-    '"contamination_risk": "low", "review_alternatives": null, ',
-    '"review_lower_hypotheses": null, "review_confidence": "high", ',
-    '"review_comment": null},\n',
-    '  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", ',
-    '"geographic_plausibility": "likely", ',
-    if (!is.null(sites)) '"geographic_by_site": {"rule": "all"}, ' else "",
-    '"scope_plausibility": "unlikely", ',
-    '"contamination_risk": "high", "review_alternatives": null, ',
-    '"review_lower_hypotheses": null, "review_confidence": "high", ',
-    '"review_comment": "', example_comment, '"}',
-    if (!is.null(sites)) {
-      paste0(
-        ',\n  {"id": "T3", "taxon_name": "Example tropicus", ',
-        '"habitat_plausibility": "likely", "geographic_plausibility": "likely", ',
-        '"geographic_by_site": {"rule": "latitude", "lat_min": 20.5, "lat_max": 30.0, ',
-        '"inside": "likely", "outside": "unlikely"}, "scope_plausibility": "likely", ',
-        '"contamination_risk": "low", "review_alternatives": null, ',
-        '"review_lower_hypotheses": null, "review_confidence": "moderate", ',
-        '"review_comment": "range ends at 30 N"}'
-      )
-    } else {
-      ""
-    },
-    "\n]\n\n",
+    .p_example_output(sites, use_candidates, example_comment),
     "TAXA TO REVIEW:\n",
     taxa_block
   )
@@ -2081,11 +2063,11 @@ review_assignments <- function(input_df,
                                      max_tokens, taxon_rank_col, verbose,
                                      pause_seconds, batch_label, max_retries,
                                      depth = 0L, prompt_log = NULL,
-                                     sites = NULL) {
+                                     sites = NULL, occurrence_guideline = NULL) {
   prompt <- .build_review_prompt(
     taxa_batch, ctx, target_group, marker,
     data_type, use_candidates,
-    sites = sites
+    sites = sites, occurrence_guideline = occurrence_guideline
   )
 
   # Recorded by reference (an environment, not a data-frame attribute) so it
@@ -2146,14 +2128,14 @@ review_assignments <- function(input_df,
       left, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
       paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log,
-      sites = sites
+      sites = sites, occurrence_guideline = occurrence_guideline
     )
     Sys.sleep(pause_seconds)
     right_result <- .review_batch_with_retry(
       right, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
       paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log,
-      sites = sites
+      sites = sites, occurrence_guideline = occurrence_guideline
     )
     # Each half has already re-asked for its own omissions at its leaf, so
     # the residue attributes just need unioning -- rbind() would drop them.
@@ -2204,7 +2186,7 @@ review_assignments <- function(input_df,
       reask_label <- paste0(batch_label, "r", attempt, if (singletons) paste0("s", g) else "")
       reask_prompt <- .build_review_prompt(
         sub_batch, ctx, target_group, marker, data_type, use_candidates,
-        sites = sites
+        sites = sites, occurrence_guideline = occurrence_guideline
       )
       if (!is.null(prompt_log)) assign(reask_label, reask_prompt, envir = prompt_log)
 
@@ -2625,6 +2607,206 @@ review_assignments <- function(input_df,
 # ==============================================================================
 
 # Verdict order, best first.
+# --- The probability answer format (guardrails G1-G5) -------------------------
+# The review asks for probabilities, not categories, and TaxaFlag derives the
+# categorical llm_* columns from them in code (see .p_to_level()). Measured on
+# 150 CalIntertidal taxa with claude-opus-5-5: verdict-driven decisions repeated
+# between two asks 97-99% of the time against 90% for the categorical prompt,
+# and agreed with the maintainer's own labels on 78% of rows against 67%.
+#
+# The wording of every block below is part of the question, so any change to it
+# must bump "v6" (and "geo_sites_v5" for the site blocks) in the cache key --
+# the key holds the inputs, not the prompt, so a verdict obtained from older
+# wording would otherwise be served as a hit.
+
+#' The habitat field: living conditions only, never region
+#'
+#' Habitat and geography are asked separately on purpose. A taxon that lives in
+#' this kind of habitat but not in this region must score high on habitat and
+#' low on geography, because the two drive different product rules; merging them
+#' loses the distinction and was measured to cost accuracy.
+#' @noRd
+.p_habitat_field_text <- function(habitat) {
+  where <- if (!is.null(habitat) && !is.na(habitat) && nzchar(trimws(habitat))) {
+    sprintf(" (%s)", trimws(habitat))
+  } else {
+    ""
+  }
+  paste0(
+    '  "p_habitat": probability that the taxon\'s LIVING CONDITIONS match the ',
+    "study habitat", where, ": that it lives (any life stage) in this kind of ",
+    "habitat, wherever its range is. Judge the habitat type only; whether it ",
+    "occurs in the study region is geography (the range fields), not habitat. ",
+    "High = regularly; intermediate = occasionally, marginally, or only some ",
+    "life stages or places (e.g. juveniles only); low = does not live in this ",
+    "kind of habitat,"
+  )
+}
+
+.p_transported_field_text <- paste0(
+  '  "p_transported": probability that the taxon\'s DNA could plausibly reach ',
+  "these samples from adjacent habitats or waters (e.g. currents, inflowing ",
+  "water, predators, nearby habitats). This is separate from residency: a ",
+  "non-resident can have a high value,"
+)
+
+#' The scope field: kind of organism and depth or zone only, never region
+#' @noRd
+.p_scope_field_text <- function(target_group) {
+  if (is.null(target_group)) {
+    return('  "p_scope": null (no target group specified),')
+  }
+  paste0(
+    '  "p_scope": probability that the taxon is in the target group (',
+    target_group, ") by the KIND OF ORGANISM and its depth or habitat zone ",
+    "only; whether it occurs in the study region is geography, not scope. ",
+    "High = the kind of organism and its normal depth or zone fit the target ",
+    "group; intermediate = mainly outside it but with a regular life stage ",
+    "inside it, or a group containing both kinds; low = a kind of organism, ",
+    "realm or depth the target group excludes,"
+  )
+}
+
+# Geography with a site table: the model states range LIMITS and TaxaFlag
+# computes the site and study verdicts from them (guardrail G2). Asking for the
+# limits instead of a per-site verdict removes the model's choice of rule type
+# and the undefined "study-wide" verdict; the study verdict is defined here as
+# the maximum site probability over the sites where the taxon was detected.
+.p_range_field_text <- paste0(
+  '  "range_known": true if you know the taxon\'s range limits within the ',
+  "study region well enough to state them, false if you do not,\n",
+  '  "range_south_lat": the southern limit of its range within the study ',
+  "region in decimal degrees N, or null if the range extends south beyond the ",
+  "study (or range_known is false),\n",
+  '  "range_north_lat": the northern limit within the study region, or null ',
+  "if the range extends north beyond the study (or range_known is false),\n",
+  '  "sites_outside_range": names of study sites outside the range when ',
+  "latitude limits do not describe it (e.g. island-only, a gap in the range), ",
+  "copied exactly, or [],\n",
+  '  "p_inside_range": probability that the taxon occurs at a study site ',
+  "inside its range (a rare but in-range taxon is intermediate, not low),\n",
+  '  "p_outside_range": probability that it occurs at a study site outside ',
+  "its range,\n"
+)
+
+# Geography with no site table: there are no site latitudes for a stated limit
+# to be applied to, so the model gives the study-wide probability directly.
+.p_study_geo_field_text <- paste0(
+  '  "p_geographic": probability that the study area lies within this ',
+  "taxon’s geographic range (overall, across the study area),\n",
+  '  "p_geographic_range": [low, high],\n'
+)
+
+.p_contamination_field_text <- paste0(
+  '  "p_contamination": probability that this detection is contamination ',
+  "rather than DNA from the sampled environment. Anchors: high (about 0.7 or ",
+  "more) = a food, lab or aquarium species with no wild population in the ",
+  "region; intermediate (about 0.2-0.5) = a commercial food or bait species ",
+  "that also lives wild in the region, or a human-associated taxon; low ",
+  "(under 0.2) = otherwise,"
+)
+
+# Guidelines common to both paths. The four-questions line is the guardrail
+# that keeps habitat, detectability, range and scope from collapsing into one
+# judgement, which is what the categorical prompt was measured to do.
+.p_guideline_text <- paste0(
+  "- For a genus or family, judge the group: does ANY member qualify?\n",
+  "- Answer the four questions separately. Residency (p_habitat) is not ",
+  "detectability (p_transported); range (geography) is not habitat or scope; ",
+  "rarity within the range is not absence.\n"
+)
+
+.p_range_guideline_text <- paste0(
+  "- State range limits as numbers. Southern limit = the southernmost ",
+  "latitude of the range within the study region, northern limit = the ",
+  "northernmost. Decide which side each limit is on before answering. The ",
+  "study’s site verdicts are computed from your limits, so do not ",
+  "summarise geography any other way. If latitude cannot describe the range ",
+  "-- for a study that runs east to west, or one at a single latitude -- ",
+  "leave both limits null and name the sites outside the range instead.\n",
+  "- If you cannot recall a rare or poorly known taxon’s range, say so: ",
+  "range_known false, and p_inside_range = p_outside_range = an intermediate ",
+  "value with low confidence. Do not reconstruct a range from the genus or ",
+  "from similar species. No records is not evidence of absence.\n"
+)
+
+.p_study_geo_guideline_text <- paste0(
+  "- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated ",
+  "separately, and a rare but in-range occurrence has an intermediate ",
+  "geographic probability, not a low one.\n",
+  "- If you cannot recall a rare or poorly known taxon’s range, give an ",
+  "intermediate probability with low confidence rather than recalling one. ",
+  "No records is not evidence of absence.\n"
+)
+
+# Worked examples (G5). Deliberately generic: a named species here would teach
+# the model the answer for that species rather than the shape of the judgement,
+# and the examples must suit a freshwater or terrestrial study as well as a
+# marine one.
+.p_worked_examples_text <- paste0(
+  "WORKED EXAMPLES (invented taxa):\n",
+  "- A taxon from a very different habitat (e.g. a deep-sea fish in a shore ",
+  "study, or a marine species in a freshwater study): p_habitat 0.03 (not ",
+  "resident), p_transported set by how its DNA could arrive (e.g. 0.6 with ",
+  "currents or predators, 0.05 with no route), p_scope low if the target ",
+  "group excludes its kind or depth.\n",
+  "- A taxon whose habitat fits but whose range ends part-way through the ",
+  "study area, detected beyond that limit: p_habitat 0.8, the limit stated as ",
+  "a number on the correct side, p_inside_range 0.7, p_outside_range 0.05.\n",
+  "- A commercial food species that also lives wild in the region: ",
+  "p_contamination 0.3. A farmed species with no wild population in the ",
+  "region: p_contamination 0.85.\n",
+  "- A rare taxon you cannot place: range_known false, p_inside_range 0.5, ",
+  "p_outside_range 0.5, review_confidence \"low\".\n\n"
+)
+
+.p_detected_guideline_text <- paste0(
+  '- A "[detected at: ...]" bracket lists the sites where this taxon was ',
+  "detected in this study.\n"
+)
+
+#' The EXAMPLE OUTPUT FORMAT block, for whichever geography fields were asked
+#'
+#' Two objects, as before: a plausible resident and a contaminant. The
+#' contaminant's comment is the data-type-specific one, so an acoustic or image
+#' study sees an example from its own method rather than an eDNA one.
+#' @noRd
+.p_example_output <- function(sites, use_candidates, example_comment) {
+  geo_resident <- if (!is.null(sites)) {
+    paste0(
+      '"range_known": true, "range_south_lat": 28.0, ',
+      '"range_north_lat": null, "sites_outside_range": [], ',
+      '"p_inside_range": 0.9, "p_outside_range": 0.05, '
+    )
+  } else {
+    '"p_geographic": 0.97, "p_geographic_range": [0.92, 0.99], '
+  }
+  geo_contam <- if (!is.null(sites)) {
+    paste0(
+      '"range_known": true, "range_south_lat": null, ',
+      '"range_north_lat": null, "sites_outside_range": [], ',
+      '"p_inside_range": 0.99, "p_outside_range": 0.99, '
+    )
+  } else {
+    '"p_geographic": 0.99, "p_geographic_range": [0.95, 1.00], '
+  }
+  lower <- if (use_candidates) "" else '"review_lower_hypotheses": null, '
+  paste0(
+    "[\n",
+    '  {"id": "T1", "taxon_name": "Example residentus", "p_habitat": 0.95, ',
+    '"p_habitat_range": [0.90, 0.99], "p_transported": 0.90, "p_scope": 0.97, ',
+    '"p_scope_range": [0.93, 0.99], ', geo_resident,
+    '"p_contamination": 0.02, "review_alternatives": null, ', lower,
+    '"review_confidence": "high", "review_comment": null},\n',
+    '  {"id": "T2", "taxon_name": "Homo sapiens", "p_habitat": 0.01, ',
+    '"p_habitat_range": [0.00, 0.05], "p_transported": 0.20, "p_scope": 0.01, ',
+    '"p_scope_range": [0.00, 0.02], ', geo_contam,
+    '"p_contamination": 0.95, "review_alternatives": null, ', lower,
+    '"review_confidence": "high", "review_comment": "', example_comment, '"}\n',
+    "]\n\n"
+  )
+}
+
 .geo_levels <- c("likely", "possible", "unlikely")
 
 # The prompt's geographic_by_site field. Wording changes must bump
