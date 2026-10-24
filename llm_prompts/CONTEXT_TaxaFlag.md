@@ -678,7 +678,7 @@ Every accuracy figure this package states is here, and nowhere else: one copy, s
 
 Reproducibility of the answer format, over 150 taxa: re-asking the same categorical prompt repeated 90% of the decisions the verdicts drive; asking for a probability and cutting it in code repeats 97%. That is the reason the answer is a probability. Both of those arms were asked WITHOUT the site block and without the guardrail definitions, so the pair isolates the answer format and nothing else. Neither is a measurement of this prompt's own repeat stability, which has both of those things in it.
 
-Agreement with the maintainer's own labels, over the 34 hardest taxa of that study, as same-decision / precision / recall: this prompt with sites, 75% / 80% / 66%; a plain probability prompt with neither the site block nor the guardrail definitions, 67% / 75% / 44%.
+Agreement with the maintainer's own labels, over the 34 hardest taxa of that study, as same-decision / precision / recall: the guardrail definitions with sites, 75% / 80% / 66%; a plain probability prompt with neither the site block nor the guardrail definitions, 67% / 75% / 44%. Both arms were asked with habitat and scope wording written for that one study, where this prompt takes those words from context$habitat and target_group. So the pair measures the guardrails and the site block, and neither arm measures the general wording.
 
 The cuts: of the extra rows the margin cuts act on and hard cuts (0.20/0.70, contamination 0.50) do not, 54% were rows the maintainer also acted on, against 32% for the hard cuts.
 

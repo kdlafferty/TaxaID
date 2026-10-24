@@ -509,9 +509,13 @@
 #' prompt's own repeat stability, which has both of those things in it.
 #'
 #' \strong{Agreement with the maintainer's own labels}, over the 34 hardest
-#' taxa of that study, as same-decision / precision / recall: this prompt with
-#' \code{sites}, 75% / 80% / 66%; a plain probability prompt with neither the
-#' site block nor the guardrail definitions, 67% / 75% / 44%.
+#' taxa of that study, as same-decision / precision / recall: the guardrail
+#' definitions with \code{sites}, 75% / 80% / 66%; a plain probability prompt
+#' with neither the site block nor the guardrail definitions, 67% / 75% / 44%.
+#' Both arms were asked with habitat and scope wording written for that one
+#' study, where this prompt takes those words from \code{context$habitat} and
+#' \code{target_group}. So the pair measures the guardrails and the site
+#' block, and neither arm measures the general wording.
 #'
 #' \strong{The cuts}: of the extra rows the margin cuts act on and hard cuts
 #' (0.20/0.70, contamination 0.50) do not, 54% were rows the maintainer also
