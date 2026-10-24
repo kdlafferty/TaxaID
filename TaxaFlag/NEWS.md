@@ -45,7 +45,11 @@
   sequence exists for the name -- the evidence the identification rests on,
   which a reviewer judging that name needs. It also sees, where
   `winner_rank_expanded` is set, that the sequence did not resolve the call to
-  species. The guideline that explains the bracket is built from the notes the
+  species -- read per row, so a taxon flagged on only some of its detections
+  says so rather than claiming all of them, and `NA` counts as unflagged. Any
+  logical column meaning "the sequence does not resolve this call to species"
+  is valid input, not only `join_priors()`'s own flag. The guideline that
+  explains the bracket is built from the notes the
   batch actually carries and says that a missing note means nothing, so it can
   never turn an absence into a claim. That note's wording names only what the
   sequence did, and

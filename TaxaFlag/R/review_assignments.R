@@ -79,18 +79,25 @@
 #'   \code{"occurrence prior=0.42"}), silently skipped when absent.
 #'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"winner_prior"} to show it.
 #' @param winner_rank_expanded_col Character or \code{NULL}. Column name for
-#'   \code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
-#'   when the winning species-level call was manufactured by
-#'   \code{join_priors()}'s coarse-rank expansion from occurrence-prior mass
-#'   alone, with no direct sequence/image/acoustic evidence discriminating
-#'   between candidates. When \code{TRUE} for any row sharing a label, a note
-#'   to that effect is added to the LLM's context, since this changes how
-#'   much weight the identification itself deserves. Silently skipped when
-#'   absent. Shown as a sequence fact and nothing more -- that the sequence
-#'   did not resolve the call to species -- with no mention of what supplied
-#'   the name instead. Default
-#'   \code{"winner_rank_expanded"}; \code{NULL} to suppress it. See
-#'   \emph{What the review is shown, and what it is not}.
+#'   ANY logical column meaning \emph{the sequence does not resolve this call
+#'   to species}. It is read PER ROW while the note is per taxon, so the
+#'   wording follows the taxon's own detections: flagged on all of them, the
+#'   bracket says "the sequence does not resolve this call to species";
+#'   flagged on some, "... on some of its detections"; flagged on none, there
+#'   is no note. \code{NA} counts as unflagged, so a column that is \code{NA}
+#'   where it was never computed manufactures nothing. Nothing is said about
+#'   what supplied the name instead, and the argument's own name is not part
+#'   of the contract.
+#'
+#'   Two columns that mean it, as examples rather than as the definition:
+#'   \code{posterior_consensus()}'s \code{winner_rank_expanded}, \code{TRUE}
+#'   when a species-level call was manufactured by \code{join_priors()}'s
+#'   coarse-rank expansion with nothing in the sequence discriminating between
+#'   candidates; and a column a caller derives itself, such as "the consensus
+#'   is at species while the likelihood's own consensus rank is coarser".
+#'   Either is correct input. Silently skipped when the named column is
+#'   absent. Default \code{"winner_rank_expanded"}; \code{NULL} to suppress
+#'   the note. See \emph{What the review is shown, and what it is not}.
 #' @param consensus_provenance Logical (default \code{TRUE}). When
 #'   \code{TRUE} and \code{input_df} carries
 #'   \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
@@ -709,7 +716,8 @@
 #' confusable relative could match as well (\code{consensus_discrimination_col}),
 #' whether any reference sequence exists for the name at all
 #' (\code{consensus_provenance}), and, where it did not, that the sequence did
-#' not resolve the call to species (\code{winner_rank_expanded_col}). The
+#' not resolve the call to species -- on all of a taxon's detections or only
+#' some (\code{winner_rank_expanded_col}). The
 #' guideline that explains the bracket is assembled from the notes the batch
 #' actually carries, and says that a missing note means nothing: naming a note
 #' that is absent would turn its absence into a claim. And the study's own
@@ -776,7 +784,8 @@
 #'   \item{\code{winner_rank_expanded_col} defaults to
 #'     \code{"winner_rank_expanded"} and IS sent, as one sequence fact: that
 #'     the sequence did not resolve the call to species. It says nothing about
-#'     what supplied the name instead.}
+#'     what supplied the name instead, and takes any logical column that means
+#'     it, not only \code{join_priors()}'s own flag.}
 #' }
 #' The annotation is purely additive: it never changes which rows are
 #' reviewed, the dedup key, or any output column. Set any of the four to
@@ -1821,17 +1830,30 @@ review_assignments <- function(input_df,
       v <- stats::median(input_df[[winner_prior_col]][rows], na.rm = TRUE)
       if (!is.na(v)) parts <- c(parts, sprintf("occurrence prior=%s", .fmt_pipeline_value(v)))
     }
-    if (has_rexp && isTRUE(any(input_df[[winner_rank_expanded_col]][rows], na.rm = TRUE))) {
-      # Sequence-only wording. The FLAG is set when join_priors() expanded a
-      # coarser call to a species, but what the reviewer is told is only what
-      # the sequence did: it did not resolve to species, and this name is not
-      # the sequence's choice. Deliberately NOT the same statement as
-      # INDISTINGUISHABLE, which is a tail probability saying a relative could
-      # score as well -- here the sequence never reached species at all.
-      # One clause only. It once continued "; the species name was not chosen
-      # by the sequence", which invites the model to ask what DID choose it --
-      # and the answer is the occurrence prior.
-      parts <- c(parts, "the sequence does not resolve this call to species")
+    # Sequence-only wording: what the sequence did, never what supplied the
+    # name instead -- naming that would point straight at the occurrence
+    # prior. Deliberately NOT the INDISTINGUISHABLE statement either, which is
+    # a tail probability saying a relative could score as well; here the
+    # sequence never reached species at all.
+    #
+    # The flag is per ROW and the note is per TAXON, so a taxon whose
+    # detections disagree needs its own wording: in one real study 86 of 170
+    # taxon-by-marker pairs are mixed, and collapsing those to the flat
+    # sentence would overstate the case on every one of them. NA counts as
+    # unflagged, so a column that is NA where it was never computed does not
+    # manufacture a note.
+    if (has_rexp) {
+      rexp_flagged <- input_df[[winner_rank_expanded_col]][rows] %in% TRUE
+      if (any(rexp_flagged)) {
+        parts <- c(parts, if (all(rexp_flagged)) {
+          "the sequence does not resolve this call to species"
+        } else {
+          paste0(
+            "the sequence does not resolve this call to species on some of ",
+            "its detections"
+          )
+        })
+      }
     }
     # The match identity, and whether it clears any rank threshold.
     #
@@ -2418,6 +2440,16 @@ review_assignments <- function(input_df,
     "pipeline_note" %in% names(taxa_batch) &&
       any(grepl(pattern, taxa_batch$pipeline_note, fixed = TRUE))
   }
+  rexp_notes <- if ("pipeline_note" %in% names(taxa_batch)) {
+    taxa_batch$pipeline_note[grepl(
+      "the sequence does not resolve this call to species",
+      taxa_batch$pipeline_note, fixed = TRUE
+    )]
+  } else {
+    character(0)
+  }
+  rexp_some <- any(grepl("on some of its detections", rexp_notes, fixed = TRUE))
+  rexp_all <- any(!grepl("on some of its detections", rexp_notes, fixed = TRUE))
   seq_clauses <- c(
     if (.note_has("best match identity")) "the best match identity for this taxon",
     if (.note_has("(poor absolute fit)")) {
@@ -2429,8 +2461,14 @@ review_assignments <- function(input_df,
     if (.note_has("NO reference sequence")) {
       "that no reference sequence exists for the name"
     },
-    if (.note_has("the sequence does not resolve")) {
-      "that the sequence did not resolve the call to species"
+    # Two wordings, so two clauses: a taxon flagged on every detection and one
+    # flagged on only some are different claims, and the batch can hold both.
+    if (rexp_all) "that the sequence did not resolve the call to species",
+    if (rexp_some) {
+      paste0(
+        "that, for some taxa, the sequence did not resolve the call to ",
+        "species on only part of their detections"
+      )
     }
   )
   seq_bracket_guideline <- if (length(seq_clauses)) {

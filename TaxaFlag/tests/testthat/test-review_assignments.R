@@ -1569,11 +1569,18 @@ test_that("an identity alone is enough to send the sequence-evidence guideline",
 # likelihood rank coarser than species. Naming an absent note turns an absence
 # into a claim, which is the same defect this guideline was rewritten to fix.
 
+# Answers every taxon the prompt asks for, so no re-ask fires and `seen` holds
+# exactly one prompt -- a re-ask carries only the omitted taxon and so a
+# different guideline, which would make these assertions ambiguous.
 .seq_clause_of <- function(df, ...) {
   seen <- character(0)
   fn <- function(prompt_str, ...) {
     seen <<- c(seen, prompt_str)
-    paste0("[", .CANNED[["Bos taurus"]], "]")
+    asked <- names(.CANNED)[vapply(
+      names(.CANNED), function(nm) grepl(nm, prompt_str, fixed = TRUE),
+      logical(1L)
+    )]
+    paste0("[", paste(unlist(.CANNED[asked], use.names = FALSE), collapse = ",\n"), "]")
   }
   suppressWarnings(invisible(review_assignments(
     data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
@@ -1660,4 +1667,85 @@ test_that("the numeric piece names only the numbers the batch carries", {
   # bracket nor named in the guideline.
   expect_false(grepl('"pipeline posterior"', p, fixed = TRUE))
   expect_false(grepl('"candidate weights"', p, fixed = TRUE))
+})
+
+test_that("any logical column meaning it drives the not-resolved note", {
+  # The argument's contract is the MEANING, not join_priors()'s column name:
+  # a caller deriving its own flag -- say, consensus at species while the
+  # likelihood's consensus rank is coarser -- passes that instead.
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", seq_not_species = TRUE,
+    stringsAsFactors = FALSE
+  )
+  g <- .seq_clause_of(df, winner_rank_expanded_col = "seq_not_species")
+  expect_match(g, "did not resolve the call to species", fixed = TRUE)
+  # And the default name being absent from the frame is a silent skip, not an
+  # error, so the same frame reviewed without the argument says nothing.
+  expect_length(.seq_clause_of(df), 0L)
+})
+
+test_that("the not-resolved note follows the taxon's own detections", {
+  # The flag is per row and the note is per taxon, so a taxon flagged on only
+  # some of its detections must not get the flat sentence: in one real study
+  # half the taxon-by-marker pairs are mixed, and collapsing them would
+  # overstate the case on every one.
+  two_rows <- function(flag) {
+    data.frame(
+      observation_id = c("S1", "S2"),
+      consensus_taxon = c("Bos taurus", "Bos taurus"),
+      consensus_rank = c("species", "species"),
+      seq_not_species = flag,
+      stringsAsFactors = FALSE
+    )
+  }
+  line_of <- function(flag) {
+    seen <- character(0)
+    fn <- function(prompt_str, ...) {
+      seen <<- c(seen, prompt_str)
+      paste0("[", .CANNED[["Bos taurus"]], "]")
+    }
+    suppressWarnings(invisible(review_assignments(
+      data_type = "eDNA", input_df = two_rows(flag),
+      taxon_col = "consensus_taxon", context = mock_context, llm_fn = fn,
+      verbose = FALSE, on_unreviewed = "ignore",
+      winner_rank_expanded_col = "seq_not_species"
+    )))
+    ln <- strsplit(paste(seen, collapse = "\n"), "\n", fixed = TRUE)[[1]]
+    grep("^- \\[T", ln, value = TRUE)
+  }
+
+  all_flagged <- line_of(c(TRUE, TRUE))
+  expect_match(all_flagged, "does not resolve this call to species]", fixed = TRUE)
+  expect_false(grepl("on some of its detections", all_flagged, fixed = TRUE))
+
+  mixed <- line_of(c(TRUE, FALSE))
+  expect_match(mixed, "to species on some of its detections", fixed = TRUE)
+
+  # NA counts as unflagged, both for the mixed case and for the none case.
+  na_mixed <- line_of(c(TRUE, NA))
+  expect_match(na_mixed, "to species on some of its detections", fixed = TRUE)
+  expect_false(grepl("does not resolve", line_of(c(FALSE, FALSE)), fixed = TRUE))
+  expect_false(grepl("does not resolve", line_of(c(NA, NA)), fixed = TRUE))
+})
+
+test_that("the guideline names whichever of the two forms the batch holds", {
+  mk <- function(flag_a, flag_b) {
+    data.frame(
+      observation_id = c("S1", "S2", "S3"),
+      consensus_taxon = c("Bos taurus", "Bos taurus", "Salmo salar"),
+      consensus_rank = "species",
+      seq_not_species = c(flag_a, flag_b, TRUE),
+      stringsAsFactors = FALSE
+    )
+  }
+  # Salmo is flagged on its single row (the "all" form); Bos is mixed.
+  g <- .seq_clause_of(mk(TRUE, FALSE), winner_rank_expanded_col = "seq_not_species")
+  expect_match(g, "that the sequence did not resolve the call to species", fixed = TRUE)
+  expect_match(g, "on only part of their detections", fixed = TRUE)
+
+  # Both taxa fully flagged: only the flat form is named.
+  g2 <- .seq_clause_of(mk(TRUE, TRUE), winner_rank_expanded_col = "seq_not_species")
+  expect_match(g2, "that the sequence did not resolve the call to species", fixed = TRUE)
+  expect_false(grepl("on only part of their detections", g2, fixed = TRUE))
 })

@@ -89,18 +89,25 @@ database prior for the winning taxon. Same treatment as
 Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"winner_prior"} to show it.}
 
 \item{winner_rank_expanded_col}{Character or \code{NULL}. Column name for
-\code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
-when the winning species-level call was manufactured by
-\code{join_priors()}'s coarse-rank expansion from occurrence-prior mass
-alone, with no direct sequence/image/acoustic evidence discriminating
-between candidates. When \code{TRUE} for any row sharing a label, a note
-to that effect is added to the LLM's context, since this changes how
-much weight the identification itself deserves. Silently skipped when
-absent. Shown as a sequence fact and nothing more -- that the sequence
-did not resolve the call to species -- with no mention of what supplied
-the name instead. Default
-\code{"winner_rank_expanded"}; \code{NULL} to suppress it. See
-\emph{What the review is shown, and what it is not}.}
+ANY logical column meaning \emph{the sequence does not resolve this call
+to species}. It is read PER ROW while the note is per taxon, so the
+wording follows the taxon's own detections: flagged on all of them, the
+bracket says "the sequence does not resolve this call to species";
+flagged on some, "... on some of its detections"; flagged on none, there
+is no note. \code{NA} counts as unflagged, so a column that is \code{NA}
+where it was never computed manufactures nothing. Nothing is said about
+what supplied the name instead, and the argument's own name is not part
+of the contract.
+
+Two columns that mean it, as examples rather than as the definition:
+\code{posterior_consensus()}'s \code{winner_rank_expanded}, \code{TRUE}
+when a species-level call was manufactured by \code{join_priors()}'s
+coarse-rank expansion with nothing in the sequence discriminating between
+candidates; and a column a caller derives itself, such as "the consensus
+is at species while the likelihood's own consensus rank is coarser".
+Either is correct input. Silently skipped when the named column is
+absent. Default \code{"winner_rank_expanded"}; \code{NULL} to suppress
+the note. See \emph{What the review is shown, and what it is not}.}
 
 \item{consensus_provenance}{Logical (default \code{TRUE}). When
 \code{TRUE} and \code{input_df} carries
@@ -803,7 +810,8 @@ rank threshold for the marker (\code{poor_absolute_fit_col}), whether a
 confusable relative could match as well (\code{consensus_discrimination_col}),
 whether any reference sequence exists for the name at all
 (\code{consensus_provenance}), and, where it did not, that the sequence did
-not resolve the call to species (\code{winner_rank_expanded_col}). The
+not resolve the call to species -- on all of a taxon's detections or only
+some (\code{winner_rank_expanded_col}). The
 guideline that explains the bracket is assembled from the notes the batch
 actually carries, and says that a missing note means nothing: naming a note
 that is absent would turn its absence into a claim. And the study's own
@@ -872,7 +880,8 @@ multi-candidate sets only.}
 \item{\code{winner_rank_expanded_col} defaults to
 \code{"winner_rank_expanded"} and IS sent, as one sequence fact: that
 the sequence did not resolve the call to species. It says nothing about
-what supplied the name instead.}
+what supplied the name instead, and takes any logical column that means
+it, not only \code{join_priors()}'s own flag.}
 }
 The annotation is purely additive: it never changes which rows are
 reviewed, the dedup key, or any output column. Set any of the four to
