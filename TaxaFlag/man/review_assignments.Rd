@@ -10,19 +10,19 @@ review_assignments(
   taxon_rank_col = NULL,
   plausible_taxa_col = NULL,
   irreducible_only = TRUE,
-  consensus_posterior_col = "consensus_posterior",
-  winner_prior_col = "winner_prior",
+  consensus_posterior_col = NULL,
+  winner_prior_col = NULL,
   winner_rank_expanded_col = "winner_rank_expanded",
   consensus_provenance = TRUE,
   plausible_posteriors_col = "plausible_posteriors",
   consensus_plausibility_col = "consensus_plausibility",
   consensus_discrimination_col = "consensus_discrimination",
-  dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
-  patch_diameter_km_col = "patch_diameter_km",
-  beyond_buffer_col = "beyond_buffer",
-  inat_in_range_col = "in_range",
-  inat_n_observations_col = "n_observations",
-  inat_matched_name_col = "matched_name",
+  dist_nearest_occupied_km_col = NULL,
+  patch_diameter_km_col = NULL,
+  beyond_buffer_col = NULL,
+  inat_in_range_col = NULL,
+  inat_n_observations_col = NULL,
+  inat_matched_name_col = NULL,
   context,
   target_group = NULL,
   marker = NULL,
@@ -78,16 +78,15 @@ posterior=0.81"}), so a sharp disagreement between the pipeline's
 confidence and the LLM's ecological plausibility judgment can be
 surfaced in \code{review_comment}. Purely additive text -- never changes
 which rows are reviewed or any output column. Silently skipped when the
-named column is absent from \code{input_df}. Default
-\code{"consensus_posterior"} (matches \code{posterior_consensus()}'s own
-output). Set to \code{NULL} to disable.}
+named column is absent from \code{input_df}. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"consensus_posterior"} to show it.
+That name is \code{posterior_consensus()}'s own output column.}
 
 \item{winner_prior_col}{Character or \code{NULL}. Column name for
 \code{posterior_consensus()}'s \code{winner_prior} -- the occurrence-
 database prior for the winning taxon. Same treatment as
 \code{consensus_posterior_col}: shown as median context (e.g.
-\code{"occurrence prior=0.42"}), silently skipped when absent. Default
-\code{"winner_prior"}. Set to \code{NULL} to disable.}
+\code{"occurrence prior=0.42"}), silently skipped when absent.
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_prior"} to show it.}
 
 \item{winner_rank_expanded_col}{Character or \code{NULL}. Column name for
 \code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
@@ -153,33 +152,33 @@ for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
 distance from the study site to the nearest GBIF-mapped occurrence of
 the taxon, worldwide. Shown as median context (e.g. \code{"GBIF: nearest
 occurrence ~41km away"}) alongside \code{patch_diameter_km_col} when
-both are present. Silently skipped when absent. Default
-\code{"dist_nearest_occupied_km"}. Set to \code{NULL} to disable.}
+both are present. Silently skipped when absent.
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"dist_nearest_occupied_km"} to show it.}
 
 \item{patch_diameter_km_col}{Character or \code{NULL}. Column name for
 \code{check_gbif_tile_range()}'s \code{patch_diameter_km} -- shown
 alongside \code{dist_nearest_occupied_km_col} as a rough size for the
 occupied area found (see "Spatial context" below for why this matters
 to interpretation). Silently skipped when absent, or when
-\code{dist_nearest_occupied_km_col} is not shown. Default
-\code{"patch_diameter_km"}. Set to \code{NULL} to disable.}
+\code{dist_nearest_occupied_km_col} is not shown.
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"patch_diameter_km"} to show it.}
 
 \item{beyond_buffer_col}{Character or \code{NULL}. Column name for
 \code{check_gbif_tile_range()}'s \code{beyond_buffer} -- when
 \code{TRUE}, shown instead of the distance/patch note as \code{"GBIF: no
 occurrence found anywhere globally"}. Silently skipped when absent.
-Default \code{"beyond_buffer"}. Set to \code{NULL} to disable.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"beyond_buffer"} to show it.}
 
 \item{inat_in_range_col}{Character or \code{NULL}. Column name for
 \code{TaxaFetch::check_inat_range()}'s \code{in_range}. Shown as
 \code{"in range"}/\code{"outside range"} alongside
 \code{inat_n_observations_col}/\code{inat_matched_name_col} when
-present. Silently skipped when absent. Default \code{"in_range"}. Set to
-\code{NULL} to disable.}
+present. Silently skipped when absent.
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"in_range"} to show it.}
 
 \item{inat_n_observations_col}{Character or \code{NULL}. Column name for
-\code{check_inat_range()}'s \code{n_observations}. Default
-\code{"n_observations"}. Set to \code{NULL} to disable.}
+\code{check_inat_range()}'s \code{n_observations}.
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"n_observations"} to show it.}
 
 \item{inat_matched_name_col}{Character or \code{NULL}. Column name for
 \code{check_inat_range()}'s \code{matched_name} -- the taxon iNaturalist's
@@ -187,8 +186,8 @@ own name search actually resolved the query to, which is not always the
 query taxon itself. When it differs from the taxon under review, this is
 flagged in the prompt as \code{"matched to '...' (name differs from
 query)"} -- a plain factual annotation, not a judgment (see "Spatial
-context" below). Default \code{"matched_name"}. Set to \code{NULL} to
-disable.}
+context" below).
+Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"matched_name"} to show it.}
 
 \item{context}{Named list or data frame describing the study context.
 Recognised fields: \code{geography}, \code{habitat} (or
@@ -559,11 +558,17 @@ derived from those probabilities here. The cuts are
 \code{unlikely < 0.10 <= possible < 0.70 <= likely}, and for contamination
 \code{low < 0.20 <= moderate < 0.70 <= high}.
 
-Why: a category is the least reproducible part of the review. Asking for a
-probability and cutting it in code was measured to be steadier between two
-asks than asking for the category itself. The figures, and what they were
-and were not measured on, are in \emph{What was measured} below, which is
-the only place in this package that states them.
+Why: asking for a probability and cutting it in code repeated more of its
+decisions between two asks than asking for the category did. That pair was
+measured on habitat and scope wording written for one study; on the wording
+this package ships the review repeats fewer of its decisions, and not
+enough more than the categorical figure for the two to be told apart on the
+taxa measured. Neither is there any measured difference between the two
+formats in agreement with the maintainer's own labels. What the probability
+does buy outright is below: a cut becomes this code's reading of a stored
+answer, so it can change without re-asking anything. The figures, and what
+they were and were not measured on, are in \emph{What was measured} below,
+which is the only place in this package that states them.
 
 The cut is applied AFTER the cache, never before it. What a cache entry
 holds is the probability -- the model's answer -- and a cut is this
@@ -593,29 +598,43 @@ labels are 12S taxa, and the taxa behind the repeat figures include COI and
 and they are wide -- 34 labelled taxa and 90 repeated ones is what all of
 this rests on.
 
-\strong{This prompt against the maintainer's own labels}, over the 34
-hardest taxa of that study, with \code{sites} supplied, as same-decision /
-precision / recall: 73\% (60-85) / 70\% (51-89) / 73\% (55-90). The same
-guardrails and site block, asked with habitat and scope wording written for
-that one study rather than taken from \code{context$habitat} and
-\code{target_group}, scored 75\% / 80\% / 66\%; that difference is the only
-measurement of what generalising the wording cost. A plain probability
-prompt with neither the site block nor the guardrail definitions scored
-67\% (52-81) / 75\% / 44\% (22-66), also under the study-specific wording, and
-it differs from the other two arms in BOTH the guardrails and the site
-block, so its difference belongs to that pair and is not an isolated effect
-of \code{sites}. Every difference among the three sits inside the
-intervals.
+\strong{Against the maintainer's own labels}, over the 34 hardest taxa of
+that study, with \code{sites} supplied, as same-decision / precision /
+recall:
+\itemize{
+\item{this prompt carrying every pipeline note it can:
+73\% (60-85) / 70\% (51-89) / 73\% (55-90).}
+\item{this prompt with no pipeline-derived text at all:
+74\% (59-86) / 70\% (48-89) / 65\% (45-85).}
+\item{the same guardrails and site block, asked with habitat and scope
+wording written for that one study rather than taken from
+\code{context$habitat} and \code{target_group}: 75\% / 80\% / 66\%. That
+difference is the only measurement of what generalising the wording
+cost.}
+\item{a plain probability prompt with neither the site block nor the
+guardrail definitions, study-specific wording again:
+67\% (52-81) / 75\% / 44\% (22-66). It differs from the others in BOTH the
+guardrails and the site block, so its difference belongs to that pair
+and is not an isolated effect of \code{sites}.}
+}
+Every difference among those four sits inside the intervals.
 
-\strong{Repeat stability of this prompt}, over 90 taxa and 356 answers
-(four asks of each taxon, six pairs), as the share of the decisions the
-verdicts drive that a second ask repeats: 90.0\% (82.5-96.1), or 93.0\%
-leaving one taxon out -- a single taxon whose site-geography probability
-straddles the 0.70 cut accounts for that whole difference. The
-study-specific wording repeats 96.9\% (93.8-98.9), over 87 taxa. Those two
-intervals overlap, so which wording is steadier is not measured. Repeat
-pairs are correlated within a taxon, so it is those taxon counts and not
-the pair counts that set the intervals.
+What the defaults send is not exactly either of the first two arms. They
+switch off the posterior, the occurrence prior, the GBIF fields and the
+iNaturalist fields, and leave three notes that a suitable \code{input_df}
+can still trigger -- see \emph{What the review is not told}. So the shipped
+prompt sits between two arms that scored the same as each other, which is
+the most that can be said for it.
+
+\strong{Repeat stability}, as the share of the decisions the verdicts drive
+that a second ask repeats: with the pipeline notes, 90.0\% (82.5-96.1) over
+90 taxa and 356 answers, four asks of each and six pairs; with none of
+them, 85.8\% (69.4-98.4), which rests on a single pair per taxon and is
+correspondingly weak; the study-specific wording, 96.9\% (93.8-98.9) over 87
+taxa. Leaving out the one taxon described below takes the first to 93.0\%
+and the second to 92.5\%. All three intervals overlap, so none of these
+orderings is measured. Repeat pairs are correlated within a taxon, so it is
+those taxon counts and not the pair counts that set the intervals.
 
 \strong{Why the answer is a probability}: re-asking the same CATEGORICAL
 prompt repeated 90\% of those decisions, against 97\% for asking a
@@ -634,16 +653,25 @@ accuracy between asking for a category and asking for a probability.
 acted on under this prompt's wording; under the study-specific wording the
 same figure is 54\% against 32\% for the hard cuts, that being the only arm
 in which both rules were scored. No alternative to the 0.10 cut improves
-repeat stability, and the instability is not confined to that cut: the one
-taxon that drives the repeat figure above crosses 0.70, on site geography,
-when the model changes its mind about whether it can state that taxon's
-range at all.
+repeat stability; the instability that is left sits at the 0.70 cut, which
+is the paragraph below.
 
-\strong{What the pipeline's own numbers add}: the taxon lines carry the
-posterior and the occurrence prior. Asked without them, on the same 34
-labels, the model scored 74\% / 70\% / 65\% -- the same within the intervals.
-So those notes are not measured to help, and a review asked with them is
-not independent of the pipeline it reviews.
+\strong{A known instability, not fixed in this release}: a site-geography
+probability that lands near 0.70 can cross it between two asks, because the
+answer to whether the model can state the taxon's range at all moves with
+it. On the taxon that drives the repeat figure above, \emph{Eucheilota
+bakeri} on COI, the site probability is 0.80 when the model says it knows
+the range and 0.50 to 0.70 when it says it does not; another taxon,
+\emph{Spheciospongia}, moves 0.85 against 0.60 the same way. One such
+taxon is the whole of the leave-one-out difference above. Nothing
+in this release special-cases it: a fix is deferred to 1.1, because every
+candidate fix changes what the cut means for every other taxon.
+
+\strong{What the pipeline's own numbers add}: nothing that was measured.
+The first two arms above differ only in whether the taxon lines carried the
+posterior, the occurrence prior and the rest of it, and they agree on all
+three statistics well inside the intervals. That is the reason the defaults
+leave them off -- independence at no measured cost, not an improvement.
 }
 
 \section{Site-aware geography}{
@@ -731,12 +759,46 @@ In \code{TaxaFlag::screen_assignments()}, \code{geography_col} can point at
 each row's own site.
 }
 
+\section{What the review is not told}{
+
+By default the prompt carries no number this pipeline computed. The
+posterior, the occurrence prior, the GBIF distance and patch size, the
+\code{beyond_buffer} flag and the three iNaturalist fields are all
+\code{NULL}, so none of them reaches the model and the guideline that
+explains them is not assembled either. Pass the column names to turn any of
+them back on, one at a time or all of them.
+
+The reason is not accuracy. A review that is shown the pipeline's own
+confidence cannot contradict it independently, and a review that is shown a
+taxon's GBIF distance cannot catch an error IN the occurrence data -- which
+is one of the things it is for. Scored against the maintainer's labels, a
+review told these numbers and a review not told them came out the same
+within the intervals, so independence is had for no measured cost. See
+\emph{What was measured}.
+
+What the prompt still carries is the study's own design, not evidence about
+the taxon: the study context (geography, habitat, dates, target group,
+marker), the site table when \code{sites} is supplied, and which of those
+sites each taxon was detected at.
+
+Three pipeline notes are NOT switched off by these defaults, because each
+is read for an output column as well as for the prompt: the UNREFERENCED
+provenance note (\code{consensus_provenance}), the UNPRECEDENTED and
+INDISTINGUISHABLE flags (\code{consensus_plausibility_col},
+\code{consensus_discrimination_col}), which also populate
+\code{geographic_disagreement_basis}, and the poor-absolute-fit note
+(\code{poor_absolute_fit_col}). Set them to \code{NULL} or \code{FALSE}
+for a prompt with no pipeline-derived text in it at all, at the cost of
+\code{geographic_disagreement_basis}, which is then \code{NA} throughout.
+}
+
 \section{Pipeline context}{
 
 When \code{consensus_posterior_col}/\code{winner_prior_col}/
-\code{winner_rank_expanded_col}/\code{plausible_posteriors_col} match real
-columns in \code{input_df} (the defaults match \code{TaxaAssign::
-posterior_consensus()}'s own output names), a compact \code{"[...]"}
+\code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are given
+column names that exist in \code{input_df} -- the first two are
+\code{NULL} by default, see \emph{What the review is not told} -- a
+compact \code{"[...]"}
 annotation is appended to each taxon's line in the LLM prompt -- the
 pipeline's own median statistical confidence/occurrence prior for that
 taxon, a note when the winning call was resolved by occurrence-prior
@@ -752,11 +814,13 @@ from \code{input_df}.
 
 \section{Spatial context}{
 
-When \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
-\code{beyond_buffer_col} (matching \code{check_gbif_tile_range()}'s own
-output) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
-\code{inat_matched_name_col} (matching \code{TaxaFetch::check_inat_range()}'s
-own output) match real columns in \code{input_df} -- typically joined onto it by
+All six of these are \code{NULL} by default and nothing below happens
+unless they are passed -- see \emph{What the review is not told}. When
+\code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
+\code{beyond_buffer_col} (\code{check_gbif_tile_range()}'s own output
+names) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
+\code{inat_matched_name_col} (\code{TaxaFetch::check_inat_range()}'s own
+names) are passed and match real columns in \code{input_df} -- typically joined onto it by
 taxon name before calling this function, since both source functions
 operate per-taxon at a query point, not per-row -- the same \code{"[...]"}
 bracket used for pipeline context also carries a compact GBIF/iNat summary

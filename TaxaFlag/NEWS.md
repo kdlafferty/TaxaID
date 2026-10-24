@@ -31,6 +31,24 @@
   `llm_geographic_plausibility` becomes the best verdict across sites. A
   malformed answer falls back to the study-wide verdict at every site. With
   `sites = NULL` the prompt, cache key and output are unchanged.
+* `review_assignments()` asks the reviewer for a PROBABILITY per judgement
+  rather than a category, and derives the `llm_*_plausibility` and
+  `llm_contamination_risk` verdicts from it in code: `unlikely < 0.10 <=
+  possible < 0.70 <= likely`, contamination `low < 0.20 <= moderate < 0.70 <=
+  high`. The probabilities are returned too, as `llm_p_*`. A cut is applied
+  after the cache rather than before it, so changing one takes effect for taxa
+  already cached without a single new call.
+* The review is blind to this pipeline's own numbers by default. The
+  `consensus_posterior_col`, `winner_prior_col`,
+  `dist_nearest_occupied_km_col`, `patch_diameter_km_col`,
+  `beyond_buffer_col` and the three `inat_*` arguments of
+  `review_assignments()` default to `NULL`, so none of those values reaches
+  the prompt and the guideline that explains them is not assembled. A review
+  shown the pipeline's own confidence cannot contradict it independently, and
+  a review shown a taxon's GBIF distance cannot catch an error in the
+  occurrence data -- which is one of the things it is for. Pass the column
+  names to send any of them. Scored against the maintainer's labels, a review
+  told these numbers and a review not told them agreed with him equally well.
 * `flag_backbone_conflicts()` flags a name that the taxonomy carries at more
   than one rank, or under more than one parent at the same rank, learned from
   the data rather than from a list of taxa. It cannot see synonymy (many names

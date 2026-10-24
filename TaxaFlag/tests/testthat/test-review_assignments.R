@@ -1238,3 +1238,110 @@ test_that(".normalise_context() combines the analyst's wording with the synthesi
     "Lake Michigan"
   )
 })
+
+# ===========================================================================
+# The pipeline's own numbers are off by default
+# ===========================================================================
+
+# The review is asked for an independent ecological judgement, and a judgement
+# that has been shown the pipeline's own posterior cannot contradict it
+# independently -- nor can a review that has been shown a taxon's GBIF
+# distance catch an error IN the occurrence data. The eight NULL defaults are
+# the only thing keeping those numbers out of the prompt, so what they do is
+# asserted here rather than left to the roxygen: a caller who hands this
+# function a frame straight out of posterior_consensus() and
+# check_gbif_tile_range() gets a blind review unless it asks for otherwise.
+.noted_input <- data.frame(
+  observation_id = "S1",
+  consensus_taxon = "Bos taurus",
+  consensus_rank = "species",
+  consensus_posterior = 0.81,
+  winner_prior = 0.42,
+  dist_nearest_occupied_km = 41,
+  patch_diameter_km = 2.1,
+  beyond_buffer = FALSE,
+  in_range = TRUE,
+  n_observations = 1275L,
+  matched_name = "Bos taurus",
+  stringsAsFactors = FALSE
+)
+
+# Returns the prompt that was actually sent, which is the only place the
+# notes can be checked: nothing about them reaches an output column.
+.prompt_sent <- function(...) {
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = .noted_input,
+    taxon_col = "consensus_taxon", context = mock_context,
+    llm_fn = fn, verbose = FALSE, ...
+  ))
+  paste(seen, collapse = "\n")
+}
+
+.NOTE_COLS <- list(
+  consensus_posterior_col = "consensus_posterior",
+  winner_prior_col = "winner_prior",
+  dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
+  patch_diameter_km_col = "patch_diameter_km",
+  beyond_buffer_col = "beyond_buffer",
+  inat_in_range_col = "in_range",
+  inat_n_observations_col = "n_observations",
+  inat_matched_name_col = "matched_name"
+)
+
+test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", {
+  p <- .prompt_sent()
+  for (txt in c("pipeline posterior", "occurrence prior", "GBIF", "iNat")) {
+    expect_false(grepl(txt, p, fixed = TRUE), info = txt)
+  }
+  # The guideline that explains those notes is conditional on them, so it is
+  # not assembled either.
+  expect_false(grepl("nearest occurrence", p, fixed = TRUE))
+})
+
+test_that("naming the columns puts every one of those notes back", {
+  p <- do.call(.prompt_sent, .NOTE_COLS)
+  expect_match(p, "pipeline posterior=0.81", fixed = TRUE)
+  expect_match(p, "occurrence prior=0.42", fixed = TRUE)
+  expect_match(p, "GBIF: nearest occurrence", fixed = TRUE)
+  expect_match(p, "iNat: in range", fixed = TRUE)
+})
+
+test_that("the study's own design is still sent: it is not evidence about the taxon", {
+  p <- .prompt_sent()
+  expect_match(p, "Palmyra Atoll", fixed = TRUE)
+  expect_match(p, "coral reef", fixed = TRUE)
+  expect_match(p, "Bos taurus", fixed = TRUE)
+})
+
+test_that("a verdict cached WITH the notes is not served to a blind call", {
+  cd <- file.path(tempdir(), paste0("flagblind_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  ctr <- new.env()
+  assign("n", 0L, ctr)
+  fn <- function(prompt_str, ...) {
+    assign("n", get("n", ctr) + 1L, ctr)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  base <- list(.noted_input,
+    data_type = "eDNA", taxon_col = "consensus_taxon", context = mock_context,
+    llm_fn = fn, model_label = "test-model", cache_dir = cd, verbose = FALSE
+  )
+  invisible(do.call(review_assignments, c(base, .NOTE_COLS)))
+  n1 <- get("n", ctr)
+  expect_gt(n1, 0L)
+  # Same taxon, same context, same model: only the notes are gone. The notes
+  # are columns of taxa_info and every column of it enters the key, so this is
+  # a miss with no version bump anywhere -- which is why switching the
+  # defaults off needed none.
+  invisible(do.call(review_assignments, base))
+  expect_gt(get("n", ctr), n1)
+  n2 <- get("n", ctr)
+  # ... and the blind call's own verdict caches and is served back.
+  invisible(do.call(review_assignments, base))
+  expect_equal(get("n", ctr), n2)
+})
