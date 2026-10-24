@@ -559,10 +559,12 @@ derived from those probabilities here. The cuts are
 \code{unlikely < 0.10 <= possible < 0.70 <= likely}, and for contamination
 \code{low < 0.20 <= moderate < 0.70 <= high}.
 
-Why: a category is the least reproducible part of the review, and a
-probability cut in code is both steadier between two asks and closer to the
-maintainer's own labels. The figures are in \emph{What was measured} below,
-which is the only place in this package that states them.
+Why: a category is the least reproducible part of the review. Asking for a
+probability and cutting it in code was measured to be both steadier between
+two asks and closer to the maintainer's own labels than asking for the
+category itself. The figures, and what they were and were not measured on,
+are in \emph{What was measured} below, which is the only place in this
+package that states them.
 
 The cut is applied AFTER the cache, never before it. What a cache entry
 holds is the probability -- the model's answer -- and a cut is this
@@ -588,10 +590,13 @@ Every accuracy figure this package states is here, and nowhere else: one
 copy, so that a later measurement is one edit. All of it is
 \code{claude-opus-5-5} on one real study's 12S panel.
 
-\strong{Reproducibility}, over 150 taxa: re-asking the same categorical
-prompt repeated 90\% of the decisions the verdicts drive; asking for a
-probability and cutting it here repeats 97\%. That is the reason the answer
-is a probability.
+\strong{Reproducibility of the answer format}, over 150 taxa: re-asking the
+same categorical prompt repeated 90\% of the decisions the verdicts drive;
+asking for a probability and cutting it in code repeats 97\%. That is the
+reason the answer is a probability. Both of those arms were asked WITHOUT
+the site block and without the guardrail definitions, so the pair isolates
+the answer format and nothing else. Neither is a measurement of this
+prompt's own repeat stability, which has both of those things in it.
 
 \strong{Agreement with the maintainer's own labels}, over the 34 hardest
 taxa of that study, as same-decision / precision / recall: this prompt with
