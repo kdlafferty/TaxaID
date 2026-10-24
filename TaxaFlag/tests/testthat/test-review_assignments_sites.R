@@ -636,12 +636,17 @@ test_that("the parser reads the range fields in whatever shape they arrive", {
   res <- TaxaFlag:::.parse_review_response(txt, tb, NULL, NULL,
     site_names = .gs_sites$site
   )
-  rules <- vapply(res$review_geo_json, function(j) {
+  # D carried no probability at all, so it is an omission and is NA-filled,
+  # not a parsed range answer
+  expect_equal(attr(res, "missing_taxa"), "D")
+  keep <- res$taxon_name %in% c("A", "B", "C")
+  rules <- vapply(res$review_geo_json[keep], function(j) {
     TaxaFlag:::.geo_spec_from_json(j)$rule
   }, "")
-  expect_equal(unname(rules), c("range", "range", "unknown", "fallback"))
-  expect_equal(res$range_south_lat, c(33, NA, NA, NA))
-  expect_equal(res$range_known, c(TRUE, TRUE, FALSE, FALSE))
+  expect_equal(unname(rules), c("range", "range", "unknown"))
+  expect_equal(res$range_south_lat[keep], c(33, NA, NA))
+  expect_equal(res$range_known[keep], c(TRUE, TRUE, FALSE))
+  expect_true(is.na(res$review_geo_json[res$taxon_name == "D"]))
 })
 
 # --- 10. deterministic batch order -------------------------------------------
@@ -835,4 +840,91 @@ test_that("the haversine is the same R the override uses", {
     c(0, 2 * pi * 6371 / 360),
     tolerance = 1e-6
   )
+})
+
+# --- 12. an unusable probability is an omission, not an answer ---------------
+
+test_that("a probability that is not a probability is re-asked, never cached", {
+  # p = 85 (a percentage) and p = "high" (a category) both leave every derived
+  # verdict NA while review_confidence and review_comment arrive intact. That
+  # row used to look reviewed: it was cached, n_unreviewed_rows said 0, and the
+  # NA was dropped by every "!= unlikely" export filter without a word.
+  for (bad in c("85", '"high"', "-0.2")) {
+    junk <- function(prompt_str, ...) {
+      a <- .gs_asked(prompt_str)
+      paste0(
+        '[{"id": "', a$id[1], '", "taxon_name": "', a$label[1], '", ',
+        '"p_habitat": ', bad, ', "p_scope": ', bad, ', "p_contamination": ', bad,
+        ', "range_known": true, "range_south_lat": null, ',
+        '"range_north_lat": null, "sites_outside_range": [], ',
+        '"p_inside_range": ', bad, ', "p_outside_range": ', bad, ', ',
+        '"review_confidence": "high", "review_comment": "looks fine"}]'
+      )
+    }
+    cd <- tempfile("gs_junk")
+    out <- suppressWarnings(.gs_review("Taxon a", junk,
+      site_vec = "North", max_retries = 0L, on_unreviewed = "ignore",
+      cache_dir = cd
+    ))
+    expect_equal(attr(out, "unreviewed_taxa"), "Taxon a", info = bad)
+    expect_equal(attr(out, "n_unreviewed_rows"), 1L, info = bad)
+    expect_true(is.na(out$llm_habitat_plausibility), info = bad)
+    # and nothing was written, so the next run asks again
+    expect_equal(
+      length(list.files(cd, pattern = "_review\\.rds$")), 0L,
+      info = bad
+    )
+  }
+})
+
+test_that("a partial answer is still an answer", {
+  # three questions answered, the fourth fumbled: the row stays, and the NA in
+  # that one column is honest rather than hidden
+  partial <- function(prompt_str, ...) {
+    a <- .gs_asked(prompt_str)
+    paste0(
+      '[{"id": "', a$id[1], '", "taxon_name": "', a$label[1], '", ',
+      '"p_habitat": 0.9, "p_scope": 0.9, "p_contamination": "high", ',
+      '"range_known": true, "range_south_lat": null, "range_north_lat": null, ',
+      '"sites_outside_range": [], "p_inside_range": 0.9, ',
+      '"p_outside_range": 0.05, "review_confidence": "high", ',
+      '"review_comment": null}]'
+    )
+  }
+  out <- .gs_review("Taxon a", partial, site_vec = "North")
+  expect_equal(attr(out, "unreviewed_taxa"), character(0))
+  expect_equal(out$llm_habitat_plausibility, "likely")
+  expect_true(is.na(out$llm_contamination_risk))
+})
+
+test_that("a cached non-answer from before this fix is a miss, not a hit", {
+  cd <- tempfile("gs_stale")
+  log <- new.env()
+  fn <- .gs_fn(log = log)
+  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
+  expect_equal(log$n, 1L)
+  # blank every probability in the cached entry, leaving the confidence and
+  # comment a pre-fix entry would have carried
+  files <- list.files(cd, pattern = "_review\\.rds$", full.names = TRUE)
+  expect_gt(length(files), 0L)
+  for (fl in files) {
+    e <- readRDS(fl)
+    for (cl in grep("^p_", names(e$row), value = TRUE)) e$row[[cl]] <- NA_real_
+    for (cl in c("habitat_plausibility", "scope_plausibility",
+                 "contamination_risk", "geographic_plausibility")) {
+      if (cl %in% names(e$row)) e$row[[cl]] <- NA_character_
+    }
+    saveRDS(e, fl)
+  }
+  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
+  expect_equal(log$n, 2L)
+})
+
+test_that("the cuts used are stamped on the result", {
+  out <- .gs_review("Taxon a", .gs_fn(), site_vec = "North")
+  cuts <- attr(out, "review_cuts")
+  expect_equal(cuts[["unlikely_below"]], 0.10)
+  expect_equal(cuts[["likely_at"]], 0.70)
+  expect_equal(cuts[["contamination_moderate_at"]], 0.20)
+  expect_equal(cuts[["contamination_high_at"]], 0.70)
 })

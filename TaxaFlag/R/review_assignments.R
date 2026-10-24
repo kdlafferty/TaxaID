@@ -227,7 +227,10 @@
 #'   \code{TaxaTools::call_api} itself), where the identity is derived from
 #'   \code{options("TaxaID.provider")} and the function. Even then it names the
 #'   FUNCTION, not the model a tier resolves to, so a cached call warns and
-#'   points here.
+#'   points here. What it does NOT capture is anything else your wrapper
+#'   pins -- temperature, \code{max_tokens}, a system prompt, a reasoning
+#'   effort. Two runs that differ only in one of those share a key, so give
+#'   them different \code{model_label}s when you compare them.
 #' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
 #'   Default \code{15L}. Candidate-set entries are longer than single taxon
 #'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
@@ -366,11 +369,16 @@
 #' \code{range_south_lat}, \code{range_north_lat}, \code{p_inside_range},
 #' \code{p_outside_range}, \code{sites_outside_range} as a
 #' semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
-#' records a swap, an ignored site name or a fallback). With
-#' \code{occurrence_data} it also carries \code{llm_p_geographic_site},
-#' \code{llm_p_inside_range}, \code{llm_p_outside_range},
-#' \code{llm_range_known}, \code{llm_range_south_lat} and
-#' \code{llm_range_north_lat} -- the latter five with \code{sites} alone.
+#' records a swap, an ignored site name or a fallback). \code{sites} alone
+#' also adds \code{llm_p_geographic_site}, \code{llm_p_inside_range},
+#' \code{llm_p_outside_range}, \code{llm_range_known},
+#' \code{llm_range_south_lat} and \code{llm_range_north_lat};
+#' \code{occurrence_data} adds no column of its own, only facts to the prompt.
+#'
+#' Also carries a \code{"review_cuts"} attribute naming the four cut points
+#' the verdicts were derived with. The cuts are code rather than part of the
+#' cache key, so a saved result would otherwise carry verdicts with no record
+#' of how they were read off the probabilities.
 #'
 #' Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
 #' the taxon/candidate-set labels the LLM never returned a verdict for) and
@@ -1395,6 +1403,15 @@ review_assignments <- function(input_df,
     attr(result, "geographic_by_site") <- geo_attr
   }
 
+  # The cuts are code, not part of the cache key, so a saved result would
+  # otherwise carry verdicts with no record of how they were read off the
+  # probabilities. Stamped here so that record travels with the frame.
+  attr(result, "review_cuts") <- c(
+    unlikely_below = .p_cut_unlikely, likely_at = .p_cut_likely,
+    contamination_moderate_at = .p_cut_contam_moderate,
+    contamination_high_at = .p_cut_contam_high
+  )
+
   # Named by batch label (including any "a"/"b" retry sub-batch splits) --
   # see @return below.
   attr(result, "llm_prompts") <- as.list(prompt_log)
@@ -1461,6 +1478,18 @@ review_assignments <- function(input_df,
 #' non-answer.
 #' @noRd
 .is_unreviewed_row <- function(ent) {
+  # The probabilities ARE the answer now, so a cached row is a non-answer when
+  # none of them is usable -- whatever else it carries. That distinction
+  # matters: a model can return a confidence and a comment alongside
+  # p_habitat = 85 or "high", and the old test (every listed field NA) read
+  # that as a verdict, cached it, and made the omission permanent.
+  pcols <- grep("^p_", names(ent), value = TRUE)
+  if (length(pcols) > 0L) {
+    return(all(vapply(pcols, function(cl) all(is.na(ent[[cl]])), logical(1L))))
+  }
+  # No probability columns at all: an entry from before the probability format,
+  # which the v6 key prefix already orphans. Kept for the hand-built row and
+  # for any entry a caller constructed itself.
   cols <- c(
     "habitat_plausibility", "geographic_plausibility",
     "contamination_risk", "review_confidence",
@@ -2831,6 +2860,39 @@ review_assignments <- function(input_df,
         length(remapped), paste(remapped, collapse = "; ")
       ))
     }
+  }
+
+  # A row present in the response but carrying no usable probability at all is
+  # an OMISSION, not an answer. The probabilities are now the answer, so a
+  # model that returned p_habitat = 85 (out of range) or "high" (not a number)
+  # leaves every derived verdict NA while review_confidence and review_comment
+  # are perfectly present -- which made the row look reviewed, cached it, and
+  # reported n_unreviewed_rows = 0, while every downstream "!= unlikely" export
+  # filter dropped the NA without a word. Treating it as omitted puts it back
+  # on the re-ask path and keeps it out of the cache, which is the invariant
+  # the unreviewed machinery exists to hold.
+  #
+  # ALL of the asked probabilities, not any: a model that answered three
+  # questions and fumbled the fourth has still answered, and the NA in that
+  # one column is honest.
+  asked_p <- c("p_habitat", "p_contamination")
+  if (!is.null(target_group)) asked_p <- c(asked_p, "p_scope")
+  asked_p <- c(asked_p, if (with_geo) "p_inside_range" else "p_geographic")
+  asked_p <- intersect(asked_p, names(result))
+  no_answer <- if (length(asked_p) == 0L) {
+    rep(FALSE, nrow(result))
+  } else {
+    rowSums(!is.na(result[, asked_p, drop = FALSE])) == 0L
+  }
+  if (any(no_answer)) {
+    pending <- c(pending, sprintf(
+      paste0(
+        "LLM returned %d taxa with no usable probability (a value outside ",
+        "0-1, or not a number): %s. Treated as omitted and re-asked."
+      ),
+      sum(no_answer), paste(result$taxon_name[no_answer], collapse = ", ")
+    ))
+    result <- result[!no_answer, , drop = FALSE]
   }
 
   # Fill any remaining missing taxa (truly absent from LLM response) with NAs

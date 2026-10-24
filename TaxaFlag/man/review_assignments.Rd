@@ -254,7 +254,10 @@ cache, and for an \code{llm_fn} a loaded namespace can name (such as
 \code{TaxaTools::call_api} itself), where the identity is derived from
 \code{options("TaxaID.provider")} and the function. Even then it names the
 FUNCTION, not the model a tier resolves to, so a cached call warns and
-points here.}
+points here. What it does NOT capture is anything else your wrapper
+pins -- temperature, \code{max_tokens}, a system prompt, a reasoning
+effort. Two runs that differ only in one of those share a key, so give
+them different \code{model_label}s when you compare them.}
 
 \item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
 Default \code{15L}. Candidate-set entries are longer than single taxon
@@ -419,11 +422,16 @@ row per reviewed taxon, giving the parsed range answer (\code{rule},
 \code{range_south_lat}, \code{range_north_lat}, \code{p_inside_range},
 \code{p_outside_range}, \code{sites_outside_range} as a
 semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
-records a swap, an ignored site name or a fallback). With
-\code{occurrence_data} it also carries \code{llm_p_geographic_site},
-\code{llm_p_inside_range}, \code{llm_p_outside_range},
-\code{llm_range_known}, \code{llm_range_south_lat} and
-\code{llm_range_north_lat} -- the latter five with \code{sites} alone.
+records a swap, an ignored site name or a fallback). \code{sites} alone
+also adds \code{llm_p_geographic_site}, \code{llm_p_inside_range},
+\code{llm_p_outside_range}, \code{llm_range_known},
+\code{llm_range_south_lat} and \code{llm_range_north_lat};
+\code{occurrence_data} adds no column of its own, only facts to the prompt.
+
+Also carries a \code{"review_cuts"} attribute naming the four cut points
+the verdicts were derived with. The cuts are code rather than part of the
+cache key, so a saved result would otherwise carry verdicts with no record
+of how they were read off the probabilities.
 
 Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
 the taxon/candidate-set labels the LLM never returned a verdict for) and
