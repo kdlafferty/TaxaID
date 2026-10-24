@@ -1170,7 +1170,7 @@ review_assignments <- function(input_df,
       # should never be written now (see @section Unreviewed rows), but if
       # one exists in the cache directory, treat it as a MISS so the taxon is
       # asked again, rather than serving the omission forever.
-      if (!is.null(ent) && .is_unreviewed_row(ent)) {
+      if (!is.null(ent) && .is_unreviewed_row(ent, target_group)) {
         n_stale_na <- n_stale_na + 1L
         ent <- NULL
       }
@@ -1485,29 +1485,41 @@ review_assignments <- function(input_df,
 }
 
 
-#' Is This Review Row an Unreviewed Non-Answer?
+#' Is This Cached Review Row a Non-Answer?
 #'
-#' TRUE when every field the LLM is asked to fill is \code{NA} -- the shape
-#' \code{.parse_review_response()}'s \code{make_default()} produces for a
-#' taxon the model omitted. Deliberately ignores \code{scope_plausibility}
-#' (legitimately \code{NA} for every taxon when \code{target_group} is not
-#' supplied) and \code{review_lower_hypotheses} (legitimately \code{NA} on
-#' the whole candidate-set path), so a real verdict is never mistaken for a
-#' non-answer.
+#' TRUE when the row does not carry a usable value for every probability that
+#' drives a decision. This is the SAME test the parser applies before a row is
+#' kept, and it has to be: if the write side refuses to store a row with one
+#' unusable probability while the read side only rejects a row with none
+#' usable, then an entry written by any earlier build is served as a hit
+#' forever and its \code{NA} is discarded by every export filter without a
+#' word. Read and write must agree about what an answer is.
+#'
+#' \code{p_scope} counts only when \code{target_group} is supplied, because
+#' without one the scope question was never put and \code{NA} is the correct
+#' stored value. \code{p_outside_range} never counts: its absence gives the
+#' inside probability at every site, which is a stated reading rather than a
+#' missing answer.
+#'
+#' A row with no probability columns at all predates the probability format,
+#' which the \code{v6} key prefix already orphans; such a row falls back to
+#' the older test -- every field the LLM was asked to fill is \code{NA}, the
+#' shape \code{make_default()} produces for an omitted taxon. That test
+#' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
+#' when \code{target_group} is absent) and \code{review_lower_hypotheses}
+#' (legitimately \code{NA} on the whole candidate-set path).
 #' @noRd
-.is_unreviewed_row <- function(ent) {
-  # The probabilities ARE the answer now, so a cached row is a non-answer when
-  # none of them is usable -- whatever else it carries. That distinction
-  # matters: a model can return a confidence and a comment alongside
-  # p_habitat = 85 or "high", and the old test (every listed field NA) read
-  # that as a verdict, cached it, and made the omission permanent.
+.is_unreviewed_row <- function(ent, target_group = NULL) {
   pcols <- grep("^p_", names(ent), value = TRUE)
   if (length(pcols) > 0L) {
-    return(all(vapply(pcols, function(cl) all(is.na(ent[[cl]])), logical(1L))))
+    asked <- c("p_habitat", "p_contamination", "p_geographic")
+    if (!is.null(target_group)) asked <- c(asked, "p_scope")
+    asked <- intersect(asked, pcols)
+    if (length(asked) == 0L) {
+      return(TRUE)
+    }
+    return(any(vapply(asked, function(cl) any(is.na(ent[[cl]])), logical(1L))))
   }
-  # No probability columns at all: an entry from before the probability format,
-  # which the v6 key prefix already orphans. Kept for the hand-built row and
-  # for any entry a caller constructed itself.
   cols <- c(
     "habitat_plausibility", "geographic_plausibility",
     "contamination_risk", "review_confidence",

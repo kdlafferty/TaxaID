@@ -1011,6 +1011,50 @@ test_that("a row that still fails every re-ask is counted, never dropped quietly
   expect_equal(length(list.files(cd, pattern = "_review\\.rds$")), 0L)
 })
 
+test_that("a PARTIALLY unusable cached entry is a miss, on the same asked set", {
+  # the read side has to apply the same test as the write side. If writing
+  # refuses a row with ONE unusable probability while reading only rejects a
+  # row with NONE usable, an entry from any earlier build is served as a hit
+  # forever and its NA is dropped by every export filter.
+  blank_one <- function(cd, col) {
+    for (fl in list.files(cd, pattern = "_review\\.rds$", full.names = TRUE)) {
+      e <- readRDS(fl)
+      e$row[[col]] <- NA_real_
+      saveRDS(e, fl)
+    }
+  }
+  for (col in c("p_habitat", "p_contamination", "p_geographic")) {
+    cd <- tempfile("gs_part")
+    log <- new.env()
+    fn <- .gs_fn(log = log)
+    .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
+    expect_equal(log$n, 1L, info = col)
+    blank_one(cd, col)
+    .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
+    expect_equal(log$n, 2L, info = col) # a miss, re-asked
+  }
+  # p_scope counts only when a target group was asked about
+  cd <- tempfile("gs_scope_ng")
+  log <- new.env()
+  fn <- .gs_fn(log = log)
+  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
+  blank_one(cd, "p_scope")
+  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
+  expect_equal(log$n, 1L) # no target_group: NA p_scope is the right value, a HIT
+  cd2 <- tempfile("gs_scope_tg")
+  log2 <- new.env()
+  fn2 <- .gs_fn(log = log2)
+  .gs_review("Taxon a", fn2,
+    site_vec = "North", cache_dir = cd2, target_group = "fish"
+  )
+  expect_equal(log2$n, 1L)
+  blank_one(cd2, "p_scope")
+  .gs_review("Taxon a", fn2,
+    site_vec = "North", cache_dir = cd2, target_group = "fish"
+  )
+  expect_equal(log2$n, 2L) # with a target group it is a miss
+})
+
 test_that("a cached non-answer from before this fix is a miss, not a hit", {
   cd <- tempfile("gs_stale")
   log <- new.env()
