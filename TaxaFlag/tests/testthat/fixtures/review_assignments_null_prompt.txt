@@ -15,7 +15,7 @@ Each object must have these fields. Every probability is a number from 0 to 1 wi
   "p_transported": probability that the taxon's DNA could plausibly reach these samples from adjacent habitats or waters (e.g. currents, inflowing water, predators, nearby habitats). This is separate from residency: a non-resident can have a high value,
   "p_scope": probability that the taxon is in the target group (fish) by the KIND OF ORGANISM and its depth or habitat zone only; whether it occurs in the study region is geography, not scope. High = the kind of organism and its normal depth or zone fit the target group; intermediate = mainly outside it but with a regular life stage inside it, or a group containing both kinds; low = a kind of organism, realm or depth the target group excludes,
   "p_scope_range": [low, high],
-  "p_geographic": probability that the study area lies within this taxon’s geographic range (overall, across the study area),
+  "p_geographic": probability that the study area lies within this taxon's geographic range (overall, across the study area),
   "p_geographic_range": [low, high],
   "p_contamination": probability that this detection is contamination rather than DNA from the sampled environment. Anchors: high (about 0.7 or more) = a food, lab or aquarium species with no wild population in the region; intermediate (about 0.2-0.5) = a commercial food or bait species that also lives wild in the region, or a human-associated taxon; low (under 0.2) = otherwise,
   "review_alternatives": comma-separated string of plausible alternative taxa that better fit the geography and habitat, or null,
@@ -30,7 +30,7 @@ GUIDELINES:
 - For contaminant assessment, consider: Homo sapiens and domestic animals are common contaminants in molecular studies. Common lab contaminants include Bos taurus, Sus scrofa, Gallus gallus, and other food-source species.
 - Give a low probability only when reasonably confident. If uncertain, give an intermediate probability with a wide 90% range rather than making a strong claim.
 - Judge GEOGRAPHY (range) only: habitat fit and rarity are rated separately, and a rare but in-range occurrence has an intermediate geographic probability, not a low one.
-- If you cannot recall a rare or poorly known taxon’s range, give an intermediate probability with low confidence rather than recalling one. No records is not evidence of absence.
+- If you cannot recall a rare or poorly known taxon's range, give an intermediate probability with low confidence rather than recalling one. No records is not evidence of absence.
 - When a taxon line ends with a "[...]" bracket, that is the statistical pipeline's OWN confidence for this call (posterior/occurrence prior/candidate weights), not your input. Use it to flag disagreement between the pipeline's confidence and your own ecological judgment in review_comment -- e.g. a low pipeline posterior alongside your own high probabilities is worth a note -- but do not let it override your independent assessment itself.
 
 WORKED EXAMPLES (invented taxa):

@@ -362,8 +362,8 @@ site table, and the per-taxon counts alone have not been evaluated. A
 missing coordinate column is an error rather than an empty bracket,
 because an empty bracket reads as "no records" and "we could not look"
 must never be served as "nothing there". Measured on the maintainer's own
-labels for the 34 hardest taxa: agreement 75\\% -> 78\\%, precision
-80\\% -> 84\\%, and the rows it newly acted on were 94\\% rows he also
+labels for the 34 hardest taxa: agreement 75\% -> 78\%, precision
+80\% -> 84\%, and the rows it newly acted on were 94\% rows he also
 acted on. Part of the cache key, including the pool's latitude extent.}
 }
 \value{
@@ -397,8 +397,8 @@ deterministic column rather than relying on \code{review_comment}
 alone.}
 \item{\code{llm_p_habitat}, \code{llm_p_habitat_lo},
 \code{llm_p_habitat_hi}}{The habitat probability the model gave and the
-90\\% range it stated for it.}
-\item{\code{llm_p_transported}}{Probability that the taxon\'s DNA could
+90\% range it stated for it.}
+\item{\code{llm_p_transported}}{Probability that the taxon's DNA could
 plausibly reach these samples from adjacent habitats. Asked separately
 from residency so that "could have washed in" is not scored as "lives
 here". Output only: no rule reads it.}
@@ -406,10 +406,10 @@ here". Output only: no rule reads it.}
 \code{llm_p_scope_hi}}{Likewise for scope.}
 \item{\code{llm_p_contamination}}{The contamination probability.}
 \item{\code{llm_p_geographic}}{The study-wide geographic probability:
-with \code{sites}, the MAXIMUM over the taxon\'s detected sites.}
+with \code{sites}, the MAXIMUM over the taxon's detected sites.}
 }
-The stated 90\\% ranges feed no rule either. They are kept because they were
-measured to be 5--10 times the model\'s own run-to-run spread, so they
+The stated 90\% ranges feed no rule either. They are kept because they were
+measured to be 5--10 times the model's own run-to-run spread, so they
 express uncertainty about the TAXON rather than noise, which is worth having
 in front of a reviewer.
 When \code{sites} is supplied the data frame also carries
@@ -554,9 +554,9 @@ derived from those probabilities here. The cuts are
 
 Why: a category is the least reproducible part of the review. Measured on
 150 taxa of a real study with \code{claude-opus-5-5}, re-asking the same
-categorical prompt changed 10\\% of the decisions the verdicts drive. Asking
-for a probability and cutting it here leaves 3\\%, and agrees with the
-maintainer's own labels on 78\\% of rows against 67\\%.
+categorical prompt changed 10\% of the decisions the verdicts drive. Asking
+for a probability and cutting it here leaves 3\%, and agrees with the
+maintainer's own labels on 78\% of rows against 67\%.
 
 The cut is applied AFTER the cache, never before it. What a cache entry
 holds is the probability -- the model's answer -- and a cut is this
@@ -577,6 +577,12 @@ real taxon for the same reason.
 }
 
 \section{Site-aware geography}{
+
+\strong{The review is measurably more accurate with \code{sites} than
+without.} On the maintainer's own labels for the hardest 34 taxa of a real
+study, agreement with him was 78\% with \code{sites} and
+\code{occurrence_data} against 67\% without either, precision 84\% against
+75\%, and recall 65\% against 44\%. Supply a site table when you have one.
 
 A study that spans a coast or a latitude gradient has no single answer to
 "is this taxon geographically plausible here?": a tropical reef fish is

@@ -365,6 +365,72 @@ test_that("the study-wide pair is the maximum over sites, never the model's summ
   expect_equal(out$llm_geographic_plausibility, rep("likely", 2L))
 })
 
+test_that("the study-wide maximum is over the DETECTED sites, not the whole table", {
+  # the shape that exposed this on live data: one detected site, beyond the
+  # stated limit, while another site in the table lies inside the range
+  out <- .gs_review("Taxon a",
+    .gs_fn(list(`Taxon a` = .gs_geo(north = "33", p_in = "0.5", p_out = "0.04"))),
+    site_vec = "North"
+  )
+  expect_equal(out$llm_p_geographic_site, 0.04)
+  expect_equal(out$llm_p_geographic, 0.04) # not 0.5 from South, where it was not detected
+  expect_equal(out$llm_geographic_plausibility, "unlikely")
+  # it matters because the geography override acts only when the study verdict
+  # is likely or possible: 0.5 here would enable an override on evidence about
+  # a site this taxon was never detected at
+  expect_false(out$llm_geographic_plausibility %in% c("likely", "possible"))
+  # detected at the in-range site as well: now the maximum is 0.5
+  out2 <- .gs_review(rep("Taxon a", 2L),
+    .gs_fn(list(`Taxon a` = .gs_geo(north = "33", p_in = "0.5", p_out = "0.04"))),
+    site_vec = c("North", "South")
+  )
+  expect_equal(out2$llm_p_geographic, rep(0.5, 2L))
+  expect_equal(out2$llm_geographic_plausibility, rep("possible", 2L))
+})
+
+test_that("the study probability never exceeds the maximum over the detected sites", {
+  for (geo in list(
+    .gs_geo(south = "33"), .gs_geo(north = "35"),
+    .gs_geo(south = "33", north = "35"), .gs_geo(),
+    .gs_geo(outside = "North"), .gs_geo(known = "false", p_in = "0.5"),
+    .gs_geo(south = "40", p_out = "0.01")
+  )) {
+    for (sv in list("North", c("North", "Mid"), c("North", "Mid", "South"), "South")) {
+      out <- .gs_review(rep("Taxon a", length(sv)),
+        .gs_fn(list(`Taxon a` = geo)),
+        site_vec = sv
+      )
+      expect_equal(out$llm_p_geographic, rep(max(out$llm_p_geographic_site), length(sv)))
+      expect_true(all(out$llm_p_geographic <= max(out$llm_p_geographic_site)))
+    }
+  }
+})
+
+test_that("two taxa with identical answers but different detected sites differ", {
+  geo <- .gs_geo(north = "33", p_in = "0.5", p_out = "0.04")
+  out <- .gs_review(c("Taxon a", "Taxon b"),
+    .gs_fn(list(`Taxon a` = geo, `Taxon b` = geo)),
+    site_vec = c("North", "South")
+  )
+  # same range answer; a was detected outside it, b inside
+  expect_equal(out$llm_p_geographic, c(0.04, 0.5))
+  expect_equal(out$llm_geographic_plausibility, c("unlikely", "possible"))
+})
+
+test_that("a taxon whose every site is unknown falls back to the whole table", {
+  expect_warning(
+    out <- review_assignments(
+      data.frame(tx = "Taxon a", site = "Elsewhere", stringsAsFactors = FALSE),
+      taxon_col = "tx", context = .gs_ctx, data_type = "eDNA",
+      llm_fn = .gs_fn(list(`Taxon a` = .gs_geo(north = "33", p_in = "0.5", p_out = "0.04"))),
+      model_label = "frozen", pause_seconds = 0, verbose = FALSE, sites = .gs_sites
+    ),
+    "Elsewhere"
+  )
+  # no detected site to take a maximum over, so the table is all there is
+  expect_equal(out$llm_p_geographic, 0.5)
+})
+
 # --- 6. per-row join, unknown rows, output shape ------------------------------
 
 test_that("rows with NA or unknown site get the study-wide pair; output shape", {
@@ -384,9 +450,13 @@ test_that("rows with NA or unknown site get the study-wide pair; output shape", 
     ),
     "Elsewhere"
   )
-  # Taxon a: North is above 35, so unlikely; the NA and unknown rows take the
-  # study-wide verdict, which is Mid's "likely"
-  expect_equal(out$llm_geographic_plausibility_site, c("unlikely", "likely", "likely", "likely"))
+  # Taxon a: North is above 35, so unlikely. North is also its ONLY known
+  # detected site, so the study-wide verdict is unlikely too, and the NA and
+  # unknown rows take it. Mid lies inside the range but the taxon was never
+  # detected there, so it cannot rescue the study verdict.
+  # row 4 is Taxon b, whose answer states no limit at all
+  expect_equal(out$llm_geographic_plausibility_site, c("unlikely", "unlikely", "unlikely", "likely"))
+  expect_equal(out$llm_geographic_plausibility[1:3], rep("unlikely", 3L))
   expect_equal(
     match("llm_geographic_plausibility_site", names(out)),
     match("llm_geographic_plausibility", names(out)) + 1L

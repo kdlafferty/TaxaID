@@ -311,8 +311,8 @@
 #'   missing coordinate column is an error rather than an empty bracket,
 #'   because an empty bracket reads as "no records" and "we could not look"
 #'   must never be served as "nothing there". Measured on the maintainer's own
-#'   labels for the 34 hardest taxa: agreement 75\% -> 78\%, precision
-#'   80\% -> 84\%, and the rows it newly acted on were 94\% rows he also
+#'   labels for the 34 hardest taxa: agreement 75% -> 78%, precision
+#'   80% -> 84%, and the rows it newly acted on were 94% rows he also
 #'   acted on. Part of the cache key, including the pool's latitude extent.
 #' @return The input data frame with the review columns appended:
 #' \describe{
@@ -344,8 +344,8 @@
 #'     alone.}
 #'   \item{\code{llm_p_habitat}, \code{llm_p_habitat_lo},
 #'     \code{llm_p_habitat_hi}}{The habitat probability the model gave and the
-#'     90\% range it stated for it.}
-#'   \item{\code{llm_p_transported}}{Probability that the taxon\'s DNA could
+#'     90% range it stated for it.}
+#'   \item{\code{llm_p_transported}}{Probability that the taxon's DNA could
 #'     plausibly reach these samples from adjacent habitats. Asked separately
 #'     from residency so that "could have washed in" is not scored as "lives
 #'     here". Output only: no rule reads it.}
@@ -353,10 +353,10 @@
 #'     \code{llm_p_scope_hi}}{Likewise for scope.}
 #'   \item{\code{llm_p_contamination}}{The contamination probability.}
 #'   \item{\code{llm_p_geographic}}{The study-wide geographic probability:
-#'     with \code{sites}, the MAXIMUM over the taxon\'s detected sites.}
+#'     with \code{sites}, the MAXIMUM over the taxon's detected sites.}
 #' }
-#' The stated 90\% ranges feed no rule either. They are kept because they were
-#' measured to be 5--10 times the model\'s own run-to-run spread, so they
+#' The stated 90% ranges feed no rule either. They are kept because they were
+#' measured to be 5--10 times the model's own run-to-run spread, so they
 #' express uncertainty about the TAXON rather than noise, which is worth having
 #' in front of a reviewer.
 #' When \code{sites} is supplied the data frame also carries
@@ -464,9 +464,9 @@
 #'
 #' Why: a category is the least reproducible part of the review. Measured on
 #' 150 taxa of a real study with \code{claude-opus-5-5}, re-asking the same
-#' categorical prompt changed 10\% of the decisions the verdicts drive. Asking
-#' for a probability and cutting it here leaves 3\%, and agrees with the
-#' maintainer's own labels on 78\% of rows against 67\%.
+#' categorical prompt changed 10% of the decisions the verdicts drive. Asking
+#' for a probability and cutting it here leaves 3%, and agrees with the
+#' maintainer's own labels on 78% of rows against 67%.
 #'
 #' The cut is applied AFTER the cache, never before it. What a cache entry
 #' holds is the probability -- the model's answer -- and a cut is this
@@ -486,6 +486,12 @@
 #' real taxon for the same reason.
 #'
 #' @section Site-aware geography:
+#' \strong{The review is measurably more accurate with \code{sites} than
+#' without.} On the maintainer's own labels for the hardest 34 taxa of a real
+#' study, agreement with him was 78% with \code{sites} and
+#' \code{occurrence_data} against 67% without either, precision 84% against
+#' 75%, and recall 65% against 44%. Supply a site table when you have one.
+#'
 #' A study that spans a coast or a latitude gradient has no single answer to
 #' "is this taxon geographically plausible here?": a tropical reef fish is
 #' plausible at the southern sites and not at the northern ones. With
@@ -1356,7 +1362,7 @@ review_assignments <- function(input_df,
 
   # --- Per-site verdicts (sites path only) -----------------------------------
   if (!is.null(sites)) {
-    result <- .apply_site_verdicts(result, sites, site_col)
+    result <- .apply_site_verdicts(result, sites, site_col, taxon_col)
   }
 
   # --- Deterministic disagreement flag --------------------------------------
@@ -3001,7 +3007,7 @@ review_assignments <- function(input_df,
 # to be applied to, so the model gives the study-wide probability directly.
 .p_study_geo_field_text <- paste0(
   '  "p_geographic": probability that the study area lies within this ',
-  "taxon’s geographic range (overall, across the study area),\n",
+  "taxon's geographic range (overall, across the study area),\n",
   '  "p_geographic_range": [low, high],\n'
 )
 
@@ -3028,11 +3034,11 @@ review_assignments <- function(input_df,
   "- State range limits as numbers. Southern limit = the southernmost ",
   "latitude of the range within the study region, northern limit = the ",
   "northernmost. Decide which side each limit is on before answering. The ",
-  "study’s site verdicts are computed from your limits, so do not ",
+  "study's site verdicts are computed from your limits, so do not ",
   "summarise geography any other way. If latitude cannot describe the range ",
   "-- for a study that runs east to west, or one at a single latitude -- ",
   "leave both limits null and name the sites outside the range instead.\n",
-  "- If you cannot recall a rare or poorly known taxon’s range, say so: ",
+  "- If you cannot recall a rare or poorly known taxon's range, say so: ",
   "range_known false, and p_inside_range = p_outside_range = an intermediate ",
   "value with low confidence. Do not reconstruct a range from the genus or ",
   "from similar species. No records is not evidence of absence.\n"
@@ -3042,7 +3048,7 @@ review_assignments <- function(input_df,
   "- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated ",
   "separately, and a rare but in-range occurrence has an intermediate ",
   "geographic probability, not a low one.\n",
-  "- If you cannot recall a rare or poorly known taxon’s range, give an ",
+  "- If you cannot recall a rare or poorly known taxon's range, give an ",
   "intermediate probability with low confidence rather than recalling one. ",
   "No records is not evidence of absence.\n"
 )
@@ -3456,30 +3462,47 @@ review_assignments <- function(input_df,
 #'
 #' Each row takes its own site's probability and verdict; a row whose site is NA
 #' or absent from the site table takes the study-wide pair. The study-wide
-#' probability is the MAXIMUM over the sites where the taxon was detected, and
-#' the study-wide verdict is that probability's level -- never the model's own
-#' summary, which it is no longer asked for. Taking the maximum is why the
-#' study verdict is also the best site verdict: the cuts are monotone.
+#' probability is the MAXIMUM over the sites where THIS taxon was detected --
+#' not over the whole site table -- and the study-wide verdict is that
+#' probability's level, never the model's own summary, which it is no longer
+#' asked for. Taking the maximum is why the study verdict is also the best of
+#' those site verdicts: the cuts are monotone.
+#'
+#' Detected sites, not all sites, because the study-wide verdict is a statement
+#' about this taxon's detections. A taxon detected only at a site beyond its
+#' stated range would otherwise be rescued to "possible" by some OTHER site
+#' that happens to lie inside the range and where it was never detected -- and
+#' the geography override acts only when the study verdict is likely or
+#' possible, so that rescue would enable an override on evidence about a
+#' different site. A taxon whose every row has an NA or unknown site has no
+#' detected site to take the maximum over, so it falls back to the whole table.
+#'
+#' Grouped by taxon as well as by answer: two taxa can return identical range
+#' answers while having been detected at different sites, and it is the sites
+#' that differ which decide this.
 #' @noRd
-.apply_site_verdicts <- function(result, sites, site_col) {
+.apply_site_verdicts <- function(result, sites, site_col, taxon_col) {
   study <- result$llm_geographic_plausibility
   study_p <- result$llm_p_geographic
   per_site <- study
   per_site_p <- study_p
   gj <- result$.geo_json
   idx <- match(as.character(result[[site_col]]), sites$site)
-  combo <- paste(gj, study, sep = "\u0001")
+  combo <- paste(as.character(result[[taxon_col]]), gj, study, sep = "\u0001")
   for (u in unique(combo[!is.na(gj)])) {
     rows <- which(combo == u & !is.na(gj))
     spec <- .geo_spec_from_json(gj[rows[1L]])
     base <- study[rows[1L]]
     pvec <- .geo_site_probs(spec, sites)
     vec <- .geo_site_verdicts(spec, base, sites)
-    best_p <- if (all(is.na(pvec))) NA_real_ else max(pvec, na.rm = TRUE)
-    best <- if (all(is.na(vec))) {
+    det <- unique(idx[rows])
+    det <- det[!is.na(det)]
+    if (length(det) == 0L) det <- seq_len(nrow(sites))
+    best_p <- if (all(is.na(pvec[det]))) NA_real_ else max(pvec[det], na.rm = TRUE)
+    best <- if (all(is.na(vec[det]))) {
       NA_character_
     } else {
-      .geo_levels[min(match(vec, .geo_levels))]
+      .geo_levels[min(match(vec[det], .geo_levels))]
     }
     sv <- rep(best, length(rows))
     sp <- rep(best_p, length(rows))
