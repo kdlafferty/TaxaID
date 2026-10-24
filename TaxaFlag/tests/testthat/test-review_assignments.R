@@ -4,11 +4,11 @@
 mock_llm_fn <- function(prompt_str, ...) {
   # Return a realistic JSON response for Palmyra Atoll reef taxa
   '[
-    {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Blacktip reef shark, common on Pacific coral reefs"},
-    {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"},
-    {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": "Eviota sp., Trimma sp.", "review_confidence": "moderate", "review_comment": "Diverse family on coral reefs; many cryptic species"},
-    {"taxon_name": "Salmo salar", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": "likely", "contamination_risk": "moderate", "review_alternatives": "Lutjanus bohar, Lutjanus kasmira", "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Atlantic salmon; not found in central Pacific. Possible food-source contaminant"},
-    {"taxon_name": "Bos taurus", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Domestic cattle; common food-source contaminant"}
+    {"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Blacktip reef shark, common on Pacific coral reefs"},
+    {"taxon_name": "Homo sapiens", "p_habitat": 0.03, "p_geographic": 0.95, "p_scope": 0.03, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"},
+    {"taxon_name": "Gobiidae", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": "Eviota sp., Trimma sp.", "review_confidence": "moderate", "review_comment": "Diverse family on coral reefs; many cryptic species"},
+    {"taxon_name": "Salmo salar", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": 0.95, "p_contamination": 0.35, "review_alternatives": "Lutjanus bohar, Lutjanus kasmira", "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Atlantic salmon; not found in central Pacific. Possible food-source contaminant"},
+    {"taxon_name": "Bos taurus", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": 0.03, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Domestic cattle; common food-source contaminant"}
   ]'
 }
 
@@ -222,8 +222,8 @@ test_that("graceful handling of partial LLM response", {
   # Returns only 2 of 5 taxa
   partial_fn <- function(prompt_str, ...) {
     '[
-      {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
-      {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
+      {"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
+      {"taxon_name": "Homo sapiens", "p_habitat": 0.03, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
     ]'
   }
 
@@ -269,7 +269,7 @@ test_that("truncated batch is recovered via automatic retry with smaller sub-bat
       name <- sub("^- ", "", line)
       name <- sub("\\s*\\(.*\\)$", "", name)
       sprintf(
-        '{"taxon_name": "%s", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+        '{"taxon_name": "%s", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
         name
       )
     }
@@ -334,7 +334,7 @@ test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
   partial_fn <- function(prompt_str, ...) {
     call_count <<- call_count + 1L
     '[
-      {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
+      {"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
     ]'
   }
 
@@ -492,8 +492,8 @@ test_that("a model that echoes the annotated label still joins back to its rows"
       sub("\\s*\\(rank: [^()]*\\)$", "", labs)
     )
     paste0("[", paste(sprintf(
-      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely",
-        "scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,
+      '{"taxon_name":"%s","p_habitat": 0.95,"p_geographic": 0.95,
+        "p_scope": 0.95,"p_contamination": 0.02,"review_alternatives":null,
         "review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
       labs
     ), collapse = ","), "]")
@@ -548,7 +548,7 @@ test_that("a model that echoes the annotated label still joins back to its rows"
       sub("\\s*\\(rank: [^()]*\\)$", "", labs)
     )
     paste0("[", paste(sprintf(
-      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely","scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,"review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
+      '{"taxon_name":"%s","p_habitat": 0.95,"p_geographic": 0.95,"p_scope": 0.95,"p_contamination": 0.02,"review_alternatives":null,"review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
       labs
     ), collapse = ","), "]")
   }
@@ -565,7 +565,7 @@ test_that("a cached review is reproducible and makes no second LLM call", {
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
     taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA",
-    cache_dir = cd, verbose = FALSE
+    model_label = "test-model", cache_dir = cd, verbose = FALSE
   )
   a <- do.call(review_assignments, args)
   first <- get("n", ctr)
@@ -587,7 +587,7 @@ test_that("changing the review context is a cache MISS, not a stale hit", {
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
     taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA",
-    cache_dir = cd, verbose = FALSE
+    model_label = "test-model", cache_dir = cd, verbose = FALSE
   )
   invisible(do.call(review_assignments, base))
   n1 <- get("n", ctr)
@@ -607,7 +607,7 @@ test_that("cache files are the file-per-key shape taxaflag_clear_cache() manages
     taxon_rank_col = "consensus_rank",
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
-    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA", cache_dir = cd, verbose = FALSE
+    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA", model_label = "test-model", cache_dir = cd, verbose = FALSE
   ))
   inv <- taxaflag_clear_cache(cache_dir = cd, dry_run = TRUE)
   expect_gt(nrow(inv), 0L)
@@ -650,9 +650,9 @@ test_that("two candidate sets sharing one display label are reviewed once, and n
   n_calls <- 0L
   fake_llm <- function(prompt, ...) {
     n_calls <<- n_calls + 1L
-    '[{"taxon_name":"Oncorhynchus mykiss","habitat_plausibility":"likely",
-       "geographic_plausibility":"likely","scope_plausibility":null,
-       "contamination_risk":"low","review_alternatives":null,
+    '[{"taxon_name":"Oncorhynchus mykiss","p_habitat": 0.95,
+       "p_geographic": 0.95,"p_scope": null,
+       "p_contamination": 0.02,"review_alternatives":null,
        "review_lower_hypotheses":null,"review_confidence":"high",
        "review_comment":null}]'
   }
@@ -693,11 +693,11 @@ test_that(".parse_json_text() refuses to treat a model reply as a URL or file pa
 # ===========================================================================
 
 .CANNED <- list(
-  "Carcharhinus melanopterus" = '{"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
-  "Homo sapiens" = '{"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
-  "Gobiidae" = '{"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "moderate", "review_comment": null}',
-  "Salmo salar" = '{"taxon_name": "Salmo salar", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": null, "contamination_risk": "moderate", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
-  "Bos taurus" = '{"taxon_name": "Bos taurus", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}'
+  "Carcharhinus melanopterus" = '{"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Homo sapiens" = '{"taxon_name": "Homo sapiens", "p_habitat": 0.03, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Gobiidae" = '{"taxon_name": "Gobiidae", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "moderate", "review_comment": null}',
+  "Salmo salar" = '{"taxon_name": "Salmo salar", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": null, "p_contamination": 0.35, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Bos taurus" = '{"taxon_name": "Bos taurus", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": null, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}'
 )
 
 # The real failure mode this whole mechanism exists for: a response that
@@ -873,7 +873,7 @@ test_that("an unreviewed taxon is never written to the cache", {
     data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
-    cache_dir = cache_dir, verbose = FALSE
+    model_label = "test-model", cache_dir = cache_dir, verbose = FALSE
   ))
 
   # Four answered taxa cached; the omitted one is not -- caching a non-answer
@@ -893,7 +893,7 @@ test_that("a cached non-answer from an older run is re-asked, not served", {
     data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = mock_llm_fn, pause_seconds = 0,
-    cache_dir = cache_dir, verbose = FALSE
+    model_label = "test-model", cache_dir = cache_dir, verbose = FALSE
   )
   files <- list.files(cache_dir, pattern = "_review\\.rds$", full.names = TRUE)
   hit <- Filter(
@@ -909,7 +909,7 @@ test_that("a cached non-answer from an older run is re-asked, not served", {
     data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
-    cache_dir = cache_dir, verbose = FALSE
+    model_label = "test-model", cache_dir = cache_dir, verbose = FALSE
   )
 
   # One call, for the one taxon whose cached entry held no verdict.
@@ -960,9 +960,9 @@ test_that("a candidate set arriving in two posterior orders is reviewed once", {
     )]
     labels_asked <<- c(labels_asked, lab)
     paste0(
-      '[{"taxon_name":"', lab[[1L]], '","habitat_plausibility":"likely",',
-      '"geographic_plausibility":"likely","scope_plausibility":null,',
-      '"contamination_risk":"low","review_alternatives":null,',
+      '[{"taxon_name":"', lab[[1L]], '","p_habitat": 0.95,',
+      '"p_geographic": 0.95,"p_scope": null,',
+      '"p_contamination": 0.02,"review_alternatives":null,',
       '"review_lower_hypotheses":null,"review_confidence":"high",',
       '"review_comment":null}]'
     )
