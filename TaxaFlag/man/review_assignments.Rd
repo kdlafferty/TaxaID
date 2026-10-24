@@ -39,8 +39,7 @@ review_assignments(
   poor_absolute_fit_col = "poor_absolute_fit",
   best_identity_col = "best_identity",
   sites = NULL,
-  site_col = "site",
-  occurrence_data = NULL
+  site_col = "site"
 )
 }
 \arguments{
@@ -349,25 +348,6 @@ the column is absent then); non-\code{NA} values not found in
 \code{sites$site} are named in a warning and those rows get the
 study-wide verdict. Not part of the cache key, since it does not change
 the prompt. Default \code{"site"}.}
-
-\item{occurrence_data}{\code{NULL} (default) or a data frame of occurrence
-records for the study region -- an occurrence table as
-\code{TaxaFetch} writes one, with \code{decimalLatitude},
-\code{decimalLongitude}, optionally \code{point_id}, and the rank columns
-to match on (\code{taxon_name}, \code{genus}, \code{family},
-\code{order}, \code{class}, \code{phylum}). When supplied, each taxon
-line in the prompt gains the pool's facts about that taxon -- record and
-location counts, the latitude extent, and per detected site the nearest
-record and the record locations within 50 km -- and the guidelines gain a
-bullet on how to read them. Requires \code{sites}: the facts are per
-detected site, so there is nothing for most of them to be about without a
-site table, and the per-taxon counts alone have not been evaluated. A
-missing coordinate column is an error rather than an empty bracket,
-because an empty bracket reads as "no records" and "we could not look"
-must never be served as "nothing there". Measured on the maintainer's own
-labels for the 34 hardest taxa: agreement 75\% -> 78\%, precision
-80\% -> 84\%, and the rows it newly acted on were 94\% rows he also
-acted on. Part of the cache key, including the pool's latitude extent.}
 }
 \value{
 The input data frame with the review columns appended:
@@ -425,8 +405,7 @@ semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
 records a swap, an ignored site name or a fallback). \code{sites} alone
 also adds \code{llm_p_geographic_site}, \code{llm_p_inside_range},
 \code{llm_p_outside_range}, \code{llm_range_known},
-\code{llm_range_south_lat} and \code{llm_range_north_lat};
-\code{occurrence_data} adds no column of its own, only facts to the prompt.
+\code{llm_range_south_lat} and \code{llm_range_north_lat}.
 
 Also carries a \code{"review_cuts"} attribute naming the four cut points
 the verdicts were derived with. The cuts are code rather than part of the
@@ -483,10 +462,11 @@ An LLM response can parse cleanly, be the right length, and still leave
 specific taxa out -- consistently the long compound slash labels, i.e. the
 hardest rows, not random ones. That is not truncation, so the halving retry
 alone would not catch it. Without a dedicated safeguard those taxa would be
-filled with \code{NA} in all four \code{llm_} columns, and because export
-chains filter with \code{!= "unlikely"}, which \strong{discards \code{NA}},
-an unreviewed observation would be silently removed from the final species
-list.
+filled with \code{NA} in all four \code{llm_} columns. The workflow
+template and the DAG snippet FLAG on those columns and drop nothing, but an
+export chain written \code{!= "unlikely"} \strong{discards \code{NA}}, so
+under one of those an unreviewed observation would be silently removed from
+the final species list.
 
 A taxon the model answered for but whose answer is unusable counts as
 omitted too, and for the same reason. The probabilities are the answer, so a
@@ -515,8 +495,9 @@ MISS, so an existing cache heals itself. (3) Whatever residue survives is
 \code{attr(result, "n_unreviewed_rows")}, and escalated per
 \code{on_unreviewed}.
 
-The export filters themselves are deliberately UNCHANGED (still
-\code{!= "unlikely"}, still dropping \code{NA}). Keeping an unreviewed row
+A downstream filter is deliberately not second-guessed here: a chain
+written \code{!= "unlikely"} drops \code{NA} whatever this function does
+about it. Keeping an unreviewed row
 in a species list would put an unvetted taxon in the output distinguishable
 only by its \code{NA}s; stopping the run instead makes the decision
 per-run and explicit.
@@ -604,11 +585,15 @@ real taxon for the same reason.
 
 \section{Site-aware geography}{
 
-\strong{The review is measurably more accurate with \code{sites} than
-without.} On the maintainer's own labels for the hardest 34 taxa of a real
-study, agreement with him was 78\% with \code{sites} and
-\code{occurrence_data} against 67\% without either, precision 84\% against
-75\%, and recall 65\% against 44\%. Supply a site table when you have one.
+\strong{Supply a site table when you have one.} On the maintainer's own
+labels for the hardest 34 taxa of a real study, this prompt with
+\code{sites} agreed with him on 75\% of the decisions, at 80\% precision and
+66\% recall, against 67\%, 75\% and 44\% for a plain probability prompt with
+neither the site block nor the guardrail definitions above. Those two arms
+differ in BOTH respects, so the gain belongs to the pair of them and is not
+an isolated effect of \code{sites}. In both arms the taxon lines also
+carried the pipeline's own posterior and occurrence prior, so neither
+measures the model's unaided judgement.
 
 A study that spans a coast or a latitude gradient has no single answer to
 "is this taxon geographically plausible here?": a tropical reef fish is

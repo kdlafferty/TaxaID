@@ -1,4 +1,4 @@
-# Site-aware geography: review_assignments(sites =, site_col =, occurrence_data =).
+# Site-aware geography: review_assignments(sites =, site_col =).
 # Every test uses a mock llm_fn.
 #
 # The model states its range LIMITS and TaxaFlag computes the site and study
@@ -689,179 +689,21 @@ test_that("the batches are built from a sort of the labels, not the input order"
   expect_equal(first, sort(taxa))
 })
 
-# --- 11. occurrence facts (G7) -----------------------------------------------
+# --- 11. the detected-sites bracket -----------------------------------------
 
-.gs_occ <- data.frame(
-  taxon_name = c(rep("Taxon a", 3L), "Other sp"),
-  genus = c(rep("Taxon", 3L), "Other"),
-  family = c(rep("Taxonidae", 3L), "Otheridae"),
-  decimalLatitude = c(38.0, 37.9, 32.1, 34.4),
-  decimalLongitude = c(-123.0, -122.9, -117.1, -120.0),
-  point_id = c("p1", "p2", "p3", "p4"), stringsAsFactors = FALSE
-)
-
-# Like .gs_review() but supplying the call's rank, which the pool is matched on.
-.gs_review_ranked <- function(taxa, llm_fn, ranks, site_vec, ..., sites = .gs_sites) {
-  df <- data.frame(
-    tx = taxa, rk = ranks, site = site_vec, stringsAsFactors = FALSE
-  )
-  review_assignments(df,
-    taxon_col = "tx", taxon_rank_col = "rk", context = .gs_ctx,
-    data_type = "eDNA", llm_fn = llm_fn, model_label = "frozen",
-    pause_seconds = 0, verbose = FALSE, sites = sites, ...
-  )
-}
-
-test_that("the occurrence facts reach the taxon line and the guideline", {
-  out <- .gs_review_ranked("Taxon a", .gs_fn(), "species", "North",
-    occurrence_data = .gs_occ
-  )
-  p <- attr(out, "llm_prompts")[["1"]]
-  expect_match(p, "[detected at: North (38.0 N)]", fixed = TRUE)
-  expect_match(p, "[occurrence data: 3 records at 3 locations in the pool, latitude 32.1-38.0 N;",
-    fixed = TRUE
-  )
-  expect_match(p, "North: nearest record 0 km, 2 record locations within 50 km",
-    fixed = TRUE
-  )
-  # the pool's own extent, computed, never assumed
-  expect_match(p, "the pool covers only 32.1-38.0 N", fixed = TRUE)
-  expect_match(p, "No records in the pool is weak evidence of absence", fixed = TRUE)
-})
-
-test_that("a taxon with no records, and a rank the pool lacks, read differently", {
-  out <- .gs_review_ranked(c("Nobody sp", "Taxon a"), .gs_fn(),
-    c("species", "species"), c("North", "North"), occurrence_data = .gs_occ
-  )
-  p <- attr(out, "llm_prompts")[["1"]]
-  expect_match(p, "no records of this taxon in the regional pool", fixed = TRUE)
-  # a rank the pool has no column for is NOT reported as absence
-  df <- data.frame(
-    tx = "Taxon a", rk = "subspecies", site = "North", stringsAsFactors = FALSE
-  )
-  out2 <- review_assignments(df,
-    taxon_col = "tx", taxon_rank_col = "rk", context = .gs_ctx,
-    data_type = "eDNA", llm_fn = .gs_fn(), model_label = "frozen",
-    pause_seconds = 0, verbose = FALSE, sites = .gs_sites,
-    occurrence_data = .gs_occ
-  )
-  expect_match(attr(out2, "llm_prompts")[["1"]],
-    "[occurrence data: rank not available in the pool]",
-    fixed = TRUE
-  )
-})
-
-test_that("a call with no rank at all reports 'not available', never absence", {
-  out <- .gs_review("Taxon a", .gs_fn(), site_vec = "North", occurrence_data = .gs_occ)
-  expect_match(attr(out, "llm_prompts")[["1"]],
-    "[occurrence data: rank not available in the pool]",
-    fixed = TRUE
-  )
-  expect_false(grepl("no records of this taxon", attr(out, "llm_prompts")[["1"]],
-    fixed = TRUE
-  ))
-})
-
-test_that("the pool is matched on the column of the call's own rank", {
-  df <- data.frame(
-    tx = c("Taxonidae", "Taxon a"), rk = c("family", "species"),
-    site = c("North", "North"), stringsAsFactors = FALSE
-  )
-  out <- review_assignments(df,
-    taxon_col = "tx", taxon_rank_col = "rk", context = .gs_ctx,
-    data_type = "eDNA", llm_fn = .gs_fn(), model_label = "frozen",
-    pause_seconds = 0, verbose = FALSE, sites = .gs_sites,
-    occurrence_data = .gs_occ
-  )
-  p <- attr(out, "llm_prompts")[["1"]]
-  # the family call finds the family's 3 records
-  expect_match(p, "Taxonidae (rank: family) [detected at: North (38.0 N)] [occurrence data: 3 records",
-    fixed = TRUE
-  )
-  # a binomial looked up at genus rank finds nothing: a name is not a key
+test_that("the bracket lists the detected sites north to south, unknowns out", {
   expect_equal(
-    TaxaFlag:::.occurrence_bracket(
-      "Taxon a", "genus", "North",
-      TaxaFlag:::.validate_occurrence_data(.gs_occ), .gs_sites
-    ),
-    "[occurrence data: no records of this taxon in the regional pool]"
+    TaxaFlag:::.detected_sites_bracket(c("South", "North"), .gs_sites),
+    "[detected at: North (38.0 N); South (32.0 N)]"
   )
-})
-
-test_that("the occurrence facts are part of the cache key", {
-  cd <- tempfile("gs_occ")
-  log <- new.env()
-  fn <- .gs_fn(log = log)
-  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd)
-  expect_equal(log$n, 1L)
-  # the same call with facts is a different question
-  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd, occurrence_data = .gs_occ)
-  expect_equal(log$n, 2L)
-  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd, occurrence_data = .gs_occ)
-  expect_equal(log$n, 2L)
-  # a pool with a different extent quotes a different guideline, so it is a miss
-  wider <- rbind(.gs_occ, transform(.gs_occ[1, ], decimalLatitude = 45))
-  .gs_review("Taxon a", fn, site_vec = "North", cache_dir = cd, occurrence_data = wider)
-  expect_equal(log$n, 3L)
-})
-
-test_that("occurrence_data is validated, and refused without sites", {
-  expect_error(
-    .gs_review("Taxon a", .gs_fn(), site_vec = "North", occurrence_data = "x"),
-    "must be a data frame"
-  )
-  expect_error(
-    .gs_review("Taxon a", .gs_fn(),
-      site_vec = "North",
-      occurrence_data = .gs_occ[, c("taxon_name", "family")]
-    ),
-    "missing column"
-  )
-  expect_error(
-    review_assignments(
-      data.frame(tx = "Taxon a", stringsAsFactors = FALSE),
-      taxon_col = "tx", context = .gs_ctx, data_type = "eDNA",
-      llm_fn = .gs_fn(), pause_seconds = 0, verbose = FALSE,
-      occurrence_data = .gs_occ
-    ),
-    "needs 'sites' too"
-  )
-  # a pool with no usable coordinate at all is an error, not an empty bracket
-  bad <- .gs_occ
-  bad$decimalLatitude <- NA_real_
-  expect_error(
-    .gs_review("Taxon a", .gs_fn(), site_vec = "North", occurrence_data = bad),
-    "no records with usable coordinates"
-  )
-})
-
-test_that("point_id is derived when absent, and uncoordinated records never count", {
-  o <- .gs_occ
-  o$point_id <- NULL
-  v <- TaxaFlag:::.validate_occurrence_data(o)
-  expect_equal(v$point_id, paste(o$decimalLatitude, o$decimalLongitude, sep = "_"))
-  # one record with no coordinate: dropped before anything is counted, so the
-  # record count cannot exceed what the locations could have come from
-  o2 <- rbind(.gs_occ, transform(.gs_occ[1, ],
-    decimalLatitude = NA_real_,
-    point_id = "p9"
-  ))
-  v2 <- TaxaFlag:::.validate_occurrence_data(o2)
-  expect_equal(nrow(v2), nrow(.gs_occ))
-  expect_false("p9" %in% v2$point_id)
-})
-
-test_that("the haversine is the same R the override uses", {
-  expect_equal(TaxaFlag:::.haversine_km(0, 0, 0, 0), 0)
-  # one degree of latitude at the equator
-  expect_equal(TaxaFlag:::.haversine_km(0, 0, 1, 0), 2 * pi * 6371 / 360,
-    tolerance = 1e-6
-  )
+  # A site the table does not know has no latitude to place it by, so it is
+  # left out here and takes the study-wide verdict downstream.
   expect_equal(
-    TaxaFlag:::.haversine_km(34.4, -120, c(34.4, 35.4), c(-120, -120)),
-    c(0, 2 * pi * 6371 / 360),
-    tolerance = 1e-6
+    TaxaFlag:::.detected_sites_bracket(c("North", "Nowhere"), .gs_sites),
+    "[detected at: North (38.0 N)]"
   )
+  expect_true(is.na(TaxaFlag:::.detected_sites_bracket("Nowhere", .gs_sites)))
+  expect_true(is.na(TaxaFlag:::.detected_sites_bracket(character(0), .gs_sites)))
 })
 
 # --- 12. an unusable probability is an omission, not an answer ---------------

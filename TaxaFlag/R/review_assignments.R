@@ -299,24 +299,6 @@
 #'   \code{sites$site} are named in a warning and those rows get the
 #'   study-wide verdict. Not part of the cache key, since it does not change
 #'   the prompt. Default \code{"site"}.
-#' @param occurrence_data \code{NULL} (default) or a data frame of occurrence
-#'   records for the study region -- an occurrence table as
-#'   \code{TaxaFetch} writes one, with \code{decimalLatitude},
-#'   \code{decimalLongitude}, optionally \code{point_id}, and the rank columns
-#'   to match on (\code{taxon_name}, \code{genus}, \code{family},
-#'   \code{order}, \code{class}, \code{phylum}). When supplied, each taxon
-#'   line in the prompt gains the pool's facts about that taxon -- record and
-#'   location counts, the latitude extent, and per detected site the nearest
-#'   record and the record locations within 50 km -- and the guidelines gain a
-#'   bullet on how to read them. Requires \code{sites}: the facts are per
-#'   detected site, so there is nothing for most of them to be about without a
-#'   site table, and the per-taxon counts alone have not been evaluated. A
-#'   missing coordinate column is an error rather than an empty bracket,
-#'   because an empty bracket reads as "no records" and "we could not look"
-#'   must never be served as "nothing there". Measured on the maintainer's own
-#'   labels for the 34 hardest taxa: agreement 75% -> 78%, precision
-#'   80% -> 84%, and the rows it newly acted on were 94% rows he also
-#'   acted on. Part of the cache key, including the pool's latitude extent.
 #' @return The input data frame with the review columns appended:
 #' \describe{
 #'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely,
@@ -372,8 +354,7 @@
 #' records a swap, an ignored site name or a fallback). \code{sites} alone
 #' also adds \code{llm_p_geographic_site}, \code{llm_p_inside_range},
 #' \code{llm_p_outside_range}, \code{llm_range_known},
-#' \code{llm_range_south_lat} and \code{llm_range_north_lat};
-#' \code{occurrence_data} adds no column of its own, only facts to the prompt.
+#' \code{llm_range_south_lat} and \code{llm_range_north_lat}.
 #'
 #' Also carries a \code{"review_cuts"} attribute naming the four cut points
 #' the verdicts were derived with. The cuts are code rather than part of the
@@ -399,10 +380,11 @@
 #' specific taxa out -- consistently the long compound slash labels, i.e. the
 #' hardest rows, not random ones. That is not truncation, so the halving retry
 #' alone would not catch it. Without a dedicated safeguard those taxa would be
-#' filled with \code{NA} in all four \code{llm_} columns, and because export
-#' chains filter with \code{!= "unlikely"}, which \strong{discards \code{NA}},
-#' an unreviewed observation would be silently removed from the final species
-#' list.
+#' filled with \code{NA} in all four \code{llm_} columns. The workflow
+#' template and the DAG snippet FLAG on those columns and drop nothing, but an
+#' export chain written \code{!= "unlikely"} \strong{discards \code{NA}}, so
+#' under one of those an unreviewed observation would be silently removed from
+#' the final species list.
 #'
 #' A taxon the model answered for but whose answer is unusable counts as
 #' omitted too, and for the same reason. The probabilities are the answer, so a
@@ -431,8 +413,9 @@
 #' \code{attr(result, "n_unreviewed_rows")}, and escalated per
 #' \code{on_unreviewed}.
 #'
-#' The export filters themselves are deliberately UNCHANGED (still
-#' \code{!= "unlikely"}, still dropping \code{NA}). Keeping an unreviewed row
+#' A downstream filter is deliberately not second-guessed here: a chain
+#' written \code{!= "unlikely"} drops \code{NA} whatever this function does
+#' about it. Keeping an unreviewed row
 #' in a species list would put an unvetted taxon in the output distinguishable
 #' only by its \code{NA}s; stopping the run instead makes the decision
 #' per-run and explicit.
@@ -512,11 +495,15 @@
 #' real taxon for the same reason.
 #'
 #' @section Site-aware geography:
-#' \strong{The review is measurably more accurate with \code{sites} than
-#' without.} On the maintainer's own labels for the hardest 34 taxa of a real
-#' study, agreement with him was 78% with \code{sites} and
-#' \code{occurrence_data} against 67% without either, precision 84% against
-#' 75%, and recall 65% against 44%. Supply a site table when you have one.
+#' \strong{Supply a site table when you have one.} On the maintainer's own
+#' labels for the hardest 34 taxa of a real study, this prompt with
+#' \code{sites} agreed with him on 75% of the decisions, at 80% precision and
+#' 66% recall, against 67%, 75% and 44% for a plain probability prompt with
+#' neither the site block nor the guardrail definitions above. Those two arms
+#' differ in BOTH respects, so the gain belongs to the pair of them and is not
+#' an isolated effect of \code{sites}. In both arms the taxon lines also
+#' carried the pipeline's own posterior and occurrence prior, so neither
+#' measures the model's unaided judgement.
 #'
 #' A study that spans a coast or a latitude gradient has no single answer to
 #' "is this taxon geographically plausible here?": a tropical reef fish is
@@ -710,24 +697,9 @@ review_assignments <- function(input_df,
                                poor_absolute_fit_col = "poor_absolute_fit",
                                best_identity_col = "best_identity",
                                sites = NULL,
-                               site_col = "site",
-                               occurrence_data = NULL) {
+                               site_col = "site") {
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
-  # The occurrence facts are per taxon AND per detected site: the distance to
-  # the nearest record and the record locations within 50 km of each site are
-  # most of their measured value. With no site table there are no sites for
-  # them to be about, and the per-taxon counts alone were never scored. Half
-  # the data silently dropped is the worse outcome, so this is refused.
-  if (!is.null(occurrence_data) && is.null(sites)) {
-    stop(
-      "'occurrence_data' needs 'sites' too: its facts are per detected site ",
-      "(nearest record, record locations within 50 km), so there is nothing ",
-      "for them to be about without a site table. Pass sites=, or leave ",
-      "occurrence_data = NULL.",
-      call. = FALSE
-    )
-  }
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
   if (!taxon_col %in% names(input_df)) {
@@ -793,9 +765,6 @@ review_assignments <- function(input_df,
   # --- Site-aware geography: validate the sites table (sites path only) ---
   if (!is.null(sites)) {
     sites <- .validate_review_sites(sites, input_df, site_col)
-    if (!is.null(occurrence_data)) {
-      occurrence_data <- .validate_occurrence_data(occurrence_data)
-    }
   }
 
   # --- Normalise context ---
@@ -1016,12 +985,11 @@ review_assignments <- function(input_df,
   taxa_info$has_indistinguishable[is.na(taxa_info$has_indistinguishable)] <- FALSE
 
   # --- Per-taxon prompt brackets (sites path) -------------------------------
-  # Attached as columns of taxa_info, which is where the cache key is built
+  # Attached as a column of taxa_info, which is where the cache key is built
   # from: every column of it already enters the key, so the sites a taxon was
-  # detected at and the occurrence facts shown alongside them key themselves.
-  # They change the question asked, so a verdict obtained without them must
-  # not be served as a hit for a call that includes them.
-  occurrence_guideline <- NULL
+  # detected at key themselves. They change the question asked, so a verdict
+  # obtained without them must not be served as a hit for a call that
+  # includes them.
   if (!is.null(sites)) {
     det <- .review_detected_sites(
       taxa_info$taxon_name, input_df, site_col, sites, label_canon_map
@@ -1029,30 +997,6 @@ review_assignments <- function(input_df,
     taxa_info$detected_note <- vapply(
       det, .detected_sites_bracket, character(1L), sites = sites
     )
-    if (!is.null(occurrence_data)) {
-      occurrence_guideline <- .occurrence_guideline_text(occurrence_data)
-      taxa_info$occurrence_note <- vapply(seq_len(nrow(taxa_info)), function(i) {
-        .occurrence_bracket(
-          taxa_info$taxon_name[i], taxa_info$taxon_rank[i], det[[i]],
-          occurrence_data, sites
-        )
-      }, character(1L))
-      if (verbose) {
-        n_none <- sum(grepl("no records of this taxon", taxa_info$occurrence_note,
-          fixed = TRUE
-        ))
-        n_rank <- sum(grepl("rank not available", taxa_info$occurrence_note,
-          fixed = TRUE
-        ))
-        message(sprintf(
-          paste0(
-            "  occurrence facts: %d of %d taxa matched the pool; %d had no ",
-            "records and %d a rank the pool does not carry."
-          ),
-          nrow(taxa_info) - n_none - n_rank, nrow(taxa_info), n_none, n_rank
-        ))
-      }
-    }
   }
 
   if (verbose) {
@@ -1135,14 +1079,8 @@ review_assignments <- function(input_df,
     # the key -- but ONLY when supplied, which leaves the sites = NULL key
     # byte-identical to a key written before this argument existed. Bump
     # "geo_sites_v5" whenever the sites wording in the prompt changes.
-    # The occurrence guideline is keyed here too, because the pool's latitude
-    # extent is quoted in it: a different pool asks a different question even
-    # when the per-taxon facts happen to match.
     if (!is.null(sites)) {
       shared_parts <- c(shared_parts, "geo_sites_v5", .review_sites_digest(sites))
-      if (!is.null(occurrence_guideline)) {
-        shared_parts <- c(shared_parts, occurrence_guideline)
-      }
     }
     .shared <- paste(shared_parts, collapse = "\u0001")
 
@@ -1247,8 +1185,7 @@ review_assignments <- function(input_df,
       taxa_batch, ctx, target_group, marker, data_type, use_candidates,
       llm_fn, max_tokens, taxon_rank_col, verbose, pause_seconds,
       batch_label = as.character(b), max_retries = max_retries,
-      prompt_log = prompt_log, sites = sites,
-      occurrence_guideline = occurrence_guideline
+      prompt_log = prompt_log, sites = sites
     )
 
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -1436,9 +1373,8 @@ review_assignments <- function(input_df,
 
   # --- Unreviewed residue ----------------------------------------------------
   # A row the model never answered about carries NA in all four llm_ columns,
-  # and every production workflow's export chain filters with != "unlikely",
-  # which DISCARDS NA -- so the observation leaves the final species list
-  # without a word. The count is returned as an attribute (always present, possibly empty),
+  # and an export chain written != "unlikely" DISCARDS NA -- so under one of
+  # those the observation leaves the final species list without a word. The count is returned as an attribute (always present, possibly empty),
   # modelled on fetch_ncbi_reference_sequences()'s count_failures, so a
   # workflow can check it programmatically instead of hand-writing a
   # diagnostic. NOTE: attributes do not survive a dplyr verb -- check this
@@ -2017,7 +1953,7 @@ review_assignments <- function(input_df,
 #' @noRd
 .build_review_prompt <- function(taxa_batch, ctx, target_group, marker,
                                  data_type, use_candidates = FALSE,
-                                 sites = NULL, occurrence_guideline = NULL) {
+                                 sites = NULL) {
   # --- Context block ---
   context_lines <- character(0)
   if (!is.null(ctx$geography) && !is.na(ctx$geography)) {
@@ -2086,13 +2022,9 @@ review_assignments <- function(input_df,
     # params found a matching column.
     note <- if ("pipeline_note" %in% names(taxa_batch)) taxa_batch$pipeline_note[i] else NA_character_
     if (!is.na(note)) base <- paste0(base, " [", note, "]")
-    # The run's own facts, in the order the guidelines introduce them: where
-    # this taxon was actually detected, then what the occurrence pool holds
-    # about it near those sites.
-    for (fact in c("detected_note", "occurrence_note")) {
-      v <- if (fact %in% names(taxa_batch)) taxa_batch[[fact]][i] else NA_character_
-      if (!is.na(v)) base <- paste0(base, " ", v)
-    }
+    # The run's own fact: where this taxon was actually detected.
+    det <- if ("detected_note" %in% names(taxa_batch)) taxa_batch$detected_note[i] else NA_character_
+    if (!is.na(det)) base <- paste0(base, " ", det)
     # The id is how the answer is matched back (see .parse_review_response()):
     # a long candidate-set label echoed back reformatted cannot be matched by
     # name, and one such label could unmatch a whole batch.
@@ -2305,7 +2237,6 @@ review_assignments <- function(input_df,
     "pipeline posterior alongside your own high probabilities is worth a note -- ",
     "but do not let it override your independent assessment itself.\n",
     if (!is.null(sites)) .p_detected_guideline_text else "",
-    occurrence_guideline %||% "",
     "\n",
     .p_worked_examples_text,
     "EXAMPLE OUTPUT FORMAT:\n",
@@ -2335,11 +2266,11 @@ review_assignments <- function(input_df,
                                      max_tokens, taxon_rank_col, verbose,
                                      pause_seconds, batch_label, max_retries,
                                      depth = 0L, prompt_log = NULL,
-                                     sites = NULL, occurrence_guideline = NULL) {
+                                     sites = NULL) {
   prompt <- .build_review_prompt(
     taxa_batch, ctx, target_group, marker,
     data_type, use_candidates,
-    sites = sites, occurrence_guideline = occurrence_guideline
+    sites = sites
   )
 
   # Recorded by reference (an environment, not a data-frame attribute) so it
@@ -2400,14 +2331,14 @@ review_assignments <- function(input_df,
       left, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
       paste0(batch_label, "a"), max_retries, depth + 1L, prompt_log,
-      sites = sites, occurrence_guideline = occurrence_guideline
+      sites = sites
     )
     Sys.sleep(pause_seconds)
     right_result <- .review_batch_with_retry(
       right, ctx, target_group, marker, data_type, use_candidates, llm_fn,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
       paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log,
-      sites = sites, occurrence_guideline = occurrence_guideline
+      sites = sites
     )
     # Each half has already re-asked for its own omissions at its leaf, so
     # the residue attributes just need unioning -- rbind() would drop them.
@@ -2421,8 +2352,8 @@ review_assignments <- function(input_df,
   # while still leaving out specific taxa -- consistently the long compound
   # slash labels, i.e. the hardest rows, not random ones. That is NOT
   # truncation, so `status` is "complete" and the halving retry above never
-  # fires for it; without this re-ask, those taxa would be filled NA and the
-  # workflows' `!= "unlikely"` export filters (which discard NA) would remove
+  # fires for it; without this re-ask, those taxa would be filled NA, and an
+  # export chain written `!= "unlikely"` (which discards NA) would remove
   # those observations from the final species list without a word.
   #
   # Cost is bounded and pay-per-failure: this fires only when the model
@@ -2458,7 +2389,7 @@ review_assignments <- function(input_df,
       reask_label <- paste0(batch_label, "r", attempt, if (singletons) paste0("s", g) else "")
       reask_prompt <- .build_review_prompt(
         sub_batch, ctx, target_group, marker, data_type, use_candidates,
-        sites = sites, occurrence_guideline = occurrence_guideline
+        sites = sites
       )
       if (!is.null(prompt_log)) assign(reask_label, reask_prompt, envir = prompt_log)
 
@@ -2899,11 +2830,11 @@ review_assignments <- function(input_df,
   # p_habitat = 85 (out of range) or "high" (not a number) leaves that verdict
   # NA while review_confidence and review_comment arrive perfectly intact.
   # That row looked reviewed: it was cached, it never reached the re-ask path,
-  # n_unreviewed_rows reported 0, and the NA was discarded by every downstream
+  # n_unreviewed_rows reported 0, and the NA was discarded by a downstream
   # "!= unlikely" export filter without a word.
   #
   # ANY, not all. A row that answered three questions and fumbled the fourth
-  # still carries one NA that those filters silently drop, and a silently
+  # still carries one NA that such a filter silently drops, and a silently
   # dropped observation is the failure class this project rules out. The cost
   # is calls, and only when the model fails: 0 of 15 taxa in the live probe.
   # A row that still fails after the re-asks is NA-filled, counted in
@@ -3293,7 +3224,7 @@ review_assignments <- function(input_df,
     # With a site table p_inside_range is the geography answer. A model that
     # omitted it but volunteered the study-wide p_geographic it was not asked
     # for is taken at its word for that row rather than left with no geography
-    # at all: an NA here is discarded by every downstream "!= unlikely" filter,
+    # at all: an NA here is discarded by a downstream "!= unlikely" filter,
     # which would lose the observation without a word.
     ins <- .p_col(df, "p_inside_range")
     alt <- .p_col(df, "p_geographic")
