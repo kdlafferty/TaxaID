@@ -97,10 +97,13 @@
   label, not the call, so a referenced species that some units call at a
   family ring does not carry it.
 * `review_assignments()` tells the reviewer, for every taxon, that a
-  probability of 0.05 or lower is a strong claim needing positive evidence of
-  being out of range -- a native range elsewhere with no known introduction, or
-  an unusable habitat -- and asks for an intermediate value with a note that the
-  evidence is thin where there is none. The guidance is unconditional: what a
+  geographic probability below 0.10 -- the `unlikely` cut itself -- is a strong
+  claim needing positive evidence of being out of range: a native range
+  elsewhere with no known introduction, or a well-established range limit the
+  site lies beyond. Otherwise it asks for an intermediate value with a note
+  that the evidence is thin. The steer names the field it governs,
+  `p_inside_range` with `sites` and `p_geographic` without, and says which
+  probabilities it does not govern. The guidance is unconditional: what a
   low probability asserts does not depend on whether the occurrence data
   flagged the taxon. The guidance previously reached only taxa the occurrence
   data had flagged as having no local record; it now reaches taxa the

@@ -558,11 +558,19 @@ the UNCONDITIONAL geography text, which is the right place for it, because
 all of it is true of every taxon rather than only of the ones the
 occurrence data flagged: that no records is not evidence of absence, that
 an unrecalled range deserves an intermediate probability rather than a low
-one, and that \strong{a probability of 0.05 or lower is a strong claim and
-needs positive evidence of being out of range} -- a native range on another
-continent with no known introduction here, or a habitat the taxon cannot
-use -- with an intermediate value and a note that the evidence is thin
-where there is none. The harder earlier form of that rule ("cite a local
+one, and that \strong{a geographic probability below 0.10 is a strong claim
+and needs positive evidence of being out of range} -- a native range on
+another continent with no known introduction here, or a well-established
+range limit that the site (or the whole study area) lies beyond -- with an
+intermediate value and a note that the evidence is thin where there is
+none. The steer names the field it governs, \code{p_inside_range} with
+\code{sites} and \code{p_geographic} without, and says which probabilities
+it does not govern: a low \code{p_outside_range}, \code{p_habitat},
+\code{p_scope}, \code{p_transported} or \code{p_contamination} is a
+different judgement. Its threshold is the \code{unlikely} cut itself, so the
+evidence bar and the verdict boundary are one number: there is no band that
+takes the verdict without meeting the bar. The harder form of that rule
+("cite a local
 record or rate it unlikely") rated widely introduced species out of range
 whenever the model could not recall a record on that draw, which is why
 this is guidance and not a rule.
@@ -662,10 +670,12 @@ numbers included. The second was told nothing the pipeline produced -- not
 even the match identity or the INDISTINGUISHABLE flag, both of which the
 defaults DO send. What ships differs from the second by the DNA evidence it
 adds back, from the first by every occurrence-derived number it drops, and
-from BOTH by its geography guidance: the steer that a probability of 0.05 or
-lower is a strong claim needing positive out-of-range evidence reached only
-the taxa the occurrence data had flagged in the measured arms, and now
-reaches every prompt. Those two arms agreed with the maintainer within the
+from BOTH by its geography guidance. The steer that a low geographic
+probability is a strong claim needing positive out-of-range evidence reached
+only the taxa the occurrence data had flagged in the arms that were scored,
+and set its bar at 0.05 there; what ships puts it in every prompt and sets
+the bar at the \code{unlikely} cut, 0.10. So the shipped prompt asks for
+that evidence on strictly more rows than either measured arm did. Those two arms agreed with the maintainer within the
 intervals on all three statistics, so they bracket the shipped
 configuration without measuring it, and that is the most that can be said
 until an arm is scored on this prompt.

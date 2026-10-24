@@ -472,11 +472,19 @@
 #' all of it is true of every taxon rather than only of the ones the
 #' occurrence data flagged: that no records is not evidence of absence, that
 #' an unrecalled range deserves an intermediate probability rather than a low
-#' one, and that \strong{a probability of 0.05 or lower is a strong claim and
-#' needs positive evidence of being out of range} -- a native range on another
-#' continent with no known introduction here, or a habitat the taxon cannot
-#' use -- with an intermediate value and a note that the evidence is thin
-#' where there is none. The harder earlier form of that rule ("cite a local
+#' one, and that \strong{a geographic probability below 0.10 is a strong claim
+#' and needs positive evidence of being out of range} -- a native range on
+#' another continent with no known introduction here, or a well-established
+#' range limit that the site (or the whole study area) lies beyond -- with an
+#' intermediate value and a note that the evidence is thin where there is
+#' none. The steer names the field it governs, \code{p_inside_range} with
+#' \code{sites} and \code{p_geographic} without, and says which probabilities
+#' it does not govern: a low \code{p_outside_range}, \code{p_habitat},
+#' \code{p_scope}, \code{p_transported} or \code{p_contamination} is a
+#' different judgement. Its threshold is the \code{unlikely} cut itself, so the
+#' evidence bar and the verdict boundary are one number: there is no band that
+#' takes the verdict without meeting the bar. The harder form of that rule
+#' ("cite a local
 #' record or rate it unlikely") rated widely introduced species out of range
 #' whenever the model could not recall a record on that draw, which is why
 #' this is guidance and not a rule.
@@ -572,10 +580,12 @@
 #' even the match identity or the INDISTINGUISHABLE flag, both of which the
 #' defaults DO send. What ships differs from the second by the DNA evidence it
 #' adds back, from the first by every occurrence-derived number it drops, and
-#' from BOTH by its geography guidance: the steer that a probability of 0.05 or
-#' lower is a strong claim needing positive out-of-range evidence reached only
-#' the taxa the occurrence data had flagged in the measured arms, and now
-#' reaches every prompt. Those two arms agreed with the maintainer within the
+#' from BOTH by its geography guidance. The steer that a low geographic
+#' probability is a strong claim needing positive out-of-range evidence reached
+#' only the taxa the occurrence data had flagged in the arms that were scored,
+#' and set its bar at 0.05 there; what ships puts it in every prompt and sets
+#' the bar at the \code{unlikely} cut, 0.10. So the shipped prompt asks for
+#' that evidence on strictly more rows than either measured arm did. Those two arms agreed with the maintainer within the
 #' intervals on all three statistics, so they bracket the shipped
 #' configuration without measuring it, and that is the most that can be said
 #' until an arm is scored on this prompt.
@@ -1274,7 +1284,8 @@ review_assignments <- function(input_df,
     # probability under the guardrail definitions, so EVERY cached verdict --
     # on every path, sites or not -- is a miss once and is re-asked. v7: the
     # UNPRECEDENTED guideline asks for "0.05 or lower" where it asked for
-    # "under 0.1", which a strict `< 0.10` cut reads differently; the key holds
+    # "under 0.1", which a strict `< 0.10` cut reads differently (that gap is
+    # closed at v13, which asks for "below 0.10"); the key holds
     # the inputs and not the prompt, so only a bump can stop a verdict given
     # under the old wording being served for the new question. v8: the
     # guideline that explains the "[...]" bracket is now assembled only when a
@@ -1298,7 +1309,8 @@ review_assignments <- function(input_df,
     # rank-expansion note lost its second clause. Nothing is known to have
     # been asked under v10, but the key holds the inputs and not the prompt,
     # so a bump is the only thing that can tell -- and it costs one re-ask.
-    # v12: the "0.05 or lower is a strong claim" steer is now UNCONDITIONAL,
+    # v12: the "a low geographic probability is a strong claim" steer is now
+    # UNCONDITIONAL,
     # on both the sites and the study-wide path. It was previously inside the
     # UNPRECEDENTED guideline, so it reached only the taxa the occurrence data
     # had flagged -- and when that guideline went, it went with it. It is
@@ -1315,6 +1327,9 @@ review_assignments <- function(input_df,
     # case, a range limit the site lies beyond, and "known from the region"
     # becomes "known near this site": a study area spanning 26-38 N can hold
     # a taxon that is in range at one end and well out of it at the other.
+    # Its threshold is the cut: "below 0.10", not "0.05 or lower". The two
+    # were different numbers, so a probability in [0.05, 0.10) took the
+    # unlikely verdict without having to meet the evidence bar the steer sets.
     shared_parts <- c(
       "v13", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
@@ -1498,11 +1513,21 @@ review_assignments <- function(input_df,
   }
 
   if (verbose) {
-    message(sprintf(
-      "  Review complete. %d %s reviewed.",
-      nrow(review_df),
-      if (use_candidates) "candidate sets" else "taxa"
-    ))
+    # review_df has a row per reviewed label INCLUDING the ones filled with NA
+    # after a failed ask, so its nrow is not a count of answers. When every
+    # batch failed this said "15 taxa reviewed" while unreviewed_taxa held all
+    # 15 -- the loudest thing in the run reading as success.
+    n_all <- nrow(review_df)
+    n_un <- sum(review_df$taxon_name %in% unreviewed_taxa)
+    lbl <- if (use_candidates) "candidate sets" else "taxa"
+    message(if (n_un == 0L) {
+      sprintf("  Review complete. %d %s reviewed.", n_all, lbl)
+    } else {
+      sprintf(
+        "  Review complete. %d of %d %s reviewed; %d unreviewed.",
+        n_all - n_un, n_all, lbl, n_un
+      )
+    })
   }
 
   # --- Join back to input by .join_key ---
@@ -1802,9 +1827,9 @@ review_assignments <- function(input_df,
 #' unprecedented/indistinguishable/poorly fitting, the whole reviewed group is
 #' treated as warranting skepticism, because a caution signal should
 #' over-include rather than under-include. The rank-expansion flag is the
-#' exception and is no longer any-row: it distinguishes all of a taxon's rows
-#' from only some, since there the note is a statement about the evidence
-#' rather than a caution, and "some" said as "all" would overstate it.
+#' exception: it distinguishes all of a taxon's rows from only some, because
+#' there the note is a statement about the evidence rather than a caution, and
+#' "some" said as "all" would overstate it.
 #' @noRd
 .summarise_pipeline_context <- function(label_vec, input_df, consensus_posterior_col,
                                         winner_prior_col, winner_rank_expanded_col,
@@ -3442,7 +3467,7 @@ review_assignments <- function(input_df,
   "range_known false, and p_inside_range = p_outside_range = an intermediate ",
   "value with low confidence. Do not reconstruct a range from the genus or ",
   "from similar species. No records is not evidence of absence.\n",
-  "- A p_inside_range of 0.05 or lower is a STRONG claim. Give one only with ",
+  "- A p_inside_range below 0.10 is a STRONG claim. Give one only with ",
   "POSITIVE evidence that the taxon is out of range here: a native range on ",
   "another continent with no known introduction to this region, or a ",
   "well-established range limit that this site lies beyond. A widely ",
@@ -3461,7 +3486,7 @@ review_assignments <- function(input_df,
   "- If you cannot recall a rare or poorly known taxon's range, give an ",
   "intermediate probability with low confidence rather than recalling one. ",
   "No records is not evidence of absence.\n",
-  "- A p_geographic of 0.05 or lower is a STRONG claim. Give one only with ",
+  "- A p_geographic below 0.10 is a STRONG claim. Give one only with ",
   "POSITIVE evidence that the taxon is out of range here: a native range on ",
   "another continent with no known introduction to this region, or a ",
   "well-established range limit that the whole study area lies beyond. A ",

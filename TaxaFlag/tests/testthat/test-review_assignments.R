@@ -1770,8 +1770,14 @@ test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
     context = mock_context, llm_fn = fn, verbose = FALSE
   ))
   p <- paste(seen, collapse = "\n")
-  expect_match(p, "A p_geographic of 0.05 or lower is a STRONG claim", fixed = TRUE)
+  expect_match(p, "A p_geographic below 0.10 is a STRONG claim", fixed = TRUE)
   expect_match(p, "POSITIVE evidence that the taxon is out of range here", fixed = TRUE)
+  # The threshold IS the unlikely cut, so the evidence bar and the verdict
+  # boundary are one number. Earlier wordings asked for 0.05 or lower against
+  # a `< 0.10` cut, which left [0.05, 0.10) taking the verdict without having
+  # to meet the bar.
+  expect_equal(TaxaFlag:::.p_cut_unlikely, 0.10)
+  expect_false(grepl("0.05 or lower", p, fixed = TRUE))
   # It names the field it governs and the ones it does not. Unnamed, it read
   # as a rule about any low probability, while this same prompt offers
   # p_habitat 0.03 and p_contamination 0.02 as normal answers.
@@ -1813,10 +1819,62 @@ test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
   # The sites path governs p_inside_range, and must NOT govern
   # p_outside_range: a low p_outside_range beyond a stated limit is the
   # normal answer, and worked example 2 gives 0.05 for it.
-  expect_match(ps, "A p_inside_range of 0.05 or lower is a STRONG claim", fixed = TRUE)
+  expect_match(ps, "A p_inside_range below 0.10 is a STRONG claim", fixed = TRUE)
   expect_match(ps, "applies to p_inside_range only", fixed = TRUE)
   expect_match(ps, "a low p_outside_range", fixed = TRUE)
   expect_match(ps, "range limit that this site lies beyond", fixed = TRUE)
-  expect_false(grepl("A p_geographic of 0.05", ps, fixed = TRUE))
+  expect_false(grepl("A p_geographic below 0.10", ps, fixed = TRUE))
   expect_false(grepl("a habitat it cannot use", ps, fixed = TRUE))
+})
+
+
+test_that("the completion message counts answers, not rows", {
+  # review_df has a row per reviewed label INCLUDING the NA fills, so nrow is
+  # not a count of answers. When every batch failed this said "N taxa
+  # reviewed" while unreviewed_taxa held all N: the loudest line in the run
+  # read as success.
+  df <- data.frame(
+    observation_id = c("S1", "S2", "S3"),
+    consensus_taxon = c("Bos taurus", "Salmo salar", "Gobiidae"),
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  dead <- function(prompt_str, ...) "not json at all"
+  msgs <- character(0)
+  withCallingHandlers(
+    suppressWarnings(invisible(review_assignments(
+      data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = dead, verbose = TRUE,
+      max_retries = 0L, pause_seconds = 0, on_unreviewed = "ignore"
+    ))),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  done <- grep("Review complete", msgs, value = TRUE)
+  expect_length(done, 1L)
+  expect_match(done, "0 of 3 taxa reviewed; 3 unreviewed", fixed = TRUE)
+
+  # And the all-answered case keeps the short form.
+  ok <- function(prompt_str, ...) {
+    asked <- names(.CANNED)[vapply(
+      names(.CANNED), function(nm) grepl(nm, prompt_str, fixed = TRUE),
+      logical(1L)
+    )]
+    paste0("[", paste(unlist(.CANNED[asked], use.names = FALSE), collapse = ",\n"), "]")
+  }
+  msgs <- character(0)
+  withCallingHandlers(
+    invisible(review_assignments(
+      data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = ok, verbose = TRUE, pause_seconds = 0
+    )),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  done <- grep("Review complete", msgs, value = TRUE)
+  expect_match(done, "Review complete. 3 taxa reviewed.", fixed = TRUE)
+  expect_false(any(grepl("unreviewed", done, fixed = TRUE)))
 })
