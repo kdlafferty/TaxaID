@@ -149,6 +149,17 @@ acoustic, and image data via the `data_type` param. This review is
 intended as a structured second opinion, not an automated filter. Users
 should treat the flags as candidates for closer inspection.
 
+By default the prompt carries none of the numbers the pipeline computed: not
+the posterior, the occurrence prior, the GBIF distance or the iNaturalist
+fields. A review shown the pipeline's own confidence cannot contradict it
+independently, and a review shown a taxon's GBIF distance cannot catch an
+error in the occurrence data. Pass the matching column names
+(`consensus_posterior_col`, `winner_prior_col` and the rest) to send any of
+them. Three pipeline-derived notes are still sent when `input_df` carries the
+columns behind them, each because it is read for an output column or a gate as
+well as for the prompt; `?review_assignments` lists them and what to set for a
+prompt with no pipeline-derived text at all.
+
 Site-aware geography
 (`review_assignments(sites = , site_col = "site")`): when a study spans
 a range where a taxon is plausible at some sites but not others, pass a

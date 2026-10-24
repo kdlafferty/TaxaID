@@ -88,9 +88,13 @@
 #'   for why.
 #' @param model_label Character or \code{NULL}. A name for the model behind
 #'   \code{llm_fn}, recorded in the cache key so one model's disposition is
-#'   never served to a call asking another. Default \code{NULL} derives an
-#'   identity from \code{options("TaxaID.provider")} and from \code{llm_fn}.
-#'   See \code{\link{review_assignments}} for what that cannot separate.
+#'   never served to a call asking another. \strong{Required whenever
+#'   \code{cache_dir} is set and \code{llm_fn} is a function you wrote}: all
+#'   that can be seen of such a closure is its source text, so a wrapper that
+#'   picks its model from a variable would key identically for two models and
+#'   serve the first one's dispositions to the second run. Default \code{NULL}
+#'   is accepted with no cache, and for an \code{llm_fn} a loaded namespace can
+#'   name. See \code{\link{review_assignments}} for the full reasoning.
 #' @param tubes_per_call Integer. Tubes per LLM call. Default 4.
 #' @param max_tokens Integer or NULL. Forwarded to \code{llm_fn}. Default NULL.
 #' @param max_retries Integer. Re-asks for tubes the model omitted. Default 2.
@@ -200,7 +204,9 @@ review_sample_identity <- function(identity,
   # fix are a miss once. See .review_reviewer_id().
   # the medium is in each tube's own text (it can differ by tube), so the item
   # carries it into the key
-  ctx_key <- paste("sir-v5", .review_reviewer_id(llm_fn, model_label),
+  ctx_key <- paste("sir-v5", .review_reviewer_id(llm_fn, model_label,
+    caching = !is.null(cache_dir)
+  ),
     trimws(context), trimws(target_groups %||% ""),
     sep = "\u0001"
   )

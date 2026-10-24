@@ -4,11 +4,11 @@
 mock_llm_fn <- function(prompt_str, ...) {
   # Return a realistic JSON response for Palmyra Atoll reef taxa
   '[
-    {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Blacktip reef shark, common on Pacific coral reefs"},
-    {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"},
-    {"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": "Eviota sp., Trimma sp.", "review_confidence": "moderate", "review_comment": "Diverse family on coral reefs; many cryptic species"},
-    {"taxon_name": "Salmo salar", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": "likely", "contamination_risk": "moderate", "review_alternatives": "Lutjanus bohar, Lutjanus kasmira", "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Atlantic salmon; not found in central Pacific. Possible food-source contaminant"},
-    {"taxon_name": "Bos taurus", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": "unlikely", "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Domestic cattle; common food-source contaminant"}
+    {"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Blacktip reef shark, common on Pacific coral reefs"},
+    {"taxon_name": "Homo sapiens", "p_habitat": 0.03, "p_geographic": 0.95, "p_scope": 0.03, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Common lab contaminant in eDNA studies"},
+    {"taxon_name": "Gobiidae", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": "Eviota sp., Trimma sp.", "review_confidence": "moderate", "review_comment": "Diverse family on coral reefs; many cryptic species"},
+    {"taxon_name": "Salmo salar", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": 0.95, "p_contamination": 0.35, "review_alternatives": "Lutjanus bohar, Lutjanus kasmira", "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Atlantic salmon; not found in central Pacific. Possible food-source contaminant"},
+    {"taxon_name": "Bos taurus", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": 0.03, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "Domestic cattle; common food-source contaminant"}
   ]'
 }
 
@@ -222,8 +222,8 @@ test_that("graceful handling of partial LLM response", {
   # Returns only 2 of 5 taxa
   partial_fn <- function(prompt_str, ...) {
     '[
-      {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
-      {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
+      {"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null},
+      {"taxon_name": "Homo sapiens", "p_habitat": 0.03, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
     ]'
   }
 
@@ -269,7 +269,7 @@ test_that("truncated batch is recovered via automatic retry with smaller sub-bat
       name <- sub("^- ", "", line)
       name <- sub("\\s*\\(.*\\)$", "", name)
       sprintf(
-        '{"taxon_name": "%s", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+        '{"taxon_name": "%s", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
         name
       )
     }
@@ -334,7 +334,7 @@ test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
   partial_fn <- function(prompt_str, ...) {
     call_count <<- call_count + 1L
     '[
-      {"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
+      {"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}
     ]'
   }
 
@@ -492,8 +492,8 @@ test_that("a model that echoes the annotated label still joins back to its rows"
       sub("\\s*\\(rank: [^()]*\\)$", "", labs)
     )
     paste0("[", paste(sprintf(
-      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely",
-        "scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,
+      '{"taxon_name":"%s","p_habitat": 0.95,"p_geographic": 0.95,
+        "p_scope": 0.95,"p_contamination": 0.02,"review_alternatives":null,
         "review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
       labs
     ), collapse = ","), "]")
@@ -548,7 +548,7 @@ test_that("a model that echoes the annotated label still joins back to its rows"
       sub("\\s*\\(rank: [^()]*\\)$", "", labs)
     )
     paste0("[", paste(sprintf(
-      '{"taxon_name":"%s","habitat_plausibility":"likely","geographic_plausibility":"likely","scope_plausibility":"likely","contamination_risk":"low","review_alternatives":null,"review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
+      '{"taxon_name":"%s","p_habitat": 0.95,"p_geographic": 0.95,"p_scope": 0.95,"p_contamination": 0.02,"review_alternatives":null,"review_lower_hypotheses":null,"review_confidence":"high","review_comment":"ok"}',
       labs
     ), collapse = ","), "]")
   }
@@ -565,7 +565,7 @@ test_that("a cached review is reproducible and makes no second LLM call", {
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
     taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA",
-    cache_dir = cd, verbose = FALSE
+    model_label = "test-model", cache_dir = cd, verbose = FALSE
   )
   a <- do.call(review_assignments, args)
   first <- get("n", ctr)
@@ -587,7 +587,7 @@ test_that("changing the review context is a cache MISS, not a stale hit", {
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
     taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA",
-    cache_dir = cd, verbose = FALSE
+    model_label = "test-model", cache_dir = cd, verbose = FALSE
   )
   invisible(do.call(review_assignments, base))
   n1 <- get("n", ctr)
@@ -607,7 +607,7 @@ test_that("cache files are the file-per-key shape taxaflag_clear_cache() manages
     taxon_rank_col = "consensus_rank",
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
-    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA", cache_dir = cd, verbose = FALSE
+    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA", model_label = "test-model", cache_dir = cd, verbose = FALSE
   ))
   inv <- taxaflag_clear_cache(cache_dir = cd, dry_run = TRUE)
   expect_gt(nrow(inv), 0L)
@@ -650,9 +650,9 @@ test_that("two candidate sets sharing one display label are reviewed once, and n
   n_calls <- 0L
   fake_llm <- function(prompt, ...) {
     n_calls <<- n_calls + 1L
-    '[{"taxon_name":"Oncorhynchus mykiss","habitat_plausibility":"likely",
-       "geographic_plausibility":"likely","scope_plausibility":null,
-       "contamination_risk":"low","review_alternatives":null,
+    '[{"taxon_name":"Oncorhynchus mykiss","p_habitat": 0.95,
+       "p_geographic": 0.95,"p_scope": null,
+       "p_contamination": 0.02,"review_alternatives":null,
        "review_lower_hypotheses":null,"review_confidence":"high",
        "review_comment":null}]'
   }
@@ -693,11 +693,11 @@ test_that(".parse_json_text() refuses to treat a model reply as a URL or file pa
 # ===========================================================================
 
 .CANNED <- list(
-  "Carcharhinus melanopterus" = '{"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
-  "Homo sapiens" = '{"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
-  "Gobiidae" = '{"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "moderate", "review_comment": null}',
-  "Salmo salar" = '{"taxon_name": "Salmo salar", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": null, "contamination_risk": "moderate", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
-  "Bos taurus" = '{"taxon_name": "Bos taurus", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}'
+  "Carcharhinus melanopterus" = '{"taxon_name": "Carcharhinus melanopterus", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Homo sapiens" = '{"taxon_name": "Homo sapiens", "p_habitat": 0.03, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Gobiidae" = '{"taxon_name": "Gobiidae", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": null, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "moderate", "review_comment": null}',
+  "Salmo salar" = '{"taxon_name": "Salmo salar", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": null, "p_contamination": 0.35, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Bos taurus" = '{"taxon_name": "Bos taurus", "p_habitat": 0.03, "p_geographic": 0.03, "p_scope": null, "p_contamination": 0.95, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}'
 )
 
 # The real failure mode this whole mechanism exists for: a response that
@@ -873,7 +873,7 @@ test_that("an unreviewed taxon is never written to the cache", {
     data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
-    cache_dir = cache_dir, verbose = FALSE
+    model_label = "test-model", cache_dir = cache_dir, verbose = FALSE
   ))
 
   # Four answered taxa cached; the omitted one is not -- caching a non-answer
@@ -893,7 +893,7 @@ test_that("a cached non-answer from an older run is re-asked, not served", {
     data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = mock_llm_fn, pause_seconds = 0,
-    cache_dir = cache_dir, verbose = FALSE
+    model_label = "test-model", cache_dir = cache_dir, verbose = FALSE
   )
   files <- list.files(cache_dir, pattern = "_review\\.rds$", full.names = TRUE)
   hit <- Filter(
@@ -909,7 +909,7 @@ test_that("a cached non-answer from an older run is re-asked, not served", {
     data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
-    cache_dir = cache_dir, verbose = FALSE
+    model_label = "test-model", cache_dir = cache_dir, verbose = FALSE
   )
 
   # One call, for the one taxon whose cached entry held no verdict.
@@ -960,9 +960,9 @@ test_that("a candidate set arriving in two posterior orders is reviewed once", {
     )]
     labels_asked <<- c(labels_asked, lab)
     paste0(
-      '[{"taxon_name":"', lab[[1L]], '","habitat_plausibility":"likely",',
-      '"geographic_plausibility":"likely","scope_plausibility":null,',
-      '"contamination_risk":"low","review_alternatives":null,',
+      '[{"taxon_name":"', lab[[1L]], '","p_habitat": 0.95,',
+      '"p_geographic": 0.95,"p_scope": null,',
+      '"p_contamination": 0.02,"review_alternatives":null,',
       '"review_lower_hypotheses":null,"review_confidence":"high",',
       '"review_comment":null}]'
     )
@@ -1237,4 +1237,182 @@ test_that(".normalise_context() combines the analyst's wording with the synthesi
             habitat = "x"))$geography,
     "Lake Michigan"
   )
+})
+
+# ===========================================================================
+# The pipeline's own numbers are off by default
+# ===========================================================================
+
+# The review is asked for an independent ecological judgement, and a judgement
+# that has been shown the pipeline's own posterior cannot contradict it
+# independently -- nor can a review that has been shown a taxon's GBIF
+# distance catch an error IN the occurrence data. The eight NULL defaults are
+# the only thing keeping those numbers out of the prompt, so what they do is
+# asserted here rather than left to the roxygen: a caller who hands this
+# function a frame straight out of posterior_consensus() and
+# check_gbif_tile_range() gets a blind review unless it asks for otherwise.
+.noted_input <- data.frame(
+  observation_id = "S1",
+  consensus_taxon = "Bos taurus",
+  consensus_rank = "species",
+  consensus_posterior = 0.81,
+  winner_prior = 0.42,
+  dist_nearest_occupied_km = 41,
+  patch_diameter_km = 2.1,
+  beyond_buffer = FALSE,
+  in_range = TRUE,
+  n_observations = 1275L,
+  matched_name = "Bos taurus",
+  winner_rank_expanded = TRUE,
+  stringsAsFactors = FALSE
+)
+
+# The candidate-set path, which is the only path the per-candidate weights
+# reach: the label has to be a multi-candidate one for them to be summarised.
+.weighted_input <- data.frame(
+  observation_id = c("S1", "S1"),
+  consensus_taxon = c("Bos taurus/javanicus", "Bos taurus/javanicus"),
+  consensus_rank = c("species", "species"),
+  plausible_taxa = I(list(
+    c("Bos taurus", "Bos javanicus"), c("Bos taurus", "Bos javanicus")
+  )),
+  plausible_posteriors = I(list(
+    c("Bos taurus" = 0.72, "Bos javanicus" = 0.28),
+    c("Bos taurus" = 0.72, "Bos javanicus" = 0.28)
+  )),
+  stringsAsFactors = FALSE
+)
+
+# Returns the prompt that was actually sent, which is the only place the
+# notes can be checked: nothing about them reaches an output column.
+.prompt_sent <- function(...) {
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = .noted_input,
+    taxon_col = "consensus_taxon", context = mock_context,
+    llm_fn = fn, verbose = FALSE, ...
+  ))
+  paste(seen, collapse = "\n")
+}
+
+.NOTE_COLS <- list(
+  consensus_posterior_col = "consensus_posterior",
+  winner_prior_col = "winner_prior",
+  dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
+  patch_diameter_km_col = "patch_diameter_km",
+  beyond_buffer_col = "beyond_buffer",
+  inat_in_range_col = "in_range",
+  inat_n_observations_col = "n_observations",
+  inat_matched_name_col = "matched_name"
+)
+
+test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", {
+  p <- .prompt_sent()
+  for (txt in c("pipeline posterior", "occurrence prior", "GBIF", "iNat")) {
+    expect_false(grepl(txt, p, fixed = TRUE), info = txt)
+  }
+  # The guidelines that explain those notes are conditional on them, so they
+  # are not assembled either. The bracket guideline is the one that names a
+  # posterior and an occurrence prior in its own text, so an ungated copy of
+  # it would tell the model to look for numbers that are not there.
+  expect_false(grepl("nearest occurrence", p, fixed = TRUE))
+  expect_false(grepl("OWN confidence for this call", p, fixed = TRUE))
+})
+
+test_that("no rank-expansion note is sent by default", {
+  # winner_rank_expanded is TRUE in the fixture. The note says the species
+  # call came from occurrence-prior MASS with nothing in the sequence choosing
+  # between the candidates -- the pipeline's own reasoning about the name, so
+  # it is off with the numbers even though it reaches nothing but the prompt.
+  p <- .prompt_sent()
+  expect_false(grepl("occurrence-prior tie-break", p, fixed = TRUE))
+})
+
+test_that("naming winner_rank_expanded_col sends the rank-expansion note", {
+  p <- .prompt_sent(winner_rank_expanded_col = "winner_rank_expanded")
+  expect_match(p, "species-level ID from occurrence-prior tie-break", fixed = TRUE)
+})
+
+test_that("no candidate weights are sent by default, and naming the column sends them", {
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0(
+      '[{"taxon_name": "Bos taurus/javanicus", "p_habitat": 0.5,',
+      ' "p_geographic": 0.5, "p_scope": 0.5, "p_contamination": 0.5,',
+      ' "review_confidence": "low", "review_comment": null}]'
+    )
+  }
+  args <- list(.weighted_input,
+    data_type = "eDNA", taxon_col = "consensus_taxon",
+    taxon_rank_col = "consensus_rank", plausible_taxa_col = "plausible_taxa",
+    irreducible_only = FALSE, context = mock_context, llm_fn = fn,
+    verbose = FALSE
+  )
+  invisible(do.call(review_assignments, args))
+  # The NOTE is "candidate weights: ..."; the words also occur bare in the
+  # bracket guideline, which this batch still gets because the candidate-set
+  # path emits an ungated "pipeline call:" note. So the colon is load-bearing
+  # in this assertion, and it was this test that found that residue.
+  expect_false(grepl("candidate weights: ", paste(seen, collapse = "\n"), fixed = TRUE))
+
+  seen <- character(0)
+  invisible(do.call(
+    review_assignments, c(args, list(plausible_posteriors_col = "plausible_posteriors"))
+  ))
+  expect_match(
+    paste(seen, collapse = "\n"), "candidate weights: Bos taurus 72%", fixed = TRUE
+  )
+})
+
+test_that("naming the columns puts every one of those notes back", {
+  p <- do.call(.prompt_sent, .NOTE_COLS)
+  expect_match(p, "pipeline posterior=0.81", fixed = TRUE)
+  expect_match(p, "occurrence prior=0.42", fixed = TRUE)
+  expect_match(p, "GBIF: nearest occurrence", fixed = TRUE)
+  expect_match(p, "iNat: in range", fixed = TRUE)
+  # ... and the two guidelines that explain the bracket come back with it,
+  # which is the other half of the gate: the notes and the words that tell the
+  # model how to read them travel together.
+  expect_match(p, "OWN confidence for this call", fixed = TRUE)
+  expect_match(p, "GBIF's density map is RAW", fixed = TRUE)
+})
+
+test_that("the study's own design is still sent: it is not evidence about the taxon", {
+  p <- .prompt_sent()
+  expect_match(p, "Palmyra Atoll", fixed = TRUE)
+  expect_match(p, "coral reef", fixed = TRUE)
+  expect_match(p, "Bos taurus", fixed = TRUE)
+})
+
+test_that("a verdict cached WITH the notes is not served to a blind call", {
+  cd <- file.path(tempdir(), paste0("flagblind_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  ctr <- new.env()
+  assign("n", 0L, ctr)
+  fn <- function(prompt_str, ...) {
+    assign("n", get("n", ctr) + 1L, ctr)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  base <- list(.noted_input,
+    data_type = "eDNA", taxon_col = "consensus_taxon", context = mock_context,
+    llm_fn = fn, model_label = "test-model", cache_dir = cd, verbose = FALSE
+  )
+  invisible(do.call(review_assignments, c(base, .NOTE_COLS)))
+  n1 <- get("n", ctr)
+  expect_gt(n1, 0L)
+  # Same taxon, same context, same model: only the notes are gone. The notes
+  # are columns of taxa_info and every column of it enters the key, so this is
+  # a miss with no version bump anywhere -- which is why switching the
+  # defaults off needed none.
+  invisible(do.call(review_assignments, base))
+  expect_gt(get("n", ctr), n1)
+  n2 <- get("n", ctr)
+  # ... and the blind call's own verdict caches and is served back.
+  invisible(do.call(review_assignments, base))
+  expect_equal(get("n", ctr), n2)
 })

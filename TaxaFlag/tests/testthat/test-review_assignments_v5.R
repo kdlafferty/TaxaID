@@ -5,7 +5,7 @@
 .v5_obj <- function(name, id = NULL, comment = "ok") {
   id_part <- if (is.null(id)) "" else if (is.na(id)) '"id": null, ' else sprintf('"id": "%s", ', id)
   sprintf(
-    '{%s"taxon_name": "%s", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "%s"}',
+    '{%s"taxon_name": "%s", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "%s"}',
     id_part, name, comment
   )
 }
@@ -220,8 +220,10 @@ test_that("UNPRECEDENTED and INDISTINGUISHABLE bullets appear only with their fl
   ))
   g <- .v5_guidelines(with_flags)
   expect_match(g, "absence of a citeable record is NOT evidence of absence", fixed = TRUE)
-  expect_match(g, 'most "possible", never "likely"', fixed = TRUE)
-  expect_match(g, 'Rate it "unlikely" only with POSITIVE evidence', fixed = TRUE)
+  expect_match(g, "not a high one", fixed = TRUE)
+  expect_match(g, "Give a low probability (0.05 or lower) only with POSITIVE evidence",
+    fixed = TRUE
+  )
   expect_match(g, "weakens confidence in the NAME, not the ecology", fixed = TRUE)
   expect_false(grepl('otherwise rate it "unlikely"', with_flags, fixed = TRUE))
   expect_false(grepl("hard requirement", with_flags, fixed = TRUE))
@@ -286,7 +288,7 @@ test_that("label == call: no 'pipeline call:' note and no call-rank bullet", {
 
 # --- 7. v4 -> v5 cache miss ---------------------------------------------------------
 
-test_that("verdicts cached under prompt version v4 are a miss", {
+test_that("verdicts cached under an older prompt version are a miss", {
   cd <- tempfile("v5cache")
   on.exit(unlink(cd, recursive = TRUE), add = TRUE)
   n <- 0L
@@ -295,18 +297,18 @@ test_that("verdicts cached under prompt version v4 are a miss", {
     a <- .v5_asked(prompt_str)
     .v5_json(mapply(.v5_obj, a$label, a$id, USE.NAMES = FALSE))
   }
-  run <- function() .v5_review(c("Cottus bairdii", "Perca flavescens"), fn, cache_dir = cd, verbose = FALSE)
+  run <- function() .v5_review(c("Cottus bairdii", "Perca flavescens"), fn, model_label = "test-model", cache_dir = cd, verbose = FALSE)
   run()
   expect_equal(n, 1L)
   run()
-  expect_equal(n, 1L) # a hit under v5
+  expect_equal(n, 1L) # a hit under v9
   files <- list.files(cd, full.names = TRUE)
   expect_gt(length(files), 0L)
   rekeyed <- 0L
   for (f in files) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v5", "v4", e$key, fixed = TRUE)
+      e$key <- sub("v9", "v8", e$key, fixed = TRUE)
       saveRDS(e, f)
       rekeyed <- rekeyed + 1L
     }
@@ -478,21 +480,21 @@ test_that("the review cache key carries no temperature field", {
   cd <- tempfile("v5key")
   on.exit(unlink(cd, recursive = TRUE), add = TRUE)
   fn <- function(prompt_str, ...) {
-    '[{"id": "T1", "taxon_name": "Gobiosoma bosc", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": "likely", "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "ok"}]'
+    '[{"id": "T1", "taxon_name": "Gobiosoma bosc", "p_habitat": 0.95, "p_geographic": 0.95, "p_scope": 0.95, "p_contamination": 0.02, "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": "ok"}]'
   }
   df <- data.frame(observation_id = "ASV_1", consensus_taxon = "Gobiosoma bosc",
     consensus_rank = "species", consensus_posterior = 0.99, stringsAsFactors = FALSE)
   suppressWarnings(review_assignments(
     data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
     context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
-    llm_fn = fn, cache_dir = cd, verbose = FALSE
+    llm_fn = fn, model_label = "test-model", cache_dir = cd, verbose = FALSE
   ))
   files <- list.files(cd, full.names = TRUE)
   expect_true(length(files) > 0L)
   for (f in files) {
     k <- readRDS(f)$key
     expect_false(grepl("temperature", k, fixed = TRUE))
-    expect_true(startsWith(k, "v5\u0001"))
+    expect_true(startsWith(k, "v9\u0001"))
   }
 })
 

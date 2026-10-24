@@ -70,15 +70,14 @@
 #'   confidence and the LLM's ecological plausibility judgment can be
 #'   surfaced in \code{review_comment}. Purely additive text -- never changes
 #'   which rows are reviewed or any output column. Silently skipped when the
-#'   named column is absent from \code{input_df}. Default
-#'   \code{"consensus_posterior"} (matches \code{posterior_consensus()}'s own
-#'   output). Set to \code{NULL} to disable.
+#'   named column is absent from \code{input_df}. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"consensus_posterior"} to show it.
+#'   That name is \code{posterior_consensus()}'s own output column.
 #' @param winner_prior_col Character or \code{NULL}. Column name for
 #'   \code{posterior_consensus()}'s \code{winner_prior} -- the occurrence-
 #'   database prior for the winning taxon. Same treatment as
 #'   \code{consensus_posterior_col}: shown as median context (e.g.
-#'   \code{"occurrence prior=0.42"}), silently skipped when absent. Default
-#'   \code{"winner_prior"}. Set to \code{NULL} to disable.
+#'   \code{"occurrence prior=0.42"}), silently skipped when absent.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_prior"} to show it.
 #' @param winner_rank_expanded_col Character or \code{NULL}. Column name for
 #'   \code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
 #'   when the winning species-level call was manufactured by
@@ -87,8 +86,7 @@
 #'   between candidates. When \code{TRUE} for any row sharing a label, a note
 #'   to that effect is added to the LLM's context, since this changes how
 #'   much weight the identification itself deserves. Silently skipped when
-#'   absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
-#'   disable.
+#'   absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_rank_expanded"} to show it.
 #' @param consensus_provenance Logical (default \code{TRUE}). When
 #'   \code{TRUE} and \code{input_df} carries
 #'   \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
@@ -115,44 +113,43 @@
 #'   the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
 #'   primigenius 28\%"}), so \code{review_comment} can speak to the specific
 #'   weaker member instead of the group as an undifferentiated set. Silently
-#'   skipped when absent. Default \code{"plausible_posteriors"}. Set to
-#'   \code{NULL} to disable.
+#'   skipped when absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"plausible_posteriors"} to show it.
 #' @param dist_nearest_occupied_km_col Character or \code{NULL}. Column name
 #'   for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
 #'   distance from the study site to the nearest GBIF-mapped occurrence of
 #'   the taxon, worldwide. Shown as median context (e.g. \code{"GBIF: nearest
 #'   occurrence ~41km away"}) alongside \code{patch_diameter_km_col} when
-#'   both are present. Silently skipped when absent. Default
-#'   \code{"dist_nearest_occupied_km"}. Set to \code{NULL} to disable.
+#'   both are present. Silently skipped when absent.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"dist_nearest_occupied_km"} to show it.
 #' @param patch_diameter_km_col Character or \code{NULL}. Column name for
 #'   \code{check_gbif_tile_range()}'s \code{patch_diameter_km} -- shown
 #'   alongside \code{dist_nearest_occupied_km_col} as a rough size for the
 #'   occupied area found (see "Spatial context" below for why this matters
 #'   to interpretation). Silently skipped when absent, or when
-#'   \code{dist_nearest_occupied_km_col} is not shown. Default
-#'   \code{"patch_diameter_km"}. Set to \code{NULL} to disable.
+#'   \code{dist_nearest_occupied_km_col} is not shown.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"patch_diameter_km"} to show it.
 #' @param beyond_buffer_col Character or \code{NULL}. Column name for
 #'   \code{check_gbif_tile_range()}'s \code{beyond_buffer} -- when
 #'   \code{TRUE}, shown instead of the distance/patch note as \code{"GBIF: no
 #'   occurrence found anywhere globally"}. Silently skipped when absent.
-#'   Default \code{"beyond_buffer"}. Set to \code{NULL} to disable.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"beyond_buffer"} to show it.
 #' @param inat_in_range_col Character or \code{NULL}. Column name for
 #'   \code{TaxaFetch::check_inat_range()}'s \code{in_range}. Shown as
 #'   \code{"in range"}/\code{"outside range"} alongside
 #'   \code{inat_n_observations_col}/\code{inat_matched_name_col} when
-#'   present. Silently skipped when absent. Default \code{"in_range"}. Set to
-#'   \code{NULL} to disable.
+#'   present. Silently skipped when absent.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"in_range"} to show it.
 #' @param inat_n_observations_col Character or \code{NULL}. Column name for
-#'   \code{check_inat_range()}'s \code{n_observations}. Default
-#'   \code{"n_observations"}. Set to \code{NULL} to disable.
+#'   \code{check_inat_range()}'s \code{n_observations}.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"n_observations"} to show it.
 #' @param inat_matched_name_col Character or \code{NULL}. Column name for
 #'   \code{check_inat_range()}'s \code{matched_name} -- the taxon iNaturalist's
 #'   own name search actually resolved the query to, which is not always the
 #'   query taxon itself. When it differs from the taxon under review, this is
 #'   flagged in the prompt as \code{"matched to '...' (name differs from
 #'   query)"} -- a plain factual annotation, not a judgment (see "Spatial
-#'   context" below). Default \code{"matched_name"}. Set to \code{NULL} to
-#'   disable.
+#'   context" below).
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"matched_name"} to show it.
 #' @param consensus_plausibility_col Character or \code{NULL}. Column name for
 #'   \code{add_posthoc_assessment()}'s \code{consensus_plausibility} --
 #'   specifically its \code{"unprecedented"} value (no local occurrence
@@ -215,13 +212,22 @@
 #'   \code{cache_dir} or a new \code{model_label}.
 #' @param model_label Character or \code{NULL}. A name for the model behind
 #'   \code{llm_fn}, recorded in the cache key so a verdict obtained from one
-#'   model is never served to a call asking another. Default \code{NULL}
-#'   derives an identity from \code{options("TaxaID.provider")} and from
-#'   \code{llm_fn} itself, which separates the providers and any wrapper that
-#'   pins a model. What it cannot separate is two models from ONE provider,
-#'   switched through \code{TaxaTools::set_model()} or a pinned tier: name
-#'   them here when you compare them, or the second run is served the first
-#'   model's verdicts from cache.
+#'   model is never served to a call asking another. \strong{Required whenever
+#'   \code{cache_dir} is set and \code{llm_fn} is a function you wrote}: all
+#'   that can be seen of such a closure is its source text, and a wrapper
+#'   written \code{function(p, ...) call_api(p, model = MODEL, ...)} deparses
+#'   to the variable NAME \code{"MODEL"}, not to the model it holds -- so
+#'   switching \code{MODEL} would give a byte-identical key and serve the
+#'   first model's verdicts to the second run, silently. That call now stops
+#'   and asks for this argument. Default \code{NULL} is still accepted with no
+#'   cache, and for an \code{llm_fn} a loaded namespace can name (such as
+#'   \code{TaxaTools::call_api} itself), where the identity is derived from
+#'   \code{options("TaxaID.provider")} and the function. Even then it names the
+#'   FUNCTION, not the model a tier resolves to, so a cached call warns and
+#'   points here. What it does NOT capture is anything else your wrapper
+#'   pins -- temperature, \code{max_tokens}, a system prompt, a reasoning
+#'   effort. Two runs that differ only in one of those share a key, so give
+#'   them different \code{model_label}s when you compare them.
 #' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
 #'   Default \code{15L}. Candidate-set entries are longer than single taxon
 #'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
@@ -252,9 +258,9 @@
 #'   after the re-asks: \code{"warn"} (default) reports them and continues,
 #'   \code{"error"} stops the run, \code{"ignore"} is silent. The residue is
 #'   recorded on the result either way (see \code{@section Unreviewed rows}).
-#'   Production workflows pass \code{"error"}: an unreviewed row is dropped
-#'   by the usual export filters, so a run with residue produces a species
-#'   list that is silently short.
+#'   Production workflows pass \code{"error"}: an unreviewed row is dropped by
+#'   any export filter that tests \code{llm_* != "unlikely"}, so under one of
+#'   those a run with residue produces a species list that is silently short.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls.
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
@@ -278,9 +284,9 @@
 #' @param sites \code{NULL} (default) or a data frame of study sites with
 #'   columns \code{site} (unique names), \code{lat} and \code{lon} (decimal
 #'   degrees; extra columns are ignored). When supplied the LLM is shown the
-#'   sites (sorted south to north) and asked WHERE among them each taxon is
-#'   geographically plausible, which adds the per-row
-#'   \code{llm_geographic_plausibility_site} column; see
+#'   sites (sorted south to north) and asked for each taxon's range LIMITS;
+#'   the site and study verdicts are computed from them here, which adds the
+#'   per-row \code{llm_geographic_plausibility_site} column; see
 #'   \code{@section Site-aware geography}. With \code{NULL} nothing changes:
 #'   the prompt, the cache key and the output columns are exactly those of a
 #'   call without this argument.
@@ -290,11 +296,12 @@
 #'   \code{sites$site} are named in a warning and those rows get the
 #'   study-wide verdict. Not part of the cache key, since it does not change
 #'   the prompt. Default \code{"site"}.
-#' @return The input data frame with 8 or 9 columns appended:
+#' @return The input data frame with the review columns appended:
 #' \describe{
-#'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
-#'     \code{@section Column naming} below for why this and the next three
-#'     columns carry an \code{llm_} prefix.}
+#'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely,
+#'     derived in code from \code{llm_p_habitat}; see \code{@section The
+#'     answer is a probability}. See \code{@section Column naming} below for
+#'     why this and the next three columns carry an \code{llm_} prefix.}
 #'   \item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.}
 #'   \item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
 #'     \code{NA} if \code{target_group} not supplied.}
@@ -317,14 +324,39 @@
 #'     \code{@section Geography guidelines} below for why this exists as a
 #'     deterministic column rather than relying on \code{review_comment}
 #'     alone.}
+#'   \item{\code{llm_p_habitat}, \code{llm_p_habitat_lo},
+#'     \code{llm_p_habitat_hi}}{The habitat probability the model gave and the
+#'     90% range it stated for it.}
+#'   \item{\code{llm_p_transported}}{Probability that the taxon's DNA could
+#'     plausibly reach these samples from adjacent habitats. Asked separately
+#'     from residency so that "could have washed in" is not scored as "lives
+#'     here". Output only: no rule reads it.}
+#'   \item{\code{llm_p_scope}, \code{llm_p_scope_lo},
+#'     \code{llm_p_scope_hi}}{Likewise for scope.}
+#'   \item{\code{llm_p_contamination}}{The contamination probability.}
+#'   \item{\code{llm_p_geographic}}{The study-wide geographic probability:
+#'     with \code{sites}, the MAXIMUM over the taxon's detected sites.}
 #' }
+#' The stated 90% ranges feed no rule either. They are kept because they were
+#' measured to be 5--10 times the model's own run-to-run spread, so they
+#' express uncertainty about the TAXON rather than noise, which is worth having
+#' in front of a reviewer.
 #' When \code{sites} is supplied the data frame also carries
 #' \code{llm_geographic_plausibility_site} (see \code{@section Site-aware
 #' geography}) and an \code{attr(result, "geographic_by_site")} data frame, one
-#' row per reviewed taxon, giving the parsed range rule (\code{rule},
-#' \code{lat_min}, \code{lat_max}, \code{inside}, \code{outside}, \code{unlikely_sites} as a
+#' row per reviewed taxon, giving the parsed range answer (\code{rule},
+#' \code{range_south_lat}, \code{range_north_lat}, \code{p_inside_range},
+#' \code{p_outside_range}, \code{sites_outside_range} as a
 #' semicolon-separated string, \code{n_unknown_sites}, and \code{how}, which
-#' records a fallback).
+#' records a swap, an ignored site name or a fallback). \code{sites} alone
+#' also adds \code{llm_p_geographic_site}, \code{llm_p_inside_range},
+#' \code{llm_p_outside_range}, \code{llm_range_known},
+#' \code{llm_range_south_lat} and \code{llm_range_north_lat}.
+#'
+#' Also carries a \code{"review_cuts"} attribute naming the four cut points
+#' the verdicts were derived with. The cuts are code rather than part of the
+#' cache key, so a saved result would otherwise carry verdicts with no record
+#' of how they were read off the probabilities.
 #'
 #' Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
 #' the taxon/candidate-set labels the LLM never returned a verdict for) and
@@ -345,10 +377,29 @@
 #' specific taxa out -- consistently the long compound slash labels, i.e. the
 #' hardest rows, not random ones. That is not truncation, so the halving retry
 #' alone would not catch it. Without a dedicated safeguard those taxa would be
-#' filled with \code{NA} in all four \code{llm_} columns, and because export
-#' chains filter with \code{!= "unlikely"}, which \strong{discards \code{NA}},
-#' an unreviewed observation would be silently removed from the final species
-#' list.
+#' filled with \code{NA} in all four \code{llm_} columns. The workflow
+#' template and the DAG snippet FLAG on those columns and drop nothing, but an
+#' export chain written \code{!= "unlikely"} \strong{discards \code{NA}}, so
+#' under one of those an unreviewed observation would be silently removed from
+#' the final species list.
+#'
+#' A taxon the model answered for but whose answer is unusable counts as
+#' omitted too, and for the same reason. The probabilities are the answer, so a
+#' value outside 0--1, or one that is not a number at all -- \code{85} for a
+#' percentage, \code{"high"} for a category -- leaves that verdict \code{NA}
+#' while \code{review_confidence} and \code{review_comment} arrive intact.
+#' Such a row is treated as omitted: it is re-asked and it is never cached.
+#'
+#' The test is ANY of the probabilities that drive a decision, not all of them:
+#' \code{p_habitat}, \code{p_contamination}, geography, and \code{p_scope}
+#' when \code{target_group} is supplied. A row that answered three questions
+#' and fumbled the fourth still carries one \code{NA} that the export filters
+#' discard without a word. \code{p_outside_range} is deliberately NOT in that
+#' set: its absence gives the inside probability at every site, which never
+#' manufactures an "outside" the model did not state. Each unusable answer is
+#' named, with its failing fields, in a \code{warning()} -- not only when
+#' \code{verbose} -- and a row still failing after every re-ask is counted in
+#' \code{attr(result, "n_unreviewed_rows")} like any other omission.
 #'
 #' Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
 #' to \code{max_retries} times; the cost is pay-per-failure, and the re-asking
@@ -359,8 +410,9 @@
 #' \code{attr(result, "n_unreviewed_rows")}, and escalated per
 #' \code{on_unreviewed}.
 #'
-#' The export filters themselves are deliberately UNCHANGED (still
-#' \code{!= "unlikely"}, still dropping \code{NA}). Keeping an unreviewed row
+#' A downstream filter is deliberately not second-guessed here: a chain
+#' written \code{!= "unlikely"} drops \code{NA} whatever this function does
+#' about it. Keeping an unreviewed row
 #' in a species list would put an unvetted taxon in the output distinguishable
 #' only by its \code{NA}s; stopping the run instead makes the decision
 #' per-run and explicit.
@@ -382,13 +434,17 @@
 #' \enumerate{
 #'   \item{\code{"pipeline flags UNPRECEDENTED"} (no local record in the
 #'     pipeline's occurrence data): absence of a citeable record is not
-#'     evidence of absence. Without specific local evidence the rating is at
-#'     most \code{"possible"}, never \code{"likely"}; \code{"unlikely"} needs
-#'     positive evidence of being out of range (a native range elsewhere with no
-#'     known introduction to the region, or a habitat the taxon cannot use).}
+#'     evidence of absence. Without specific local evidence the geographic
+#'     probability is intermediate, not high; a low one needs positive
+#'     evidence of being out of range (a native range elsewhere with no known
+#'     introduction to the region, or a habitat the taxon cannot use). This
+#'     bullet exists because an earlier, harder rule ("cite a local record or
+#'     rate it unlikely") rated widely introduced species out of range whenever
+#'     the model could not recall a record on that draw.}
 #'   \item{\code{"pipeline flags INDISTINGUISHABLE"} (a confusable relative
 #'     could score as well) weakens confidence in the name only and must not by
-#'     itself justify an \code{"unlikely"} rating.}
+#'     itself lower the habitat, geographic or scope probability. The same
+#'     holds for a \code{"(poor absolute fit)"} note.}
 #'   \item{\code{"pipeline call: <taxon> (<rank>)"}, shown when the reviewed
 #'     label is not the call itself (a species label on a genus or family
 #'     call): the call at its rank is the claim, and the species are candidates
@@ -396,8 +452,8 @@
 #' }
 #' Prompt compliance is never guaranteed, so the deterministic
 #' \code{geographic_disagreement_basis} output column (see \code{@return}) still
-#' marks every row rated likely/possible despite either flag; filter on it to
-#' audit those rows.
+#' marks every row whose derived geographic verdict is likely or possible
+#' despite either flag; filter on it to audit those rows.
 #'
 #' Each taxon line carries an id (\code{[T1]}, \code{[T2]}, ...) that the
 #' answer must echo; answers are matched by id first, then by name, so a long
@@ -405,70 +461,277 @@
 #' matching none of several sets is treated as failed (halved and retried),
 #' and an omission a re-ask cannot recover is re-asked one set per call.
 #'
+#' @section The answer is a probability:
+#' The LLM is asked for a probability for each judgement, not a category, and
+#' the \code{llm_*_plausibility} / \code{llm_contamination_risk} columns are
+#' derived from those probabilities here. The cuts are
+#' \code{unlikely < 0.10 <= possible < 0.70 <= likely}, and for contamination
+#' \code{low < 0.20 <= moderate < 0.70 <= high}.
+#'
+#' Why: asking for a probability and cutting it in code repeated more of its
+#' decisions between two asks than asking for the category did. That pair was
+#' measured on habitat and scope wording written for one study; on the wording
+#' this package ships the review repeats fewer of its decisions, and not
+#' enough more than the categorical figure for the two to be told apart on the
+#' taxa measured. Neither is there any measured difference between the two
+#' formats in agreement with the maintainer's own labels. What the probability
+#' does buy outright is below: a cut becomes this code's reading of a stored
+#' answer, so it can change without re-asking anything. The figures, and what
+#' they were and were not measured on, are in \emph{What was measured} below,
+#' which is the only place in this package that states them.
+#'
+#' The cut is applied AFTER the cache, never before it. What a cache entry
+#' holds is the probability -- the model's answer -- and a cut is this
+#' function's reading of it. So changing a cut takes effect for taxa already
+#' cached, with no new LLM calls, and the cuts are deliberately not part of the
+#' cache key.
+#'
+#' Four judgements are asked separately, which is the point of the format:
+#' habitat is LIVING CONDITIONS only ("does it live in this kind of habitat,
+#' wherever its range is"), scope is the KIND OF ORGANISM and its depth or zone
+#' only, and whether the taxon occurs in the study region is geography in both
+#' cases. \code{llm_p_transported} carries "its DNA could have reached these
+#' samples" separately from "it lives here", so a taxon washed in from adjacent
+#' water is not scored as a resident. The habitat and target-group wording in
+#' the prompt comes from \code{context$habitat} and \code{target_group}, so
+#' nothing about any particular study is built in; the worked examples name no
+#' real taxon for the same reason.
+#'
+#' @section What was measured:
+#' Every accuracy figure this package states is here, and nowhere else: one
+#' copy, so that a later measurement is one edit. All of it is
+#' \code{claude-opus-5-5} on one real multi-marker study: the maintainer's
+#' labels are 12S taxa, and the taxa behind the repeat figures include COI and
+#' 18S as well. Every interval given is a 95% bootstrap interval over taxa,
+#' and they are wide -- 34 labelled taxa and 90 repeated ones is what all of
+#' this rests on. Two figures separated by less than their intervals are not
+#' two figures, and the text below says so wherever that is the case rather
+#' than reporting an ordering.
+#'
+#' \strong{Against the maintainer's own labels}, over the 34 hardest taxa of
+#' that study, with \code{sites} supplied, as same-decision / precision /
+#' recall:
+#' \itemize{
+#'   \item{this prompt carrying every pipeline note it can:
+#'     73% (60-85) / 70% (51-89) / 73% (54-90).}
+#'   \item{this prompt with no pipeline-derived text at all -- every one of
+#'     the notes listed in \emph{What the review is not told} switched off,
+#'     not just the numbers: 74% (60-86) / 70% (50-89) / 65% (45-85).}
+#'   \item{the same guardrails and site block, asked with habitat and scope
+#'     wording written for that one study rather than taken from
+#'     \code{context$habitat} and \code{target_group}:
+#'     75% (61-89) / 80% (60-99) / 66% (43-88). That difference is the only
+#'     measurement of what generalising the wording cost.}
+#'   \item{a plain probability prompt with neither the site block nor the
+#'     guardrail definitions, study-specific wording again:
+#'     67% (52-81) / 75% (50-100) / 44% (22-66). It differs from the others in
+#'     BOTH the guardrails and the site block, so its difference belongs to
+#'     that pair and is not an isolated effect of \code{sites}.}
+#' }
+#' Every difference among those four sits inside the intervals.
+#'
+#' What the defaults send is not exactly either of the first two arms. They
+#' switch off the posterior, the occurrence prior, the GBIF fields and the
+#' iNaturalist fields and two of the five notes, and leave three that a
+#' suitable \code{input_df} can still trigger -- see
+#' \emph{What the review is not told}. Those three are the only way the
+#' shipped prompt differs from the second arm. So it sits between two arms
+#' that scored the same as each other, nearer the blind one, which is the most
+#' that can be said for it.
+#'
+#' \strong{Repeat stability}, as the share of the decisions the verdicts drive
+#' that a second ask repeats: with the pipeline notes, 90.0% (82.5-96.1) over
+#' 356 verdict-driven rows in 90 taxa, four asks of each taxon and six pairs;
+#' with none of them, 85.8% (69.4-98.4) over 345 rows in 88 taxa, which rests
+#' on a single pair per taxon and is correspondingly weak; the study-specific
+#' wording, 96.9% (93.8-98.9) over 346 rows in 87 taxa. Leaving out the one taxon described below takes the first to 93.0%
+#' and the second to 92.5%. All three intervals overlap, so none of these
+#' orderings is measured. Repeat pairs are correlated within a taxon, so it is
+#' those taxon counts and not the pair counts that set the intervals.
+#'
+#' \strong{Why the answer is a probability}: re-asking the same CATEGORICAL
+#' prompt repeated 90% of those decisions, against 97% for asking a
+#' probability and cutting it in code. Both of those arms were asked without
+#' the site block and without the guardrail definitions, so the pair isolates
+#' the answer format and nothing else, and neither figure is this prompt's own
+#' stability -- that is the paragraph above. Stability is the whole of the
+#' reason: scored against the maintainer's labels under one common rule, the
+#' two formats agree with him 71% and 74% of the time, are within 3 points of
+#' each other on each of the four judgements, and differ on precision and
+#' recall by less than their intervals. There is no measured difference in
+#' accuracy between asking for a category and asking for a probability.
+#'
+#' \strong{The cuts}: the question measured was not margin against hard
+#' directly. It was, of the rows this prompt acts on that a plain probability
+#' prompt keeps, how many did the maintainer act on too -- scored once with
+#' the verdicts read off by the margin cuts and once by hard cuts (0.20/0.70,
+#' contamination 0.50). Under this prompt's wording, 51% with the margin cuts
+#' against 31% with hard; under the study-specific wording, 54% against 32%.
+#' So the margin cuts make the guardrails' extra actions about half right
+#' where hard cuts leave them about a third right, and that holds on both
+#' wordings. No alternative to the 0.10 cut improves repeat stability; the
+#' instability that is left sits at the 0.70 cut, which is the paragraph
+#' below.
+#'
+#' \strong{A known instability, not fixed in this release}: a site-geography
+#' probability that lands near 0.70 can cross it between two asks, because the
+#' answer to whether the model can state the taxon's range at all moves with
+#' it. On the taxon that drives the repeat figure above, \emph{Eucheilota
+#' bakeri} on COI, the site probability is 0.80 when the model says it knows
+#' the range and 0.50 to 0.70 when it says it does not; another taxon,
+#' \emph{Spheciospongia}, moves 0.85 against 0.60 the same way. One such
+#' taxon is the whole of the leave-one-out difference above. Nothing
+#' in this release special-cases it: a fix is deferred to 1.1, because every
+#' candidate fix changes what the cut means for every other taxon.
+#'
+#' \strong{What the pipeline's own numbers add}: nothing that was measured.
+#' The first two arms above differ only in whether the taxon lines carried the
+#' posterior, the occurrence prior and the rest of it, and they agree on all
+#' three statistics well inside the intervals. That is the reason the defaults
+#' leave them off -- independence at no measured cost, not an improvement.
+#'
 #' @section Site-aware geography:
+#' \strong{Supply a site table when you have one}: of the two configurations
+#' scored against the maintainer's labels, the one with it has the higher
+#' point estimates -- same-decision 73% against 67%, recall 73% against 44%,
+#' with intervals that overlap. See \emph{What was measured}.
+#'
 #' A study that spans a coast or a latitude gradient has no single answer to
 #' "is this taxon geographically plausible here?": a tropical reef fish is
 #' plausible at the southern sites and not at the northern ones. With
-#' \code{sites} supplied the prompt lists the sites (name, latitude,
-#' longitude; sorted south to north) and the LLM returns, per taxon, a
-#' \code{geographic_by_site} object of one of three shapes:
+#' \code{sites} supplied the prompt lists the sites (name, latitude, longitude;
+#' sorted south to north), tells each taxon line which of them it was detected
+#' at, and asks for the taxon's range LIMITS rather than for a verdict:
 #' \itemize{
-#'   \item{\code{\{"rule": "all"\}}: the same verdict at every site.}
-#'   \item{\code{\{"rule": "latitude", "lat_min": ., "lat_max": .,
-#'     "inside": "likely" or "possible", "outside": "unlikely" or
-#'     "possible"\}}: plausible between the two latitudes; sites inside get the
-#'     \code{inside} verdict and sites outside get the \code{outside} verdict.}
-#'   \item{\code{\{"rule": "sites", "unlikely_sites": [...], "inside":
-#'     "likely" or "possible"\}}: unlikely at the named sites only, for
-#'     patterns latitude does not describe; every other site gets the
-#'     \code{inside} verdict.}
+#'   \item{\code{range_known}: whether the model can state the limits at all.}
+#'   \item{\code{range_south_lat}, \code{range_north_lat}: the limits in
+#'     decimal degrees N, either or both \code{null} for "no limit within the
+#'     study on that side".}
+#'   \item{\code{sites_outside_range}: sites outside the range when latitude
+#'     cannot describe it (island-only, a gap, or a study that runs east to
+#'     west).}
+#'   \item{\code{p_inside_range}, \code{p_outside_range}: the probability of
+#'     occurrence at a site inside, and at a site outside, those limits.}
 #' }
-#' The parsed rule is turned into a verdict per site in code, so the sites
-#' table is applied by the package, not by the model. Inside the range the
-#' verdict is the rule's own \code{inside} verdict, which is NOT capped by the
-#' taxon's \code{geographic_plausibility}: habitat fit and rarity are rated
-#' separately and must not override the range the model drew. A missing or
-#' invalid \code{inside} is \code{"possible"}; it never falls back to
-#' \code{geographic_plausibility}. With \code{\{"rule": "all"\}} the verdict at
-#' every site is \code{geographic_plausibility}. Output:
+#' The site probability is then computed here: a site beyond a stated limit, or
+#' named in \code{sites_outside_range}, takes \code{p_outside_range}; every
+#' other site takes \code{p_inside_range}. The cuts turn that into the site
+#' verdict. Asking for limits instead of a per-site verdict removes the model's
+#' choice between rule shapes and gives "study-wide" a definition it did not
+#' have.
+#'
+#' Output:
 #' \itemize{
-#'   \item{\code{llm_geographic_plausibility_site}: the verdict at the site
+#'   \item{\code{llm_geographic_plausibility_site} and
+#'     \code{llm_p_geographic_site}: the verdict and probability at the site
 #'     named in each row's \code{site_col}. Rows with an \code{NA} site, or a
-#'     site not in \code{sites}, get the study-wide verdict. Unreviewed taxa
-#'     stay \code{NA}.}
-#'   \item{\code{llm_geographic_plausibility} changes meaning when
-#'     \code{sites} is supplied: it is the BEST verdict over all the sites
-#'     (\code{"unlikely"} only if unlikely at every site), computed in code from
-#'     the site verdicts, not a single study-wide judgement.}
+#'     site not in \code{sites}, get the study-wide pair. Unreviewed taxa stay
+#'     \code{NA}.}
+#'   \item{\code{llm_geographic_plausibility} and \code{llm_p_geographic}
+#'     change meaning when \code{sites} is supplied: the probability is the
+#'     MAXIMUM over the taxon's detected sites and the verdict is its level,
+#'     computed here rather than asked for. Because the cut is monotone, that
+#'     verdict is also the best site verdict, so \code{"unlikely"} study-wide
+#'     means unlikely at every site.}
 #' }
-#' Fallbacks, each giving the study-wide verdict at every site (recorded in
-#' the \code{how} column of \code{attr(result, "geographic_by_site")}): the
-#' object is missing or not an object; the rule is unknown; a sites rule names
-#' only sites that do not exist. A latitude rule with neither bound is read as
-#' \code{"all"} carrying its \code{inside} verdict at every site, or the
-#' study-wide verdict when that \code{inside} is missing or invalid (recorded
-#' as \code{how = "both_bounds_NA_as_all"}). One missing bound means open-ended on that side; reversed
-#' bounds are swapped; a missing or invalid \code{outside} defaults to
-#' \code{"possible"}, the conservative choice because \code{"unlikely"} is
-#' what export filters drop; site names are matched ignoring case and
-#' surrounding spaces, and names that match no site are ignored and counted
-#' in \code{n_unknown_sites}.
+#' Guards on the answer, each recorded in the \code{how} column of
+#' \code{attr(result, "geographic_by_site")}: a value that is not a latitude in
+#' \code{[-90, 90]} is dropped; an INVERTED band -- a southern limit given as
+#' \code{range_north_lat} -- is swapped rather than obeyed, since obeying it
+#' would put every site outside the range and mark the taxon unlikely
+#' everywhere; site names are matched ignoring case and surrounding spaces, and
+#' names matching no site are ignored and counted in \code{n_unknown_sites}; a
+#' list in which NO name is recognised is dropped whole, so it cannot appear to
+#' have moved something while moving nothing; and a missing
+#' \code{p_outside_range} gives \code{p_inside_range} everywhere, which never
+#' manufactures an "outside" the model did not state.
+#'
+#' \code{range_known = FALSE} is a real answer, not a failure: it means the
+#' model cannot place the taxon, so every site takes \code{p_inside_range},
+#' which the guidelines tell it to make intermediate. Sites it named explicitly
+#' are still honoured -- "I do not know the limits" and "not at that site" are
+#' different claims. With no usable \code{p_inside_range} at all, geography is
+#' \code{NA} unless the model volunteered a study-wide \code{p_geographic}; the
+#' count of such taxa is reported when \code{verbose}.
+#'
+#' \strong{Known limitation.} Latitude limits suit a study that runs mostly
+#' north to south, which is what this was evaluated on. For a study running
+#' east to west, or at a single latitude, a range limit cannot be stated as a
+#' latitude at all, and the prompt tells the model to use
+#' \code{sites_outside_range} instead. That path works but has not been
+#' measured.
 #'
 #' The cache key gains a digest of the sites (names and coordinates rounded to
 #' 0.01 degree, order-independent) only when \code{sites} is supplied, so a
 #' cached verdict obtained without sites is never served to a call with sites,
-#' or the reverse. The parsed rule is cached with each taxon, so a cache hit
-#' reproduces \code{llm_geographic_plausibility_site}.
+#' or the reverse. The sites a taxon was detected at are part of its own key,
+#' because they are part of its prompt line. The parsed range answer is cached
+#' with each taxon, so a cache hit reproduces
+#' \code{llm_geographic_plausibility_site}.
 #'
 #' In \code{TaxaFlag::screen_assignments()}, \code{geography_col} can point at
 #' \code{llm_geographic_plausibility_site} so the screen uses the verdict for
 #' each row's own site.
 #'
+#' @section What the review is not told:
+#' By default the prompt carries none of the numbers this pipeline computed:
+#' the posterior, the occurrence prior, the GBIF distance and patch size, the
+#' \code{beyond_buffer} flag and the three iNaturalist fields are all
+#' \code{NULL}, so none of them reaches the model and the guideline that
+#' explains them is not assembled either. Pass the column names to turn any of
+#' them back on, one at a time or all of them. Two pipeline-derived NOTES are
+#' off by the same defaults -- \code{winner_rank_expanded_col} and
+#' \code{plausible_posteriors_col} -- because neither reaches anything but the
+#' prompt, and the first of them says the species call came from
+#' occurrence-prior mass, which is the kind of input this is keeping out.
+#' Three notes remain on; they are listed below.
+#'
+#' The reason is not accuracy. A review that is shown the pipeline's own
+#' confidence cannot contradict it independently, and a review that is shown a
+#' taxon's GBIF distance cannot catch an error IN the occurrence data -- which
+#' is one of the things it is for. Scored against the maintainer's labels, a
+#' review told these numbers and a review not told them came out the same
+#' within the intervals, so independence is had for no measured cost. See
+#' \emph{What was measured}.
+#'
+#' What the prompt still carries is the study's own design, not evidence about
+#' the taxon: the study context (geography, habitat, dates, target group,
+#' marker), the site table when \code{sites} is supplied, and which of those
+#' sites each taxon was detected at.
+#'
+#' Three pipeline notes are NOT switched off, and an \code{input_df} that
+#' carries the columns behind them will still put them in the prompt:
+#' \itemize{
+#'   \item{the UNREFERENCED provenance note (\code{consensus_provenance});}
+#'   \item{the UNPRECEDENTED and INDISTINGUISHABLE flags
+#'     (\code{consensus_plausibility_col},
+#'     \code{consensus_discrimination_col});}
+#'   \item{the poor-absolute-fit note (\code{poor_absolute_fit_col}, with
+#'     \code{best_identity_col} for the number in it).}
+#' }
+#' Each of those three is read for an output column or a gate as well as for
+#' the prompt: \code{consensus_plausibility_col} and
+#' \code{consensus_discrimination_col} populate
+#' \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag also
+#' decides whether that guideline is assembled. Switching them off is a
+#' decision about an output column, not only about the prompt, which is why it
+#' is left to the caller.
+#'
+#' For a prompt with no pipeline-derived text in it at all, set
+#' \code{consensus_provenance = FALSE} and both of
+#' \code{consensus_plausibility_col} and
+#' \code{consensus_discrimination_col}, and
+#' \code{poor_absolute_fit_col}, to \code{NULL}. That is the configuration
+#' the second arm in \emph{What was measured} was asked in, and those three
+#' notes are now the only way the shipped prompt differs from it. The cost is
+#' \code{geographic_disagreement_basis}, which is then \code{NA} throughout.
+#'
 #' @section Pipeline context:
-#' When \code{consensus_posterior_col}/\code{winner_prior_col}/
-#' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} match real
-#' columns in \code{input_df} (the defaults match \code{TaxaAssign::
-#' posterior_consensus()}'s own output names), a compact \code{"[...]"}
+#' All four of \code{consensus_posterior_col}/\code{winner_prior_col}/
+#' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are
+#' \code{NULL} by default and nothing here happens unless they are passed --
+#' see \emph{What the review is not told}. Given column names that exist in
+#' \code{input_df}, a compact \code{"[...]"}
 #' annotation is appended to each taxon's line in the LLM prompt -- the
 #' pipeline's own median statistical confidence/occurrence prior for that
 #' taxon, a note when the winning call was resolved by occurrence-prior
@@ -482,11 +745,13 @@
 #' from \code{input_df}.
 #'
 #' @section Spatial context:
-#' When \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
-#' \code{beyond_buffer_col} (matching \code{check_gbif_tile_range()}'s own
-#' output) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
-#' \code{inat_matched_name_col} (matching \code{TaxaFetch::check_inat_range()}'s
-#' own output) match real columns in \code{input_df} -- typically joined onto it by
+#' All six of these are \code{NULL} by default and nothing below happens
+#' unless they are passed -- see \emph{What the review is not told}. When
+#' \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
+#' \code{beyond_buffer_col} (\code{check_gbif_tile_range()}'s own output
+#' names) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
+#' \code{inat_matched_name_col} (\code{TaxaFetch::check_inat_range()}'s own
+#' names) are passed and match real columns in \code{input_df} -- typically joined onto it by
 #' taxon name before calling this function, since both source functions
 #' operate per-taxon at a query point, not per-row -- the same \code{"[...]"}
 #' bracket used for pipeline context also carries a compact GBIF/iNat summary
@@ -550,19 +815,19 @@ review_assignments <- function(input_df,
                                taxon_rank_col = NULL,
                                plausible_taxa_col = NULL,
                                irreducible_only = TRUE,
-                               consensus_posterior_col = "consensus_posterior",
-                               winner_prior_col = "winner_prior",
-                               winner_rank_expanded_col = "winner_rank_expanded",
+                               consensus_posterior_col = NULL,
+                               winner_prior_col = NULL,
+                               winner_rank_expanded_col = NULL,
                                consensus_provenance = TRUE,
-                               plausible_posteriors_col = "plausible_posteriors",
+                               plausible_posteriors_col = NULL,
                                consensus_plausibility_col = "consensus_plausibility",
                                consensus_discrimination_col = "consensus_discrimination",
-                               dist_nearest_occupied_km_col = "dist_nearest_occupied_km",
-                               patch_diameter_km_col = "patch_diameter_km",
-                               beyond_buffer_col = "beyond_buffer",
-                               inat_in_range_col = "in_range",
-                               inat_n_observations_col = "n_observations",
-                               inat_matched_name_col = "matched_name",
+                               dist_nearest_occupied_km_col = NULL,
+                               patch_diameter_km_col = NULL,
+                               beyond_buffer_col = NULL,
+                               inat_in_range_col = NULL,
+                               inat_n_observations_col = NULL,
+                               inat_matched_name_col = NULL,
                                context,
                                target_group = NULL,
                                marker = NULL,
@@ -597,12 +862,14 @@ review_assignments <- function(input_df,
   }
 
   # Pipeline-context column-name params are deliberately NOT validated for
-  # presence in input_df -- unlike taxon_rank_col/plausible_taxa_col above, these
-  # have non-NULL defaults matching TaxaAssign::posterior_consensus()'s own
-  # output names, so an explicit-presence check would break every caller
-  # whose input_df doesn't carry these columns (e.g. not built from
-  # posterior_consensus() at all). Silently skipped instead (see
-  # .summarise_pipeline_context()); only the parameter TYPE is checked here.
+  # presence in input_df -- unlike taxon_rank_col/plausible_taxa_col above,
+  # those of them that still default to a column name default to
+  # TaxaAssign::posterior_consensus()'s own output names, so an
+  # explicit-presence check would break every caller whose input_df doesn't
+  # carry these columns (e.g. not built from posterior_consensus() at all).
+  # Silently skipped instead (see .summarise_pipeline_context()); only the
+  # parameter TYPE is checked here. The data-note params default to NULL, so
+  # for those the check would be unreachable anyway.
   if (!is.logical(consensus_provenance) || length(consensus_provenance) != 1L ||
     is.na(consensus_provenance)) {
     cli::cli_abort("{.arg consensus_provenance} must be TRUE or FALSE.")
@@ -866,6 +1133,21 @@ review_assignments <- function(input_df,
   taxa_info$has_unprecedented[is.na(taxa_info$has_unprecedented)] <- FALSE
   taxa_info$has_indistinguishable[is.na(taxa_info$has_indistinguishable)] <- FALSE
 
+  # --- Per-taxon prompt brackets (sites path) -------------------------------
+  # Attached as a column of taxa_info, which is where the cache key is built
+  # from: every column of it already enters the key, so the sites a taxon was
+  # detected at key themselves. They change the question asked, so a verdict
+  # obtained without them must not be served as a hit for a call that
+  # includes them.
+  if (!is.null(sites)) {
+    det <- .review_detected_sites(
+      taxa_info$taxon_name, input_df, site_col, sites, label_canon_map
+    )
+    taxa_info$detected_note <- vapply(
+      det, .detected_sites_bracket, character(1L), sites = sites
+    )
+  }
+
   if (verbose) {
     message(sprintf(
       "review_assignments: %d unique %s to review.",
@@ -916,7 +1198,7 @@ review_assignments <- function(input_df,
       dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
 
-    reviewer_id <- .review_reviewer_id(llm_fn, model_label)
+    reviewer_id <- .review_reviewer_id(llm_fn, model_label, caching = TRUE)
     if (verbose && length(list.files(cache_dir, pattern = "_review\\.rds$"))) {
       message(
         "review_assignments: the cache key now records which model answered, ",
@@ -931,9 +1213,27 @@ review_assignments <- function(input_df,
     # verdict from the old wording would otherwise be served as a hit.
     # v3: the poor-absolute-fit guideline. v4: the no-reference line is
     # keyed on the reviewed label's own row type, not the call's. v5: the
-    # geography guidelines (a)/(b)/(f), ids on taxa lines.
+    # geography guidelines (a)/(b)/(f), ids on taxa lines. v6: the answer is a
+    # probability under the guardrail definitions, so EVERY cached verdict --
+    # on every path, sites or not -- is a miss once and is re-asked. v7: the
+    # UNPRECEDENTED guideline asks for "0.05 or lower" where it asked for
+    # "under 0.1", which a strict `< 0.10` cut reads differently; the key holds
+    # the inputs and not the prompt, so only a bump can stop a verdict given
+    # under the old wording being served for the new question. v8: the
+    # guideline that explains the "[...]" bracket is now assembled only when a
+    # line in the batch carries one. For a taxon with no notes under either
+    # configuration -- an input_df that never had the columns -- the key is
+    # byte-identical and the prompt is one guideline shorter, so nothing but a
+    # bump stops the old answer being served for the new question. v9: the
+    # rank-expansion note and the candidate weights are off by default too.
+    # Both ARE carried in a hashed column -- each is folded into
+    # taxa_info$pipeline_note before the key is built -- so a taxon that
+    # carried either is a miss on its own key and needs nothing. The bump is
+    # for its NEIGHBOURS: the bracket guideline is assembled per BATCH, so
+    # dropping the last note in a batch changes the prompt of every other
+    # taxon in it while their keys do not move.
     shared_parts <- c(
-      "v5", target_group %||% "", marker %||% "", data_type,
+      "v9", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -943,9 +1243,9 @@ review_assignments <- function(input_df,
     # The sites change the prompt and the parsed output, so they are part of
     # the key -- but ONLY when supplied, which leaves the sites = NULL key
     # byte-identical to a key written before this argument existed. Bump
-    # "geo_sites_v4" whenever the sites wording in the prompt changes.
+    # "geo_sites_v5" whenever the sites wording in the prompt changes.
     if (!is.null(sites)) {
-      shared_parts <- c(shared_parts, "geo_sites_v4", .review_sites_digest(sites))
+      shared_parts <- c(shared_parts, "geo_sites_v5", .review_sites_digest(sites))
     }
     .shared <- paste(shared_parts, collapse = "\u0001")
 
@@ -973,7 +1273,7 @@ review_assignments <- function(input_df,
       # should never be written now (see @section Unreviewed rows), but if
       # one exists in the cache directory, treat it as a MISS so the taxon is
       # asked again, rather than serving the omission forever.
-      if (!is.null(ent) && .is_unreviewed_row(ent)) {
+      if (!is.null(ent) && .is_unreviewed_row(ent, target_group)) {
         n_stale_na <- n_stale_na + 1L
         ent <- NULL
       }
@@ -1000,7 +1300,20 @@ review_assignments <- function(input_df,
     }
   }
 
+  # Which taxa share a call is a measured source of irreproducibility: reshuffling
+  # the batches, with nothing else changed, moved 7% of the decisions the verdicts
+  # drive. Input order is whatever the upstream table happened to be in, so the
+  # batches are built from a sort of the labels instead. Two runs that have the
+  # same taxa left to ask therefore ask the same batches.
+  #
+  # It cannot be made fully order-free: batching happens on the taxa still to
+  # ask, so a run whose cache covers a different subset will group the remainder
+  # differently. What this removes is the part that moved for no reason at all.
   taxa_to_call <- taxa_info[call_rows, , drop = FALSE]
+  taxa_to_call <- taxa_to_call[
+    order(taxa_to_call$taxon_name, method = "radix"), ,
+    drop = FALSE
+  ]
 
   # --- Batch and call LLM ---
   n_taxa <- nrow(taxa_to_call)
@@ -1077,6 +1390,11 @@ review_assignments <- function(input_df,
     }
   }
   rownames(review_df) <- NULL
+  # Read every row -- freshly asked and cached alike -- through THIS run's
+  # cuts. A cached row stores the probabilities the model gave, so a changed
+  # cut applies to it without re-asking; deriving only in the parser would
+  # have frozen each cached row at the cut in force when it was written.
+  review_df <- .derive_levels(review_df)
 
   # The parsed range rule per reviewed taxon (sites path only).
   geo_attr <- if (!is.null(sites)) .geo_rules_table(review_df) else NULL
@@ -1085,13 +1403,13 @@ review_assignments <- function(input_df,
     n_unk <- sum(geo_attr$n_unknown_sites)
     if (n_fb > 0L) {
       message(sprintf(
-        "  sites: %d of %d taxa had no usable geographic_by_site rule; the study-wide verdict is used at every site.",
+        "  sites: %d of %d taxa gave no usable range answer; the study-wide verdict is used at every site.",
         n_fb, nrow(geo_attr)
       ))
     }
     if (n_unk > 0L) {
       message(sprintf(
-        "  sites: %d unlikely_sites name(s) matched no site and were ignored.", n_unk
+        "  sites: %d sites_outside_range name(s) matched no site and were ignored.", n_unk
       ))
     }
   }
@@ -1141,11 +1459,27 @@ review_assignments <- function(input_df,
     review_lower_hypotheses = review_df$review_lower_hypotheses,
     review_confidence = review_df$review_confidence,
     review_comment = review_df$review_comment,
+    llm_p_habitat = review_df$p_habitat,
+    llm_p_habitat_lo = review_df$p_habitat_lo,
+    llm_p_habitat_hi = review_df$p_habitat_hi,
+    llm_p_transported = review_df$p_transported,
+    llm_p_scope = review_df$p_scope,
+    llm_p_scope_lo = review_df$p_scope_lo,
+    llm_p_scope_hi = review_df$p_scope_hi,
+    llm_p_contamination = review_df$p_contamination,
+    llm_p_geographic = review_df$p_geographic,
     .has_unprecedented = review_df$has_unprecedented,
     .has_indistinguishable = review_df$has_indistinguishable,
     stringsAsFactors = FALSE
   )
-  if (!is.null(sites)) merge_key$.geo_json <- review_df$review_geo_json
+  if (!is.null(sites)) {
+    merge_key$llm_p_inside_range <- review_df$p_inside_range
+    merge_key$llm_p_outside_range <- review_df$p_outside_range
+    merge_key$llm_range_known <- review_df$range_known
+    merge_key$llm_range_south_lat <- review_df$range_south_lat
+    merge_key$llm_range_north_lat <- review_df$range_north_lat
+    merge_key$.geo_json <- review_df$review_geo_json
+  }
 
   input_df$.row_id <- seq_len(nrow(input_df))
   result <- merge(input_df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
@@ -1156,7 +1490,7 @@ review_assignments <- function(input_df,
 
   # --- Per-site verdicts (sites path only) -----------------------------------
   if (!is.null(sites)) {
-    result <- .apply_site_verdicts(result, sites, site_col)
+    result <- .apply_site_verdicts(result, sites, site_col, taxon_col)
   }
 
   # --- Deterministic disagreement flag --------------------------------------
@@ -1189,15 +1523,23 @@ review_assignments <- function(input_df,
     attr(result, "geographic_by_site") <- geo_attr
   }
 
+  # The cuts are code, not part of the cache key, so a saved result would
+  # otherwise carry verdicts with no record of how they were read off the
+  # probabilities. Stamped here so that record travels with the frame.
+  attr(result, "review_cuts") <- c(
+    unlikely_below = .p_cut_unlikely, likely_at = .p_cut_likely,
+    contamination_moderate_at = .p_cut_contam_moderate,
+    contamination_high_at = .p_cut_contam_high
+  )
+
   # Named by batch label (including any "a"/"b" retry sub-batch splits) --
   # see @return below.
   attr(result, "llm_prompts") <- as.list(prompt_log)
 
   # --- Unreviewed residue ----------------------------------------------------
   # A row the model never answered about carries NA in all four llm_ columns,
-  # and every production workflow's export chain filters with != "unlikely",
-  # which DISCARDS NA -- so the observation leaves the final species list
-  # without a word. The count is returned as an attribute (always present, possibly empty),
+  # and an export chain written != "unlikely" DISCARDS NA -- so under one of
+  # those the observation leaves the final species list without a word. The count is returned as an attribute (always present, possibly empty),
   # modelled on fetch_ncbi_reference_sequences()'s count_failures, so a
   # workflow can check it programmatically instead of hand-writing a
   # diagnostic. NOTE: attributes do not survive a dplyr verb -- check this
@@ -1227,8 +1569,8 @@ review_assignments <- function(input_df,
       )
     }
     what_to_do <- paste0(
-      "\nThese rows are DROPPED by the usual export filters, which test\n",
-      "  llm_* != \"unlikely\" and so discard NA. Re-running normally recovers\n",
+      "\nThese rows are DROPPED by any export filter that tests\n",
+      "  llm_* != \"unlikely\", which discards NA. Re-running normally recovers\n",
       "  them (an unreviewed taxon is never cached). To continue anyway and\n",
       "  accept the loss, set on_unreviewed = \"warn\"; the affected taxa are\n",
       "  then named here and in attr(result, \"unreviewed_taxa\")."
@@ -1244,17 +1586,41 @@ review_assignments <- function(input_df,
 }
 
 
-#' Is This Review Row an Unreviewed Non-Answer?
+#' Is This Cached Review Row a Non-Answer?
 #'
-#' TRUE when every field the LLM is asked to fill is \code{NA} -- the shape
-#' \code{.parse_review_response()}'s \code{make_default()} produces for a
-#' taxon the model omitted. Deliberately ignores \code{scope_plausibility}
-#' (legitimately \code{NA} for every taxon when \code{target_group} is not
-#' supplied) and \code{review_lower_hypotheses} (legitimately \code{NA} on
-#' the whole candidate-set path), so a real verdict is never mistaken for a
-#' non-answer.
+#' TRUE when the row does not carry a usable value for every probability that
+#' drives a decision. This is the SAME test the parser applies before a row is
+#' kept, and it has to be: if the write side refuses to store a row with one
+#' unusable probability while the read side only rejects a row with none
+#' usable, then an entry written by any earlier build is served as a hit
+#' forever and its \code{NA} is discarded by every export filter without a
+#' word. Read and write must agree about what an answer is.
+#'
+#' \code{p_scope} counts only when \code{target_group} is supplied, because
+#' without one the scope question was never put and \code{NA} is the correct
+#' stored value. \code{p_outside_range} never counts: its absence gives the
+#' inside probability at every site, which is a stated reading rather than a
+#' missing answer.
+#'
+#' A row with no probability columns at all predates the probability format,
+#' which the \code{v9} key prefix already orphans; such a row falls back to
+#' the older test -- every field the LLM was asked to fill is \code{NA}, the
+#' shape \code{make_default()} produces for an omitted taxon. That test
+#' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
+#' when \code{target_group} is absent) and \code{review_lower_hypotheses}
+#' (legitimately \code{NA} on the whole candidate-set path).
 #' @noRd
-.is_unreviewed_row <- function(ent) {
+.is_unreviewed_row <- function(ent, target_group = NULL) {
+  pcols <- grep("^p_", names(ent), value = TRUE)
+  if (length(pcols) > 0L) {
+    asked <- c("p_habitat", "p_contamination", "p_geographic")
+    if (!is.null(target_group)) asked <- c(asked, "p_scope")
+    asked <- intersect(asked, pcols)
+    if (length(asked) == 0L) {
+      return(TRUE)
+    }
+    return(any(vapply(asked, function(cl) any(is.na(ent[[cl]])), logical(1L))))
+  }
   cols <- c(
     "habitat_plausibility", "geographic_plausibility",
     "contamination_risk", "review_confidence",
@@ -1821,6 +2187,9 @@ review_assignments <- function(input_df,
     # params found a matching column.
     note <- if ("pipeline_note" %in% names(taxa_batch)) taxa_batch$pipeline_note[i] else NA_character_
     if (!is.na(note)) base <- paste0(base, " [", note, "]")
+    # The run's own fact: where this taxon was actually detected.
+    det <- if ("detected_note" %in% names(taxa_batch)) taxa_batch$detected_note[i] else NA_character_
+    if (!is.na(det)) base <- paste0(base, " ", det)
     # The id is how the answer is matched back (see .parse_review_response()):
     # a long candidate-set label echoed back reformatted cannot be matched by
     # name, and one such label could unmatch a whole batch.
@@ -1830,14 +2199,12 @@ review_assignments <- function(input_df,
   taxa_block <- paste(taxa_lines, collapse = "\n")
 
   # --- Scope instructions ---
-  scope_instruction <- if (!is.null(target_group)) {
-    sprintf(
-      '  "scope_plausibility": one of "likely", "possible", "unlikely" (does this taxon belong to the target group: %s?),',
-      target_group
-    )
-  } else {
-    '  "scope_plausibility": null (no target group specified),'
-  }
+  scope_instruction <- .p_scope_field_text(target_group)
+
+  # Which field the geography guidelines below should name. With a site table
+  # the model states range limits and a probability inside/outside them; with
+  # no sites it gives the study-wide probability directly.
+  geo_p_name <- if (!is.null(sites)) "p_inside_range" else "p_geographic"
 
   # --- Lower hypotheses instructions ---
   # Suppressed when reviewing candidate sets (species already known to pipeline)
@@ -1890,13 +2257,14 @@ review_assignments <- function(input_df,
       '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
       "local occurrence record in the pipeline's occurrence data): absence of ",
       "a citeable record is NOT evidence of absence. Without specific evidence ",
-      "of a population at or near this site, rate geographic_plausibility",
-      if (!is.null(sites)) " (and its verdict at every site)" else "", " at ",
-      'most "possible", never "likely", and say in review_comment that the ',
-      'evidence is thin. Rate it "unlikely" only with POSITIVE evidence that it ',
-      "is out of range here -- for example a native range on another continent ",
-      "with no known introduction to this region, or a habitat it cannot use. A ",
-      'widely introduced species, or one known from the region, is at least "possible".\n'
+      "of a population at or near this site, give an intermediate geographic ",
+      "probability (", geo_p_name, " about 0.3-0.6), not a high one, and say ",
+      "in review_comment that the evidence is thin. Give a low probability ",
+      "(0.05 or lower) only with POSITIVE evidence that it is out of range here ",
+      "-- for example a native range on another continent with no known ",
+      "introduction to this region, or a habitat it cannot use. A widely ",
+      "introduced species, or one known from the region, is at least ",
+      "intermediate.\n"
     )
   } else {
     NULL
@@ -1909,7 +2277,8 @@ review_assignments <- function(input_df,
     paste0(
       '- "pipeline flags INDISTINGUISHABLE" means a confusable relative could ',
       "match the sequence equally well. It weakens confidence in the NAME, not ",
-      'the ecology: it must not by itself justify "unlikely" habitat, geography or scope.\n'
+      "the ecology: it must not by itself lower your habitat, geography or ",
+      "scope probabilities.\n"
     )
   } else {
     NULL
@@ -1925,7 +2294,7 @@ review_assignments <- function(input_df,
       '- When a bracket gives "pipeline call: <taxon> (<rank>)", that taxon at that ',
       "rank is the claim: rate habitat and geography for it. The species names shown ",
       "are candidates within it, not the claim, so a candidate you cannot place ",
-      "locally does not make a genus or family call unlikely.\n"
+      "locally does not lower a genus or family call's probabilities.\n"
     )
   } else {
     NULL
@@ -1946,8 +2315,8 @@ review_assignments <- function(input_df,
       "verdict may describe a DIFFERENT (often more common) species due to a ",
       "fuzzy name match, not the taxon actually being assessed -- treat that ",
       "verdict with real suspicion rather than as confirmation. Use both to ",
-      "inform geographic_plausibility, and note any inconsistency you notice ",
-      "in review_comment.\n"
+      "inform your geographic probability, and note any inconsistency you ",
+      "notice in review_comment.\n"
     )
   } else {
     NULL
@@ -1964,7 +2333,30 @@ review_assignments <- function(input_df,
       '- A "(poor absolute fit)" note means the best reference match is weak, ',
       "so the NAME at the called rank is uncertain. It says nothing about ",
       "whether that group is ecologically or geographically plausible here: ",
-      'it must not by itself justify "unlikely" habitat, geography or scope.\n'
+      "it must not by itself lower your habitat, geography or scope ",
+      "probabilities.\n"
+    )
+  } else {
+    NULL
+  }
+
+  # --- Bracket guidance (only when a taxon line actually carries a bracket) ---
+  # The pipeline's own numbers are off by default, so on most runs no line
+  # ends with a "[...]" bracket at all and this guideline would describe
+  # something the model cannot see -- it names a posterior and an occurrence
+  # prior, which is exactly what a review that is meant to judge
+  # independently should not be told to look for. Gated on the batch like
+  # every other conditional guideline above.
+  has_bracket_note <- "pipeline_note" %in% names(taxa_batch) &&
+    any(!is.na(taxa_batch$pipeline_note))
+  bracket_guideline <- if (has_bracket_note) {
+    paste0(
+      '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
+      "pipeline's OWN confidence for this call (posterior/occurrence prior/candidate ",
+      "weights), not your input. Use it to flag disagreement between the pipeline's ",
+      "confidence and your own ecological judgment in review_comment -- e.g. a low ",
+      "pipeline posterior alongside your own high probabilities is worth a note -- ",
+      "but do not let it override your independent assessment itself.\n"
     )
   } else {
     NULL
@@ -1995,67 +2387,42 @@ review_assignments <- function(input_df,
     "given the study context. Return your assessment as a valid JSON array with one ",
     "object per taxon. Return ONLY the JSON array -- no markdown fences, no explanation ",
     "before or after.\n\n",
-    "Each object must have these fields:\n",
+    "Each object must have these fields. Every probability is a number from 0 ",
+    "to 1 with two decimals:\n",
     '  "id": the bracketed id given before the taxon, e.g. "T1",\n',
     '  "taxon_name": the exact taxon name as provided,\n',
-    '  "habitat_plausibility": one of "likely", "possible", "unlikely",\n',
-    '  "geographic_plausibility": one of "likely", "possible", "unlikely",\n',
-    if (!is.null(sites)) .geo_field_text else "",
+    .p_habitat_field_text(ctx$habitat), "\n",
+    '  "p_habitat_range": [low, high], your 90% range,\n',
+    .p_transported_field_text, "\n",
     scope_instruction, "\n",
-    '  "contamination_risk": one of "low", "moderate", "high",\n',
-    '  "review_alternatives": comma-separated string of plausible alternative taxa ',
-    "that better fit the geography and habitat, or null if the taxon is plausible,\n",
+    '  "p_scope_range": [low, high],\n',
+    if (!is.null(sites)) .p_range_field_text else .p_study_geo_field_text,
+    .p_contamination_field_text, "\n",
+    '  "review_alternatives": comma-separated string of plausible alternative ',
+    "taxa that better fit the geography and habitat, or null,\n",
     lower_instruction, "\n",
     '  "review_confidence": one of "high", "moderate", "low",\n',
     '  "review_comment": a brief free-text note, or null\n\n',
     "GUIDELINES:\n",
+    .p_guideline_text,
     '- "review_alternatives" means "you might have the wrong taxon" -- suggest ',
     "relatives that better fit the context.\n",
     "- ", contaminant_guideline, "\n",
-    '- Be conservative with "unlikely" -- only use it when reasonably confident.\n',
-    '- If uncertain, use "possible" or "moderate" rather than making a strong claim.\n',
-    if (!is.null(sites)) .geo_guideline_text else "",
+    "- Give a low probability only when reasonably confident. If uncertain, ",
+    "give an intermediate probability with a wide 90% range rather than making ",
+    "a strong claim.\n",
+    if (!is.null(sites)) .p_range_guideline_text else .p_study_geo_guideline_text,
     if (!is.null(unprecedented_guideline)) unprecedented_guideline else "",
     if (!is.null(indistinguishable_guideline)) indistinguishable_guideline else "",
     if (!is.null(call_rank_guideline)) call_rank_guideline else "",
     if (!is.null(spatial_guideline)) spatial_guideline else "",
     if (!is.null(poorfit_guideline)) poorfit_guideline else "",
-    '- When a taxon line ends with a "[...]" bracket, that is the statistical ',
-    "pipeline's OWN confidence for this call (posterior/occurrence prior/candidate ",
-    "weights), not your input. Use it to flag disagreement between the pipeline's ",
-    "confidence and your own ecological judgment in review_comment -- e.g. a low ",
-    'pipeline posterior alongside your own "likely" rating is worth a note -- but do ',
-    "not let it override your independent plausibility assessment itself.\n\n",
+    if (!is.null(bracket_guideline)) bracket_guideline else "",
+    if (!is.null(sites)) .p_detected_guideline_text else "",
+    "\n",
+    .p_worked_examples_text,
     "EXAMPLE OUTPUT FORMAT:\n",
-    "[\n",
-    '  {"id": "T1", "taxon_name": "Gobiidae", "habitat_plausibility": "likely", ',
-    '"geographic_plausibility": "likely", ',
-    if (!is.null(sites)) '"geographic_by_site": {"rule": "all"}, ' else "",
-    '"scope_plausibility": "likely", ',
-    '"contamination_risk": "low", "review_alternatives": null, ',
-    '"review_lower_hypotheses": null, "review_confidence": "high", ',
-    '"review_comment": null},\n',
-    '  {"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", ',
-    '"geographic_plausibility": "likely", ',
-    if (!is.null(sites)) '"geographic_by_site": {"rule": "all"}, ' else "",
-    '"scope_plausibility": "unlikely", ',
-    '"contamination_risk": "high", "review_alternatives": null, ',
-    '"review_lower_hypotheses": null, "review_confidence": "high", ',
-    '"review_comment": "', example_comment, '"}',
-    if (!is.null(sites)) {
-      paste0(
-        ',\n  {"id": "T3", "taxon_name": "Example tropicus", ',
-        '"habitat_plausibility": "likely", "geographic_plausibility": "likely", ',
-        '"geographic_by_site": {"rule": "latitude", "lat_min": 20.5, "lat_max": 30.0, ',
-        '"inside": "likely", "outside": "unlikely"}, "scope_plausibility": "likely", ',
-        '"contamination_risk": "low", "review_alternatives": null, ',
-        '"review_lower_hypotheses": null, "review_confidence": "moderate", ',
-        '"review_comment": "range ends at 30 N"}'
-      )
-    } else {
-      ""
-    },
-    "\n]\n\n",
+    .p_example_output(sites, use_candidates, example_comment),
     "TAXA TO REVIEW:\n",
     taxa_block
   )
@@ -2167,8 +2534,8 @@ review_assignments <- function(input_df,
   # while still leaving out specific taxa -- consistently the long compound
   # slash labels, i.e. the hardest rows, not random ones. That is NOT
   # truncation, so `status` is "complete" and the halving retry above never
-  # fires for it; without this re-ask, those taxa would be filled NA and the
-  # workflows' `!= "unlikely"` export filters (which discard NA) would remove
+  # fires for it; without this re-ask, those taxa would be filled NA, and an
+  # export chain written `!= "unlikely"` (which discards NA) would remove
   # those observations from the final species list without a word.
   #
   # Cost is bounded and pay-per-failure: this fires only when the model
@@ -2330,9 +2697,25 @@ review_assignments <- function(input_df,
       review_lower_hypotheses = NA_character_,
       review_confidence = NA_character_,
       review_comment = NA_character_,
+      p_habitat = NA_real_,
+      p_habitat_lo = NA_real_,
+      p_habitat_hi = NA_real_,
+      p_transported = NA_real_,
+      p_scope = NA_real_,
+      p_scope_lo = NA_real_,
+      p_scope_hi = NA_real_,
+      p_contamination = NA_real_,
+      p_geographic = NA_real_,
       stringsAsFactors = FALSE
     )
-    if (with_geo) out$review_geo_json <- NA_character_
+    if (with_geo) {
+      out$p_inside_range <- NA_real_
+      out$p_outside_range <- NA_real_
+      out$range_known <- NA
+      out$range_south_lat <- NA_real_
+      out$range_north_lat <- NA_real_
+      out$review_geo_json <- NA_character_
+    }
     out
   }
 
@@ -2434,24 +2817,101 @@ review_assignments <- function(input_df,
     }
   }
 
+  # A probability field, as numbers. jsonlite hands back an atomic column when
+  # every object had the field and a list column when any was null or an array,
+  # so both shapes are read here; anything that is not a single number in
+  # [0, 1] becomes NA rather than a silent 0 or a recycled neighbour.
+  .safe_num <- function(input_df, col_name, lo = 0, hi = 1) {
+    if (!col_name %in% names(input_df)) {
+      return(rep(NA_real_, nrow(input_df)))
+    }
+    v <- input_df[[col_name]]
+    out <- if (is.list(v)) {
+      vapply(v, function(z) {
+        if (is.null(z) || length(z) != 1L) {
+          NA_real_
+        } else {
+          suppressWarnings(as.numeric(z[[1L]]))
+        }
+      }, numeric(1L))
+    } else {
+      suppressWarnings(as.numeric(v))
+    }
+    out[!is.na(out) & (out < lo | out > hi)] <- NA_real_
+    out
+  }
+  # One end of a stated 90% range. Output only -- nothing downstream reads it
+  # -- but measured to be informative: the ranges the model states are 5-10x
+  # its own run-to-run spread, so they express uncertainty about the TAXON.
+  .safe_bound <- function(input_df, col_name, which_end) {
+    if (!col_name %in% names(input_df)) {
+      return(rep(NA_real_, nrow(input_df)))
+    }
+    v <- input_df[[col_name]]
+    if (is.matrix(v)) {
+      return(suppressWarnings(as.numeric(v[, which_end])))
+    }
+    if (!is.list(v)) {
+      return(rep(NA_real_, length(v)))
+    }
+    vapply(v, function(z) {
+      z <- suppressWarnings(as.numeric(unlist(z, use.names = FALSE)))
+      if (length(z) < which_end) NA_real_ else z[[which_end]]
+    }, numeric(1L))
+  }
+
   result <- data.frame(
     taxon_name = as.character(parsed$taxon_name),
-    habitat_plausibility = .safe_col(parsed, "habitat_plausibility"),
-    geographic_plausibility = .safe_col(parsed, "geographic_plausibility"),
-    scope_plausibility = .safe_col(parsed, "scope_plausibility"),
-    contamination_risk = .safe_col(parsed, "contamination_risk"),
+    habitat_plausibility = NA_character_,
+    geographic_plausibility = NA_character_,
+    scope_plausibility = NA_character_,
+    contamination_risk = NA_character_,
     review_alternatives = .safe_col(parsed, "review_alternatives"),
     review_lower_hypotheses = .safe_col(parsed, "review_lower_hypotheses"),
     review_confidence = .safe_col(parsed, "review_confidence"),
     review_comment = .safe_col(parsed, "review_comment"),
+    p_habitat = .safe_num(parsed, "p_habitat"),
+    p_habitat_lo = .safe_bound(parsed, "p_habitat_range", 1L),
+    p_habitat_hi = .safe_bound(parsed, "p_habitat_range", 2L),
+    p_transported = .safe_num(parsed, "p_transported"),
+    p_scope = .safe_num(parsed, "p_scope"),
+    p_scope_lo = .safe_bound(parsed, "p_scope_range", 1L),
+    p_scope_hi = .safe_bound(parsed, "p_scope_range", 2L),
+    p_contamination = .safe_num(parsed, "p_contamination"),
+    p_geographic = .safe_num(parsed, "p_geographic"),
     stringsAsFactors = FALSE
   )
   if (with_geo) {
-    g <- if ("geographic_by_site" %in% names(parsed)) parsed$geographic_by_site else NULL
+    result$p_inside_range <- .safe_num(parsed, "p_inside_range")
+    result$p_outside_range <- .safe_num(parsed, "p_outside_range")
+    # The range fields are per-taxon columns of the answer now, not a nested
+    # rule object, so each row's range answer is assembled from them here.
+    .cell <- function(col, i) {
+      if (!col %in% names(parsed)) {
+        return(NA)
+      }
+      v <- parsed[[col]]
+      if (is.list(v)) (if (i <= length(v)) v[[i]] else NA) else v[[i]]
+    }
+    result$range_known <- vapply(seq_len(nrow(result)), function(i) {
+      k <- .cell("range_known", i)
+      if (is.character(k)) k <- tolower(trimws(k)) %in% c("true", "yes", "t")
+      isTRUE(as.logical(k[1L]))
+    }, logical(1L))
+    result$range_south_lat <- .safe_num(parsed, "range_south_lat", -90, 90)
+    result$range_north_lat <- .safe_num(parsed, "range_north_lat", -90, 90)
     result$review_geo_json <- vapply(seq_len(nrow(result)), function(i) {
-      .geo_spec_to_json(.normalise_geo_obj(.geo_obj_at(g, i), site_names))
+      .geo_spec_to_json(.normalise_range_answer(list(
+        range_known = result$range_known[i],
+        range_south_lat = result$range_south_lat[i],
+        range_north_lat = result$range_north_lat[i],
+        sites_outside_range = .cell("sites_outside_range", i),
+        p_inside_range = result$p_inside_range[i],
+        p_outside_range = result$p_outside_range[i]
+      ), site_names))
     }, character(1L))
   }
+  result <- .derive_levels(result)
 
   # An echoed id prefix ("[T3] Cottus") is part of the prompt's own notation,
   # not a different name: drop it before any matching, silently.
@@ -2473,7 +2933,15 @@ review_assignments <- function(input_df,
     result$taxon_name[1L] <- expected_taxa[1L]
   }
 
+  # No target group means no scope question was asked, so a scope answer the
+  # model volunteered anyway is dropped at the SOURCE -- the probability --
+  # not just at the verdict. Clearing only the verdict would leave
+  # .derive_levels() free to recompute it from a probability we never asked
+  # for, and llm_p_scope would report a judgement against no target group.
   if (is.null(target_group)) {
+    result$p_scope <- NA_real_
+    result$p_scope_lo <- NA_real_
+    result$p_scope_hi <- NA_real_
     result$scope_plausibility <- NA_character_
   }
 
@@ -2534,6 +3002,52 @@ review_assignments <- function(input_df,
         "LLM returned %d name(s) that required normalised matching: %s",
         length(remapped), paste(remapped, collapse = "; ")
       ))
+    }
+  }
+
+  # A row present in the response but missing ANY probability that drives a
+  # decision is an OMISSION, not an answer.
+  #
+  # The probabilities are the answer now, so a model that returned
+  # p_habitat = 85 (out of range) or "high" (not a number) leaves that verdict
+  # NA while review_confidence and review_comment arrive perfectly intact.
+  # That row looked reviewed: it was cached, it never reached the re-ask path,
+  # n_unreviewed_rows reported 0, and the NA was discarded by a downstream
+  # "!= unlikely" export filter without a word.
+  #
+  # ANY, not all. A row that answered three questions and fumbled the fourth
+  # still carries one NA that such a filter silently drops, and a silently
+  # dropped observation is the failure class this project rules out. The cost
+  # is calls, and only when the model fails: 0 of 15 taxa in the live probe.
+  # A row that still fails after the re-asks is NA-filled, counted in
+  # n_unreviewed_rows and named in the unreviewed warning, so the loss is
+  # always reported rather than absorbed.
+  #
+  # Geography is checked on p_geographic AFTER .derive_levels(), which is the
+  # field that actually drives the verdict on both paths -- so a sites-path row
+  # whose p_inside_range failed but which volunteered a study-wide probability
+  # is kept, not re-asked for an answer it already gave.
+  asked_p <- c("p_habitat", "p_contamination", "p_geographic")
+  if (!is.null(target_group)) asked_p <- c(asked_p, "p_scope")
+  asked_p <- intersect(asked_p, names(result))
+  if (length(asked_p) > 0L && nrow(result) > 0L) {
+    bad <- is.na(result[, asked_p, drop = FALSE])
+    no_answer <- rowSums(bad) > 0L
+    if (any(no_answer)) {
+      detail <- vapply(which(no_answer), function(i) {
+        sprintf("%s (%s)", result$taxon_name[i],
+          paste(asked_p[bad[i, ]], collapse = ", ")
+        )
+      }, character(1L))
+      pending <- c(pending, sprintf(
+        paste0(
+          "LLM returned %d taxa with an unusable probability -- a value ",
+          "outside 0-1, or not a number -- in: %s. Treated as omitted, so ",
+          "they are re-asked and not cached."
+        ),
+        sum(no_answer), paste(detail, collapse = "; ")
+      ))
+      result <- result[!no_answer, , drop = FALSE]
     }
   }
 
@@ -2625,45 +3139,286 @@ review_assignments <- function(input_df,
 # ==============================================================================
 
 # Verdict order, best first.
+# --- The probability answer format (guardrails G1-G5) -------------------------
+# The review asks for probabilities, not categories, and TaxaFlag derives the
+# categorical llm_* columns from them in code (see .p_to_level()). What that
+# bought, in repeat stability and in agreement with the maintainer's labels, is
+# in review_assignments()'s "What was measured" roxygen section. Do not restate
+# a figure here: one copy means one edit when the next measurement lands.
+#
+# The wording of every block below is part of the question, so any change to it
+# must bump "v9" (and "geo_sites_v5" for the site blocks) in the cache key --
+# the key holds the inputs, not the prompt, so a verdict obtained from older
+# wording would otherwise be served as a hit.
+
+#' The habitat field: living conditions only, never region
+#'
+#' Habitat and geography are asked separately on purpose. A taxon that lives in
+#' this kind of habitat but not in this region must score high on habitat and
+#' low on geography, because the two drive different product rules; merging them
+#' loses the distinction and was measured to cost accuracy.
+#' @noRd
+.p_habitat_field_text <- function(habitat) {
+  where <- if (!is.null(habitat) && !is.na(habitat) && nzchar(trimws(habitat))) {
+    sprintf(" (%s)", trimws(habitat))
+  } else {
+    ""
+  }
+  paste0(
+    '  "p_habitat": probability that the taxon\'s LIVING CONDITIONS match the ',
+    "study habitat", where, ": that it lives (any life stage) in this kind of ",
+    "habitat, wherever its range is. Judge the habitat type only; whether it ",
+    "occurs in the study region is geography (the range fields), not habitat. ",
+    "High = regularly; intermediate = occasionally, marginally, or only some ",
+    "life stages or places (e.g. juveniles only); low = does not live in this ",
+    "kind of habitat,"
+  )
+}
+
+.p_transported_field_text <- paste0(
+  '  "p_transported": probability that the taxon\'s DNA could plausibly reach ',
+  "these samples from adjacent habitats or waters (e.g. currents, inflowing ",
+  "water, predators, nearby habitats). This is separate from residency: a ",
+  "non-resident can have a high value,"
+)
+
+#' The scope field: kind of organism and depth or zone only, never region
+#' @noRd
+.p_scope_field_text <- function(target_group) {
+  if (is.null(target_group)) {
+    return('  "p_scope": null (no target group specified),')
+  }
+  paste0(
+    '  "p_scope": probability that the taxon is in the target group (',
+    target_group, ") by the KIND OF ORGANISM and its depth or habitat zone ",
+    "only; whether it occurs in the study region is geography, not scope. ",
+    "High = the kind of organism and its normal depth or zone fit the target ",
+    "group; intermediate = mainly outside it but with a regular life stage ",
+    "inside it, or a group containing both kinds; low = a kind of organism, ",
+    "realm or depth the target group excludes,"
+  )
+}
+
+# Geography with a site table: the model states range LIMITS and TaxaFlag
+# computes the site and study verdicts from them (guardrail G2). Asking for the
+# limits instead of a per-site verdict removes the model's choice of rule type
+# and the undefined "study-wide" verdict; the study verdict is defined here as
+# the maximum site probability over the sites where the taxon was detected.
+.p_range_field_text <- paste0(
+  '  "range_known": true if you know the taxon\'s range limits within the ',
+  "study region well enough to state them, false if you do not,\n",
+  '  "range_south_lat": the southern limit of its range within the study ',
+  "region in decimal degrees N, or null if the range extends south beyond the ",
+  "study (or range_known is false),\n",
+  '  "range_north_lat": the northern limit within the study region, or null ',
+  "if the range extends north beyond the study (or range_known is false),\n",
+  '  "sites_outside_range": names of study sites outside the range when ',
+  "latitude limits do not describe it (e.g. island-only, a gap in the range), ",
+  "copied exactly, or [],\n",
+  '  "p_inside_range": probability that the taxon occurs at a study site ',
+  "inside its range (a rare but in-range taxon is intermediate, not low),\n",
+  '  "p_outside_range": probability that it occurs at a study site outside ',
+  "its range,\n"
+)
+
+# Geography with no site table: there are no site latitudes for a stated limit
+# to be applied to, so the model gives the study-wide probability directly.
+.p_study_geo_field_text <- paste0(
+  '  "p_geographic": probability that the study area lies within this ',
+  "taxon's geographic range (overall, across the study area),\n",
+  '  "p_geographic_range": [low, high],\n'
+)
+
+.p_contamination_field_text <- paste0(
+  '  "p_contamination": probability that this detection is contamination ',
+  "rather than DNA from the sampled environment. Anchors: high (about 0.7 or ",
+  "more) = a food, lab or aquarium species with no wild population in the ",
+  "region; intermediate (about 0.2-0.5) = a commercial food or bait species ",
+  "that also lives wild in the region, or a human-associated taxon; low ",
+  "(under 0.2) = otherwise,"
+)
+
+# Guidelines common to both paths. The four-questions line is the guardrail
+# that keeps habitat, detectability, range and scope from collapsing into one
+# judgement, which is what the categorical prompt was measured to do.
+.p_guideline_text <- paste0(
+  "- For a genus or family, judge the group: does ANY member qualify?\n",
+  "- Answer the four questions separately. Residency (p_habitat) is not ",
+  "detectability (p_transported); range (geography) is not habitat or scope; ",
+  "rarity within the range is not absence.\n"
+)
+
+.p_range_guideline_text <- paste0(
+  "- State range limits as numbers. Southern limit = the southernmost ",
+  "latitude of the range within the study region, northern limit = the ",
+  "northernmost. Decide which side each limit is on before answering. The ",
+  "study's site verdicts are computed from your limits, so do not ",
+  "summarise geography any other way. If latitude cannot describe the range ",
+  "-- for a study that runs east to west, or one at a single latitude -- ",
+  "leave both limits null and name the sites outside the range instead.\n",
+  "- If you cannot recall a rare or poorly known taxon's range, say so: ",
+  "range_known false, and p_inside_range = p_outside_range = an intermediate ",
+  "value with low confidence. Do not reconstruct a range from the genus or ",
+  "from similar species. No records is not evidence of absence.\n"
+)
+
+.p_study_geo_guideline_text <- paste0(
+  "- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated ",
+  "separately, and a rare but in-range occurrence has an intermediate ",
+  "geographic probability, not a low one.\n",
+  "- If you cannot recall a rare or poorly known taxon's range, give an ",
+  "intermediate probability with low confidence rather than recalling one. ",
+  "No records is not evidence of absence.\n"
+)
+
+# Worked examples (G5). Deliberately generic: a named species here would teach
+# the model the answer for that species rather than the shape of the judgement,
+# and the examples must suit a freshwater or terrestrial study as well as a
+# marine one.
+.p_worked_examples_text <- paste0(
+  "WORKED EXAMPLES (invented taxa):\n",
+  "- A taxon from a very different habitat (e.g. a deep-sea fish in a shore ",
+  "study, or a marine species in a freshwater study): p_habitat 0.03 (not ",
+  "resident), p_transported set by how its DNA could arrive (e.g. 0.6 with ",
+  "currents or predators, 0.05 with no route), p_scope low if the target ",
+  "group excludes its kind or depth.\n",
+  "- A taxon whose habitat fits but whose range ends part-way through the ",
+  "study area, detected beyond that limit: p_habitat 0.8, the limit stated as ",
+  "a number on the correct side, p_inside_range 0.7, p_outside_range 0.05.\n",
+  "- A commercial food species that also lives wild in the region: ",
+  "p_contamination 0.3. A farmed species with no wild population in the ",
+  "region: p_contamination 0.85.\n",
+  "- A rare taxon you cannot place: range_known false, p_inside_range 0.5, ",
+  "p_outside_range 0.5, review_confidence \"low\".\n\n"
+)
+
+.p_detected_guideline_text <- paste0(
+  '- A "[detected at: ...]" bracket lists the sites where this taxon was ',
+  "detected in this study.\n"
+)
+
+#' The EXAMPLE OUTPUT FORMAT block, for whichever geography fields were asked
+#'
+#' Two objects, as before: a plausible resident and a contaminant. The
+#' contaminant's comment is the data-type-specific one, so an acoustic or image
+#' study sees an example from its own method rather than an eDNA one.
+#' @noRd
+.p_example_output <- function(sites, use_candidates, example_comment) {
+  geo_resident <- if (!is.null(sites)) {
+    paste0(
+      '"range_known": true, "range_south_lat": 28.0, ',
+      '"range_north_lat": null, "sites_outside_range": [], ',
+      '"p_inside_range": 0.9, "p_outside_range": 0.05, '
+    )
+  } else {
+    '"p_geographic": 0.97, "p_geographic_range": [0.92, 0.99], '
+  }
+  geo_contam <- if (!is.null(sites)) {
+    paste0(
+      '"range_known": true, "range_south_lat": null, ',
+      '"range_north_lat": null, "sites_outside_range": [], ',
+      '"p_inside_range": 0.99, "p_outside_range": 0.99, '
+    )
+  } else {
+    '"p_geographic": 0.99, "p_geographic_range": [0.95, 1.00], '
+  }
+  lower <- if (use_candidates) "" else '"review_lower_hypotheses": null, '
+  paste0(
+    "[\n",
+    '  {"id": "T1", "taxon_name": "Example residentus", "p_habitat": 0.95, ',
+    '"p_habitat_range": [0.90, 0.99], "p_transported": 0.90, "p_scope": 0.97, ',
+    '"p_scope_range": [0.93, 0.99], ', geo_resident,
+    '"p_contamination": 0.02, "review_alternatives": null, ', lower,
+    '"review_confidence": "high", "review_comment": null},\n',
+    '  {"id": "T2", "taxon_name": "Homo sapiens", "p_habitat": 0.01, ',
+    '"p_habitat_range": [0.00, 0.05], "p_transported": 0.20, "p_scope": 0.01, ',
+    '"p_scope_range": [0.00, 0.02], ', geo_contam,
+    '"p_contamination": 0.95, "review_alternatives": null, ', lower,
+    '"review_confidence": "high", "review_comment": "', example_comment, '"}\n',
+    "]\n\n"
+  )
+}
+
 .geo_levels <- c("likely", "possible", "unlikely")
 
-# The prompt's geographic_by_site field. Wording changes must bump
-# "geo_sites_v4" in the cache key (see review_assignments()).
-.geo_field_text <- paste0(
-  '  "geographic_by_site": where in the STUDY SITES above this taxon is ',
-  "geographically plausible, as ONE object:\n",
-  '     {"rule": "all"}  -- the verdict is the same at every site;\n',
-  '     {"rule": "latitude", "lat_min": <southern limit, number or null>, ',
-  '"lat_max": <northern limit, number or null>, ',
-  '"inside": "likely" or "possible", "outside": "unlikely" or "possible"}  -- plausible ',
-  'only between lat_min, the SOUTHERN limit of the range, and lat_max, the NORTHERN ',
-  'limit (decimal degrees, negative south of the equator; null = no limit on that ',
-  'side). A taxon ranging north from a southern limit gives lat_min only; one ranging ',
-  'south from a northern limit gives lat_max only. A southern limit placed in lat_max ',
-  '(or a northern limit in lat_min) inverts the band and marks every site unlikely, ',
-  'so decide which side the limit is on before you answer; ',
-  'sites inside get the "inside" verdict and sites outside get the "outside" ',
-  "verdict. Use this when the limit is a coastal range limit. A \"latitude\" rule MUST give ",
-  "at least one numeric bound (lat_min or lat_max). If no range limit falls within the ",
-  'study\'s latitudes, use {"rule":"all"} (or "sites"), never a latitude rule with both ',
-  "bounds null;\n",
-  '     {"rule": "sites", "unlikely_sites": ["<site name copied exactly>", ...], ',
-  '"inside": "likely" or "possible"}  -- list only the sites where it is unlikely, ',
-  'when latitude does not describe the pattern; all other sites get the "inside" verdict.\n',
-  '     "inside" is the verdict for a site within the range: "likely" if the taxon is ',
-  'expected there, "possible" if it could occur but is not expected. ',
-  '"geographic_plausibility" is your overall geographic verdict for the taxon; with ',
-  '{"rule": "all"} it is the verdict at every site. The study-wide verdict is ',
-  "computed from the sites, so do not try to summarise it in the object.\n"
-)
+# --- Probability -> category --------------------------------------------------
+# The model answers with a probability; these cuts are how TaxaFlag reads it.
+# They are the "margin" cuts, chosen by measurement over hard cuts (0.20/0.70,
+# contamination 0.50): read with these cuts, the rows this prompt acts on that
+# a plain probability prompt keeps are about half rows the maintainer acted on
+# too, against about a third when the same answers are read with hard cuts.
+# The figures are in review_assignments()'s "What was measured" roxygen
+# section, and only there.
+#
+# The cuts are deliberately NOT part of the cache key. The cached answer is the
+# probability; a cut is this code's reading of it, re-applied on every run (see
+# .derive_levels()). Changing a cut therefore takes effect for already-cached
+# taxa too, with no new LLM calls -- which is only true because the cut is
+# applied after the cache and never before it.
+.p_cut_unlikely <- 0.10
+.p_cut_likely <- 0.70
+.p_cut_contam_moderate <- 0.20
+.p_cut_contam_high <- 0.70
 
-.geo_guideline_text <- paste0(
-  "- Judge geography at each site separately: a taxon can be plausible at some sites ",
-  "and unlikely at others. For a genus or family, rate the group (is ANY member ",
-  "plausible there?).\n",
-  "- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated separately, and a ",
-  "rare but in-range occurrence is 'possible', not 'unlikely'.\n"
-)
+#' Three-level plausibility verdict from a probability
+#' @noRd
+.p_to_level <- function(p) {
+  p <- suppressWarnings(as.numeric(p))
+  dplyr::if_else(
+    p < .p_cut_unlikely, "unlikely",
+    dplyr::if_else(p < .p_cut_likely, "possible", "likely"),
+    missing = NA_character_
+  )
+}
+
+#' Contamination risk level from a probability
+#' @noRd
+.p_to_risk <- function(p) {
+  p <- suppressWarnings(as.numeric(p))
+  dplyr::if_else(
+    p < .p_cut_contam_moderate, "low",
+    dplyr::if_else(p < .p_cut_contam_high, "moderate", "high"),
+    missing = NA_character_
+  )
+}
+
+#' A probability column of a review frame, or all-NA when the path never asked
+#' @noRd
+.p_col <- function(df, nm) {
+  if (nm %in% names(df)) suppressWarnings(as.numeric(df[[nm]])) else rep(NA_real_, nrow(df))
+}
+
+#' Fill the categorical verdict columns from the probability columns
+#'
+#' Called in the parser, so a freshly asked row carries both, and again after
+#' cached rows are folded back in, so every row in one run is read through the
+#' same cuts even when it was cached under earlier ones.
+#'
+#' With a site table the study-wide geographic verdict is the best over the
+#' detected sites and .apply_site_verdicts() computes it; what is set here is
+#' the value it starts from, which is also the answer when no site falls
+#' outside the stated range.
+#' @noRd
+.derive_levels <- function(df) {
+  df$habitat_plausibility <- .p_to_level(.p_col(df, "p_habitat"))
+  df$scope_plausibility <- .p_to_level(.p_col(df, "p_scope"))
+  df$contamination_risk <- .p_to_risk(.p_col(df, "p_contamination"))
+  geo <- if ("p_inside_range" %in% names(df)) {
+    # With a site table p_inside_range is the geography answer. A model that
+    # omitted it but volunteered the study-wide p_geographic it was not asked
+    # for is taken at its word for that row rather than left with no geography
+    # at all: an NA here is discarded by a downstream "!= unlikely" filter,
+    # which would lose the observation without a word.
+    ins <- .p_col(df, "p_inside_range")
+    alt <- .p_col(df, "p_geographic")
+    dplyr::if_else(is.na(ins), alt, ins, missing = NA_real_)
+  } else {
+    .p_col(df, "p_geographic")
+  }
+  df$geographic_plausibility <- .p_to_level(geo)
+  df$p_geographic <- geo
+  df
+}
 
 #' STUDY SITES block of the prompt, sorted south to north
 #' @noRd
@@ -2735,41 +3490,26 @@ review_assignments <- function(input_df,
   )
 }
 
-#' The i-th geographic_by_site object of a parsed response, as a plain list
+#' Normalise the model's range answer into a site rule spec
 #'
-#' jsonlite (simplifyDataFrame) turns an array of objects carrying a nested
-#' object into a data frame with a nested data-frame column; a malformed field
-#' can instead leave a list or a character vector. NULL means "no object".
-#' @noRd
-.geo_obj_at <- function(g, i) {
-  if (is.null(g)) {
-    return(NULL)
-  }
-  if (is.data.frame(g)) {
-    if (i > nrow(g)) {
-      return(NULL)
-    }
-    return(as.list(g[i, , drop = FALSE]))
-  }
-  if (is.list(g) && i <= length(g) && is.list(g[[i]])) {
-    return(g[[i]])
-  }
-  NULL
-}
-
-#' Normalise one geographic_by_site object into a rule spec
+#' Carries over every guard the earlier per-site rule object needed, because
+#' the failure modes are properties of the model, not of the field names:
+#' a latitude outside [-90, 90] is not a latitude; a southern limit placed in
+#' range_north_lat inverts the band and would mark every site outside, so the
+#' pair is swapped rather than obeyed; named sites are matched case-insensitively
+#' against the site table and unknown names are counted, not silently treated as
+#' outside; and a list in which NO name is recognised is dropped entirely rather
+#' than allowed to move nothing while looking as though it moved something.
 #'
-#' Fallbacks (rule "fallback", with the reason in \code{how}) give the
-#' study-wide verdict at every site. A latitude rule with both bounds missing
-#' is read as rule "all" carrying its \code{inside} verdict (missing or
-#' invalid: the study-wide verdict), recorded as how = "both_bounds_NA_as_all".
+#' range_known = FALSE is a real answer, not a failure: it means "I cannot place
+#' this taxon", and every site then takes p_inside_range, which the guidelines
+#' tell the model to make intermediate.
 #' @noRd
-.normalise_geo_obj <- function(o, site_names) {
+.normalise_range_answer <- function(o, site_names) {
   fb <- function(how, n_unknown = 0L) {
     list(
       rule = "fallback", lat_min = NA_real_, lat_max = NA_real_,
-      inside = NA_character_, outside = NA_character_,
-      unlikely_sites = character(0),
+      p_in = NA_real_, p_out = NA_real_, unlikely_sites = character(0),
       how = how, n_unknown = as.integer(n_unknown)
     )
   }
@@ -2777,63 +3517,71 @@ review_assignments <- function(input_df,
   if (!is.list(o)) {
     return(fb("missing"))
   }
-  ins <- tolower(trimws(as.character(one(o$inside))))
-  ins_ok <- !is.na(ins) && ins %in% c("likely", "possible")
-  if (!ins_ok) ins <- "possible"
-  rule <- tolower(trimws(as.character(one(o$rule))))
-  if (is.na(rule) || !nzchar(rule)) {
-    return(fb("missing"))
+  prob <- function(x) {
+    v <- suppressWarnings(as.numeric(one(x)))
+    if (is.na(v) || v < 0 || v > 1) NA_real_ else v
   }
-  if (rule == "all") {
-    spec <- fb("all")
-    spec$rule <- "all"
+  lat <- function(x) {
+    v <- suppressWarnings(as.numeric(one(x)))
+    if (is.na(v) || abs(v) > 90) NA_real_ else v
+  }
+  p_in <- prob(o$p_inside_range)
+  p_out <- prob(o$p_outside_range)
+  if (is.na(p_in)) {
+    return(fb("no_inside_probability"))
+  }
+
+  # Sites the model named as outside the range, when latitude cannot say it.
+  u <- trimws(as.character(unlist(o$sites_outside_range, use.names = FALSE)))
+  u <- unique(u[!is.na(u) & nzchar(u)])
+  pos <- match(tolower(u), tolower(trimws(site_names)))
+  n_unknown <- sum(is.na(pos))
+  known <- unique(site_names[pos[!is.na(pos)]])
+
+  known_flag <- one(o$range_known)
+  if (is.character(known_flag)) {
+    known_flag <- tolower(trimws(known_flag)) %in% c("true", "yes", "t")
+  }
+  known_flag <- isTRUE(as.logical(known_flag))
+
+  lo <- lat(o$range_south_lat)
+  hi <- lat(o$range_north_lat)
+  how <- if (n_unknown > 0L) "sites_unknown_ignored" else NA_character_
+
+  if (!known_flag) {
+    spec <- fb(.combine_how("range_unknown", how), n_unknown)
+    spec$rule <- "unknown"
+    spec$p_in <- p_in
+    spec$p_out <- p_out
+    # A taxon whose range the model cannot state still has whatever sites it
+    # named honoured: "I don't know the limits" and "not at that site" are
+    # different claims.
+    spec$unlikely_sites <- known
     return(spec)
   }
-  if (rule == "latitude") {
-    num <- function(x) {
-      v <- suppressWarnings(as.numeric(one(x)))
-      if (is.na(v) || abs(v) > 90) NA_real_ else v
-    }
-    lo <- num(o$lat_min)
-    hi <- num(o$lat_max)
-    if (is.na(lo) && is.na(hi)) {
-      spec <- fb("both_bounds_NA_as_all")
-      spec$rule <- "all"
-      # NA when unusable, so the site verdicts keep the study-wide verdict.
-      spec$inside <- if (ins_ok) ins else NA_character_
-      return(spec)
-    }
-    how <- "latitude"
-    if (!is.na(lo) && !is.na(hi) && lo > hi) {
-      tmp <- lo
-      lo <- hi
-      hi <- tmp
-      how <- "latitude_swapped"
-    }
-    out <- tolower(trimws(as.character(one(o$outside))))
-    if (is.na(out) || !out %in% c("unlikely", "possible")) out <- "possible"
-    return(list(
-      rule = "latitude", lat_min = lo, lat_max = hi, inside = ins, outside = out,
-      unlikely_sites = character(0), how = how, n_unknown = 0L
-    ))
+
+  if (!is.na(lo) && !is.na(hi) && lo > hi) {
+    tmp <- lo
+    lo <- hi
+    hi <- tmp
+    how <- .combine_how("range_swapped", how)
   }
-  if (rule == "sites") {
-    u <- trimws(as.character(unlist(o$unlikely_sites, use.names = FALSE)))
-    u <- unique(u[!is.na(u) & nzchar(u)])
-    pos <- match(tolower(u), tolower(trimws(site_names)))
-    n_unknown <- sum(is.na(pos))
-    known <- unique(site_names[pos[!is.na(pos)]])
-    if (length(u) > 0L && length(known) == 0L) {
-      return(fb("all_sites_unknown", n_unknown))
-    }
-    return(list(
-      rule = "sites", lat_min = NA_real_, lat_max = NA_real_,
-      inside = ins, outside = NA_character_, unlikely_sites = known,
-      how = if (n_unknown > 0L) "sites_unknown_ignored" else "sites",
-      n_unknown = as.integer(n_unknown)
-    ))
+  if (is.na(lo) && is.na(hi) && length(known) == 0L) {
+    # No limit inside the study and no site named: the range covers the study.
+    how <- .combine_how("no_limit_in_study", how)
   }
-  fb("unknown_rule")
+  list(
+    rule = "range", lat_min = lo, lat_max = hi, p_in = p_in, p_out = p_out,
+    unlikely_sites = known,
+    how = if (is.na(how)) "range" else how,
+    n_unknown = as.integer(n_unknown)
+  )
+}
+
+#' Join two "how" notes, either of which may be NA
+#' @noRd
+.combine_how <- function(a, b) {
+  if (is.na(b)) a else paste(a, b, sep = "+")
 }
 
 #' @noRd
@@ -2856,58 +3604,59 @@ review_assignments <- function(input_df,
   list(
     rule = x$rule %||% "fallback",
     lat_min = num(x$lat_min), lat_max = num(x$lat_max),
-    inside = x$inside %||% NA_character_,
-    outside = x$outside %||% NA_character_,
+    p_in = num(x$p_in), p_out = num(x$p_out),
     unlikely_sites = as.character(unlist(x$unlikely_sites, use.names = FALSE)),
     how = x$how %||% NA_character_,
     n_unknown = as.integer(x$n_unknown %||% 0L)
   )
 }
 
-#' Per-site verdicts for one rule spec
+#' Per-site probability for one range spec
 #'
-#' Rules "latitude" and "sites" give inside sites the rule's \code{inside}
-#' verdict (missing or invalid: "possible") and outside sites the
-#' \code{outside} verdict; the taxon's own \code{geographic_plausibility}
-#' (\code{base}) does not cap them. A both-bounds-missing latitude rule
-#' (how = "both_bounds_NA_as_all") gives its \code{inside} verdict at every
-#' site, or \code{base} when it has no usable \code{inside}. Plain rule "all"
-#' and fallbacks give \code{base} at every site.
+#' This is the whole of guardrail G2: the model states limits, and the site
+#' probability is read off them here rather than asked for. A site beyond a
+#' stated limit, or named in sites_outside_range, gets p_outside_range; every
+#' other site gets p_inside_range. A model that gave no outside probability
+#' gets p_inside_range everywhere, which is the conservative reading -- it
+#' never manufactures an "outside" the model did not state.
 #' @noRd
-.geo_site_verdicts <- function(spec, base, sites) {
+.geo_site_probs <- function(spec, sites) {
   n <- nrow(sites)
-  if (is.na(base) || !base %in% .geo_levels || is.null(spec)) {
-    return(rep(base, n))
+  if (is.null(spec) || is.na(spec$p_in)) {
+    return(rep(NA_real_, n))
   }
-  lvl <- function(x, ok) {
-    x <- tolower(trimws(as.character(x)))
-    if (length(x) != 1L || is.na(x) || !x %in% ok) "possible" else x
+  p_out <- if (is.na(spec$p_out)) spec$p_in else spec$p_out
+  if (!identical(spec$rule, "range") && !identical(spec$rule, "unknown")) {
+    return(rep(NA_real_, n))
   }
-  if (identical(spec$rule, "latitude")) {
-    ins <- lvl(spec$inside, c("likely", "possible"))
-    outv <- lvl(spec$outside, c("unlikely", "possible"))
-    out <- (!is.na(spec$lat_min) & sites$lat < spec$lat_min) |
-      (!is.na(spec$lat_max) & sites$lat > spec$lat_max)
-    v <- rep(ins, n)
-    v[out] <- outv
+  v <- rep(spec$p_in, n)
+  if (identical(spec$rule, "unknown")) {
+    # No limits to apply; only sites the model named explicitly move.
+    v[sites$site %in% spec$unlikely_sites] <- p_out
     return(v)
   }
-  if (identical(spec$rule, "all") && identical(spec$how, "both_bounds_NA_as_all")) {
-    # No usable inside: keep the model's own study-wide verdict rather than
-    # substituting a constant for it.
-    ins <- tolower(trimws(as.character(spec$inside)))
-    ok <- length(ins) == 1L && !is.na(ins) && ins %in% c("likely", "possible")
-    return(rep(if (ok) ins else base, n))
-  }
-  if (identical(spec$rule, "sites")) {
-    v <- rep(lvl(spec$inside, c("likely", "possible")), n)
-    v[sites$site %in% spec$unlikely_sites] <- "unlikely"
-    return(v)
-  }
-  rep(base, n)
+  outside <- (!is.na(spec$lat_min) & sites$lat < spec$lat_min) |
+    (!is.na(spec$lat_max) & sites$lat > spec$lat_max) |
+    sites$site %in% spec$unlikely_sites
+  v[outside] <- p_out
+  v
 }
 
-#' One row per reviewed taxon with its parsed rule (attr "geographic_by_site")
+#' Per-site verdicts for one range spec
+#'
+#' The cuts are applied here and nowhere earlier, so the verdict is always a
+#' function of the probability this run read from the cache or the model.
+#' \code{base} is used only when the spec yields no probability at all.
+#' @noRd
+.geo_site_verdicts <- function(spec, base, sites) {
+  p <- .geo_site_probs(spec, sites)
+  if (all(is.na(p))) {
+    return(rep(base, nrow(sites)))
+  }
+  .p_to_level(p)
+}
+
+#' One row per reviewed taxon with its parsed range answer (attr "geographic_by_site")
 #' @noRd
 .geo_rules_table <- function(review_df) {
   ok <- which(!is.na(review_df$review_geo_json))
@@ -2915,44 +3664,80 @@ review_assignments <- function(input_df,
   data.frame(
     taxon = review_df$taxon_name[ok],
     rule = vapply(specs, function(z) as.character(z$rule), character(1L)),
-    lat_min = vapply(specs, function(z) z$lat_min, numeric(1L)),
-    lat_max = vapply(specs, function(z) z$lat_max, numeric(1L)),
-    inside = vapply(specs, function(z) as.character(z$inside), character(1L)),
-    outside = vapply(specs, function(z) as.character(z$outside), character(1L)),
-    unlikely_sites = vapply(specs, function(z) paste(z$unlikely_sites, collapse = "; "), character(1L)),
+    range_south_lat = vapply(specs, function(z) z$lat_min, numeric(1L)),
+    range_north_lat = vapply(specs, function(z) z$lat_max, numeric(1L)),
+    p_inside_range = vapply(specs, function(z) z$p_in, numeric(1L)),
+    p_outside_range = vapply(specs, function(z) z$p_out, numeric(1L)),
+    sites_outside_range = vapply(
+      specs, function(z) paste(z$unlikely_sites, collapse = "; "), character(1L)
+    ),
     n_unknown_sites = vapply(specs, function(z) z$n_unknown, integer(1L)),
     how = vapply(specs, function(z) as.character(z$how), character(1L)),
     stringsAsFactors = FALSE
   )
 }
 
-#' Add llm_geographic_plausibility_site to the joined result
+#' Add the per-site geography columns to the joined result
 #'
-#' Each row takes the verdict of its own site; a row whose site is NA or not in
-#' the table takes the study-wide verdict. The study-wide column is the BEST
-#' verdict over the sites, computed here, not taken from the model.
+#' Each row takes its own site's probability and verdict; a row whose site is NA
+#' or absent from the site table takes the study-wide pair. The study-wide
+#' probability is the MAXIMUM over the sites where THIS taxon was detected --
+#' not over the whole site table -- and the study-wide verdict is that
+#' probability's level, never the model's own summary, which it is no longer
+#' asked for. Taking the maximum is why the study verdict is also the best of
+#' those site verdicts: the cuts are monotone.
+#'
+#' Detected sites, not all sites, because the study-wide verdict is a statement
+#' about this taxon's detections. A taxon detected only at a site beyond its
+#' stated range would otherwise be rescued to "possible" by some OTHER site
+#' that happens to lie inside the range and where it was never detected -- and
+#' the geography override acts only when the study verdict is likely or
+#' possible, so that rescue would enable an override on evidence about a
+#' different site. A taxon whose every row has an NA or unknown site has no
+#' detected site to take the maximum over, so it falls back to the whole table.
+#'
+#' Grouped by taxon as well as by answer: two taxa can return identical range
+#' answers while having been detected at different sites, and it is the sites
+#' that differ which decide this.
 #' @noRd
-.apply_site_verdicts <- function(result, sites, site_col) {
+.apply_site_verdicts <- function(result, sites, site_col, taxon_col) {
   study <- result$llm_geographic_plausibility
+  study_p <- result$llm_p_geographic
   per_site <- study
+  per_site_p <- study_p
   gj <- result$.geo_json
   idx <- match(as.character(result[[site_col]]), sites$site)
-  combo <- paste(gj, study, sep = "\u0001")
+  combo <- paste(as.character(result[[taxon_col]]), gj, study, sep = "\u0001")
   for (u in unique(combo[!is.na(gj)])) {
     rows <- which(combo == u & !is.na(gj))
     spec <- .geo_spec_from_json(gj[rows[1L]])
     base <- study[rows[1L]]
+    pvec <- .geo_site_probs(spec, sites)
     vec <- .geo_site_verdicts(spec, base, sites)
-    best <- if (all(is.na(vec))) NA_character_ else .geo_levels[min(match(vec, .geo_levels))]
+    det <- unique(idx[rows])
+    det <- det[!is.na(det)]
+    if (length(det) == 0L) det <- seq_len(nrow(sites))
+    best_p <- if (all(is.na(pvec[det]))) NA_real_ else max(pvec[det], na.rm = TRUE)
+    best <- if (all(is.na(vec[det]))) {
+      NA_character_
+    } else {
+      .geo_levels[min(match(vec[det], .geo_levels))]
+    }
     sv <- rep(best, length(rows))
+    sp <- rep(best_p, length(rows))
     ok <- !is.na(idx[rows])
     sv[ok] <- vec[idx[rows][ok]]
+    sp[ok] <- pvec[idx[rows][ok]]
     per_site[rows] <- sv
+    per_site_p[rows] <- sp
     study[rows] <- best
+    if (!is.na(best_p)) study_p[rows] <- best_p
   }
   result$llm_geographic_plausibility <- study
+  result$llm_p_geographic <- study_p
   pos <- match("llm_geographic_plausibility", names(result))
   result$llm_geographic_plausibility_site <- per_site
+  result$llm_p_geographic_site <- per_site_p
   nm <- names(result)
   nm <- append(setdiff(nm, "llm_geographic_plausibility_site"),
     "llm_geographic_plausibility_site",

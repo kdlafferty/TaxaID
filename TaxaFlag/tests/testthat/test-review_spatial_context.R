@@ -397,9 +397,9 @@ test_that("Run AI Review calls review_assignments() and populates ai_panel", {
     # that value, so a wrong echo here silently falls through to its own
     # "taxon omitted" NA-fill path instead of matching.
     jsonlite::toJSON(list(list(
-      taxon_name = "Lepomis peltastes", habitat_plausibility = "likely",
-      geographic_plausibility = "likely", scope_plausibility = "likely",
-      contamination_risk = "low", review_alternatives = NULL,
+      taxon_name = "Lepomis peltastes", p_habitat = 0.95,
+      p_geographic = 0.95, p_scope = 0.95,
+      p_contamination = 0.02, review_alternatives = NULL,
       review_lower_hypotheses = NULL, review_confidence = "high",
       review_comment = "Looks fine"
     )), auto_unbox = TRUE, null = "null")
