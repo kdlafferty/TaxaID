@@ -506,27 +506,29 @@
 #' labels are 12S taxa, and the taxa behind the repeat figures include COI and
 #' 18S as well. Every interval given is a 95% bootstrap interval over taxa,
 #' and they are wide -- 34 labelled taxa and 90 repeated ones is what all of
-#' this rests on.
+#' this rests on. Two figures separated by less than their intervals are not
+#' two figures, and the text below says so wherever that is the case rather
+#' than reporting an ordering.
 #'
 #' \strong{Against the maintainer's own labels}, over the 34 hardest taxa of
 #' that study, with \code{sites} supplied, as same-decision / precision /
 #' recall:
 #' \itemize{
 #'   \item{this prompt carrying every pipeline note it can:
-#'     73% (60-85) / 70% (51-89) / 73% (55-90).}
+#'     73% (60-85) / 70% (51-89) / 73% (54-90).}
 #'   \item{this prompt with no pipeline-derived text at all -- every one of
 #'     the notes listed in \emph{What the review is not told} switched off,
-#'     not just the numbers: 74% (59-86) / 70% (48-89) / 65% (45-85).}
+#'     not just the numbers: 74% (60-86) / 70% (50-89) / 65% (45-85).}
 #'   \item{the same guardrails and site block, asked with habitat and scope
 #'     wording written for that one study rather than taken from
-#'     \code{context$habitat} and \code{target_group}: 75% / 80% / 66%. That
-#'     difference is the only measurement of what generalising the wording
-#'     cost.}
+#'     \code{context$habitat} and \code{target_group}:
+#'     75% (61-89) / 80% (60-99) / 66% (43-88). That difference is the only
+#'     measurement of what generalising the wording cost.}
 #'   \item{a plain probability prompt with neither the site block nor the
 #'     guardrail definitions, study-specific wording again:
-#'     67% (52-81) / 75% / 44% (22-66). It differs from the others in BOTH the
-#'     guardrails and the site block, so its difference belongs to that pair
-#'     and is not an isolated effect of \code{sites}.}
+#'     67% (52-81) / 75% (50-100) / 44% (22-66). It differs from the others in
+#'     BOTH the guardrails and the site block, so its difference belongs to
+#'     that pair and is not an isolated effect of \code{sites}.}
 #' }
 #' Every difference among those four sits inside the intervals.
 #'
@@ -539,10 +541,10 @@
 #'
 #' \strong{Repeat stability}, as the share of the decisions the verdicts drive
 #' that a second ask repeats: with the pipeline notes, 90.0% (82.5-96.1) over
-#' 90 taxa and 356 answers, four asks of each and six pairs; with none of
-#' them, 85.8% (69.4-98.4), which rests on a single pair per taxon and is
-#' correspondingly weak; the study-specific wording, 96.9% (93.8-98.9) over 87
-#' taxa. Leaving out the one taxon described below takes the first to 93.0%
+#' 356 verdict-driven rows in 90 taxa, four asks of each taxon and six pairs;
+#' with none of them, 85.8% (69.4-98.4) over 345 rows in 88 taxa, which rests
+#' on a single pair per taxon and is correspondingly weak; the study-specific
+#' wording, 96.9% (93.8-98.9) over 346 rows in 87 taxa. Leaving out the one taxon described below takes the first to 93.0%
 #' and the second to 92.5%. All three intervals overlap, so none of these
 #' orderings is measured. Repeat pairs are correlated within a taxon, so it is
 #' those taxon counts and not the pair counts that set the intervals.
@@ -559,13 +561,17 @@
 #' recall by less than their intervals. There is no measured difference in
 #' accuracy between asking for a category and asking for a probability.
 #'
-#' \strong{The cuts}: of the extra rows the margin cuts act on and hard cuts
-#' (0.20/0.70, contamination 0.50) do not, 51% were rows the maintainer also
-#' acted on under this prompt's wording; under the study-specific wording the
-#' same figure is 54% against 32% for the hard cuts, that being the only arm
-#' in which both rules were scored. No alternative to the 0.10 cut improves
-#' repeat stability; the instability that is left sits at the 0.70 cut, which
-#' is the paragraph below.
+#' \strong{The cuts}: the question measured was not margin against hard
+#' directly. It was, of the rows this prompt acts on that a plain probability
+#' prompt keeps, how many did the maintainer act on too -- scored once with
+#' the verdicts read off by the margin cuts and once by hard cuts (0.20/0.70,
+#' contamination 0.50). Under this prompt's wording, 51% with the margin cuts
+#' against 31% with hard; under the study-specific wording, 54% against 32%.
+#' So the margin cuts make the guardrails' extra actions about half right
+#' where hard cuts leave them about a third right, and that holds on both
+#' wordings. No alternative to the 0.10 cut improves repeat stability; the
+#' instability that is left sits at the 0.70 cut, which is the paragraph
+#' below.
 #'
 #' \strong{A known instability, not fixed in this release}: a site-geography
 #' probability that lands near 0.70 can cross it between two asks, because the
@@ -3332,9 +3338,11 @@ review_assignments <- function(input_df,
 # --- Probability -> category --------------------------------------------------
 # The model answers with a probability; these cuts are how TaxaFlag reads it.
 # They are the "margin" cuts, chosen by measurement over hard cuts (0.20/0.70,
-# contamination 0.50) because the extra rows they act on are more often rows
-# the maintainer acted on too. The figures are in review_assignments()'s "What
-# was measured" roxygen section, and only there.
+# contamination 0.50): read with these cuts, the rows this prompt acts on that
+# a plain probability prompt keeps are about half rows the maintainer acted on
+# too, against about a third when the same answers are read with hard cuts.
+# The figures are in review_assignments()'s "What was measured" roxygen
+# section, and only there.
 #
 # The cuts are deliberately NOT part of the cache key. The cached answer is the
 # probability; a cut is this code's reading of it, re-applied on every run (see
