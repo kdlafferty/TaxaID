@@ -35,13 +35,20 @@
   )
 }
 
-test_that("a poor-fit taxon gets the fact line; a good one does not", {
+test_that("both taxa get their identity; only the poor one gets the threshold clause", {
+  # The identity is shown for every taxon that has one -- a reviewer judging a
+  # name needs to know a 99.4% match is a 99.4% match. The threshold clause is
+  # the extra fact that belongs only to the flagged row, and it fires once.
   pr <- new.env()
   .af_review(.af_input(), pr)
   txt <- paste(pr$p, collapse = "\n")
   expect_equal(lengths(regmatches(txt, gregexpr("is below every rank threshold", txt))), 1L)
   expect_match(txt, "best match identity 86.1% is below every rank threshold for this marker (poor absolute fit)", fixed = TRUE)
-  expect_false(grepl("99.4%", txt, fixed = TRUE))
+  expect_match(txt, "best match identity 99.4%", fixed = TRUE)
+  # The good match's line carries the number and NOT the threshold claim.
+  good <- grep("Gobiosoma bosc", strsplit(txt, "\n", fixed = TRUE)[[1]], value = TRUE)
+  expect_true(any(grepl("best match identity 99.4%", good, fixed = TRUE)))
+  expect_false(any(grepl("below every rank threshold", good, fixed = TRUE)))
 })
 
 test_that("FALSE and NA add nothing", {
@@ -55,10 +62,24 @@ test_that("FALSE and NA add nothing", {
 test_that("the prompt is unchanged when the columns are absent", {
   a <- new.env(); b <- new.env()
   .af_review(.af_input(with_cols = FALSE), a)
-  # same input, flags all FALSE: no note either way
-  .af_review(.af_input(poor = c(FALSE, FALSE)), b)
+  # Same input with the flag present and all FALSE, and best_identity removed
+  # too: with the identity now shown for every taxon, a frame that HAS it is
+  # no longer comparable to one that does not.
+  no_id <- .af_input(poor = c(FALSE, FALSE))
+  no_id$best_identity <- NULL
+  .af_review(no_id, b)
   expect_identical(a$p, b$p)
   expect_false(grepl("absolute fit", paste(a$p, collapse = ""), fixed = TRUE))
+  expect_false(grepl("best match identity", paste(a$p, collapse = ""), fixed = TRUE))
+})
+
+test_that("a FALSE flag still shows the identity, with no threshold claim", {
+  pr <- new.env()
+  .af_review(.af_input(poor = c(FALSE, FALSE)), pr)
+  txt <- paste(pr$p, collapse = "\n")
+  expect_match(txt, "best match identity 86.1%", fixed = TRUE)
+  expect_match(txt, "best match identity 99.4%", fixed = TRUE)
+  expect_false(grepl("poor absolute fit", txt, fixed = TRUE))
 })
 
 test_that("poor_absolute_fit_col = NULL disables the note", {
@@ -143,7 +164,7 @@ test_that("verdicts cached under the old prompt version are a miss", {
   for (f in list.files(cd, full.names = TRUE)) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v9", "v8", e$key, fixed = TRUE)
+      e$key <- sub("v14", "v13", e$key, fixed = TRUE)
       saveRDS(e, f)
     }
   }

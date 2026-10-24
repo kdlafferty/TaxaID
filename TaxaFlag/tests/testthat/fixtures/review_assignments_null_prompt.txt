@@ -31,6 +31,7 @@ GUIDELINES:
 - Give a low probability only when reasonably confident. If uncertain, give an intermediate probability with a wide 90% range rather than making a strong claim.
 - Judge GEOGRAPHY (range) only: habitat fit and rarity are rated separately, and a rare but in-range occurrence has an intermediate geographic probability, not a low one.
 - If you cannot recall a rare or poorly known taxon's range, give an intermediate probability with low confidence rather than recalling one. No records is not evidence of absence.
+- A p_geographic below 0.10 is a STRONG claim. Give one only with POSITIVE evidence that the taxon is out of range here: a native range on another continent with no known introduction to this region, or a well-established range limit that the whole study area lies beyond. A widely introduced species, or one known in the study area, is at least intermediate. Without such evidence give an intermediate value (about 0.3-0.6) and say in review_comment that the evidence is thin. This applies to p_geographic only: a low p_habitat, p_scope, p_transported or p_contamination is a different judgement and is not covered by it.
 
 WORKED EXAMPLES (invented taxa):
 - A taxon from a very different habitat (e.g. a deep-sea fish in a shore study, or a marine species in a freshwater study): p_habitat 0.03 (not resident), p_transported set by how its DNA could arrive (e.g. 0.6 with currents or predators, 0.05 with no route), p_scope low if the target group excludes its kind or depth.

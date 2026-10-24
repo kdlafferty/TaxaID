@@ -1068,16 +1068,22 @@ test_that("the review cache key records which model answered", {
 test_that("a call on an unreferenced row is reported as having no reference sequence", {
   note <- .prov_note(.prov_input())
   expect_match(note, "NO reference sequence")
-  expect_match(note, "Erythropeltidales")
-  expect_match(note, "order", fixed = TRUE)
-  # one candidate in scope: an elimination from the record
-  expect_match(note, "the only such species recorded")
 })
 
-test_that("several candidates in scope are reported as a prior tie-break", {
-  note <- .prov_note(.prov_input(n_named = 25L))
-  expect_match(note, "chosen by occurrence records among 25")
-  expect_false(grepl("the only such species", note))
+test_that("the note says nothing about what the occurrence records contain", {
+  # The scope's name and rank, and how many species the records hold in it,
+  # were all once part of this note. They report the CONTENT of the occurrence
+  # data, which is the one thing a review meant to judge that data
+  # independently must not be handed. The sequence fact survives; the rest is
+  # gone, on both the one-species and the many-species path.
+  for (n in c(1L, 25L)) {
+    note <- .prov_note(.prov_input(n_named = n))
+    expect_match(note, "NO reference sequence")
+    expect_false(grepl("Erythropeltidales", note, fixed = TRUE))
+    expect_false(grepl("occurrence records", note, fixed = TRUE))
+    expect_false(grepl("recorded in that scope", note, fixed = TRUE))
+    expect_false(grepl("chosen by occurrence records", note, fixed = TRUE))
+  }
 })
 
 test_that("a referenced call gets no provenance note", {
@@ -1264,6 +1270,10 @@ test_that(".normalise_context() combines the analyst's wording with the synthesi
   n_observations = 1275L,
   matched_name = "Bos taurus",
   winner_rank_expanded = TRUE,
+  # Still ON by default, so the DEFAULT prompt carries a bracket -- which is
+  # the case the bracket guideline has to describe correctly.
+  poor_absolute_fit = TRUE,
+  best_identity = 89.6,
   stringsAsFactors = FALSE
 )
 
@@ -1320,21 +1330,29 @@ test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", 
   # posterior and an occurrence prior in its own text, so an ungated copy of
   # it would tell the model to look for numbers that are not there.
   expect_false(grepl("nearest occurrence", p, fixed = TRUE))
-  expect_false(grepl("OWN confidence for this call", p, fixed = TRUE))
+  # The bracket's NUMERIC guideline is the one that names a posterior and an
+  # occurrence prior, so an ungated copy would tell the model to look for
+  # numbers that are not there.
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
 })
 
-test_that("no rank-expansion note is sent by default", {
-  # winner_rank_expanded is TRUE in the fixture. The note says the species
-  # call came from occurrence-prior MASS with nothing in the sequence choosing
-  # between the candidates -- the pipeline's own reasoning about the name, so
-  # it is off with the numbers even though it reaches nothing but the prompt.
+test_that("the rank-expansion note is sent, and says only what the sequence did", {
+  # winner_rank_expanded is TRUE in the fixture. One clause, about the
+  # sequence, with nothing about what supplied the name -- naming that would
+  # point straight at the occurrence prior. Deliberately NOT the
+  # INDISTINGUISHABLE statement either: that is a tail probability saying a
+  # relative could score as well, where this says the sequence never reached
+  # species at all.
   p <- .prompt_sent()
+  expect_match(p, "the sequence does not resolve this call to species", fixed = TRUE)
   expect_false(grepl("occurrence-prior tie-break", p, fixed = TRUE))
+  expect_false(grepl("not chosen by the sequence", p, fixed = TRUE))
+  expect_false(grepl("could score equally well", p, fixed = TRUE))
 })
 
-test_that("naming winner_rank_expanded_col sends the rank-expansion note", {
-  p <- .prompt_sent(winner_rank_expanded_col = "winner_rank_expanded")
-  expect_match(p, "species-level ID from occurrence-prior tie-break", fixed = TRUE)
+test_that("winner_rank_expanded_col = NULL suppresses it", {
+  p <- .prompt_sent(winner_rank_expanded_col = NULL)
+  expect_false(grepl("the sequence does not resolve", p, fixed = TRUE))
 })
 
 test_that("no candidate weights are sent by default, and naming the column sends them", {
@@ -1375,10 +1393,12 @@ test_that("naming the columns puts every one of those notes back", {
   expect_match(p, "occurrence prior=0.42", fixed = TRUE)
   expect_match(p, "GBIF: nearest occurrence", fixed = TRUE)
   expect_match(p, "iNat: in range", fixed = TRUE)
-  # ... and the two guidelines that explain the bracket come back with it,
-  # which is the other half of the gate: the notes and the words that tell the
-  # model how to read them travel together.
-  expect_match(p, "OWN confidence for this call", fixed = TRUE)
+  # ... and the guidelines that explain the bracket come back with it, which
+  # is the other half of the gate: the notes and the words that tell the model
+  # how to read them travel together. With a posterior in the batch that
+  # includes the NUMERIC piece, which is gated separately.
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
+  expect_match(p, "OWN statistical confidence", fixed = TRUE)
   expect_match(p, "GBIF's density map is RAW", fixed = TRUE)
 })
 
@@ -1415,4 +1435,460 @@ test_that("a verdict cached WITH the notes is not served to a blind call", {
   # ... and the blind call's own verdict caches and is served back.
   invisible(do.call(review_assignments, base))
   expect_equal(get("n", ctr), n2)
+})
+
+
+# ===========================================================================
+# The bracket guideline describes what the bracket actually carries
+# ===========================================================================
+
+# Under the shipped defaults a bracket never holds a number, only notes about
+# the NAME. A single guideline calling the bracket "the pipeline's OWN
+# confidence (posterior/occurrence prior/candidate weights)" therefore told
+# the model to read a sequence fact as a confidence and to look for a
+# posterior that was not in the prompt. Found on a live run, not by a test,
+# which is why both sides are pinned here.
+
+test_that("a bracket with no number gets the facts guideline and not the numeric one", {
+  p <- .prompt_sent()
+  # The fixture's poor_absolute_fit is TRUE, so a bracket IS present.
+  expect_match(p, "(poor absolute fit)", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
+  # ... and nothing claims that bracket is a confidence, or names a number
+  # the model cannot see.
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
+  expect_false(grepl("pipeline posterior alongside your own", p, fixed = TRUE))
+})
+
+test_that("a bracket carrying a number gets both guidelines", {
+  p <- .prompt_sent(
+    consensus_posterior_col = "consensus_posterior",
+    winner_prior_col = "winner_prior"
+  )
+  expect_match(p, "pipeline posterior=0.81", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
+  expect_match(p, "OWN statistical confidence", fixed = TRUE)
+  expect_match(p, "pipeline posterior alongside your own", fixed = TRUE)
+})
+
+test_that("no bracket at all means neither guideline", {
+  # A frame with none of the note columns: nothing to describe, so the prompt
+  # says nothing about brackets.
+  bare <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = bare, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  ))
+  p <- paste(seen, collapse = "\n")
+  expect_false(grepl("reports what the DNA evidence could and could not settle", p, fixed = TRUE))
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
+})
+
+# ===========================================================================
+# Read without showing: UNPRECEDENTED
+# ===========================================================================
+
+test_that("an UNPRECEDENTED row still fills geographic_disagreement_basis", {
+  # The point of the read-vs-show split. "No local occurrence record at all"
+  # is a statement about the occurrence data, so it never reaches the prompt
+  # -- but geographic_disagreement_basis is computed from it in code, and that
+  # column is the deterministic way a reviewer finds a taxon the LLM called
+  # plausible where the records hold nothing. Losing the column would have
+  # traded a safety signal for the prompt change; this test is what says the
+  # trade did not happen.
+  df <- data.frame(
+    observation_id = "S1",
+    consensus_taxon = "Bos taurus",
+    consensus_rank = "species",
+    consensus_plausibility = "unprecedented",
+    consensus_discrimination = "resolved",
+    stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    # geography "likely" is what makes it a disagreement.
+    paste0(
+      '[{"taxon_name": "Bos taurus", "p_habitat": 0.9, "p_geographic": 0.9,',
+      ' "p_scope": 0.9, "p_contamination": 0.1,',
+      ' "review_confidence": "high", "review_comment": null}]'
+    )
+  }
+  out <- review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  )
+  expect_equal(out$geographic_disagreement_basis, "unprecedented")
+  expect_equal(out$llm_geographic_plausibility, "likely")
+  # ... and the prompt said nothing about it.
+  p <- paste(seen, collapse = "\n")
+  expect_false(grepl("UNPRECEDENTED", p, fixed = TRUE))
+  expect_false(grepl("occurrence record", p, fixed = TRUE))
+})
+
+test_that("an identity alone is enough to send the sequence-evidence guideline", {
+  # The commonest default case: a frame out of the pipeline carries
+  # best_identity and no flag is set, so the only bracket note is the number.
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", best_identity = 99.4,
+    stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  ))
+  p <- paste(seen, collapse = "\n")
+  expect_match(p, "best match identity 99.4%", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
+})
+
+
+# ===========================================================================
+# The bracket guideline names only the notes the batch carries
+# ===========================================================================
+
+# Found by reading a real run's prompts: the guideline listed five note kinds
+# unconditionally, including "whether the sequence resolved the call to
+# species". That note fired on none of 1,189 lines, so naming it made silence
+# read as "resolved" -- while a third of the study's species-level taxa had a
+# likelihood rank coarser than species. Naming an absent note turns an absence
+# into a claim, which is the same defect this guideline was rewritten to fix.
+
+# Answers every taxon the prompt asks for, so no re-ask fires and `seen` holds
+# exactly one prompt -- a re-ask carries only the omitted taxon and so a
+# different guideline, which would make these assertions ambiguous.
+.seq_clause_of <- function(df, ...) {
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    asked <- names(.CANNED)[vapply(
+      names(.CANNED), function(nm) grepl(nm, prompt_str, fixed = TRUE),
+      logical(1L)
+    )]
+    paste0("[", paste(unlist(.CANNED[asked], use.names = FALSE), collapse = ",\n"), "]")
+  }
+  suppressWarnings(invisible(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE,
+    on_unreviewed = "ignore", ...
+  )))
+  ln <- strsplit(paste(seen, collapse = "\n"), "\n", fixed = TRUE)[[1]]
+  grep("could and could not settle", ln, value = TRUE)
+}
+
+test_that("an identity-only batch names the identity and nothing else", {
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", best_identity = 99.4,
+    stringsAsFactors = FALSE
+  )
+  g <- .seq_clause_of(df)
+  expect_length(g, 1L)
+  expect_match(g, "the best match identity for this taxon", fixed = TRUE)
+  # None of the four notes this batch does not carry is named.
+  expect_false(grepl("rank threshold", g, fixed = TRUE))
+  expect_false(grepl("confusable relative", g, fixed = TRUE))
+  expect_false(grepl("no reference sequence exists", g, fixed = TRUE))
+  expect_false(grepl("did not resolve the call to species", g, fixed = TRUE))
+  # And it says an absence means nothing, which is the whole point.
+  expect_match(g, "says nothing either way", fixed = TRUE)
+})
+
+test_that("each note kind adds its own clause and only its own", {
+  base <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  # not resolved to species
+  d <- base
+  d$winner_rank_expanded <- TRUE
+  g <- .seq_clause_of(d)
+  expect_match(g, "did not resolve the call to species", fixed = TRUE)
+  expect_false(grepl("the best match identity", g, fixed = TRUE))
+
+  # a confusable relative
+  d <- base
+  d$consensus_discrimination <- "indistinguishable"
+  g <- .seq_clause_of(d)
+  expect_match(g, "confusable relative could match the sequence as well", fixed = TRUE)
+  expect_false(grepl("did not resolve the call to species", g, fixed = TRUE))
+
+  # no rank threshold cleared
+  d <- base
+  d$poor_absolute_fit <- TRUE
+  d$best_identity <- 86.1
+  g <- .seq_clause_of(d)
+  expect_match(g, "clears no rank threshold for this marker", fixed = TRUE)
+  expect_false(grepl("confusable relative", g, fixed = TRUE))
+})
+
+test_that("no bracket note at all means no sequence guideline", {
+  bare <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  expect_length(.seq_clause_of(bare), 0L)
+})
+
+test_that("the numeric piece names only the numbers the batch carries", {
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", winner_prior = 0.42, consensus_posterior = 0.81,
+    stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  suppressWarnings(invisible(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE,
+    on_unreviewed = "ignore", winner_prior_col = "winner_prior"
+  )))
+  p <- paste(seen, collapse = "\n")
+  expect_match(p, '"occurrence prior", that is this', fixed = TRUE)
+  # consensus_posterior is in the frame but not passed, so it is neither in a
+  # bracket nor named in the guideline.
+  expect_false(grepl('"pipeline posterior"', p, fixed = TRUE))
+  expect_false(grepl('"candidate weights"', p, fixed = TRUE))
+})
+
+test_that("any logical column meaning it drives the not-resolved note", {
+  # The argument's contract is the MEANING, not join_priors()'s column name:
+  # a caller deriving its own flag -- say, consensus at species while the
+  # likelihood's consensus rank is coarser -- passes that instead.
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", seq_not_species = TRUE,
+    stringsAsFactors = FALSE
+  )
+  g <- .seq_clause_of(df, winner_rank_expanded_col = "seq_not_species")
+  expect_match(g, "did not resolve the call to species", fixed = TRUE)
+  # And the default name being absent from the frame is a silent skip, not an
+  # error, so the same frame reviewed without the argument says nothing.
+  expect_length(.seq_clause_of(df), 0L)
+})
+
+test_that("the not-resolved note follows the taxon's own detections", {
+  # The flag is per row and the note is per taxon, so a taxon flagged on only
+  # some of its detections must not get the flat sentence: in one real study
+  # half the taxon-by-marker pairs are mixed, and collapsing them would
+  # overstate the case on every one.
+  two_rows <- function(flag) {
+    data.frame(
+      observation_id = c("S1", "S2"),
+      consensus_taxon = c("Bos taurus", "Bos taurus"),
+      consensus_rank = c("species", "species"),
+      seq_not_species = flag,
+      stringsAsFactors = FALSE
+    )
+  }
+  line_of <- function(flag) {
+    seen <- character(0)
+    fn <- function(prompt_str, ...) {
+      seen <<- c(seen, prompt_str)
+      paste0("[", .CANNED[["Bos taurus"]], "]")
+    }
+    suppressWarnings(invisible(review_assignments(
+      data_type = "eDNA", input_df = two_rows(flag),
+      taxon_col = "consensus_taxon", context = mock_context, llm_fn = fn,
+      verbose = FALSE, on_unreviewed = "ignore",
+      winner_rank_expanded_col = "seq_not_species"
+    )))
+    ln <- strsplit(paste(seen, collapse = "\n"), "\n", fixed = TRUE)[[1]]
+    grep("^- \\[T", ln, value = TRUE)
+  }
+
+  all_flagged <- line_of(c(TRUE, TRUE))
+  expect_match(all_flagged, "does not resolve this call to species]", fixed = TRUE)
+  expect_false(grepl("on some of its detections", all_flagged, fixed = TRUE))
+
+  mixed <- line_of(c(TRUE, FALSE))
+  expect_match(mixed, "to species on some of its detections", fixed = TRUE)
+
+  # NA counts as unflagged, both for the mixed case and for the none case.
+  na_mixed <- line_of(c(TRUE, NA))
+  expect_match(na_mixed, "to species on some of its detections", fixed = TRUE)
+  expect_false(grepl("does not resolve", line_of(c(FALSE, FALSE)), fixed = TRUE))
+  expect_false(grepl("does not resolve", line_of(c(NA, NA)), fixed = TRUE))
+})
+
+test_that("the guideline names whichever of the two forms the batch holds", {
+  mk <- function(flag_a, flag_b) {
+    data.frame(
+      observation_id = c("S1", "S2", "S3"),
+      consensus_taxon = c("Bos taurus", "Bos taurus", "Salmo salar"),
+      consensus_rank = "species",
+      seq_not_species = c(flag_a, flag_b, TRUE),
+      stringsAsFactors = FALSE
+    )
+  }
+  # Salmo is flagged on its single row (the "all" form); Bos is mixed.
+  g <- .seq_clause_of(mk(TRUE, FALSE), winner_rank_expanded_col = "seq_not_species")
+  expect_match(g, "that the sequence did not resolve the call to species", fixed = TRUE)
+  expect_match(g, "on only part of their detections", fixed = TRUE)
+
+  # Both taxa fully flagged: only the flat form is named.
+  g2 <- .seq_clause_of(mk(TRUE, TRUE), winner_rank_expanded_col = "seq_not_species")
+  expect_match(g2, "that the sequence did not resolve the call to species", fixed = TRUE)
+  expect_false(grepl("on only part of their detections", g2, fixed = TRUE))
+})
+
+test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
+  # It used to live inside the UNPRECEDENTED guideline, so it reached only the
+  # taxa the occurrence data had flagged -- and it left with that guideline.
+  # What a low probability ASSERTS is true of every taxon, so it is not
+  # behind a flag any more. Pinned on a frame with no pipeline columns at all,
+  # which is the case that proves "unconditional".
+  bare <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = bare, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  ))
+  p <- paste(seen, collapse = "\n")
+  expect_match(p, "A p_geographic below 0.10 is a STRONG claim", fixed = TRUE)
+  expect_match(p, "POSITIVE evidence that the taxon is out of range here", fixed = TRUE)
+  # The threshold IS the unlikely cut, so the evidence bar and the verdict
+  # boundary are one number. Earlier wordings asked for 0.05 or lower against
+  # a `< 0.10` cut, which left [0.05, 0.10) taking the verdict without having
+  # to meet the bar.
+  expect_equal(TaxaFlag:::.p_cut_unlikely, 0.10)
+  expect_false(grepl("0.05 or lower", p, fixed = TRUE))
+  # It names the field it governs and the ones it does not. Unnamed, it read
+  # as a rule about any low probability, while this same prompt offers
+  # p_habitat 0.03 and p_contamination 0.02 as normal answers.
+  expect_match(p, "applies to p_geographic only", fixed = TRUE)
+  expect_match(p, "a low p_habitat, p_scope, p_transported or p_contamination", fixed = TRUE)
+  # "a habitat it cannot use" is gone: that is not out-of-RANGE evidence, and
+  # a habitat mismatch driving geography under 0.10 reaches the screen's I2.
+  expect_false(grepl("a habitat it cannot use", p, fixed = TRUE))
+  # The commonest positive evidence is named, and "the region" is not, since a
+  # study area can span a taxon's own range limit.
+  expect_match(p, "well-established range limit that the whole study area lies beyond", fixed = TRUE)
+  expect_false(grepl("one known from the region", p, fixed = TRUE))
+  # ... and it is nowhere near the deleted UNPRECEDENTED wording.
+  expect_false(grepl("absence of a citeable record", p, fixed = TRUE))
+  expect_false(grepl("pipeline flags UNPRECEDENTED", p, fixed = TRUE))
+
+  # Same on the sites path, which has its own geography text.
+  sites <- data.frame(
+    site = c("North", "South"), lat = c(38, 32), lon = c(-123, -117),
+    stringsAsFactors = FALSE
+  )
+  bare$site <- "North"
+  seen <- character(0)
+  fn2 <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0(
+      '[{"taxon_name": "Bos taurus", "p_habitat": 0.03, "p_geographic": 0.03,',
+      ' "p_scope": 0.03, "p_contamination": 0.95, "range_known": false,',
+      ' "p_inside_range": 0.4, "p_outside_range": 0.4,',
+      ' "review_confidence": "low", "review_comment": null}]'
+    )
+  }
+  suppressWarnings(invisible(review_assignments(
+    data_type = "eDNA", input_df = bare, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn2, verbose = FALSE,
+    sites = sites, site_col = "site", on_unreviewed = "ignore"
+  )))
+  ps <- paste(seen, collapse = "\n")
+  # The sites path governs p_inside_range, and must NOT govern
+  # p_outside_range: a low p_outside_range beyond a stated limit is the
+  # normal answer, and worked example 2 gives 0.05 for it.
+  # The bar is on p_inside_range. .geo_site_probs() gives p_inside_range to
+  # EVERY site not beyond the stated limits, so a limit expressed through it
+  # would drop all the in-range sites at once -- the wording therefore points
+  # limits at p_outside_range rather than inviting them into this field.
+  expect_match(ps, "A p_inside_range below 0.10 is a STRONG claim", fixed = TRUE)
+  expect_match(ps, "state that limit and use p_outside_range; do not lower p_inside_range", fixed = TRUE)
+  expect_match(ps, "applies to p_inside_range only", fixed = TRUE)
+  expect_match(ps, "a low p_outside_range", fixed = TRUE)
+  # "near this site" was the wrong unit: p_inside_range is one value for all
+  # the in-range sites, so the question is about the region.
+  expect_match(ps, "known from any part of the study region", fixed = TRUE)
+  expect_false(grepl("known near this site", ps, fixed = TRUE))
+  expect_false(grepl("range limit that this site lies beyond", ps, fixed = TRUE))
+  # p_outside_range carries no bar: site geography scored 93-95% unbarred in
+  # the measured arms, so barring it is a 1.1 question for r12c, not an
+  # argument to settle here.
+  expect_false(grepl("A site probability below 0.10", ps, fixed = TRUE))
+  # The study-wide steer is not on this path, and the habitat example is gone.
+  expect_false(grepl("A p_geographic below 0.10", ps, fixed = TRUE))
+  expect_false(grepl("a habitat it cannot use", ps, fixed = TRUE))
+})
+
+
+test_that("the completion message counts answers, not rows", {
+  # review_df has a row per reviewed label INCLUDING the NA fills, so nrow is
+  # not a count of answers. When every batch failed this said "N taxa
+  # reviewed" while unreviewed_taxa held all N: the loudest line in the run
+  # read as success.
+  df <- data.frame(
+    observation_id = c("S1", "S2", "S3"),
+    consensus_taxon = c("Bos taurus", "Salmo salar", "Gobiidae"),
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  dead <- function(prompt_str, ...) "not json at all"
+  msgs <- character(0)
+  withCallingHandlers(
+    suppressWarnings(invisible(review_assignments(
+      data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = dead, verbose = TRUE,
+      max_retries = 0L, pause_seconds = 0, on_unreviewed = "ignore"
+    ))),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  done <- grep("Review complete", msgs, value = TRUE)
+  expect_length(done, 1L)
+  expect_match(done, "0 of 3 taxa reviewed; 3 unreviewed", fixed = TRUE)
+
+  # And the all-answered case keeps the short form.
+  ok <- function(prompt_str, ...) {
+    asked <- names(.CANNED)[vapply(
+      names(.CANNED), function(nm) grepl(nm, prompt_str, fixed = TRUE),
+      logical(1L)
+    )]
+    paste0("[", paste(unlist(.CANNED[asked], use.names = FALSE), collapse = ",\n"), "]")
+  }
+  msgs <- character(0)
+  withCallingHandlers(
+    invisible(review_assignments(
+      data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = ok, verbose = TRUE, pause_seconds = 0
+    )),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  done <- grep("Review complete", msgs, value = TRUE)
+  expect_match(done, "Review complete. 3 taxa reviewed.", fixed = TRUE)
+  expect_false(any(grepl("unreviewed", done, fixed = TRUE)))
 })
