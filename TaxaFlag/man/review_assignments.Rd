@@ -97,28 +97,30 @@ between candidates. When \code{TRUE} for any row sharing a label, a note
 to that effect is added to the LLM's context, since this changes how
 much weight the identification itself deserves. Silently skipped when
 absent. Shown as a sequence fact and nothing more -- that the sequence
-did not resolve the call to species and did not choose this name -- with
-no mention of what supplied the name instead. Default
+did not resolve the call to species -- with no mention of what supplied
+the name instead. Default
 \code{"winner_rank_expanded"}; \code{NULL} to suppress it. See
 \emph{What the review is shown, and what it is not}.}
 
 \item{consensus_provenance}{Logical (default \code{TRUE}). When
 \code{TRUE} and \code{input_df} carries
 \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
-that landed on an UNREFERENCED row adds a note saying so, with the scope
-the name came from, that scope's RANK, and whether the records offered one
-candidate or several. This matters because no reference sequence exists
-for such a taxon: the sequence settled only that an unreferenced relative
-beats every referenced candidate, and the NAME was supplied by the
-occurrence records in that scope -- sibling named rows carry identical
-likelihoods, so the sequence cannot choose between them. Nothing else in
-the context reveals this: \code{consensus_posterior} and
-\code{winner_prior} are both high on these calls,
-\code{likelihood_support} reads near 1 (truthfully about the hypothesis,
-silently about the name), and \code{winner_rank_expanded} is a different
-mechanism. The scope RANK is the load-bearing part: a scope at order or
-class rank is an elimination over a very wide clade. Silently skipped when
-the column is absent.}
+that landed on an UNREFERENCED row adds one note:
+\code{"named taxon has NO reference sequence"}. That is the whole of it.
+The note once continued with the scope the name came from, that scope's
+rank, and how many species the records held in it; all three report what
+the occurrence records CONTAIN, so they are gone -- see \emph{What the
+review is shown, and what it is not}.
+
+What is left matters because no reference sequence exists for such a
+taxon: the sequence settled only that an unreferenced relative beats every
+referenced candidate, and the name came from somewhere other than the
+sequence -- sibling named rows carry identical likelihoods, so the
+sequence cannot choose between them. Nothing else the review is shown
+reveals this, which is why the note is on by default:
+\code{consensus_posterior} and \code{winner_prior} are not sent at all,
+and \code{winner_rank_expanded} is a different mechanism. Silently
+skipped when the column is absent.}
 
 \item{plausible_posteriors_col}{Character or \code{NULL}. Column name for
 \code{posterior_consensus()}'s \code{plausible_posteriors} list column
@@ -528,31 +530,39 @@ only the final output column names carry the prefix.
 
 \section{Geography guidelines}{
 
-Three conditional GUIDELINES bullets shape the geographic rating, each
-added only when a taxon in the batch carries the matching bracket fact:
+Two conditional GUIDELINES bullets shape the geographic rating, each added
+only when a taxon in the batch carries the matching bracket fact:
 \enumerate{
-\item{\code{"pipeline flags UNPRECEDENTED"} (no local record in the
-pipeline's occurrence data): absence of a citeable record is not
-evidence of absence. Without specific local evidence the geographic
-probability is intermediate, not high; a low one needs positive
-evidence of being out of range (a native range elsewhere with no known
-introduction to the region, or a habitat the taxon cannot use). This
-bullet exists because an earlier, harder rule ("cite a local record or
-rate it unlikely") rated widely introduced species out of range whenever
-the model could not recall a record on that draw.}
 \item{\code{"pipeline flags INDISTINGUISHABLE"} (a confusable relative
 could score as well) weakens confidence in the name only and must not by
 itself lower the habitat, geographic or scope probability. The same
-holds for a \code{"(poor absolute fit)"} note.}
+holds for a \code{"(poor absolute fit)"} note, and for the note saying
+the sequence did not resolve the call to species.}
 \item{\code{"pipeline call: <taxon> (<rank>)"}, shown when the reviewed
 label is not the call itself (a species label on a genus or family
 call): the call at its rank is the claim, and the species are candidates
 within it.}
 }
-Prompt compliance is never guaranteed, so the deterministic
-\code{geographic_disagreement_basis} output column (see \code{@return}) still
+There is no UNPRECEDENTED bullet, because there is no UNPRECEDENTED note:
+"no local occurrence record at all" is a statement about the occurrence
+data and the flag is read without being shown (see \emph{What the review is
+shown, and what it is not}). What that bullet used to say -- that absence of
+a citeable record is not evidence of absence, and that an unrecalled range
+deserves an intermediate probability rather than a low one -- is in the
+UNCONDITIONAL geography text, which is the right place for it: it is true of
+every rare taxon, not only of the ones the pipeline flagged. The harder
+earlier form of that rule ("cite a local record or rate it unlikely") rated
+widely introduced species out of range whenever the model could not recall a
+record on that draw, which is why it is guidance and not a rule.
+
+Prompt compliance is never guaranteed, and the model is not shown the
+UNPRECEDENTED flag at all, so the deterministic
+\code{geographic_disagreement_basis} output column (see \code{@return})
 marks every row whose derived geographic verdict is likely or possible
-despite either flag; filter on it to audit those rows.
+despite that flag or the INDISTINGUISHABLE one; filter on it to audit those
+rows. For UNPRECEDENTED it is the ONLY signal, by design: the review reaches
+its geographic verdict without knowing the records are empty, and this
+column is where the two are compared afterwards.
 
 Each taxon line carries an id (\code{[T1]}, \code{[T2]}, ...) that the
 answer must echo; answers are matched by id first, then by name, so a long
@@ -792,8 +802,11 @@ design, and no text derived from occurrence records.
 rank threshold for the marker (\code{poor_absolute_fit_col}), whether a
 confusable relative could match as well (\code{consensus_discrimination_col}),
 whether any reference sequence exists for the name at all
-(\code{consensus_provenance}), and whether the sequence resolved the call
-to species at all (\code{winner_rank_expanded_col}). And the study's own
+(\code{consensus_provenance}), and, where it did not, that the sequence did
+not resolve the call to species (\code{winner_rank_expanded_col}). The
+guideline that explains the bracket is assembled from the notes the batch
+actually carries, and says that a missing note means nothing: naming a note
+that is absent would turn its absence into a claim. And the study's own
 design, which is not evidence about the taxon: the context (geography,
 habitat, dates, target group, marker), the site table when \code{sites} is
 supplied, and which of those sites each taxon was detected at.
@@ -809,7 +822,7 @@ The rank-expansion flag is the awkward case, and it is SHOWN. The flag is
 set because the occurrence prior supplied a species name where the sequence
 could not, so its existence is occurrence-derived -- but what the prompt
 says about it is only what the sequence did, and a reviewer judging that
-name needs to know the sequence did not choose it. Set
+name needs to know the sequence did not reach it. Set
 \code{winner_rank_expanded_col = NULL} to take the other view.
 
 The UNPRECEDENTED flag is the one that is READ but never SHOWN: it means "no
@@ -843,22 +856,28 @@ to \code{NULL} as well costs
 
 \section{Pipeline context}{
 
-All four of \code{consensus_posterior_col}/\code{winner_prior_col}/
-\code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are
-\code{NULL} by default and nothing here happens unless they are passed --
-see \emph{What the review is shown, and what it is not}. Given column names that exist in
-\code{input_df}, a compact \code{"[...]"}
-annotation is appended to each taxon's line in the LLM prompt -- the
-pipeline's own median statistical confidence/occurrence prior for that
-taxon, a note when the winning call was resolved by occurrence-prior
-tie-break alone (no direct sequence evidence), and, for multi-candidate
-sets, each candidate's averaged posterior weight. This lets the LLM's
-free-text \code{review_comment} flag a disagreement between the
-pipeline's own confidence and its ecological judgment. It is purely
-additive: it never changes which rows are reviewed, the dedup key, or any
-output column. Set any of the four params to \code{NULL} to disable; all
-four are silently skipped (not an error) when the named column is absent
-from \code{input_df}.
+A compact \code{"[...]"} annotation is appended to each taxon's line in the
+LLM prompt. What goes in it depends on the four params below, and they do
+not default alike -- see \emph{What the review is shown, and what it is
+not} for the rule:
+\itemize{
+\item{\code{consensus_posterior_col} and \code{winner_prior_col} are
+\code{NULL} by default. Passed, they add the pipeline's own median
+statistical confidence and the occurrence prior for the taxon, which
+lets \code{review_comment} flag a disagreement between the pipeline's
+confidence and the model's ecological judgment.}
+\item{\code{plausible_posteriors_col} is \code{NULL} by default.
+Passed, it adds each candidate's averaged posterior weight, for
+multi-candidate sets only.}
+\item{\code{winner_rank_expanded_col} defaults to
+\code{"winner_rank_expanded"} and IS sent, as one sequence fact: that
+the sequence did not resolve the call to species. It says nothing about
+what supplied the name instead.}
+}
+The annotation is purely additive: it never changes which rows are
+reviewed, the dedup key, or any output column. Set any of the four to
+\code{NULL} to disable; all four are silently skipped (not an error) when
+the named column is absent from \code{input_df}.
 }
 
 \section{Spatial context}{

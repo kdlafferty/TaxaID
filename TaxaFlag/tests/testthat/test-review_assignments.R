@@ -1337,14 +1337,16 @@ test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", 
 })
 
 test_that("the rank-expansion note is sent, and says only what the sequence did", {
-  # winner_rank_expanded is TRUE in the fixture. The note is sequence-only
-  # wording: what the sequence did not do, with no mention of what supplied
-  # the name instead. It is also deliberately NOT the INDISTINGUISHABLE
-  # statement -- that is a tail probability saying a relative could score as
-  # well, where this says the sequence never reached species at all.
+  # winner_rank_expanded is TRUE in the fixture. One clause, about the
+  # sequence, with nothing about what supplied the name -- naming that would
+  # point straight at the occurrence prior. Deliberately NOT the
+  # INDISTINGUISHABLE statement either: that is a tail probability saying a
+  # relative could score as well, where this says the sequence never reached
+  # species at all.
   p <- .prompt_sent()
   expect_match(p, "the sequence does not resolve this call to species", fixed = TRUE)
   expect_false(grepl("occurrence-prior tie-break", p, fixed = TRUE))
+  expect_false(grepl("not chosen by the sequence", p, fixed = TRUE))
   expect_false(grepl("could score equally well", p, fixed = TRUE))
 })
 
@@ -1553,4 +1555,109 @@ test_that("an identity alone is enough to send the sequence-evidence guideline",
   expect_match(p, "best match identity 99.4%", fixed = TRUE)
   expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
   expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
+})
+
+
+# ===========================================================================
+# The bracket guideline names only the notes the batch carries
+# ===========================================================================
+
+# Found by reading a real run's prompts: the guideline listed five note kinds
+# unconditionally, including "whether the sequence resolved the call to
+# species". That note fired on none of 1,189 lines, so naming it made silence
+# read as "resolved" -- while a third of the study's species-level taxa had a
+# likelihood rank coarser than species. Naming an absent note turns an absence
+# into a claim, which is the same defect this guideline was rewritten to fix.
+
+.seq_clause_of <- function(df, ...) {
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  suppressWarnings(invisible(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE,
+    on_unreviewed = "ignore", ...
+  )))
+  ln <- strsplit(paste(seen, collapse = "\n"), "\n", fixed = TRUE)[[1]]
+  grep("could and could not settle", ln, value = TRUE)
+}
+
+test_that("an identity-only batch names the identity and nothing else", {
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", best_identity = 99.4,
+    stringsAsFactors = FALSE
+  )
+  g <- .seq_clause_of(df)
+  expect_length(g, 1L)
+  expect_match(g, "the best match identity for this taxon", fixed = TRUE)
+  # None of the four notes this batch does not carry is named.
+  expect_false(grepl("rank threshold", g, fixed = TRUE))
+  expect_false(grepl("confusable relative", g, fixed = TRUE))
+  expect_false(grepl("no reference sequence exists", g, fixed = TRUE))
+  expect_false(grepl("did not resolve the call to species", g, fixed = TRUE))
+  # And it says an absence means nothing, which is the whole point.
+  expect_match(g, "says nothing either way", fixed = TRUE)
+})
+
+test_that("each note kind adds its own clause and only its own", {
+  base <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  # not resolved to species
+  d <- base
+  d$winner_rank_expanded <- TRUE
+  g <- .seq_clause_of(d)
+  expect_match(g, "did not resolve the call to species", fixed = TRUE)
+  expect_false(grepl("the best match identity", g, fixed = TRUE))
+
+  # a confusable relative
+  d <- base
+  d$consensus_discrimination <- "indistinguishable"
+  g <- .seq_clause_of(d)
+  expect_match(g, "confusable relative could match the sequence as well", fixed = TRUE)
+  expect_false(grepl("did not resolve the call to species", g, fixed = TRUE))
+
+  # no rank threshold cleared
+  d <- base
+  d$poor_absolute_fit <- TRUE
+  d$best_identity <- 86.1
+  g <- .seq_clause_of(d)
+  expect_match(g, "clears no rank threshold for this marker", fixed = TRUE)
+  expect_false(grepl("confusable relative", g, fixed = TRUE))
+})
+
+test_that("no bracket note at all means no sequence guideline", {
+  bare <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", stringsAsFactors = FALSE
+  )
+  expect_length(.seq_clause_of(bare), 0L)
+})
+
+test_that("the numeric piece names only the numbers the batch carries", {
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", winner_prior = 0.42, consensus_posterior = 0.81,
+    stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  suppressWarnings(invisible(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE,
+    on_unreviewed = "ignore", winner_prior_col = "winner_prior"
+  )))
+  p <- paste(seen, collapse = "\n")
+  expect_match(p, '"occurrence prior", that is this', fixed = TRUE)
+  # consensus_posterior is in the frame but not passed, so it is neither in a
+  # bracket nor named in the guideline.
+  expect_false(grepl('"pipeline posterior"', p, fixed = TRUE))
+  expect_false(grepl('"candidate weights"', p, fixed = TRUE))
 })

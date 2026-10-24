@@ -43,7 +43,14 @@
   taxon, whether that match clears any rank threshold for the marker, whether
   a confusable relative could match as well, and whether any reference
   sequence exists for the name -- the evidence the identification rests on,
-  which a reviewer judging that name needs. The
+  which a reviewer judging that name needs. It also sees, where
+  `winner_rank_expanded` is set, that the sequence did not resolve the call to
+  species. The guideline that explains the bracket is built from the notes the
+  batch actually carries and says that a missing note means nothing, so it can
+  never turn an absence into a claim. That note's wording names only what the
+  sequence did, and
+  `winner_rank_expanded_col` defaults to sending it, which changes the prompt
+  for a caller who previously relied on the default. The
   `consensus_posterior_col`, `winner_prior_col`,
   `plausible_posteriors_col`,
   `dist_nearest_occupied_km_col`, `patch_diameter_km_col`,
