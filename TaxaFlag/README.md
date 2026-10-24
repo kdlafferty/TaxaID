@@ -155,8 +155,9 @@ fields. A review shown the pipeline's own confidence cannot contradict it
 independently, and a review shown a taxon's GBIF distance cannot catch an
 error in the occurrence data. Pass the matching column names
 (`consensus_posterior_col`, `winner_prior_col` and the rest) to send any of
-them. Five pipeline-derived NOTES are still sent when `input_df` carries the
-columns behind them; `?review_assignments` lists them and what to set for a
+them. Three pipeline-derived notes are still sent when `input_df` carries the
+columns behind them, each because it is read for an output column or a gate as
+well as for the prompt; `?review_assignments` lists them and what to set for a
 prompt with no pipeline-derived text at all.
 
 Site-aware geography

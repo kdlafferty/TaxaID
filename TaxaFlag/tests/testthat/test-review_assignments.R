@@ -1263,6 +1263,23 @@ test_that(".normalise_context() combines the analyst's wording with the synthesi
   in_range = TRUE,
   n_observations = 1275L,
   matched_name = "Bos taurus",
+  winner_rank_expanded = TRUE,
+  stringsAsFactors = FALSE
+)
+
+# The candidate-set path, which is the only path the per-candidate weights
+# reach: the label has to be a multi-candidate one for them to be summarised.
+.weighted_input <- data.frame(
+  observation_id = c("S1", "S1"),
+  consensus_taxon = c("Bos taurus/javanicus", "Bos taurus/javanicus"),
+  consensus_rank = c("species", "species"),
+  plausible_taxa = I(list(
+    c("Bos taurus", "Bos javanicus"), c("Bos taurus", "Bos javanicus")
+  )),
+  plausible_posteriors = I(list(
+    c("Bos taurus" = 0.72, "Bos javanicus" = 0.28),
+    c("Bos taurus" = 0.72, "Bos javanicus" = 0.28)
+  )),
   stringsAsFactors = FALSE
 )
 
@@ -1304,6 +1321,52 @@ test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", 
   # it would tell the model to look for numbers that are not there.
   expect_false(grepl("nearest occurrence", p, fixed = TRUE))
   expect_false(grepl("OWN confidence for this call", p, fixed = TRUE))
+})
+
+test_that("no rank-expansion note is sent by default", {
+  # winner_rank_expanded is TRUE in the fixture. The note says the species
+  # call came from occurrence-prior MASS with nothing in the sequence choosing
+  # between the candidates -- the pipeline's own reasoning about the name, so
+  # it is off with the numbers even though it reaches nothing but the prompt.
+  p <- .prompt_sent()
+  expect_false(grepl("occurrence-prior tie-break", p, fixed = TRUE))
+})
+
+test_that("naming winner_rank_expanded_col sends the rank-expansion note", {
+  p <- .prompt_sent(winner_rank_expanded_col = "winner_rank_expanded")
+  expect_match(p, "species-level ID from occurrence-prior tie-break", fixed = TRUE)
+})
+
+test_that("no candidate weights are sent by default, and naming the column sends them", {
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0(
+      '[{"taxon_name": "Bos taurus/javanicus", "p_habitat": 0.5,',
+      ' "p_geographic": 0.5, "p_scope": 0.5, "p_contamination": 0.5,',
+      ' "review_confidence": "low", "review_comment": null}]'
+    )
+  }
+  args <- list(.weighted_input,
+    data_type = "eDNA", taxon_col = "consensus_taxon",
+    taxon_rank_col = "consensus_rank", plausible_taxa_col = "plausible_taxa",
+    irreducible_only = FALSE, context = mock_context, llm_fn = fn,
+    verbose = FALSE
+  )
+  invisible(do.call(review_assignments, args))
+  # The NOTE is "candidate weights: ..."; the words also occur bare in the
+  # bracket guideline, which this batch still gets because the candidate-set
+  # path emits an ungated "pipeline call:" note. So the colon is load-bearing
+  # in this assertion, and it was this test that found that residue.
+  expect_false(grepl("candidate weights: ", paste(seen, collapse = "\n"), fixed = TRUE))
+
+  seen <- character(0)
+  invisible(do.call(
+    review_assignments, c(args, list(plausible_posteriors_col = "plausible_posteriors"))
+  ))
+  expect_match(
+    paste(seen, collapse = "\n"), "candidate weights: Bos taurus 72%", fixed = TRUE
+  )
 })
 
 test_that("naming the columns puts every one of those notes back", {

@@ -86,8 +86,7 @@
 #'   between candidates. When \code{TRUE} for any row sharing a label, a note
 #'   to that effect is added to the LLM's context, since this changes how
 #'   much weight the identification itself deserves. Silently skipped when
-#'   absent. Default \code{"winner_rank_expanded"}. Set to \code{NULL} to
-#'   disable.
+#'   absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_rank_expanded"} to show it.
 #' @param consensus_provenance Logical (default \code{TRUE}). When
 #'   \code{TRUE} and \code{input_df} carries
 #'   \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
@@ -114,8 +113,7 @@
 #'   the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
 #'   primigenius 28\%"}), so \code{review_comment} can speak to the specific
 #'   weaker member instead of the group as an undifferentiated set. Silently
-#'   skipped when absent. Default \code{"plausible_posteriors"}. Set to
-#'   \code{NULL} to disable.
+#'   skipped when absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"plausible_posteriors"} to show it.
 #' @param dist_nearest_occupied_km_col Character or \code{NULL}. Column name
 #'   for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
 #'   distance from the study site to the nearest GBIF-mapped occurrence of
@@ -534,10 +532,12 @@
 #'
 #' What the defaults send is not exactly either of the first two arms. They
 #' switch off the posterior, the occurrence prior, the GBIF fields and the
-#' iNaturalist fields, and leave five notes that a suitable \code{input_df}
-#' can still trigger -- see \emph{What the review is not told}. So the shipped
-#' prompt sits between two arms that scored the same as each other, which is
-#' the most that can be said for it.
+#' iNaturalist fields and two of the five notes, and leave three that a
+#' suitable \code{input_df} can still trigger -- see
+#' \emph{What the review is not told}. Those three are the only way the
+#' shipped prompt differs from the second arm. So it sits between two arms
+#' that scored the same as each other, nearer the blind one, which is the most
+#' that can be said for it.
 #'
 #' \strong{Repeat stability}, as the share of the decisions the verdicts drive
 #' that a second ask repeats: with the pipeline notes, 90.0% (82.5-96.1) over
@@ -679,8 +679,12 @@
 #' \code{beyond_buffer} flag and the three iNaturalist fields are all
 #' \code{NULL}, so none of them reaches the model and the guideline that
 #' explains them is not assembled either. Pass the column names to turn any of
-#' them back on, one at a time or all of them. It is numbers that are off, not
-#' every pipeline-derived word -- five notes are still reachable, listed below.
+#' them back on, one at a time or all of them. Two pipeline-derived NOTES are
+#' off by the same defaults -- \code{winner_rank_expanded_col} and
+#' \code{plausible_posteriors_col} -- because neither reaches anything but the
+#' prompt, and the first of them says the species call came from
+#' occurrence-prior mass, which is the kind of input this is keeping out.
+#' Three notes remain on; they are listed below.
 #'
 #' The reason is not accuracy. A review that is shown the pipeline's own
 #' confidence cannot contradict it independently, and a review that is shown a
@@ -695,44 +699,39 @@
 #' marker), the site table when \code{sites} is supplied, and which of those
 #' sites each taxon was detected at.
 #'
-#' Five pipeline notes are NOT switched off by these defaults, and an
-#' \code{input_df} that carries the columns behind them will still put them in
-#' the prompt:
+#' Three pipeline notes are NOT switched off, and an \code{input_df} that
+#' carries the columns behind them will still put them in the prompt:
 #' \itemize{
 #'   \item{the UNREFERENCED provenance note (\code{consensus_provenance});}
 #'   \item{the UNPRECEDENTED and INDISTINGUISHABLE flags
 #'     (\code{consensus_plausibility_col},
 #'     \code{consensus_discrimination_col});}
 #'   \item{the poor-absolute-fit note (\code{poor_absolute_fit_col}, with
-#'     \code{best_identity_col} for the number in it);}
-#'   \item{the coarse-rank tie-break note
-#'     (\code{winner_rank_expanded_col}), which says the species-level call
-#'     came from occurrence-prior mass with no sequence discriminating the
-#'     candidates;}
-#'   \item{the per-candidate weights (\code{plausible_posteriors_col}), on the
-#'     candidate-set path only.}
+#'     \code{best_identity_col} for the number in it).}
 #' }
-#' The first three are left on because each is read for an output column or a
-#' gate as well as for the prompt: \code{consensus_plausibility_col} and
+#' Each of those three is read for an output column or a gate as well as for
+#' the prompt: \code{consensus_plausibility_col} and
 #' \code{consensus_discrimination_col} populate
 #' \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag also
-#' decides whether that guideline is assembled. The last two reach nothing but
-#' the prompt.
+#' decides whether that guideline is assembled. Switching them off is a
+#' decision about an output column, not only about the prompt, which is why it
+#' is left to the caller.
 #'
-#' For a prompt with no pipeline-derived text in it at all, set all of
-#' \code{consensus_provenance = FALSE}, \code{consensus_plausibility_col},
-#' \code{consensus_discrimination_col}, \code{poor_absolute_fit_col},
-#' \code{winner_rank_expanded_col} and \code{plausible_posteriors_col} to
-#' \code{NULL}. That is the configuration the second arm in
-#' \emph{What was measured} was asked in. The cost is
+#' For a prompt with no pipeline-derived text in it at all, set
+#' \code{consensus_provenance = FALSE} and both of
+#' \code{consensus_plausibility_col} and
+#' \code{consensus_discrimination_col}, and
+#' \code{poor_absolute_fit_col}, to \code{NULL}. That is the configuration
+#' the second arm in \emph{What was measured} was asked in, and those three
+#' notes are now the only way the shipped prompt differs from it. The cost is
 #' \code{geographic_disagreement_basis}, which is then \code{NA} throughout.
 #'
 #' @section Pipeline context:
-#' When \code{consensus_posterior_col}/\code{winner_prior_col}/
-#' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are given
-#' column names that exist in \code{input_df} -- the first two are
-#' \code{NULL} by default, see \emph{What the review is not told} -- a
-#' compact \code{"[...]"}
+#' All four of \code{consensus_posterior_col}/\code{winner_prior_col}/
+#' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are
+#' \code{NULL} by default and nothing here happens unless they are passed --
+#' see \emph{What the review is not told}. Given column names that exist in
+#' \code{input_df}, a compact \code{"[...]"}
 #' annotation is appended to each taxon's line in the LLM prompt -- the
 #' pipeline's own median statistical confidence/occurrence prior for that
 #' taxon, a note when the winning call was resolved by occurrence-prior
@@ -818,9 +817,9 @@ review_assignments <- function(input_df,
                                irreducible_only = TRUE,
                                consensus_posterior_col = NULL,
                                winner_prior_col = NULL,
-                               winner_rank_expanded_col = "winner_rank_expanded",
+                               winner_rank_expanded_col = NULL,
                                consensus_provenance = TRUE,
-                               plausible_posteriors_col = "plausible_posteriors",
+                               plausible_posteriors_col = NULL,
                                consensus_plausibility_col = "consensus_plausibility",
                                consensus_discrimination_col = "consensus_discrimination",
                                dist_nearest_occupied_km_col = NULL,
@@ -1225,9 +1224,16 @@ review_assignments <- function(input_df,
     # line in the batch carries one. For a taxon with no notes under either
     # configuration -- an input_df that never had the columns -- the key is
     # byte-identical and the prompt is one guideline shorter, so nothing but a
-    # bump stops the old answer being served for the new question.
+    # bump stops the old answer being served for the new question. v9: the
+    # rank-expansion note and the candidate weights are off by default too.
+    # Both ARE carried in a hashed column -- each is folded into
+    # taxa_info$pipeline_note before the key is built -- so a taxon that
+    # carried either is a miss on its own key and needs nothing. The bump is
+    # for its NEIGHBOURS: the bracket guideline is assembled per BATCH, so
+    # dropping the last note in a batch changes the prompt of every other
+    # taxon in it while their keys do not move.
     shared_parts <- c(
-      "v8", target_group %||% "", marker %||% "", data_type,
+      "v9", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1597,7 +1603,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v8} key prefix already orphans; such a row falls back to
+#' which the \code{v9} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -3141,7 +3147,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v8" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v9" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
