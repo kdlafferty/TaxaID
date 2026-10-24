@@ -666,7 +666,7 @@ Each taxon line carries an id ([T1], [T2], ...) that the answer must echo; answe
 
 The LLM is asked for a probability for each judgement, not a category, and the llm_*_plausibility / llm_contamination_risk columns are derived from those probabilities here. The cuts are unlikely < 0.10 <= possible < 0.70 <= likely, and for contamination low < 0.20 <= moderate < 0.70 <= high.
 
-Why: a category is the least reproducible part of the review. Measured on 150 taxa of a real study with claude-opus-5-5, re-asking the same categorical prompt changed 10% of the decisions the verdicts drive. Asking for a probability and cutting it here leaves 3%, and agrees with the maintainer's own labels on 78% of rows against 67%.
+Why: a category is the least reproducible part of the review. Measured on 150 taxa of a real study with claude-opus-5-5, re-asking the same categorical prompt repeated 90% of the decisions the verdicts drive; asking for a probability and cutting it here repeats 97%. On the maintainer's own labels for the 34 hardest taxa of that study, this prompt agrees with him on 75% of the decisions, at 80% precision and 66% recall.
 
 The cut is applied AFTER the cache, never before it. What a cache entry holds is the probability -- the model's answer -- and a cut is this function's reading of it. So changing a cut takes effect for taxa already cached, with no new LLM calls, and the cuts are deliberately not part of the cache key.
 

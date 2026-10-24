@@ -433,3 +433,56 @@ test_that("a registry entry's details keep paragraph breaks and list items", {
   expect_identical(s$sections[[1L]]$title, "Why it exists")
   expect_true(grepl("Because.\n\n##### Sub\n\nDeeper.", s$sections[[1L]]$body, fixed = TRUE))
 })
+
+
+# ==============================================================================
+# No package defines the same top-level name in two files
+# ==============================================================================
+
+test_that("no package defines one top-level name in two R/ files", {
+  # R sources a package's R/ files in ALPHABETICAL order, so two files defining
+  # the same name leave the LATER file's version installed for every caller in
+  # that package. Nothing reports it: R CMD check does not flag a duplicate
+  # internal, document() does not, and the tests pass because they call the
+  # name and get a working function. It shipped once, on a branch: a helper
+  # file added a second .haversine_km() beside the one
+  # TaxaFlag/R/compute_local_occurrence_distance.R already had, and shadowed it
+  # package-wide. The two bodies happened to agree, which is a coincidence to
+  # check for rather than a reason it was safe.
+  root <- TaxaWizard:::.pack_find_repo_root()
+  skip_if(is.null(root), "repo root not found")
+  in_repo <- file.exists(file.path(root, "README.md")) &&
+    all(dir.exists(file.path(root, TaxaWizard:::TAXAID_PACKAGES)))
+  skip_if(!in_repo, "not a repository checkout (README.md and the nine packages not all present)")
+
+  # A top-level definition starts in column 1; anything indented is inside a
+  # function and is that function's own local.
+  pattern <- "^([A-Za-z._][A-Za-z0-9._]*)[[:space:]]*(<-|=)[[:space:]]*(function|structure|c\\(|[0-9\"'])"
+  # TAXAID_PACKAGES is the eight packages the registry introspects; TaxaWizard
+  # is not in it and is as able to shadow its own helper as any of them.
+  for (pkg in union(TaxaWizard:::TAXAID_PACKAGES, "TaxaWizard")) {
+    files <- list.files(file.path(root, pkg, "R"), pattern = "\\.R$", full.names = TRUE)
+    defs <- do.call(rbind, lapply(files, function(f) {
+      hits <- grep(pattern, readLines(f, warn = FALSE), value = TRUE)
+      if (length(hits) == 0L) {
+        return(NULL)
+      }
+      data.frame(
+        name = sub(pattern, "\\1", hits), file = basename(f),
+        stringsAsFactors = FALSE
+      )
+    }))
+    if (is.null(defs)) next
+    defs <- unique(defs)
+    dup <- unique(defs$name[duplicated(defs$name)])
+    expect_equal(
+      length(dup), 0L,
+      info = sprintf(
+        "%s defines in two files: %s", pkg,
+        paste(vapply(dup, function(nm) {
+          sprintf("%s (%s)", nm, paste(defs$file[defs$name == nm], collapse = ", "))
+        }, character(1L)), collapse = "; ")
+      )
+    )
+  }
+})

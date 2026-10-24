@@ -473,9 +473,10 @@
 #'
 #' Why: a category is the least reproducible part of the review. Measured on
 #' 150 taxa of a real study with \code{claude-opus-5-5}, re-asking the same
-#' categorical prompt changed 10% of the decisions the verdicts drive. Asking
-#' for a probability and cutting it here leaves 3%, and agrees with the
-#' maintainer's own labels on 78% of rows against 67%.
+#' categorical prompt repeated 90% of the decisions the verdicts drive; asking
+#' for a probability and cutting it here repeats 97%. On the maintainer's own
+#' labels for the 34 hardest taxa of that study, this prompt agrees with him on
+#' 75% of the decisions, at 80% precision and 66% recall.
 #'
 #' The cut is applied AFTER the cache, never before it. What a cache entry
 #' holds is the probability -- the model's answer -- and a cut is this
@@ -2961,8 +2962,12 @@ review_assignments <- function(input_df,
 # The review asks for probabilities, not categories, and TaxaFlag derives the
 # categorical llm_* columns from them in code (see .p_to_level()). Measured on
 # 150 CalIntertidal taxa with claude-opus-5-5: verdict-driven decisions repeated
-# between two asks 97-99% of the time against 90% for the categorical prompt,
-# and agreed with the maintainer's own labels on 78% of rows against 67%.
+# between two asks 97% of the time against 90% for the categorical prompt. On
+# the maintainer's labels for the 34 hardest of those taxa, this prompt -- these
+# definitions plus the site block -- agreed with him on 75% of the decisions,
+# at 80% precision and 66% recall; a probability prompt with NEITHER the
+# definitions nor the site block managed 67%, 75% and 44%. The two differ in
+# both respects, so the gain belongs to the pair of them.
 #
 # The wording of every block below is part of the question, so any change to it
 # must bump "v6" (and "geo_sites_v5" for the site blocks) in the cache key --
@@ -3163,9 +3168,8 @@ review_assignments <- function(input_df,
 # The model answers with a probability; these cuts are how TaxaFlag reads it.
 # They are the "margin" cuts, chosen by measurement over hard cuts (0.20/0.70,
 # contamination 0.50): on the maintainer's own labels for the 34 hardest taxa,
-# the extra rows the margin rule acts on were 94% rows he also acted on,
-# against about half for the hard cuts, and 97-99% of verdict-driven decisions
-# repeated between two asks.
+# the extra rows the margin rule acts on were 54% rows he also acted on,
+# against 32% for the hard cuts.
 #
 # The cuts are deliberately NOT part of the cache key. The cached answer is the
 # probability; a cut is this code's reading of it, re-applied on every run (see
