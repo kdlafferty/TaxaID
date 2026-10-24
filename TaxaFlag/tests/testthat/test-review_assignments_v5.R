@@ -221,7 +221,7 @@ test_that("UNPRECEDENTED and INDISTINGUISHABLE bullets appear only with their fl
   g <- .v5_guidelines(with_flags)
   expect_match(g, "absence of a citeable record is NOT evidence of absence", fixed = TRUE)
   expect_match(g, "not a high one", fixed = TRUE)
-  expect_match(g, "Give a low probability (under 0.1) only with POSITIVE evidence",
+  expect_match(g, "Give a low probability (0.05 or lower) only with POSITIVE evidence",
     fixed = TRUE
   )
   expect_match(g, "weakens confidence in the NAME, not the ecology", fixed = TRUE)
@@ -301,14 +301,14 @@ test_that("verdicts cached under an older prompt version are a miss", {
   run()
   expect_equal(n, 1L)
   run()
-  expect_equal(n, 1L) # a hit under v6
+  expect_equal(n, 1L) # a hit under v7
   files <- list.files(cd, full.names = TRUE)
   expect_gt(length(files), 0L)
   rekeyed <- 0L
   for (f in files) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v6", "v5", e$key, fixed = TRUE)
+      e$key <- sub("v7", "v6", e$key, fixed = TRUE)
       saveRDS(e, f)
       rekeyed <- rekeyed + 1L
     }
@@ -494,7 +494,7 @@ test_that("the review cache key carries no temperature field", {
   for (f in files) {
     k <- readRDS(f)$key
     expect_false(grepl("temperature", k, fixed = TRUE))
-    expect_true(startsWith(k, "v6\u0001"))
+    expect_true(startsWith(k, "v7\u0001"))
   }
 })
 

@@ -1092,9 +1092,13 @@ review_assignments <- function(input_df,
     # keyed on the reviewed label's own row type, not the call's. v5: the
     # geography guidelines (a)/(b)/(f), ids on taxa lines. v6: the answer is a
     # probability under the guardrail definitions, so EVERY cached verdict --
-    # on every path, sites or not -- is a miss once and is re-asked.
+    # on every path, sites or not -- is a miss once and is re-asked. v7: the
+    # UNPRECEDENTED guideline asks for "0.05 or lower" where it asked for
+    # "under 0.1", which a strict `< 0.10` cut reads differently; the key holds
+    # the inputs and not the prompt, so only a bump can stop a verdict given
+    # under the old wording being served for the new question.
     shared_parts <- c(
-      "v6", target_group %||% "", marker %||% "", data_type,
+      "v7", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1464,7 +1468,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v6} key prefix already orphans; such a row falls back to
+#' which the \code{v7} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -2121,7 +2125,7 @@ review_assignments <- function(input_df,
       "of a population at or near this site, give an intermediate geographic ",
       "probability (", geo_p_name, " about 0.3-0.6), not a high one, and say ",
       "in review_comment that the evidence is thin. Give a low probability ",
-      "(under 0.1) only with POSITIVE evidence that it is out of range here ",
+      "(0.05 or lower) only with POSITIVE evidence that it is out of range here ",
       "-- for example a native range on another continent with no known ",
       "introduction to this region, or a habitat it cannot use. A widely ",
       "introduced species, or one known from the region, is at least ",
@@ -2991,7 +2995,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v6" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v7" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
