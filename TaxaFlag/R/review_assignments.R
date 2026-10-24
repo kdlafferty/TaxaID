@@ -974,7 +974,7 @@ review_assignments <- function(input_df,
       dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
 
-    reviewer_id <- .review_reviewer_id(llm_fn, model_label)
+    reviewer_id <- .review_reviewer_id(llm_fn, model_label, caching = TRUE)
     if (verbose && length(list.files(cache_dir, pattern = "_review\\.rds$"))) {
       message(
         "review_assignments: the cache key now records which model answered, ",
@@ -1066,7 +1066,20 @@ review_assignments <- function(input_df,
     }
   }
 
+  # Which taxa share a call is a measured source of irreproducibility: reshuffling
+  # the batches, with nothing else changed, moved 7% of the decisions the verdicts
+  # drive. Input order is whatever the upstream table happened to be in, so the
+  # batches are built from a sort of the labels instead. Two runs that have the
+  # same taxa left to ask therefore ask the same batches.
+  #
+  # It cannot be made fully order-free: batching happens on the taxa still to
+  # ask, so a run whose cache covers a different subset will group the remainder
+  # differently. What this removes is the part that moved for no reason at all.
   taxa_to_call <- taxa_info[call_rows, , drop = FALSE]
+  taxa_to_call <- taxa_to_call[
+    order(taxa_to_call$taxon_name, method = "radix"), ,
+    drop = FALSE
+  ]
 
   # --- Batch and call LLM ---
   n_taxa <- nrow(taxa_to_call)
@@ -2643,7 +2656,15 @@ review_assignments <- function(input_df,
     result$taxon_name[1L] <- expected_taxa[1L]
   }
 
+  # No target group means no scope question was asked, so a scope answer the
+  # model volunteered anyway is dropped at the SOURCE -- the probability --
+  # not just at the verdict. Clearing only the verdict would leave
+  # .derive_levels() free to recompute it from a probability we never asked
+  # for, and llm_p_scope would report a judgement against no target group.
   if (is.null(target_group)) {
+    result$p_scope <- NA_real_
+    result$p_scope_lo <- NA_real_
+    result$p_scope_hi <- NA_real_
     result$scope_plausibility <- NA_character_
   }
 
@@ -3061,7 +3082,14 @@ review_assignments <- function(input_df,
   df$scope_plausibility <- .p_to_level(.p_col(df, "p_scope"))
   df$contamination_risk <- .p_to_risk(.p_col(df, "p_contamination"))
   geo <- if ("p_inside_range" %in% names(df)) {
-    .p_col(df, "p_inside_range")
+    # With a site table p_inside_range is the geography answer. A model that
+    # omitted it but volunteered the study-wide p_geographic it was not asked
+    # for is taken at its word for that row rather than left with no geography
+    # at all: an NA here is discarded by every downstream "!= unlikely" filter,
+    # which would lose the observation without a word.
+    ins <- .p_col(df, "p_inside_range")
+    alt <- .p_col(df, "p_geographic")
+    ifelse(is.na(ins), alt, ins)
   } else {
     .p_col(df, "p_geographic")
   }

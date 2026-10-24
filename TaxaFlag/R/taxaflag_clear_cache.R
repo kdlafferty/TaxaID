@@ -146,7 +146,7 @@ taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cach
 # The failure direction is deliberate. A component that changes when it did not
 # need to costs one re-ask; a component that fails to change when it should
 # returns the wrong model's verdict as if it were this one's.
-.review_reviewer_id <- function(llm_fn, model_label = NULL) {
+.review_reviewer_id <- function(llm_fn, model_label = NULL, caching = FALSE) {
   if (!is.null(model_label)) {
     if (!is.character(model_label) || length(model_label) != 1L ||
       is.na(model_label)) {
@@ -163,14 +163,46 @@ taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cach
   env_name <- tryCatch(environmentName(environment(llm_fn)),
     error = function(e) ""
   )
-  fn_id <- if (is.function(llm_fn) && nzchar(env_name) &&
-    env_name %in% loadedNamespaces()) {
-    paste(env_name, paste(deparse(args(llm_fn)), collapse = " "), sep = ":")
-  } else {
-    .review_cache_hash(paste(
+  # A function that belongs to a loaded namespace identifies itself: its name
+  # and formals are a stable description of what it will call. Anything else is
+  # a closure the caller wrote, and all we can see of it is its SOURCE -- which
+  # is exactly the hole this guard closes.
+  from_namespace <- is.function(llm_fn) && nzchar(env_name) &&
+    env_name %in% loadedNamespaces()
+  if (!from_namespace) {
+    if (isTRUE(caching)) {
+      stop(
+        "The model this llm_fn will call cannot be identified, so a cached ",
+        "verdict from a DIFFERENT model could be served as a hit. A wrapper ",
+        "written as function(p, ...) call_api(p, model = MODEL, ...) deparses ",
+        "to the variable name \"MODEL\", not to the model it holds, so ",
+        "changing MODEL would silently reuse the first model's answers. Pass ",
+        "model_label = the resolved model string (for example ",
+        "model_label = \"claude-opus-5-5\"), or set cache_dir = NULL to run ",
+        "uncached.",
+        call. = FALSE
+      )
+    }
+    return(paste(provider, .review_cache_hash(paste(
       tryCatch(deparse(llm_fn), error = function(e) ""),
       collapse = "\n"
-    ))
+    )), sep = "/"))
   }
-  paste(provider, fn_id, sep = "/")
+  if (isTRUE(caching)) {
+    # The namespace path names the function, not the model it resolves: a
+    # provider's "mid" tier can be re-pointed at a different model without the
+    # key moving. Narrower than the wrapper hole above, and the provider is in
+    # the key, so this warns rather than refusing -- but it is the same class
+    # of staleness, and model_label closes it.
+    warning(
+      "The cache key records which FUNCTION answered, not which model it ",
+      "resolved to: if this provider's tier is later pointed at another ",
+      "model, cached verdicts from the first one will still be served. Pass ",
+      "model_label = the resolved model string to key the model itself.",
+      call. = FALSE
+    )
+  }
+  paste(provider, paste(env_name, paste(deparse(args(llm_fn)), collapse = " "),
+    sep = ":"
+  ), sep = "/")
 }

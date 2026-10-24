@@ -200,7 +200,9 @@ review_sample_identity <- function(identity,
   # fix are a miss once. See .review_reviewer_id().
   # the medium is in each tube's own text (it can differ by tube), so the item
   # carries it into the key
-  ctx_key <- paste("sir-v5", .review_reviewer_id(llm_fn, model_label),
+  ctx_key <- paste("sir-v5", .review_reviewer_id(llm_fn, model_label,
+    caching = !is.null(cache_dir)
+  ),
     trimws(context), trimws(target_groups %||% ""),
     sep = "\u0001"
   )
