@@ -497,42 +497,57 @@
 #' @section What was measured:
 #' Every accuracy figure this package states is here, and nowhere else: one
 #' copy, so that a later measurement is one edit. All of it is
-#' \code{claude-opus-5-5} on one real study's 12S panel, and every interval
-#' given is a 95% bootstrap interval over taxa.
+#' \code{claude-opus-5-5} on one real multi-marker study: the maintainer's
+#' labels are 12S taxa, and the taxa behind the repeat figures include COI and
+#' 18S as well. Every interval given is a 95% bootstrap interval over taxa,
+#' and they are wide -- 34 labelled taxa and 90 repeated ones is what all of
+#' this rests on.
 #'
 #' \strong{This prompt against the maintainer's own labels}, over the 34
 #' hardest taxa of that study, with \code{sites} supplied, as same-decision /
-#' precision / recall: 73% (60-85) / 70% (51-89) / 73% (54-90). The same
+#' precision / recall: 73% (60-85) / 70% (51-89) / 73% (55-90). The same
 #' guardrails and site block, asked with habitat and scope wording written for
 #' that one study rather than taken from \code{context$habitat} and
-#' \code{target_group}, scored 75% / 80% / 66%. The gap between those two is
-#' the only measurement of what generalising the wording cost, and it sits
-#' inside the intervals. A plain probability prompt with neither the site
-#' block nor the guardrail definitions scored 67% / 75% / 44%; that one also
-#' carried the study-specific wording, and it differs from the first two arms
-#' in BOTH the guardrails and the site block, so the difference belongs to the
-#' pair and is not an isolated effect of \code{sites}.
+#' \code{target_group}, scored 75% / 80% / 66%; that difference is the only
+#' measurement of what generalising the wording cost. A plain probability
+#' prompt with neither the site block nor the guardrail definitions scored
+#' 67% (52-81) / 75% / 44% (22-66), also under the study-specific wording, and
+#' it differs from the other two arms in BOTH the guardrails and the site
+#' block, so its difference belongs to that pair and is not an isolated effect
+#' of \code{sites}. Every difference among the three sits inside the
+#' intervals.
 #'
-#' \strong{Repeat stability of this prompt}, over 150 taxa, as the share of
-#' the decisions the verdicts drive that a second ask repeats: 90.0%
-#' (82.5-96.1). The study-specific wording repeats 96.9% (93.8-98.9), so the
-#' generalised wording is the less stable of the two. Repeat pairs are
-#' correlated within a taxon, so the taxon count and not the pair count is
-#' what limits those intervals.
+#' \strong{Repeat stability of this prompt}, over 90 taxa and 356 answers
+#' (four asks of each taxon, six pairs), as the share of the decisions the
+#' verdicts drive that a second ask repeats: 90.0% (82.5-96.1), or 93.0%
+#' leaving one taxon out -- a single taxon whose site-geography probability
+#' straddles the 0.70 cut accounts for that whole difference. The
+#' study-specific wording repeats 96.9% (93.8-98.9), over 87 taxa. Those two
+#' intervals overlap, so which wording is steadier is not measured. Repeat
+#' pairs are correlated within a taxon, so it is those taxon counts and not
+#' the pair counts that set the intervals.
 #'
 #' \strong{Why the answer is a probability}: re-asking the same CATEGORICAL
 #' prompt repeated 90% of those decisions, against 97% for asking a
 #' probability and cutting it in code. Both of those arms were asked without
 #' the site block and without the guardrail definitions, so the pair isolates
 #' the answer format and nothing else, and neither figure is this prompt's own
-#' stability -- that is the paragraph above.
+#' stability -- that is the paragraph above. Stability is the whole of the
+#' reason: scored against the maintainer's labels under one common rule, the
+#' two formats agree with him 71% and 74% of the time, are within 3 points of
+#' each other on each of the four judgements, and differ on precision and
+#' recall by less than their intervals. There is no measured difference in
+#' accuracy between asking for a category and asking for a probability.
 #'
 #' \strong{The cuts}: of the extra rows the margin cuts act on and hard cuts
-#' (0.20/0.70, contamination 0.50) do not, 54% were rows the maintainer also
-#' acted on, against 32% for the hard cuts, measured on the study-specific
-#' wording. No alternative to the \code{0.10} cut improves repeat stability.
-#' The \code{0.70} cut does decide rows: most of this prompt's repeat
-#' disagreements are a probability crossing it.
+#' (0.20/0.70, contamination 0.50) do not, 51% were rows the maintainer also
+#' acted on under this prompt's wording; under the study-specific wording the
+#' same figure is 54% against 32% for the hard cuts, that being the only arm
+#' in which both rules were scored. No alternative to the 0.10 cut improves
+#' repeat stability, and the instability is not confined to that cut: the one
+#' taxon that drives the repeat figure above crosses 0.70, on site geography,
+#' when the model changes its mind about whether it can state that taxon's
+#' range at all.
 #'
 #' \strong{What the pipeline's own numbers add}: the taxon lines carry the
 #' posterior and the occurrence prior. Asked without them, on the same 34
@@ -542,9 +557,9 @@
 #'
 #' @section Site-aware geography:
 #' \strong{Supply a site table when you have one}: of the two configurations
-#' that were scored against the maintainer's labels, the one with it agreed
-#' more often and recovered far more of his calls. See
-#' \emph{What was measured}.
+#' scored against the maintainer's labels, the one with it has the higher
+#' point estimates -- same-decision 73% against 67%, recall 73% against 44%,
+#' with intervals that overlap. See \emph{What was measured}.
 #'
 #' A study that spans a coast or a latitude gradient has no single answer to
 #' "is this taxon geographically plausible here?": a tropical reef fish is
