@@ -1077,6 +1077,11 @@ review_assignments <- function(input_df,
     }
   }
   rownames(review_df) <- NULL
+  # Read every row -- freshly asked and cached alike -- through THIS run's
+  # cuts. A cached row stores the probabilities the model gave, so a changed
+  # cut applies to it without re-asking; deriving only in the parser would
+  # have frozen each cached row at the cut in force when it was written.
+  review_df <- .derive_levels(review_df)
 
   # The parsed range rule per reviewed taxon (sites path only).
   geo_attr <- if (!is.null(sites)) .geo_rules_table(review_df) else NULL
@@ -1085,13 +1090,13 @@ review_assignments <- function(input_df,
     n_unk <- sum(geo_attr$n_unknown_sites)
     if (n_fb > 0L) {
       message(sprintf(
-        "  sites: %d of %d taxa had no usable geographic_by_site rule; the study-wide verdict is used at every site.",
+        "  sites: %d of %d taxa gave no usable range answer; the study-wide verdict is used at every site.",
         n_fb, nrow(geo_attr)
       ))
     }
     if (n_unk > 0L) {
       message(sprintf(
-        "  sites: %d unlikely_sites name(s) matched no site and were ignored.", n_unk
+        "  sites: %d sites_outside_range name(s) matched no site and were ignored.", n_unk
       ))
     }
   }
@@ -1141,11 +1146,27 @@ review_assignments <- function(input_df,
     review_lower_hypotheses = review_df$review_lower_hypotheses,
     review_confidence = review_df$review_confidence,
     review_comment = review_df$review_comment,
+    llm_p_habitat = review_df$p_habitat,
+    llm_p_habitat_lo = review_df$p_habitat_lo,
+    llm_p_habitat_hi = review_df$p_habitat_hi,
+    llm_p_transported = review_df$p_transported,
+    llm_p_scope = review_df$p_scope,
+    llm_p_scope_lo = review_df$p_scope_lo,
+    llm_p_scope_hi = review_df$p_scope_hi,
+    llm_p_contamination = review_df$p_contamination,
+    llm_p_geographic = review_df$p_geographic,
     .has_unprecedented = review_df$has_unprecedented,
     .has_indistinguishable = review_df$has_indistinguishable,
     stringsAsFactors = FALSE
   )
-  if (!is.null(sites)) merge_key$.geo_json <- review_df$review_geo_json
+  if (!is.null(sites)) {
+    merge_key$llm_p_inside_range <- review_df$p_inside_range
+    merge_key$llm_p_outside_range <- review_df$p_outside_range
+    merge_key$llm_range_known <- review_df$range_known
+    merge_key$llm_range_south_lat <- review_df$range_south_lat
+    merge_key$llm_range_north_lat <- review_df$range_north_lat
+    merge_key$.geo_json <- review_df$review_geo_json
+  }
 
   input_df$.row_id <- seq_len(nrow(input_df))
   result <- merge(input_df, merge_key, by = ".join_key", all.x = TRUE, sort = FALSE)
@@ -2312,9 +2333,25 @@ review_assignments <- function(input_df,
       review_lower_hypotheses = NA_character_,
       review_confidence = NA_character_,
       review_comment = NA_character_,
+      p_habitat = NA_real_,
+      p_habitat_lo = NA_real_,
+      p_habitat_hi = NA_real_,
+      p_transported = NA_real_,
+      p_scope = NA_real_,
+      p_scope_lo = NA_real_,
+      p_scope_hi = NA_real_,
+      p_contamination = NA_real_,
+      p_geographic = NA_real_,
       stringsAsFactors = FALSE
     )
-    if (with_geo) out$review_geo_json <- NA_character_
+    if (with_geo) {
+      out$p_inside_range <- NA_real_
+      out$p_outside_range <- NA_real_
+      out$range_known <- NA
+      out$range_south_lat <- NA_real_
+      out$range_north_lat <- NA_real_
+      out$review_geo_json <- NA_character_
+    }
     out
   }
 
@@ -2416,24 +2453,101 @@ review_assignments <- function(input_df,
     }
   }
 
+  # A probability field, as numbers. jsonlite hands back an atomic column when
+  # every object had the field and a list column when any was null or an array,
+  # so both shapes are read here; anything that is not a single number in
+  # [0, 1] becomes NA rather than a silent 0 or a recycled neighbour.
+  .safe_num <- function(input_df, col_name, lo = 0, hi = 1) {
+    if (!col_name %in% names(input_df)) {
+      return(rep(NA_real_, nrow(input_df)))
+    }
+    v <- input_df[[col_name]]
+    out <- if (is.list(v)) {
+      vapply(v, function(z) {
+        if (is.null(z) || length(z) != 1L) {
+          NA_real_
+        } else {
+          suppressWarnings(as.numeric(z[[1L]]))
+        }
+      }, numeric(1L))
+    } else {
+      suppressWarnings(as.numeric(v))
+    }
+    out[!is.na(out) & (out < lo | out > hi)] <- NA_real_
+    out
+  }
+  # One end of a stated 90% range. Output only -- nothing downstream reads it
+  # -- but measured to be informative: the ranges the model states are 5-10x
+  # its own run-to-run spread, so they express uncertainty about the TAXON.
+  .safe_bound <- function(input_df, col_name, which_end) {
+    if (!col_name %in% names(input_df)) {
+      return(rep(NA_real_, nrow(input_df)))
+    }
+    v <- input_df[[col_name]]
+    if (is.matrix(v)) {
+      return(suppressWarnings(as.numeric(v[, which_end])))
+    }
+    if (!is.list(v)) {
+      return(rep(NA_real_, length(v)))
+    }
+    vapply(v, function(z) {
+      z <- suppressWarnings(as.numeric(unlist(z, use.names = FALSE)))
+      if (length(z) < which_end) NA_real_ else z[[which_end]]
+    }, numeric(1L))
+  }
+
   result <- data.frame(
     taxon_name = as.character(parsed$taxon_name),
-    habitat_plausibility = .safe_col(parsed, "habitat_plausibility"),
-    geographic_plausibility = .safe_col(parsed, "geographic_plausibility"),
-    scope_plausibility = .safe_col(parsed, "scope_plausibility"),
-    contamination_risk = .safe_col(parsed, "contamination_risk"),
+    habitat_plausibility = NA_character_,
+    geographic_plausibility = NA_character_,
+    scope_plausibility = NA_character_,
+    contamination_risk = NA_character_,
     review_alternatives = .safe_col(parsed, "review_alternatives"),
     review_lower_hypotheses = .safe_col(parsed, "review_lower_hypotheses"),
     review_confidence = .safe_col(parsed, "review_confidence"),
     review_comment = .safe_col(parsed, "review_comment"),
+    p_habitat = .safe_num(parsed, "p_habitat"),
+    p_habitat_lo = .safe_bound(parsed, "p_habitat_range", 1L),
+    p_habitat_hi = .safe_bound(parsed, "p_habitat_range", 2L),
+    p_transported = .safe_num(parsed, "p_transported"),
+    p_scope = .safe_num(parsed, "p_scope"),
+    p_scope_lo = .safe_bound(parsed, "p_scope_range", 1L),
+    p_scope_hi = .safe_bound(parsed, "p_scope_range", 2L),
+    p_contamination = .safe_num(parsed, "p_contamination"),
+    p_geographic = .safe_num(parsed, "p_geographic"),
     stringsAsFactors = FALSE
   )
   if (with_geo) {
-    g <- if ("geographic_by_site" %in% names(parsed)) parsed$geographic_by_site else NULL
+    result$p_inside_range <- .safe_num(parsed, "p_inside_range")
+    result$p_outside_range <- .safe_num(parsed, "p_outside_range")
+    # The range fields are per-taxon columns of the answer now, not a nested
+    # rule object, so each row's range answer is assembled from them here.
+    .cell <- function(col, i) {
+      if (!col %in% names(parsed)) {
+        return(NA)
+      }
+      v <- parsed[[col]]
+      if (is.list(v)) (if (i <= length(v)) v[[i]] else NA) else v[[i]]
+    }
+    result$range_known <- vapply(seq_len(nrow(result)), function(i) {
+      k <- .cell("range_known", i)
+      if (is.character(k)) k <- tolower(trimws(k)) %in% c("true", "yes", "t")
+      isTRUE(as.logical(k[1L]))
+    }, logical(1L))
+    result$range_south_lat <- .safe_num(parsed, "range_south_lat", -90, 90)
+    result$range_north_lat <- .safe_num(parsed, "range_north_lat", -90, 90)
     result$review_geo_json <- vapply(seq_len(nrow(result)), function(i) {
-      .geo_spec_to_json(.normalise_geo_obj(.geo_obj_at(g, i), site_names))
+      .geo_spec_to_json(.normalise_range_answer(list(
+        range_known = result$range_known[i],
+        range_south_lat = result$range_south_lat[i],
+        range_north_lat = result$range_north_lat[i],
+        sites_outside_range = .cell("sites_outside_range", i),
+        p_inside_range = result$p_inside_range[i],
+        p_outside_range = result$p_outside_range[i]
+      ), site_names))
     }, character(1L))
   }
+  result <- .derive_levels(result)
 
   # An echoed id prefix ("[T3] Cottus") is part of the prompt's own notation,
   # not a different name: drop it before any matching, silently.
@@ -2809,43 +2923,78 @@ review_assignments <- function(input_df,
 
 .geo_levels <- c("likely", "possible", "unlikely")
 
-# The prompt's geographic_by_site field. Wording changes must bump
-# "geo_sites_v4" in the cache key (see review_assignments()).
-.geo_field_text <- paste0(
-  '  "geographic_by_site": where in the STUDY SITES above this taxon is ',
-  "geographically plausible, as ONE object:\n",
-  '     {"rule": "all"}  -- the verdict is the same at every site;\n',
-  '     {"rule": "latitude", "lat_min": <southern limit, number or null>, ',
-  '"lat_max": <northern limit, number or null>, ',
-  '"inside": "likely" or "possible", "outside": "unlikely" or "possible"}  -- plausible ',
-  'only between lat_min, the SOUTHERN limit of the range, and lat_max, the NORTHERN ',
-  'limit (decimal degrees, negative south of the equator; null = no limit on that ',
-  'side). A taxon ranging north from a southern limit gives lat_min only; one ranging ',
-  'south from a northern limit gives lat_max only. A southern limit placed in lat_max ',
-  '(or a northern limit in lat_min) inverts the band and marks every site unlikely, ',
-  'so decide which side the limit is on before you answer; ',
-  'sites inside get the "inside" verdict and sites outside get the "outside" ',
-  "verdict. Use this when the limit is a coastal range limit. A \"latitude\" rule MUST give ",
-  "at least one numeric bound (lat_min or lat_max). If no range limit falls within the ",
-  'study\'s latitudes, use {"rule":"all"} (or "sites"), never a latitude rule with both ',
-  "bounds null;\n",
-  '     {"rule": "sites", "unlikely_sites": ["<site name copied exactly>", ...], ',
-  '"inside": "likely" or "possible"}  -- list only the sites where it is unlikely, ',
-  'when latitude does not describe the pattern; all other sites get the "inside" verdict.\n',
-  '     "inside" is the verdict for a site within the range: "likely" if the taxon is ',
-  'expected there, "possible" if it could occur but is not expected. ',
-  '"geographic_plausibility" is your overall geographic verdict for the taxon; with ',
-  '{"rule": "all"} it is the verdict at every site. The study-wide verdict is ',
-  "computed from the sites, so do not try to summarise it in the object.\n"
-)
+# --- Probability -> category --------------------------------------------------
+# The model answers with a probability; these cuts are how TaxaFlag reads it.
+# They are the "margin" cuts, chosen by measurement over hard cuts (0.20/0.70,
+# contamination 0.50): on the maintainer's own labels for the 34 hardest taxa,
+# the extra rows the margin rule acts on were 94% rows he also acted on,
+# against about half for the hard cuts, and 97-99% of verdict-driven decisions
+# repeated between two asks.
+#
+# The cuts are deliberately NOT part of the cache key. The cached answer is the
+# probability; a cut is this code's reading of it, re-applied on every run (see
+# .derive_levels()). Changing a cut therefore takes effect for already-cached
+# taxa too, with no new LLM calls -- which is only true because the cut is
+# applied after the cache and never before it.
+.p_cut_unlikely <- 0.10
+.p_cut_likely <- 0.70
+.p_cut_contam_moderate <- 0.20
+.p_cut_contam_high <- 0.70
 
-.geo_guideline_text <- paste0(
-  "- Judge geography at each site separately: a taxon can be plausible at some sites ",
-  "and unlikely at others. For a genus or family, rate the group (is ANY member ",
-  "plausible there?).\n",
-  "- Judge GEOGRAPHY (range) only: habitat fit and rarity are rated separately, and a ",
-  "rare but in-range occurrence is 'possible', not 'unlikely'.\n"
-)
+#' Three-level plausibility verdict from a probability
+#' @noRd
+.p_to_level <- function(p) {
+  p <- suppressWarnings(as.numeric(p))
+  out <- rep(NA_character_, length(p))
+  ok <- !is.na(p)
+  out[ok] <- ifelse(p[ok] < .p_cut_unlikely, "unlikely",
+    ifelse(p[ok] < .p_cut_likely, "possible", "likely")
+  )
+  out
+}
+
+#' Contamination risk level from a probability
+#' @noRd
+.p_to_risk <- function(p) {
+  p <- suppressWarnings(as.numeric(p))
+  out <- rep(NA_character_, length(p))
+  ok <- !is.na(p)
+  out[ok] <- ifelse(p[ok] < .p_cut_contam_moderate, "low",
+    ifelse(p[ok] < .p_cut_contam_high, "moderate", "high")
+  )
+  out
+}
+
+#' A probability column of a review frame, or all-NA when the path never asked
+#' @noRd
+.p_col <- function(df, nm) {
+  if (nm %in% names(df)) suppressWarnings(as.numeric(df[[nm]])) else rep(NA_real_, nrow(df))
+}
+
+#' Fill the categorical verdict columns from the probability columns
+#'
+#' Called in the parser, so a freshly asked row carries both, and again after
+#' cached rows are folded back in, so every row in one run is read through the
+#' same cuts even when it was cached under earlier ones.
+#'
+#' With a site table the study-wide geographic verdict is the best over the
+#' detected sites and .apply_site_verdicts() computes it; what is set here is
+#' the value it starts from, which is also the answer when no site falls
+#' outside the stated range.
+#' @noRd
+.derive_levels <- function(df) {
+  df$habitat_plausibility <- .p_to_level(.p_col(df, "p_habitat"))
+  df$scope_plausibility <- .p_to_level(.p_col(df, "p_scope"))
+  df$contamination_risk <- .p_to_risk(.p_col(df, "p_contamination"))
+  geo <- if ("p_inside_range" %in% names(df)) {
+    .p_col(df, "p_inside_range")
+  } else {
+    .p_col(df, "p_geographic")
+  }
+  df$geographic_plausibility <- .p_to_level(geo)
+  df$p_geographic <- geo
+  df
+}
 
 #' STUDY SITES block of the prompt, sorted south to north
 #' @noRd
@@ -2917,41 +3066,26 @@ review_assignments <- function(input_df,
   )
 }
 
-#' The i-th geographic_by_site object of a parsed response, as a plain list
+#' Normalise the model's range answer into a site rule spec
 #'
-#' jsonlite (simplifyDataFrame) turns an array of objects carrying a nested
-#' object into a data frame with a nested data-frame column; a malformed field
-#' can instead leave a list or a character vector. NULL means "no object".
-#' @noRd
-.geo_obj_at <- function(g, i) {
-  if (is.null(g)) {
-    return(NULL)
-  }
-  if (is.data.frame(g)) {
-    if (i > nrow(g)) {
-      return(NULL)
-    }
-    return(as.list(g[i, , drop = FALSE]))
-  }
-  if (is.list(g) && i <= length(g) && is.list(g[[i]])) {
-    return(g[[i]])
-  }
-  NULL
-}
-
-#' Normalise one geographic_by_site object into a rule spec
+#' Carries over every guard the earlier per-site rule object needed, because
+#' the failure modes are properties of the model, not of the field names:
+#' a latitude outside [-90, 90] is not a latitude; a southern limit placed in
+#' range_north_lat inverts the band and would mark every site outside, so the
+#' pair is swapped rather than obeyed; named sites are matched case-insensitively
+#' against the site table and unknown names are counted, not silently treated as
+#' outside; and a list in which NO name is recognised is dropped entirely rather
+#' than allowed to move nothing while looking as though it moved something.
 #'
-#' Fallbacks (rule "fallback", with the reason in \code{how}) give the
-#' study-wide verdict at every site. A latitude rule with both bounds missing
-#' is read as rule "all" carrying its \code{inside} verdict (missing or
-#' invalid: the study-wide verdict), recorded as how = "both_bounds_NA_as_all".
+#' range_known = FALSE is a real answer, not a failure: it means "I cannot place
+#' this taxon", and every site then takes p_inside_range, which the guidelines
+#' tell the model to make intermediate.
 #' @noRd
-.normalise_geo_obj <- function(o, site_names) {
+.normalise_range_answer <- function(o, site_names) {
   fb <- function(how, n_unknown = 0L) {
     list(
       rule = "fallback", lat_min = NA_real_, lat_max = NA_real_,
-      inside = NA_character_, outside = NA_character_,
-      unlikely_sites = character(0),
+      p_in = NA_real_, p_out = NA_real_, unlikely_sites = character(0),
       how = how, n_unknown = as.integer(n_unknown)
     )
   }
@@ -2959,63 +3093,71 @@ review_assignments <- function(input_df,
   if (!is.list(o)) {
     return(fb("missing"))
   }
-  ins <- tolower(trimws(as.character(one(o$inside))))
-  ins_ok <- !is.na(ins) && ins %in% c("likely", "possible")
-  if (!ins_ok) ins <- "possible"
-  rule <- tolower(trimws(as.character(one(o$rule))))
-  if (is.na(rule) || !nzchar(rule)) {
-    return(fb("missing"))
+  prob <- function(x) {
+    v <- suppressWarnings(as.numeric(one(x)))
+    if (is.na(v) || v < 0 || v > 1) NA_real_ else v
   }
-  if (rule == "all") {
-    spec <- fb("all")
-    spec$rule <- "all"
+  lat <- function(x) {
+    v <- suppressWarnings(as.numeric(one(x)))
+    if (is.na(v) || abs(v) > 90) NA_real_ else v
+  }
+  p_in <- prob(o$p_inside_range)
+  p_out <- prob(o$p_outside_range)
+  if (is.na(p_in)) {
+    return(fb("no_inside_probability"))
+  }
+
+  # Sites the model named as outside the range, when latitude cannot say it.
+  u <- trimws(as.character(unlist(o$sites_outside_range, use.names = FALSE)))
+  u <- unique(u[!is.na(u) & nzchar(u)])
+  pos <- match(tolower(u), tolower(trimws(site_names)))
+  n_unknown <- sum(is.na(pos))
+  known <- unique(site_names[pos[!is.na(pos)]])
+
+  known_flag <- one(o$range_known)
+  if (is.character(known_flag)) {
+    known_flag <- tolower(trimws(known_flag)) %in% c("true", "yes", "t")
+  }
+  known_flag <- isTRUE(as.logical(known_flag))
+
+  lo <- lat(o$range_south_lat)
+  hi <- lat(o$range_north_lat)
+  how <- if (n_unknown > 0L) "sites_unknown_ignored" else NA_character_
+
+  if (!known_flag) {
+    spec <- fb(.combine_how("range_unknown", how), n_unknown)
+    spec$rule <- "unknown"
+    spec$p_in <- p_in
+    spec$p_out <- p_out
+    # A taxon whose range the model cannot state still has whatever sites it
+    # named honoured: "I don't know the limits" and "not at that site" are
+    # different claims.
+    spec$unlikely_sites <- known
     return(spec)
   }
-  if (rule == "latitude") {
-    num <- function(x) {
-      v <- suppressWarnings(as.numeric(one(x)))
-      if (is.na(v) || abs(v) > 90) NA_real_ else v
-    }
-    lo <- num(o$lat_min)
-    hi <- num(o$lat_max)
-    if (is.na(lo) && is.na(hi)) {
-      spec <- fb("both_bounds_NA_as_all")
-      spec$rule <- "all"
-      # NA when unusable, so the site verdicts keep the study-wide verdict.
-      spec$inside <- if (ins_ok) ins else NA_character_
-      return(spec)
-    }
-    how <- "latitude"
-    if (!is.na(lo) && !is.na(hi) && lo > hi) {
-      tmp <- lo
-      lo <- hi
-      hi <- tmp
-      how <- "latitude_swapped"
-    }
-    out <- tolower(trimws(as.character(one(o$outside))))
-    if (is.na(out) || !out %in% c("unlikely", "possible")) out <- "possible"
-    return(list(
-      rule = "latitude", lat_min = lo, lat_max = hi, inside = ins, outside = out,
-      unlikely_sites = character(0), how = how, n_unknown = 0L
-    ))
+
+  if (!is.na(lo) && !is.na(hi) && lo > hi) {
+    tmp <- lo
+    lo <- hi
+    hi <- tmp
+    how <- .combine_how("range_swapped", how)
   }
-  if (rule == "sites") {
-    u <- trimws(as.character(unlist(o$unlikely_sites, use.names = FALSE)))
-    u <- unique(u[!is.na(u) & nzchar(u)])
-    pos <- match(tolower(u), tolower(trimws(site_names)))
-    n_unknown <- sum(is.na(pos))
-    known <- unique(site_names[pos[!is.na(pos)]])
-    if (length(u) > 0L && length(known) == 0L) {
-      return(fb("all_sites_unknown", n_unknown))
-    }
-    return(list(
-      rule = "sites", lat_min = NA_real_, lat_max = NA_real_,
-      inside = ins, outside = NA_character_, unlikely_sites = known,
-      how = if (n_unknown > 0L) "sites_unknown_ignored" else "sites",
-      n_unknown = as.integer(n_unknown)
-    ))
+  if (is.na(lo) && is.na(hi) && length(known) == 0L) {
+    # No limit inside the study and no site named: the range covers the study.
+    how <- .combine_how("no_limit_in_study", how)
   }
-  fb("unknown_rule")
+  list(
+    rule = "range", lat_min = lo, lat_max = hi, p_in = p_in, p_out = p_out,
+    unlikely_sites = known,
+    how = if (is.na(how)) "range" else how,
+    n_unknown = as.integer(n_unknown)
+  )
+}
+
+#' Join two "how" notes, either of which may be NA
+#' @noRd
+.combine_how <- function(a, b) {
+  if (is.na(b)) a else paste(a, b, sep = "+")
 }
 
 #' @noRd
@@ -3038,58 +3180,59 @@ review_assignments <- function(input_df,
   list(
     rule = x$rule %||% "fallback",
     lat_min = num(x$lat_min), lat_max = num(x$lat_max),
-    inside = x$inside %||% NA_character_,
-    outside = x$outside %||% NA_character_,
+    p_in = num(x$p_in), p_out = num(x$p_out),
     unlikely_sites = as.character(unlist(x$unlikely_sites, use.names = FALSE)),
     how = x$how %||% NA_character_,
     n_unknown = as.integer(x$n_unknown %||% 0L)
   )
 }
 
-#' Per-site verdicts for one rule spec
+#' Per-site probability for one range spec
 #'
-#' Rules "latitude" and "sites" give inside sites the rule's \code{inside}
-#' verdict (missing or invalid: "possible") and outside sites the
-#' \code{outside} verdict; the taxon's own \code{geographic_plausibility}
-#' (\code{base}) does not cap them. A both-bounds-missing latitude rule
-#' (how = "both_bounds_NA_as_all") gives its \code{inside} verdict at every
-#' site, or \code{base} when it has no usable \code{inside}. Plain rule "all"
-#' and fallbacks give \code{base} at every site.
+#' This is the whole of guardrail G2: the model states limits, and the site
+#' probability is read off them here rather than asked for. A site beyond a
+#' stated limit, or named in sites_outside_range, gets p_outside_range; every
+#' other site gets p_inside_range. A model that gave no outside probability
+#' gets p_inside_range everywhere, which is the conservative reading -- it
+#' never manufactures an "outside" the model did not state.
 #' @noRd
-.geo_site_verdicts <- function(spec, base, sites) {
+.geo_site_probs <- function(spec, sites) {
   n <- nrow(sites)
-  if (is.na(base) || !base %in% .geo_levels || is.null(spec)) {
-    return(rep(base, n))
+  if (is.null(spec) || is.na(spec$p_in)) {
+    return(rep(NA_real_, n))
   }
-  lvl <- function(x, ok) {
-    x <- tolower(trimws(as.character(x)))
-    if (length(x) != 1L || is.na(x) || !x %in% ok) "possible" else x
+  p_out <- if (is.na(spec$p_out)) spec$p_in else spec$p_out
+  if (!identical(spec$rule, "range") && !identical(spec$rule, "unknown")) {
+    return(rep(NA_real_, n))
   }
-  if (identical(spec$rule, "latitude")) {
-    ins <- lvl(spec$inside, c("likely", "possible"))
-    outv <- lvl(spec$outside, c("unlikely", "possible"))
-    out <- (!is.na(spec$lat_min) & sites$lat < spec$lat_min) |
-      (!is.na(spec$lat_max) & sites$lat > spec$lat_max)
-    v <- rep(ins, n)
-    v[out] <- outv
+  v <- rep(spec$p_in, n)
+  if (identical(spec$rule, "unknown")) {
+    # No limits to apply; only sites the model named explicitly move.
+    v[sites$site %in% spec$unlikely_sites] <- p_out
     return(v)
   }
-  if (identical(spec$rule, "all") && identical(spec$how, "both_bounds_NA_as_all")) {
-    # No usable inside: keep the model's own study-wide verdict rather than
-    # substituting a constant for it.
-    ins <- tolower(trimws(as.character(spec$inside)))
-    ok <- length(ins) == 1L && !is.na(ins) && ins %in% c("likely", "possible")
-    return(rep(if (ok) ins else base, n))
-  }
-  if (identical(spec$rule, "sites")) {
-    v <- rep(lvl(spec$inside, c("likely", "possible")), n)
-    v[sites$site %in% spec$unlikely_sites] <- "unlikely"
-    return(v)
-  }
-  rep(base, n)
+  outside <- (!is.na(spec$lat_min) & sites$lat < spec$lat_min) |
+    (!is.na(spec$lat_max) & sites$lat > spec$lat_max) |
+    sites$site %in% spec$unlikely_sites
+  v[outside] <- p_out
+  v
 }
 
-#' One row per reviewed taxon with its parsed rule (attr "geographic_by_site")
+#' Per-site verdicts for one range spec
+#'
+#' The cuts are applied here and nowhere earlier, so the verdict is always a
+#' function of the probability this run read from the cache or the model.
+#' \code{base} is used only when the spec yields no probability at all.
+#' @noRd
+.geo_site_verdicts <- function(spec, base, sites) {
+  p <- .geo_site_probs(spec, sites)
+  if (all(is.na(p))) {
+    return(rep(base, nrow(sites)))
+  }
+  .p_to_level(p)
+}
+
+#' One row per reviewed taxon with its parsed range answer (attr "geographic_by_site")
 #' @noRd
 .geo_rules_table <- function(review_df) {
   ok <- which(!is.na(review_df$review_geo_json))
@@ -3097,26 +3240,33 @@ review_assignments <- function(input_df,
   data.frame(
     taxon = review_df$taxon_name[ok],
     rule = vapply(specs, function(z) as.character(z$rule), character(1L)),
-    lat_min = vapply(specs, function(z) z$lat_min, numeric(1L)),
-    lat_max = vapply(specs, function(z) z$lat_max, numeric(1L)),
-    inside = vapply(specs, function(z) as.character(z$inside), character(1L)),
-    outside = vapply(specs, function(z) as.character(z$outside), character(1L)),
-    unlikely_sites = vapply(specs, function(z) paste(z$unlikely_sites, collapse = "; "), character(1L)),
+    range_south_lat = vapply(specs, function(z) z$lat_min, numeric(1L)),
+    range_north_lat = vapply(specs, function(z) z$lat_max, numeric(1L)),
+    p_inside_range = vapply(specs, function(z) z$p_in, numeric(1L)),
+    p_outside_range = vapply(specs, function(z) z$p_out, numeric(1L)),
+    sites_outside_range = vapply(
+      specs, function(z) paste(z$unlikely_sites, collapse = "; "), character(1L)
+    ),
     n_unknown_sites = vapply(specs, function(z) z$n_unknown, integer(1L)),
     how = vapply(specs, function(z) as.character(z$how), character(1L)),
     stringsAsFactors = FALSE
   )
 }
 
-#' Add llm_geographic_plausibility_site to the joined result
+#' Add the per-site geography columns to the joined result
 #'
-#' Each row takes the verdict of its own site; a row whose site is NA or not in
-#' the table takes the study-wide verdict. The study-wide column is the BEST
-#' verdict over the sites, computed here, not taken from the model.
+#' Each row takes its own site's probability and verdict; a row whose site is NA
+#' or absent from the site table takes the study-wide pair. The study-wide
+#' probability is the MAXIMUM over the sites where the taxon was detected, and
+#' the study-wide verdict is that probability's level -- never the model's own
+#' summary, which it is no longer asked for. Taking the maximum is why the
+#' study verdict is also the best site verdict: the cuts are monotone.
 #' @noRd
 .apply_site_verdicts <- function(result, sites, site_col) {
   study <- result$llm_geographic_plausibility
+  study_p <- result$llm_p_geographic
   per_site <- study
+  per_site_p <- study_p
   gj <- result$.geo_json
   idx <- match(as.character(result[[site_col]]), sites$site)
   combo <- paste(gj, study, sep = "\u0001")
@@ -3124,17 +3274,29 @@ review_assignments <- function(input_df,
     rows <- which(combo == u & !is.na(gj))
     spec <- .geo_spec_from_json(gj[rows[1L]])
     base <- study[rows[1L]]
+    pvec <- .geo_site_probs(spec, sites)
     vec <- .geo_site_verdicts(spec, base, sites)
-    best <- if (all(is.na(vec))) NA_character_ else .geo_levels[min(match(vec, .geo_levels))]
+    best_p <- if (all(is.na(pvec))) NA_real_ else max(pvec, na.rm = TRUE)
+    best <- if (all(is.na(vec))) {
+      NA_character_
+    } else {
+      .geo_levels[min(match(vec, .geo_levels))]
+    }
     sv <- rep(best, length(rows))
+    sp <- rep(best_p, length(rows))
     ok <- !is.na(idx[rows])
     sv[ok] <- vec[idx[rows][ok]]
+    sp[ok] <- pvec[idx[rows][ok]]
     per_site[rows] <- sv
+    per_site_p[rows] <- sp
     study[rows] <- best
+    if (!is.na(best_p)) study_p[rows] <- best_p
   }
   result$llm_geographic_plausibility <- study
+  result$llm_p_geographic <- study_p
   pos <- match("llm_geographic_plausibility", names(result))
   result$llm_geographic_plausibility_site <- per_site
+  result$llm_p_geographic_site <- per_site_p
   nm <- names(result)
   nm <- append(setdiff(nm, "llm_geographic_plausibility_site"),
     "llm_geographic_plausibility_site",
