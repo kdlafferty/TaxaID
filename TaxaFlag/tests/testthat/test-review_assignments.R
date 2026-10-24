@@ -1819,10 +1819,24 @@ test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
   # The sites path governs p_inside_range, and must NOT govern
   # p_outside_range: a low p_outside_range beyond a stated limit is the
   # normal answer, and worked example 2 gives 0.05 for it.
+  # The bar is on p_inside_range. .geo_site_probs() gives p_inside_range to
+  # EVERY site not beyond the stated limits, so a limit expressed through it
+  # would drop all the in-range sites at once -- the wording therefore points
+  # limits at p_outside_range rather than inviting them into this field.
   expect_match(ps, "A p_inside_range below 0.10 is a STRONG claim", fixed = TRUE)
+  expect_match(ps, "state that limit and use p_outside_range; do not lower p_inside_range", fixed = TRUE)
   expect_match(ps, "applies to p_inside_range only", fixed = TRUE)
   expect_match(ps, "a low p_outside_range", fixed = TRUE)
-  expect_match(ps, "range limit that this site lies beyond", fixed = TRUE)
+  # "near this site" was the wrong unit: p_inside_range is one value for all
+  # the in-range sites, so the question is about the region.
+  expect_match(ps, "known from any part of the study region", fixed = TRUE)
+  expect_false(grepl("known near this site", ps, fixed = TRUE))
+  expect_false(grepl("range limit that this site lies beyond", ps, fixed = TRUE))
+  # p_outside_range carries no bar: site geography scored 93-95% unbarred in
+  # the measured arms, so barring it is a 1.1 question for r12c, not an
+  # argument to settle here.
+  expect_false(grepl("A site probability below 0.10", ps, fixed = TRUE))
+  # The study-wide steer is not on this path, and the habitat example is gone.
   expect_false(grepl("A p_geographic below 0.10", ps, fixed = TRUE))
   expect_false(grepl("a habitat it cannot use", ps, fixed = TRUE))
 })

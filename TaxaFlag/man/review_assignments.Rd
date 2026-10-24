@@ -670,12 +670,10 @@ numbers included. The second was told nothing the pipeline produced -- not
 even the match identity or the INDISTINGUISHABLE flag, both of which the
 defaults DO send. What ships differs from the second by the DNA evidence it
 adds back, from the first by every occurrence-derived number it drops, and
-from BOTH by its geography guidance. The steer that a low geographic
-probability is a strong claim needing positive out-of-range evidence reached
-only the taxa the occurrence data had flagged in the arms that were scored,
-and set its bar at 0.05 there; what ships puts it in every prompt and sets
-the bar at the \code{unlikely} cut, 0.10. So the shipped prompt asks for
-that evidence on strictly more rows than either measured arm did. Those two arms agreed with the maintainer within the
+from BOTH by its geography guidance. NO scored arm carried the steer that a
+low geographic probability is a strong claim needing positive out-of-range
+evidence -- not on any row. It is new in the shipped prompt, at the
+\code{unlikely} cut, on every taxon, and unmeasured. Those two arms agreed with the maintainer within the
 intervals on all three statistics, so they bracket the shipped
 configuration without measuring it, and that is the most that can be said
 until an arm is scored on this prompt.

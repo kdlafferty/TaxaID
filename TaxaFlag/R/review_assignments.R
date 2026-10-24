@@ -580,12 +580,10 @@
 #' even the match identity or the INDISTINGUISHABLE flag, both of which the
 #' defaults DO send. What ships differs from the second by the DNA evidence it
 #' adds back, from the first by every occurrence-derived number it drops, and
-#' from BOTH by its geography guidance. The steer that a low geographic
-#' probability is a strong claim needing positive out-of-range evidence reached
-#' only the taxa the occurrence data had flagged in the arms that were scored,
-#' and set its bar at 0.05 there; what ships puts it in every prompt and sets
-#' the bar at the \code{unlikely} cut, 0.10. So the shipped prompt asks for
-#' that evidence on strictly more rows than either measured arm did. Those two arms agreed with the maintainer within the
+#' from BOTH by its geography guidance. NO scored arm carried the steer that a
+#' low geographic probability is a strong claim needing positive out-of-range
+#' evidence -- not on any row. It is new in the shipped prompt, at the
+#' \code{unlikely} cut, on every taxon, and unmeasured. Those two arms agreed with the maintainer within the
 #' intervals on all three statistics, so they bracket the shipped
 #' configuration without measuring it, and that is the most that can be said
 #' until an arm is scored on this prompt.
@@ -1330,8 +1328,34 @@ review_assignments <- function(input_df,
     # Its threshold is the cut: "below 0.10", not "0.05 or lower". The two
     # were different numbers, so a probability in [0.05, 0.10) took the
     # unlikely verdict without having to meet the evidence bar the steer sets.
+    # v14: the SITES wording offered "a range limit that this site lies
+    # beyond" as grounds for a low p_inside_range, and asked whether the taxon
+    # is "known near this site". Both are the wrong field.
+    # .geo_site_probs() gives p_inside_range to EVERY site not outside the
+    # stated range and p_outside_range only to the ones beyond it, so
+    # p_inside_range is one value for all the in-range sites: a limit
+    # expressed through it would drop every in-range site to unlikely, which
+    # is what the limits and p_outside_range are for. The sites wording now
+    # says what a low p_inside_range asserts, asks about the region rather
+    # than the site, and says in as many words that a limit does not belong
+    # in this number. Two reviewers found that independently, and between them
+    # they showed the clause was not wrong to exist but attached to the wrong
+    # field: .geo_site_probs() gives a site p_outside_range when it lies
+    # beyond the limits, so a LIMIT is grounds for a low p_outside_range, and
+    # that is the field most unlikely site verdicts come through. Leaving it
+    # unbarred closed the "one number" intent for the study-wide path only.
+    # The bar stays on p_inside_range, and the wording now POINTS limits at
+    # the field that carries them instead of inviting them into this one:
+    # "state that limit and use p_outside_range; do not lower
+    # p_inside_range". A wider bar covering p_outside_range as well was
+    # written and rejected -- site geography scored 93-95% in the arms that
+    # were measured with NO bar on it, so barring it is a change with no
+    # evidence behind it. It is a 1.1 candidate, to be decided on r12c's
+    # score against the maintainer's labels rather than on argument.
+    # The study-wide p_geographic wording is unaffected -- there the study
+    # area IS the unit.
     shared_parts <- c(
-      "v13", target_group %||% "", marker %||% "", data_type,
+      "v14", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1711,7 +1735,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v13} key prefix already orphans; such a row falls back to
+#' which the \code{v14} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -3354,7 +3378,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v13" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v14" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
@@ -3468,15 +3492,16 @@ review_assignments <- function(input_df,
   "value with low confidence. Do not reconstruct a range from the genus or ",
   "from similar species. No records is not evidence of absence.\n",
   "- A p_inside_range below 0.10 is a STRONG claim. Give one only with ",
-  "POSITIVE evidence that the taxon is out of range here: a native range on ",
-  "another continent with no known introduction to this region, or a ",
-  "well-established range limit that this site lies beyond. A widely ",
-  "introduced species, or one known near this site, is at least ",
-  "intermediate. Without such evidence give an intermediate value (about ",
-  "0.3-0.6) and say in review_comment that the evidence is thin. This ",
-  "applies to p_inside_range only: a low p_outside_range, p_habitat, ",
-  "p_scope, p_transported or p_contamination is a different judgement and is ",
-  "not covered by it.\n"
+  "POSITIVE evidence that the taxon is out of range here, such as a native ",
+  "range on another continent with no known introduction to this region. A ",
+  "widely introduced species, or one known from any part of the study ",
+  "region, is at least intermediate. If only part of the study area lies ",
+  "beyond a known range limit, state that limit and use p_outside_range; do ",
+  "not lower p_inside_range. Without such evidence give an intermediate ",
+  "value (about 0.3-0.6) and say in review_comment that the evidence is ",
+  "thin. This applies to p_inside_range only: a low p_outside_range, ",
+  "p_habitat, p_scope, p_transported or p_contamination is a different ",
+  "judgement and is not covered by it.\n"
 )
 
 .p_study_geo_guideline_text <- paste0(
