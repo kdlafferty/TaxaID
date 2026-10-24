@@ -514,8 +514,9 @@
 #' \itemize{
 #'   \item{this prompt carrying every pipeline note it can:
 #'     73% (60-85) / 70% (51-89) / 73% (55-90).}
-#'   \item{this prompt with no pipeline-derived text at all:
-#'     74% (59-86) / 70% (48-89) / 65% (45-85).}
+#'   \item{this prompt with no pipeline-derived text at all -- every one of
+#'     the notes listed in \emph{What the review is not told} switched off,
+#'     not just the numbers: 74% (59-86) / 70% (48-89) / 65% (45-85).}
 #'   \item{the same guardrails and site block, asked with habitat and scope
 #'     wording written for that one study rather than taken from
 #'     \code{context$habitat} and \code{target_group}: 75% / 80% / 66%. That
@@ -531,7 +532,7 @@
 #'
 #' What the defaults send is not exactly either of the first two arms. They
 #' switch off the posterior, the occurrence prior, the GBIF fields and the
-#' iNaturalist fields, and leave three notes that a suitable \code{input_df}
+#' iNaturalist fields, and leave five notes that a suitable \code{input_df}
 #' can still trigger -- see \emph{What the review is not told}. So the shipped
 #' prompt sits between two arms that scored the same as each other, which is
 #' the most that can be said for it.
@@ -667,12 +668,13 @@
 #' each row's own site.
 #'
 #' @section What the review is not told:
-#' By default the prompt carries no number this pipeline computed. The
-#' posterior, the occurrence prior, the GBIF distance and patch size, the
+#' By default the prompt carries none of the numbers this pipeline computed:
+#' the posterior, the occurrence prior, the GBIF distance and patch size, the
 #' \code{beyond_buffer} flag and the three iNaturalist fields are all
 #' \code{NULL}, so none of them reaches the model and the guideline that
 #' explains them is not assembled either. Pass the column names to turn any of
-#' them back on, one at a time or all of them.
+#' them back on, one at a time or all of them. It is numbers that are off, not
+#' every pipeline-derived word -- five notes are still reachable, listed below.
 #'
 #' The reason is not accuracy. A review that is shown the pipeline's own
 #' confidence cannot contradict it independently, and a review that is shown a
@@ -687,14 +689,36 @@
 #' marker), the site table when \code{sites} is supplied, and which of those
 #' sites each taxon was detected at.
 #'
-#' Three pipeline notes are NOT switched off by these defaults, because each
-#' is read for an output column as well as for the prompt: the UNREFERENCED
-#' provenance note (\code{consensus_provenance}), the UNPRECEDENTED and
-#' INDISTINGUISHABLE flags (\code{consensus_plausibility_col},
-#' \code{consensus_discrimination_col}), which also populate
-#' \code{geographic_disagreement_basis}, and the poor-absolute-fit note
-#' (\code{poor_absolute_fit_col}). Set them to \code{NULL} or \code{FALSE}
-#' for a prompt with no pipeline-derived text in it at all, at the cost of
+#' Five pipeline notes are NOT switched off by these defaults, and an
+#' \code{input_df} that carries the columns behind them will still put them in
+#' the prompt:
+#' \itemize{
+#'   \item{the UNREFERENCED provenance note (\code{consensus_provenance});}
+#'   \item{the UNPRECEDENTED and INDISTINGUISHABLE flags
+#'     (\code{consensus_plausibility_col},
+#'     \code{consensus_discrimination_col});}
+#'   \item{the poor-absolute-fit note (\code{poor_absolute_fit_col}, with
+#'     \code{best_identity_col} for the number in it);}
+#'   \item{the coarse-rank tie-break note
+#'     (\code{winner_rank_expanded_col}), which says the species-level call
+#'     came from occurrence-prior mass with no sequence discriminating the
+#'     candidates;}
+#'   \item{the per-candidate weights (\code{plausible_posteriors_col}), on the
+#'     candidate-set path only.}
+#' }
+#' The first three are left on because each is read for an output column or a
+#' gate as well as for the prompt: \code{consensus_plausibility_col} and
+#' \code{consensus_discrimination_col} populate
+#' \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag also
+#' decides whether that guideline is assembled. The last two reach nothing but
+#' the prompt.
+#'
+#' For a prompt with no pipeline-derived text in it at all, set all of
+#' \code{consensus_provenance = FALSE}, \code{consensus_plausibility_col},
+#' \code{consensus_discrimination_col}, \code{poor_absolute_fit_col},
+#' \code{winner_rank_expanded_col} and \code{plausible_posteriors_col} to
+#' \code{NULL}. That is the configuration the second arm in
+#' \emph{What was measured} was asked in. The cost is
 #' \code{geographic_disagreement_basis}, which is then \code{NA} throughout.
 #'
 #' @section Pipeline context:
@@ -1190,9 +1214,14 @@ review_assignments <- function(input_df,
     # UNPRECEDENTED guideline asks for "0.05 or lower" where it asked for
     # "under 0.1", which a strict `< 0.10` cut reads differently; the key holds
     # the inputs and not the prompt, so only a bump can stop a verdict given
-    # under the old wording being served for the new question.
+    # under the old wording being served for the new question. v8: the
+    # guideline that explains the "[...]" bracket is now assembled only when a
+    # line in the batch carries one. For a taxon with no notes under either
+    # configuration -- an input_df that never had the columns -- the key is
+    # byte-identical and the prompt is one guideline shorter, so nothing but a
+    # bump stops the old answer being served for the new question.
     shared_parts <- c(
-      "v7", target_group %||% "", marker %||% "", data_type,
+      "v8", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1562,7 +1591,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v7} key prefix already orphans; such a row falls back to
+#' which the \code{v8} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -3106,7 +3135,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v7" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v8" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 

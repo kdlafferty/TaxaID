@@ -38,7 +38,12 @@
   high`. The probabilities are returned too, as `llm_p_*`. A cut is applied
   after the cache rather than before it, so changing one takes effect for taxa
   already cached without a single new call.
-* The review is blind to this pipeline's own numbers by default. The
+* The review is blind to this pipeline's own NUMBERS by default -- not to
+  every pipeline-derived word: five notes (the UNREFERENCED, UNPRECEDENTED,
+  INDISTINGUISHABLE, poor-absolute-fit and coarse-rank tie-break notes, plus
+  per-candidate weights on the candidate-set path) are still sent when
+  `input_df` carries the columns behind them, and `?review_assignments` lists
+  what to set for a prompt with no pipeline-derived text at all. The
   `consensus_posterior_col`, `winner_prior_col`,
   `dist_nearest_occupied_km_col`, `patch_diameter_km_col`,
   `beyond_buffer_col` and the three `inat_*` arguments of
@@ -48,7 +53,8 @@
   a review shown a taxon's GBIF distance cannot catch an error in the
   occurrence data -- which is one of the things it is for. Pass the column
   names to send any of them. Scored against the maintainer's labels, a review
-  told these numbers and a review not told them agreed with him equally well.
+  told these numbers and a review told none of the five notes either agreed
+  with him equally well.
 * `flag_backbone_conflicts()` flags a name that the taxonomy carries at more
   than one rank, or under more than one parent at the same rank, learned from
   the data rather than from a list of taxa. It cannot see synonymy (many names

@@ -143,7 +143,7 @@ test_that("verdicts cached under the old prompt version are a miss", {
   for (f in list.files(cd, full.names = TRUE)) {
     e <- readRDS(f)
     if (is.list(e) && !is.null(e$key)) {
-      e$key <- sub("v7", "v6", e$key, fixed = TRUE)
+      e$key <- sub("v8", "v7", e$key, fixed = TRUE)
       saveRDS(e, f)
     }
   }

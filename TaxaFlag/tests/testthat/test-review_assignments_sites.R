@@ -110,8 +110,8 @@ test_that("sites = NULL: prompt, cache key, cache file and columns are pinned", 
   files <- list.files(cd, full.names = TRUE)
   keys <- sort(vapply(files, function(f) readRDS(f)$key, character(1), USE.NAMES = FALSE))
   frozen <- c(
-    "v7\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Gobiidae\001NA\001FALSE\001FALSE",
-    "v7\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Sardinops sagax\001NA\001FALSE\001FALSE"
+    "v8\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Gobiidae\001NA\001FALSE\001FALSE",
+    "v8\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Sardinops sagax\001NA\001FALSE\001FALSE"
   )
   expect_identical(keys, frozen)
   fixture <- readLines(

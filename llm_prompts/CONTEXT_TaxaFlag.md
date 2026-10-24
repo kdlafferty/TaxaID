@@ -680,7 +680,7 @@ Against the maintainer's own labels, over the 34 hardest taxa of that study, wit
 
 - this prompt carrying every pipeline note it can: 73% (60-85) / 70% (51-89) / 73% (55-90).
 
-- this prompt with no pipeline-derived text at all: 74% (59-86) / 70% (48-89) / 65% (45-85).
+- this prompt with no pipeline-derived text at all -- every one of the notes listed in What the review is not told switched off, not just the numbers: 74% (59-86) / 70% (48-89) / 65% (45-85).
 
 - the same guardrails and site block, asked with habitat and scope wording written for that one study rather than taken from context$habitat and target_group: 75% / 80% / 66%. That difference is the only measurement of what generalising the wording cost.
 
@@ -688,7 +688,7 @@ Against the maintainer's own labels, over the 34 hardest taxa of that study, wit
 
 Every difference among those four sits inside the intervals.
 
-What the defaults send is not exactly either of the first two arms. They switch off the posterior, the occurrence prior, the GBIF fields and the iNaturalist fields, and leave three notes that a suitable input_df can still trigger -- see What the review is not told. So the shipped prompt sits between two arms that scored the same as each other, which is the most that can be said for it.
+What the defaults send is not exactly either of the first two arms. They switch off the posterior, the occurrence prior, the GBIF fields and the iNaturalist fields, and leave five notes that a suitable input_df can still trigger -- see What the review is not told. So the shipped prompt sits between two arms that scored the same as each other, which is the most that can be said for it.
 
 Repeat stability, as the share of the decisions the verdicts drive that a second ask repeats: with the pipeline notes, 90.0% (82.5-96.1) over 90 taxa and 356 answers, four asks of each and six pairs; with none of them, 85.8% (69.4-98.4), which rests on a single pair per taxon and is correspondingly weak; the study-specific wording, 96.9% (93.8-98.9) over 87 taxa. Leaving out the one taxon described below takes the first to 93.0% and the second to 92.5%. All three intervals overlap, so none of these orderings is measured. Repeat pairs are correlated within a taxon, so it is those taxon counts and not the pair counts that set the intervals.
 
@@ -734,13 +734,27 @@ In TaxaFlag::screen_assignments(), geography_col can point at llm_geographic_pla
 
 #### What the review is not told
 
-By default the prompt carries no number this pipeline computed. The posterior, the occurrence prior, the GBIF distance and patch size, the beyond_buffer flag and the three iNaturalist fields are all NULL, so none of them reaches the model and the guideline that explains them is not assembled either. Pass the column names to turn any of them back on, one at a time or all of them.
+By default the prompt carries none of the numbers this pipeline computed: the posterior, the occurrence prior, the GBIF distance and patch size, the beyond_buffer flag and the three iNaturalist fields are all NULL, so none of them reaches the model and the guideline that explains them is not assembled either. Pass the column names to turn any of them back on, one at a time or all of them. It is numbers that are off, not every pipeline-derived word -- five notes are still reachable, listed below.
 
 The reason is not accuracy. A review that is shown the pipeline's own confidence cannot contradict it independently, and a review that is shown a taxon's GBIF distance cannot catch an error IN the occurrence data -- which is one of the things it is for. Scored against the maintainer's labels, a review told these numbers and a review not told them came out the same within the intervals, so independence is had for no measured cost. See What was measured.
 
 What the prompt still carries is the study's own design, not evidence about the taxon: the study context (geography, habitat, dates, target group, marker), the site table when sites is supplied, and which of those sites each taxon was detected at.
 
-Three pipeline notes are NOT switched off by these defaults, because each is read for an output column as well as for the prompt: the UNREFERENCED provenance note (consensus_provenance), the UNPRECEDENTED and INDISTINGUISHABLE flags (consensus_plausibility_col, consensus_discrimination_col), which also populate geographic_disagreement_basis, and the poor-absolute-fit note (poor_absolute_fit_col). Set them to NULL or FALSE for a prompt with no pipeline-derived text in it at all, at the cost of geographic_disagreement_basis, which is then NA throughout.
+Five pipeline notes are NOT switched off by these defaults, and an input_df that carries the columns behind them will still put them in the prompt:
+
+- the UNREFERENCED provenance note (consensus_provenance);
+
+- the UNPRECEDENTED and INDISTINGUISHABLE flags (consensus_plausibility_col, consensus_discrimination_col);
+
+- the poor-absolute-fit note (poor_absolute_fit_col, with best_identity_col for the number in it);
+
+- the coarse-rank tie-break note (winner_rank_expanded_col), which says the species-level call came from occurrence-prior mass with no sequence discriminating the candidates;
+
+- the per-candidate weights (plausible_posteriors_col), on the candidate-set path only.
+
+The first three are left on because each is read for an output column or a gate as well as for the prompt: consensus_plausibility_col and consensus_discrimination_col populate geographic_disagreement_basis, and the UNPRECEDENTED flag also decides whether that guideline is assembled. The last two reach nothing but the prompt.
+
+For a prompt with no pipeline-derived text in it at all, set all of consensus_provenance = FALSE, consensus_plausibility_col, consensus_discrimination_col, poor_absolute_fit_col, winner_rank_expanded_col and plausible_posteriors_col to NULL. That is the configuration the second arm in What was measured was asked in. The cost is geographic_disagreement_basis, which is then NA throughout.
 
 #### Pipeline context
 

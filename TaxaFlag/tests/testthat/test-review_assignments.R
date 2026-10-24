@@ -1298,9 +1298,12 @@ test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", 
   for (txt in c("pipeline posterior", "occurrence prior", "GBIF", "iNat")) {
     expect_false(grepl(txt, p, fixed = TRUE), info = txt)
   }
-  # The guideline that explains those notes is conditional on them, so it is
-  # not assembled either.
+  # The guidelines that explain those notes are conditional on them, so they
+  # are not assembled either. The bracket guideline is the one that names a
+  # posterior and an occurrence prior in its own text, so an ungated copy of
+  # it would tell the model to look for numbers that are not there.
   expect_false(grepl("nearest occurrence", p, fixed = TRUE))
+  expect_false(grepl("OWN confidence for this call", p, fixed = TRUE))
 })
 
 test_that("naming the columns puts every one of those notes back", {
@@ -1309,6 +1312,11 @@ test_that("naming the columns puts every one of those notes back", {
   expect_match(p, "occurrence prior=0.42", fixed = TRUE)
   expect_match(p, "GBIF: nearest occurrence", fixed = TRUE)
   expect_match(p, "iNat: in range", fixed = TRUE)
+  # ... and the two guidelines that explain the bracket come back with it,
+  # which is the other half of the gate: the notes and the words that tell the
+  # model how to read them travel together.
+  expect_match(p, "OWN confidence for this call", fixed = TRUE)
+  expect_match(p, "GBIF's density map is RAW", fixed = TRUE)
 })
 
 test_that("the study's own design is still sent: it is not evidence about the taxon", {
