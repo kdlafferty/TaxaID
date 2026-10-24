@@ -637,8 +637,8 @@ than reporting an ordering.
 that study, with \code{sites} supplied, as same-decision / precision /
 recall:
 \itemize{
-\item{this prompt carrying every pipeline note it can:
-73\% (60-85) / 70\% (51-89) / 73\% (54-90).}
+\item{the first prompt as measured, carrying every pipeline note it
+could: 73\% (60-85) / 70\% (51-89) / 73\% (54-90).}
 \item{the same prompt with NO pipeline-derived text at all -- no numbers
 and no notes, so not the DNA evidence the defaults do send:
 74\% (60-86) / 70\% (50-89) / 65\% (45-85).}
@@ -661,11 +661,14 @@ the first two above. The first was told everything, the pipeline's own
 numbers included. The second was told nothing the pipeline produced -- not
 even the match identity or the INDISTINGUISHABLE flag, both of which the
 defaults DO send. What ships differs from the second by the DNA evidence it
-adds back, and from the first by every occurrence-derived number it drops.
-Those two agreed with the maintainer within the intervals on all three
-statistics, so they bracket the shipped configuration without measuring it,
-and that is the most that can be said until an arm is scored on this
-prompt.
+adds back, from the first by every occurrence-derived number it drops, and
+from BOTH by its geography guidance: the steer that a probability of 0.05 or
+lower is a strong claim needing positive out-of-range evidence reached only
+the taxa the occurrence data had flagged in the measured arms, and now
+reaches every prompt. Those two arms agreed with the maintainer within the
+intervals on all three statistics, so they bracket the shipped
+configuration without measuring it, and that is the most that can be said
+until an arm is scored on this prompt.
 
 \strong{Repeat stability}, as the share of the decisions the verdicts drive
 that a second ask repeats: with the pipeline notes, 90.0\% (82.5-96.1) over
@@ -693,7 +696,8 @@ accuracy between asking for a category and asking for a probability.
 directly. It was, of the rows this prompt acts on that a plain probability
 prompt keeps, how many did the maintainer act on too -- scored once with
 the verdicts read off by the margin cuts and once by hard cuts (0.20/0.70,
-contamination 0.50). Under this prompt's wording, 51\% with the margin cuts
+contamination 0.50). Under the first prompt as measured, 51\% with the margin
+cuts
 against 31\% with hard; under the study-specific wording, 54\% against 32\%.
 So the margin cuts make the guardrails' extra actions about half right
 where hard cuts leave them about a third right, and that holds on both

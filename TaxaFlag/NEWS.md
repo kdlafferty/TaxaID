@@ -102,7 +102,9 @@
   an unusable habitat -- and asks for an intermediate value with a note that the
   evidence is thin where there is none. The guidance is unconditional: what a
   low probability asserts does not depend on whether the occurrence data
-  flagged the taxon.
+  flagged the taxon. The guidance previously reached only taxa the occurrence
+  data had flagged as having no local record; it now reaches taxa the
+  occurrence data never flagged at all.
 * `review_assignments()` judges geography on evidence and at the call's rank.
   An "unprecedented" pipeline flag caps the rating at "possible" unless there
   is specific local evidence and never inverts it ("unlikely" needs positive

@@ -547,8 +547,8 @@
 #' that study, with \code{sites} supplied, as same-decision / precision /
 #' recall:
 #' \itemize{
-#'   \item{this prompt carrying every pipeline note it can:
-#'     73% (60-85) / 70% (51-89) / 73% (54-90).}
+#'   \item{the first prompt as measured, carrying every pipeline note it
+#'     could: 73% (60-85) / 70% (51-89) / 73% (54-90).}
 #'   \item{the same prompt with NO pipeline-derived text at all -- no numbers
 #'     and no notes, so not the DNA evidence the defaults do send:
 #'     74% (60-86) / 70% (50-89) / 65% (45-85).}
@@ -571,11 +571,14 @@
 #' numbers included. The second was told nothing the pipeline produced -- not
 #' even the match identity or the INDISTINGUISHABLE flag, both of which the
 #' defaults DO send. What ships differs from the second by the DNA evidence it
-#' adds back, and from the first by every occurrence-derived number it drops.
-#' Those two agreed with the maintainer within the intervals on all three
-#' statistics, so they bracket the shipped configuration without measuring it,
-#' and that is the most that can be said until an arm is scored on this
-#' prompt.
+#' adds back, from the first by every occurrence-derived number it drops, and
+#' from BOTH by its geography guidance: the steer that a probability of 0.05 or
+#' lower is a strong claim needing positive out-of-range evidence reached only
+#' the taxa the occurrence data had flagged in the measured arms, and now
+#' reaches every prompt. Those two arms agreed with the maintainer within the
+#' intervals on all three statistics, so they bracket the shipped
+#' configuration without measuring it, and that is the most that can be said
+#' until an arm is scored on this prompt.
 #'
 #' \strong{Repeat stability}, as the share of the decisions the verdicts drive
 #' that a second ask repeats: with the pipeline notes, 90.0% (82.5-96.1) over
@@ -603,7 +606,8 @@
 #' directly. It was, of the rows this prompt acts on that a plain probability
 #' prompt keeps, how many did the maintainer act on too -- scored once with
 #' the verdicts read off by the margin cuts and once by hard cuts (0.20/0.70,
-#' contamination 0.50). Under this prompt's wording, 51% with the margin cuts
+#' contamination 0.50). Under the first prompt as measured, 51% with the margin
+#' cuts
 #' against 31% with hard; under the study-specific wording, 54% against 32%.
 #' So the margin cuts make the guardrails' extra actions about half right
 #' where hard cuts leave them about a third right, and that holds on both
@@ -1299,9 +1303,20 @@ review_assignments <- function(input_df,
     # UNPRECEDENTED guideline, so it reached only the taxa the occurrence data
     # had flagged -- and when that guideline went, it went with it. It is
     # guidance about what a low probability asserts, which is true of every
-    # taxon, so it does not belong behind a flag.
+    # taxon, so it does not belong behind a flag. v13: that steer now NAMES
+    # the field it governs -- p_inside_range with sites, p_geographic without
+    # -- and says which probabilities it does not govern. Unnamed, it read as
+    # a rule about any low probability, and the same prompt's worked examples
+    # offer p_habitat 0.03, p_contamination 0.02 and p_outside_range 0.05 as
+    # normal answers. The habitat example is gone with it: "a habitat it
+    # cannot use" is not out-of-RANGE evidence, and a habitat mismatch that
+    # also drove geography below 0.10 would reach the screen's I2 and take a
+    # good-fit row to EXCLUDE. The positive-evidence list gains the commonest
+    # case, a range limit the site lies beyond, and "known from the region"
+    # becomes "known near this site": a study area spanning 26-38 N can hold
+    # a taxon that is in range at one end and well out of it at the other.
     shared_parts <- c(
-      "v12", target_group %||% "", marker %||% "", data_type,
+      "v13", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1671,7 +1686,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v12} key prefix already orphans; such a row falls back to
+#' which the \code{v13} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -3314,7 +3329,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v12" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v13" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
@@ -3427,13 +3442,16 @@ review_assignments <- function(input_df,
   "range_known false, and p_inside_range = p_outside_range = an intermediate ",
   "value with low confidence. Do not reconstruct a range from the genus or ",
   "from similar species. No records is not evidence of absence.\n",
-  "- A probability of 0.05 or lower is a STRONG claim. Give one only with ",
-  "POSITIVE evidence that the taxon is out of range here -- for example a ",
-  "native range on another continent with no known introduction to this ",
-  "region, or a habitat it cannot use. Without such evidence, give an ",
-  "intermediate value (about 0.3-0.6) and say in review_comment that the ",
-  "evidence is thin. A widely introduced species, or one known from the ",
-  "region, is at least intermediate.\n"
+  "- A p_inside_range of 0.05 or lower is a STRONG claim. Give one only with ",
+  "POSITIVE evidence that the taxon is out of range here: a native range on ",
+  "another continent with no known introduction to this region, or a ",
+  "well-established range limit that this site lies beyond. A widely ",
+  "introduced species, or one known near this site, is at least ",
+  "intermediate. Without such evidence give an intermediate value (about ",
+  "0.3-0.6) and say in review_comment that the evidence is thin. This ",
+  "applies to p_inside_range only: a low p_outside_range, p_habitat, ",
+  "p_scope, p_transported or p_contamination is a different judgement and is ",
+  "not covered by it.\n"
 )
 
 .p_study_geo_guideline_text <- paste0(
@@ -3443,13 +3461,15 @@ review_assignments <- function(input_df,
   "- If you cannot recall a rare or poorly known taxon's range, give an ",
   "intermediate probability with low confidence rather than recalling one. ",
   "No records is not evidence of absence.\n",
-  "- A probability of 0.05 or lower is a STRONG claim. Give one only with ",
-  "POSITIVE evidence that the taxon is out of range here -- for example a ",
-  "native range on another continent with no known introduction to this ",
-  "region, or a habitat it cannot use. Without such evidence, give an ",
-  "intermediate value (about 0.3-0.6) and say in review_comment that the ",
-  "evidence is thin. A widely introduced species, or one known from the ",
-  "region, is at least intermediate.\n"
+  "- A p_geographic of 0.05 or lower is a STRONG claim. Give one only with ",
+  "POSITIVE evidence that the taxon is out of range here: a native range on ",
+  "another continent with no known introduction to this region, or a ",
+  "well-established range limit that the whole study area lies beyond. A ",
+  "widely introduced species, or one known in the study area, is at least ",
+  "intermediate. Without such evidence give an intermediate value (about ",
+  "0.3-0.6) and say in review_comment that the evidence is thin. This ",
+  "applies to p_geographic only: a low p_habitat, p_scope, p_transported or ",
+  "p_contamination is a different judgement and is not covered by it.\n"
 )
 
 # Worked examples (G5). Deliberately generic: a named species here would teach

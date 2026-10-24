@@ -1770,8 +1770,20 @@ test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
     context = mock_context, llm_fn = fn, verbose = FALSE
   ))
   p <- paste(seen, collapse = "\n")
-  expect_match(p, "0.05 or lower is a STRONG claim", fixed = TRUE)
+  expect_match(p, "A p_geographic of 0.05 or lower is a STRONG claim", fixed = TRUE)
   expect_match(p, "POSITIVE evidence that the taxon is out of range here", fixed = TRUE)
+  # It names the field it governs and the ones it does not. Unnamed, it read
+  # as a rule about any low probability, while this same prompt offers
+  # p_habitat 0.03 and p_contamination 0.02 as normal answers.
+  expect_match(p, "applies to p_geographic only", fixed = TRUE)
+  expect_match(p, "a low p_habitat, p_scope, p_transported or p_contamination", fixed = TRUE)
+  # "a habitat it cannot use" is gone: that is not out-of-RANGE evidence, and
+  # a habitat mismatch driving geography under 0.10 reaches the screen's I2.
+  expect_false(grepl("a habitat it cannot use", p, fixed = TRUE))
+  # The commonest positive evidence is named, and "the region" is not, since a
+  # study area can span a taxon's own range limit.
+  expect_match(p, "well-established range limit that the whole study area lies beyond", fixed = TRUE)
+  expect_false(grepl("one known from the region", p, fixed = TRUE))
   # ... and it is nowhere near the deleted UNPRECEDENTED wording.
   expect_false(grepl("absence of a citeable record", p, fixed = TRUE))
   expect_false(grepl("pipeline flags UNPRECEDENTED", p, fixed = TRUE))
@@ -1797,7 +1809,14 @@ test_that("the 0.05-or-lower steer is unconditional, on both geography paths", {
     context = mock_context, llm_fn = fn2, verbose = FALSE,
     sites = sites, site_col = "site", on_unreviewed = "ignore"
   )))
-  expect_match(
-    paste(seen, collapse = "\n"), "0.05 or lower is a STRONG claim", fixed = TRUE
-  )
+  ps <- paste(seen, collapse = "\n")
+  # The sites path governs p_inside_range, and must NOT govern
+  # p_outside_range: a low p_outside_range beyond a stated limit is the
+  # normal answer, and worked example 2 gives 0.05 for it.
+  expect_match(ps, "A p_inside_range of 0.05 or lower is a STRONG claim", fixed = TRUE)
+  expect_match(ps, "applies to p_inside_range only", fixed = TRUE)
+  expect_match(ps, "a low p_outside_range", fixed = TRUE)
+  expect_match(ps, "range limit that this site lies beyond", fixed = TRUE)
+  expect_false(grepl("A p_geographic of 0.05", ps, fixed = TRUE))
+  expect_false(grepl("a habitat it cannot use", ps, fixed = TRUE))
 })
