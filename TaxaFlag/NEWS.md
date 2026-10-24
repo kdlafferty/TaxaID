@@ -38,14 +38,14 @@
   high`. The probabilities are returned too, as `llm_p_*`. A cut is applied
   after the cache rather than before it, so changing one takes effect for taxa
   already cached without a single new call.
-* The review is blind to this pipeline's own numbers by default. Three
-  pipeline-derived NOTES are still sent when `input_df` carries the columns
-  behind them -- the UNREFERENCED, UNPRECEDENTED/INDISTINGUISHABLE and
-  poor-absolute-fit notes, each of which is read for an output column or a
-  gate as well as for the prompt -- and `?review_assignments` lists them and
-  what to set for a prompt with no pipeline-derived text at all. The
+* The review is shown DNA evidence and the study's own design, and no text
+  derived from occurrence records. It sees the best match identity for every
+  taxon, whether that match clears any rank threshold for the marker, whether
+  a confusable relative could match as well, and whether any reference
+  sequence exists for the name -- the evidence the identification rests on,
+  which a reviewer judging that name needs. The
   `consensus_posterior_col`, `winner_prior_col`,
-  `winner_rank_expanded_col`, `plausible_posteriors_col`,
+  `plausible_posteriors_col`,
   `dist_nearest_occupied_km_col`, `patch_diameter_km_col`,
   `beyond_buffer_col` and the three `inat_*` arguments of
   `review_assignments()` default to `NULL`, so none of those values reaches
@@ -53,8 +53,12 @@
   shown the pipeline's own confidence cannot contradict it independently, and
   a review shown a taxon's GBIF distance cannot catch an error in the
   occurrence data -- which is one of the things it is for. Pass the column
-  names to send any of them. Scored against the maintainer's labels, a review
-  told these numbers and a review told nothing the pipeline computed agreed
+  names to send any of them. The UNPRECEDENTED flag is read without being
+  shown: "no local occurrence record at all" stays out of the prompt, while
+  `geographic_disagreement_basis` is still computed from it, so the
+  deterministic check for a taxon called plausible where the records hold
+  nothing survives the change. Scored against the maintainer's labels, a
+  review told the pipeline's numbers and a review told none of them agreed
   with him equally well.
 * `flag_backbone_conflicts()` flags a name that the taxonomy carries at more
   than one rank, or under more than one parent at the same rank, learned from

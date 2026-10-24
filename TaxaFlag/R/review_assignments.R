@@ -70,14 +70,14 @@
 #'   confidence and the LLM's ecological plausibility judgment can be
 #'   surfaced in \code{review_comment}. Purely additive text -- never changes
 #'   which rows are reviewed or any output column. Silently skipped when the
-#'   named column is absent from \code{input_df}. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"consensus_posterior"} to show it.
+#'   named column is absent from \code{input_df}. Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"consensus_posterior"} to show it.
 #'   That name is \code{posterior_consensus()}'s own output column.
 #' @param winner_prior_col Character or \code{NULL}. Column name for
 #'   \code{posterior_consensus()}'s \code{winner_prior} -- the occurrence-
 #'   database prior for the winning taxon. Same treatment as
 #'   \code{consensus_posterior_col}: shown as median context (e.g.
 #'   \code{"occurrence prior=0.42"}), silently skipped when absent.
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_prior"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"winner_prior"} to show it.
 #' @param winner_rank_expanded_col Character or \code{NULL}. Column name for
 #'   \code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
 #'   when the winning species-level call was manufactured by
@@ -86,7 +86,11 @@
 #'   between candidates. When \code{TRUE} for any row sharing a label, a note
 #'   to that effect is added to the LLM's context, since this changes how
 #'   much weight the identification itself deserves. Silently skipped when
-#'   absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_rank_expanded"} to show it.
+#'   absent. Shown as a sequence fact and nothing more -- that the sequence
+#'   did not resolve the call to species and did not choose this name -- with
+#'   no mention of what supplied the name instead. Default
+#'   \code{"winner_rank_expanded"}; \code{NULL} to suppress it. See
+#'   \emph{What the review is shown, and what it is not}.
 #' @param consensus_provenance Logical (default \code{TRUE}). When
 #'   \code{TRUE} and \code{input_df} carries
 #'   \code{posterior_consensus()}'s \code{consensus_hypothesis_type}, a call
@@ -113,35 +117,35 @@
 #'   the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
 #'   primigenius 28\%"}), so \code{review_comment} can speak to the specific
 #'   weaker member instead of the group as an undifferentiated set. Silently
-#'   skipped when absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"plausible_posteriors"} to show it.
+#'   skipped when absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"plausible_posteriors"} to show it.
 #' @param dist_nearest_occupied_km_col Character or \code{NULL}. Column name
 #'   for \code{check_gbif_tile_range()}'s \code{dist_nearest_occupied_km} --
 #'   distance from the study site to the nearest GBIF-mapped occurrence of
 #'   the taxon, worldwide. Shown as median context (e.g. \code{"GBIF: nearest
 #'   occurrence ~41km away"}) alongside \code{patch_diameter_km_col} when
 #'   both are present. Silently skipped when absent.
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"dist_nearest_occupied_km"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"dist_nearest_occupied_km"} to show it.
 #' @param patch_diameter_km_col Character or \code{NULL}. Column name for
 #'   \code{check_gbif_tile_range()}'s \code{patch_diameter_km} -- shown
 #'   alongside \code{dist_nearest_occupied_km_col} as a rough size for the
 #'   occupied area found (see "Spatial context" below for why this matters
 #'   to interpretation). Silently skipped when absent, or when
 #'   \code{dist_nearest_occupied_km_col} is not shown.
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"patch_diameter_km"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"patch_diameter_km"} to show it.
 #' @param beyond_buffer_col Character or \code{NULL}. Column name for
 #'   \code{check_gbif_tile_range()}'s \code{beyond_buffer} -- when
 #'   \code{TRUE}, shown instead of the distance/patch note as \code{"GBIF: no
 #'   occurrence found anywhere globally"}. Silently skipped when absent.
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"beyond_buffer"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"beyond_buffer"} to show it.
 #' @param inat_in_range_col Character or \code{NULL}. Column name for
 #'   \code{TaxaFetch::check_inat_range()}'s \code{in_range}. Shown as
 #'   \code{"in range"}/\code{"outside range"} alongside
 #'   \code{inat_n_observations_col}/\code{inat_matched_name_col} when
 #'   present. Silently skipped when absent.
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"in_range"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"in_range"} to show it.
 #' @param inat_n_observations_col Character or \code{NULL}. Column name for
 #'   \code{check_inat_range()}'s \code{n_observations}.
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"n_observations"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"n_observations"} to show it.
 #' @param inat_matched_name_col Character or \code{NULL}. Column name for
 #'   \code{check_inat_range()}'s \code{matched_name} -- the taxon iNaturalist's
 #'   own name search actually resolved the query to, which is not always the
@@ -149,22 +153,26 @@
 #'   flagged in the prompt as \code{"matched to '...' (name differs from
 #'   query)"} -- a plain factual annotation, not a judgment (see "Spatial
 #'   context" below).
-#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"matched_name"} to show it.
+#'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"matched_name"} to show it.
 #' @param consensus_plausibility_col Character or \code{NULL}. Column name for
 #'   \code{add_posthoc_assessment()}'s \code{consensus_plausibility} --
 #'   specifically its \code{"unprecedented"} value (no local occurrence
 #'   record at all, a pipeline-computed fact, never a threshold on a prior
 #'   VALUE -- see that function's own docs for why). When present, shown to
-#'   the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
-#'   the geography GUIDELINES bullets (see \code{@section Geography guidelines}
-#'   below) and the deterministic \code{geographic_disagreement_basis} output
-#'   column. Silently skipped when absent. Default
-#'   \code{"consensus_plausibility"}. Set to \code{NULL} to disable.
+#'   READ but never shown: it says "no local occurrence record at all", which
+#'   is a statement about the occurrence data, so it does not enter the prompt
+#'   -- see \emph{What the review is shown, and what it is not}. It populates
+#'   the deterministic \code{geographic_disagreement_basis} output column, and
+#'   that is the whole of what it does. Silently skipped when absent. Default
+#'   \code{"consensus_plausibility"}; \code{NULL} gives up that column.
 #' @param consensus_discrimination_col Character or \code{NULL}. Column name
 #'   for \code{add_posthoc_assessment()}'s \code{consensus_discrimination} --
 #'   specifically its \code{"indistinguishable"} value (a one-sided tail
-#'   probability says a confusable relative could score just as well).
-#'   Same treatment as \code{consensus_plausibility_col}. Default
+#'   probability says a confusable relative could score just as well). That is
+#'   a statement about the match scores, so unlike
+#'   \code{consensus_plausibility_col} it IS shown, as
+#'   \code{"pipeline flags INDISTINGUISHABLE: ..."}, as well as populating
+#'   \code{geographic_disagreement_basis}. Default
 #'   \code{"consensus_discrimination"}. Set to \code{NULL} to disable.
 #' @param context Named list or data frame describing the study context.
 #'   Recognised fields: \code{geography}, \code{habitat} (or
@@ -278,9 +286,14 @@
 #'   skipped when absent. Default \code{"poor_absolute_fit"}. Set to
 #'   \code{NULL} to disable.
 #' @param best_identity_col Character or \code{NULL}. Column name for the
-#'   \code{best_identity} (percent) quoted in that note. Silently skipped when
-#'   absent (the note then omits the number). Default \code{"best_identity"}.
-#'   Set to \code{NULL} to disable.
+#'   \code{best_identity} (percent). Shown for EVERY taxon that has one, as
+#'   \code{"best match identity 99.4\%"} -- it is the most direct sequence
+#'   evidence there is about the name, and likelihoods are normalised to the
+#'   unit maximum, so the best of a poor set reads as a confident call and the
+#'   raw identity is the only thing that says otherwise. Where
+#'   \code{poor_absolute_fit_col} flags the row the same number is quoted
+#'   inside that note instead. Silently skipped when absent. Default
+#'   \code{"best_identity"}; \code{NULL} to suppress the number.
 #' @param sites \code{NULL} (default) or a data frame of study sites with
 #'   columns \code{site} (unique names), \code{lat} and \code{lon} (decimal
 #'   degrees; extra columns are ignored). When supplied the LLM is shown the
@@ -514,9 +527,9 @@
 #' \itemize{
 #'   \item{this prompt carrying every pipeline note it can:
 #'     73% (60-85) / 70% (51-89) / 73% (54-90).}
-#'   \item{this prompt with no pipeline-derived text at all -- every one of
-#'     the notes listed in \emph{What the review is not told} switched off,
-#'     not just the numbers: 74% (60-86) / 70% (50-89) / 65% (45-85).}
+#'   \item{the same prompt with NO pipeline-derived text at all -- no numbers
+#'     and no notes, so not the DNA evidence the defaults do send:
+#'     74% (60-86) / 70% (50-89) / 65% (45-85).}
 #'   \item{the same guardrails and site block, asked with habitat and scope
 #'     wording written for that one study rather than taken from
 #'     \code{context$habitat} and \code{target_group}:
@@ -530,14 +543,17 @@
 #' }
 #' Every difference among those four sits inside the intervals.
 #'
-#' What the defaults send is not exactly either of the first two arms. They
-#' switch off the posterior, the occurrence prior, the GBIF fields and the
-#' iNaturalist fields and two of the five notes, and leave three that a
-#' suitable \code{input_df} can still trigger -- see
-#' \emph{What the review is not told}. Those three are the only way the
-#' shipped prompt differs from the second arm. So it sits between two arms
-#' that scored the same as each other, nearer the blind one, which is the most
-#' that can be said for it.
+#' \strong{No arm was asked exactly what the defaults now send}, and this
+#' section states that rather than claim a figure for it. The two nearest are
+#' the first two above. The first was told everything, the pipeline's own
+#' numbers included. The second was told nothing the pipeline produced -- not
+#' even the match identity or the INDISTINGUISHABLE flag, both of which the
+#' defaults DO send. What ships differs from the second by the DNA evidence it
+#' adds back, and from the first by every occurrence-derived number it drops.
+#' Those two agreed with the maintainer within the intervals on all three
+#' statistics, so they bracket the shipped configuration without measuring it,
+#' and that is the most that can be said until an arm is scored on this
+#' prompt.
 #'
 #' \strong{Repeat stability}, as the share of the decisions the verdicts drive
 #' that a second ask repeats: with the pipeline notes, 90.0% (82.5-96.1) over
@@ -673,68 +689,68 @@
 #' \code{llm_geographic_plausibility_site} so the screen uses the verdict for
 #' each row's own site.
 #'
-#' @section What the review is not told:
-#' By default the prompt carries none of the numbers this pipeline computed:
-#' the posterior, the occurrence prior, the GBIF distance and patch size, the
-#' \code{beyond_buffer} flag and the three iNaturalist fields are all
-#' \code{NULL}, so none of them reaches the model and the guideline that
-#' explains them is not assembled either. Pass the column names to turn any of
-#' them back on, one at a time or all of them. Two pipeline-derived NOTES are
-#' off by the same defaults -- \code{winner_rank_expanded_col} and
-#' \code{plausible_posteriors_col} -- because neither reaches anything but the
-#' prompt, and the first of them says the species call came from
-#' occurrence-prior mass, which is the kind of input this is keeping out.
-#' Three notes remain on; they are listed below.
+#' @section What the review is shown, and what it is not:
+#' The rule, by default: the prompt carries DNA evidence and the study's own
+#' design, and no text derived from occurrence records.
 #'
-#' The reason is not accuracy. A review that is shown the pipeline's own
-#' confidence cannot contradict it independently, and a review that is shown a
-#' taxon's GBIF distance cannot catch an error IN the occurrence data -- which
-#' is one of the things it is for. Scored against the maintainer's labels, a
-#' review told these numbers and a review not told them came out the same
-#' within the intervals, so independence is had for no measured cost. See
+#' \strong{Shown.} What the sequence could and could not settle about the name
+#' -- the best match identity for the taxon, whether that match clears any
+#' rank threshold for the marker (\code{poor_absolute_fit_col}), whether a
+#' confusable relative could match as well (\code{consensus_discrimination_col}),
+#' whether any reference sequence exists for the name at all
+#' (\code{consensus_provenance}), and whether the sequence resolved the call
+#' to species at all (\code{winner_rank_expanded_col}). And the study's own
+#' design, which is not evidence about the taxon: the context (geography,
+#' habitat, dates, target group, marker), the site table when \code{sites} is
+#' supplied, and which of those sites each taxon was detected at.
+#'
+#' \strong{Not shown.} Everything the occurrence records produced. The
+#' occurrence prior, the GBIF distance and patch size, the
+#' \code{beyond_buffer} flag and the three iNaturalist fields are all
+#' \code{NULL} by default, and the guideline that explains them is not
+#' assembled. The pipeline's posterior and its candidate weights are also
+#' \code{NULL}, both being a likelihood combined with that prior.
+#'
+#' The rank-expansion flag is the awkward case, and it is SHOWN. The flag is
+#' set because the occurrence prior supplied a species name where the sequence
+#' could not, so its existence is occurrence-derived -- but what the prompt
+#' says about it is only what the sequence did, and a reviewer judging that
+#' name needs to know the sequence did not choose it. Set
+#' \code{winner_rank_expanded_col = NULL} to take the other view.
+#'
+#' The UNPRECEDENTED flag is the one that is READ but never SHOWN: it means "no
+#' local occurrence record at all", so it stays out of the prompt, while
+#' \code{geographic_disagreement_basis} is still computed from it -- that
+#' column is how a reviewer deterministically finds a taxon the model called
+#' plausible where the records hold nothing, and it would be silently empty if
+#' the flag were simply switched off.
+#'
+#' Pass any of those column names and the value reaches the prompt again, one
+#' at a time or all of them.
+#'
+#' \strong{Why.} A review shown the pipeline's own confidence cannot
+#' contradict it independently, and a review shown a taxon's GBIF distance
+#' cannot catch an error IN the occurrence data -- which is one of the things
+#' it is for. The DNA evidence is in a different position: it is what the
+#' identification rests on, so a reviewer judging whether the NAME is right
+#' needs it. Scored against the maintainer's labels, a review told the
+#' pipeline's numbers and a review told none of them came out the same within
+#' the intervals, so the independence costs nothing measurable. See
 #' \emph{What was measured}.
 #'
-#' What the prompt still carries is the study's own design, not evidence about
-#' the taxon: the study context (geography, habitat, dates, target group,
-#' marker), the site table when \code{sites} is supplied, and which of those
-#' sites each taxon was detected at.
-#'
-#' Three pipeline notes are NOT switched off, and an \code{input_df} that
-#' carries the columns behind them will still put them in the prompt:
-#' \itemize{
-#'   \item{the UNREFERENCED provenance note (\code{consensus_provenance});}
-#'   \item{the UNPRECEDENTED and INDISTINGUISHABLE flags
-#'     (\code{consensus_plausibility_col},
-#'     \code{consensus_discrimination_col});}
-#'   \item{the poor-absolute-fit note (\code{poor_absolute_fit_col}, with
-#'     \code{best_identity_col} for the number in it).}
-#' }
-#' They are all three notes about the NAME -- what the reference data and the
-#' records could settle about which organism this is -- rather than numbers
-#' scoring it, which is why they are on while the numbers are off. Only the
-#' second of them reaches anything but the prompt:
-#' \code{consensus_plausibility_col} and \code{consensus_discrimination_col}
-#' populate \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag
-#' also decides whether that guideline is assembled, so switching those two
-#' off is a decision about an output column and not only about the prompt.
-#' \code{consensus_provenance} and \code{poor_absolute_fit_col} reach nothing
-#' but the prompt, and are on because the review is meant to see what the
-#' sequence could not settle.
-#'
-#' For a prompt with no pipeline-derived text in it at all, set
-#' \code{consensus_provenance = FALSE} and both of
-#' \code{consensus_plausibility_col} and
-#' \code{consensus_discrimination_col}, and
-#' \code{poor_absolute_fit_col}, to \code{NULL}. That is the configuration
-#' the second arm in \emph{What was measured} was asked in, and those three
-#' notes are now the only way the shipped prompt differs from it. The cost is
+#' \strong{For a prompt with no pipeline-derived text at all}, set
+#' \code{consensus_provenance = FALSE} and
+#' \code{consensus_discrimination_col}, \code{poor_absolute_fit_col} and
+#' \code{best_identity_col} to \code{NULL}. \code{consensus_plausibility_col}
+#' can stay as it is, since nothing it produces is in the prompt; setting it
+#' to \code{NULL} as well costs
 #' \code{geographic_disagreement_basis}, which is then \code{NA} throughout.
 #'
 #' @section Pipeline context:
 #' All four of \code{consensus_posterior_col}/\code{winner_prior_col}/
 #' \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are
 #' \code{NULL} by default and nothing here happens unless they are passed --
-#' see \emph{What the review is not told}. Given column names that exist in
+#' see \emph{What the review is shown, and what it is not}. Given column names that exist in
 #' \code{input_df}, a compact \code{"[...]"}
 #' annotation is appended to each taxon's line in the LLM prompt -- the
 #' pipeline's own median statistical confidence/occurrence prior for that
@@ -750,7 +766,7 @@
 #'
 #' @section Spatial context:
 #' All six of these are \code{NULL} by default and nothing below happens
-#' unless they are passed -- see \emph{What the review is not told}. When
+#' unless they are passed -- see \emph{What the review is shown, and what it is not}. When
 #' \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
 #' \code{beyond_buffer_col} (\code{check_gbif_tile_range()}'s own output
 #' names) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/
@@ -821,7 +837,7 @@ review_assignments <- function(input_df,
                                irreducible_only = TRUE,
                                consensus_posterior_col = NULL,
                                winner_prior_col = NULL,
-                               winner_rank_expanded_col = NULL,
+                               winner_rank_expanded_col = "winner_rank_expanded",
                                consensus_provenance = TRUE,
                                plausible_posteriors_col = NULL,
                                consensus_plausibility_col = "consensus_plausibility",
@@ -1747,12 +1763,18 @@ review_assignments <- function(input_df,
   # than through four separate `_col` arguments.
   has_prov <- isTRUE(consensus_provenance) &&
     "consensus_hypothesis_type" %in% names(input_df)
+  # Still read, but only to tell a call that IS the unreferenced scope from a
+  # named species inside it (the comparison just below). The scope's NAME and
+  # RANK are no longer put in the prompt, and consensus_scope_n_named -- how
+  # many species the records hold in that scope -- is not read at all now.
   has_scope <- has_prov &&
-    all(c("consensus_unreferenced_scope", "consensus_unreferenced_scope_rank") %in%
-      names(input_df))
+    "consensus_unreferenced_scope" %in% names(input_df)
   has_call <- all(c("consensus_taxon", "consensus_rank") %in% names(input_df))
+  # has_ident is in this list because the match identity is now shown on its
+  # own, for every taxon, not only inside the poor-fit note: a frame carrying
+  # best_identity and nothing else still has something to say.
   if (!has_post && !has_prior && !has_rexp && !has_plaus && !has_disc && !has_prov &&
-    !has_poorfit && !has_call) {
+    !has_poorfit && !has_ident && !has_call) {
     return(NULL)
   }
 
@@ -1776,35 +1798,54 @@ review_assignments <- function(input_df,
       if (!is.na(v)) parts <- c(parts, sprintf("occurrence prior=%s", .fmt_pipeline_value(v)))
     }
     if (has_rexp && isTRUE(any(input_df[[winner_rank_expanded_col]][rows], na.rm = TRUE))) {
+      # Sequence-only wording. The FLAG is set when join_priors() expanded a
+      # coarser call to a species, but what the reviewer is told is only what
+      # the sequence did: it did not resolve to species, and this name is not
+      # the sequence's choice. Deliberately NOT the same statement as
+      # INDISTINGUISHABLE, which is a tail probability saying a relative could
+      # score as well -- here the sequence never reached species at all.
       parts <- c(parts, paste0(
-        "species-level ID from occurrence-prior tie-break, ",
-        "no direct sequence discrimination"
+        "the sequence does not resolve this call to species; ",
+        "the species name was not chosen by the sequence"
       ))
     }
-    # Absolute fit: the likelihood is normalised to the unit maximum, so the
-    # best of a poor set reads as a confident call. Only a TRUE flag adds a
-    # line; FALSE and NA add nothing. Any row sharing the label flagging it
-    # counts, as for winner_rank_expanded.
-    if (has_poorfit) {
-      pf <- input_df[[poor_absolute_fit_col]][rows]
-      if (isTRUE(any(pf, na.rm = TRUE))) {
-        idv <- if (has_ident) {
-          suppressWarnings(stats::median(
-            as.numeric(input_df[[best_identity_col]][rows][pf %in% TRUE]),
-            na.rm = TRUE
-          ))
-        } else {
-          NA_real_
-        }
-        parts <- c(parts, if (is.finite(idv)) {
-          sprintf(
-            "best match identity %.1f%% is below every rank threshold for this marker (poor absolute fit)",
-            idv
-          )
-        } else {
-          "best match identity is below every rank threshold for this marker (poor absolute fit)"
-        })
-      }
+    # The match identity, and whether it clears any rank threshold.
+    #
+    # The identity is shown for EVERY taxon that has one, not only for a poor
+    # fit: it is the most direct sequence evidence there is about the name,
+    # and a reviewer judging a name needs to know a 99% match is a 99% match,
+    # not only that a 89% one was weak. Likelihoods are normalised to the unit
+    # maximum, so the best of a poor set reads as a confident call and the raw
+    # identity is the only thing that says otherwise.
+    #
+    # Where poor_absolute_fit is TRUE the wording says so as well, because
+    # "below every rank threshold for this marker" is a fact about thresholds
+    # that the percentage alone does not carry. Any row sharing the label
+    # flagging it counts, as for the rank-expansion flag; the quoted identity
+    # is then the median over the flagged rows, so the number and the claim
+    # describe the same rows.
+    pf <- if (has_poorfit) input_df[[poor_absolute_fit_col]][rows] else logical(0)
+    poor_here <- length(pf) > 0L && isTRUE(any(pf, na.rm = TRUE))
+    id_rows <- if (poor_here) which(pf %in% TRUE) else seq_along(rows)
+    idv <- if (has_ident) {
+      suppressWarnings(stats::median(
+        as.numeric(input_df[[best_identity_col]][rows][id_rows]),
+        na.rm = TRUE
+      ))
+    } else {
+      NA_real_
+    }
+    if (poor_here) {
+      parts <- c(parts, if (is.finite(idv)) {
+        sprintf(
+          "best match identity %.1f%% is below every rank threshold for this marker (poor absolute fit)",
+          idv
+        )
+      } else {
+        "best match identity is below every rank threshold for this marker (poor absolute fit)"
+      })
+    } else if (is.finite(idv)) {
+      parts <- c(parts, sprintf("best match identity %.1f%%", idv))
     }
     # "No reference sequence" is a claim about the NAMED taxon the reviewer
     # sees -- the label -- not about the row the call landed on. The two
@@ -1842,30 +1883,15 @@ review_assignments <- function(input_df,
         (!is_call | is.na(sc_all) | sc_all != lab)
       shown_referenced <- !is.na(lab_type) & !startsWith(lab_type, "unreferenced_")
       if (any(named_unref) && !any(shown_referenced)) {
-        msg <- "named taxon has NO reference sequence"
-        k <- which(named_unref & is_call & !is.na(sc_all))[1L]
-        if (has_scope && !is.na(k)) {
-          scr <- as.character(input_df[["consensus_unreferenced_scope_rank"]][rows])
-          nn <- if ("consensus_scope_n_named" %in% names(input_df)) {
-            suppressWarnings(max(
-              input_df[["consensus_scope_n_named"]][rows][named_unref & is_call], na.rm = TRUE
-            ))
-          } else {
-            NA_real_
-          }
-          how <- if (!is.finite(nn) || is.na(nn)) {
-            ""
-          } else if (nn <= 1) {
-            "; the only such species recorded in that scope"
-          } else {
-            sprintf("; chosen by occurrence records among %d recorded there", as.integer(nn))
-          }
-          msg <- sprintf(
-            "%s -- name supplied by the occurrence records for %s (%s)%s",
-            msg, sc_all[k], scr[k], how
-          )
-        }
-        parts <- c(parts, msg)
+        # The base fact only. This note used to continue "-- name supplied by
+        # the occurrence records for <scope> (<rank>)" and, where the scope
+        # held one species, "; the only such species recorded in that scope".
+        # Both of those report what the OCCURRENCE RECORDS contain, which is
+        # the one thing a review meant to judge the records independently must
+        # not be handed. What is left is a sequence fact: no reference
+        # sequence exists for this name. The scope columns are still read for
+        # nothing, so they are no longer read at all.
+        parts <- c(parts, "named taxon has NO reference sequence")
       }
     }
     # (f) When the label is not the call itself (a species label on a genus
@@ -1883,7 +1909,16 @@ review_assignments <- function(input_df,
     }
     is_unprec <- has_plaus && isTRUE(any(input_df[[consensus_plausibility_col]][rows] == "unprecedented", na.rm = TRUE))
     is_indist <- has_disc && isTRUE(any(input_df[[consensus_discrimination_col]][rows] == "indistinguishable", na.rm = TRUE))
-    if (is_unprec) parts <- c(parts, "pipeline flags UNPRECEDENTED: no local occurrence record at all")
+    # UNPRECEDENTED is READ and not SHOWN. It means "no local occurrence
+    # record at all", which is a statement about the occurrence data, so it
+    # does not go in the prompt -- but it is still returned below, because
+    # geographic_disagreement_basis is computed from it in code and that
+    # column is the deterministic way a reviewer finds a taxon the LLM called
+    # plausible where the records hold nothing. Reading without showing is the
+    # whole point: the flag survives, the prompt stays independent.
+    #
+    # INDISTINGUISHABLE is shown. It is a one-sided tail probability over the
+    # match scores -- sequence evidence about the NAME.
     if (is_indist) parts <- c(parts, "pipeline flags INDISTINGUISHABLE: a confusable relative could score equally well")
     rows_list[[gi]] <<- c(unprecedented = is_unprec, indistinguishable = is_indist)
     if (length(parts) == 0L) NA_character_ else paste(parts, collapse = "; ")
@@ -2258,25 +2293,12 @@ review_assignments <- function(input_df,
   # local record or rate it unlikely") rated widely introduced species out of
   # range whenever the model could not recall a record on that draw (Mugu:
   # common carp flipped possible -> unlikely on a byte-identical prompt).
-  has_unprec_note <- "has_unprecedented" %in% names(taxa_batch) &&
-    any(taxa_batch$has_unprecedented, na.rm = TRUE)
-  unprecedented_guideline <- if (has_unprec_note) {
-    paste0(
-      '- For a taxon whose bracket says "pipeline flags UNPRECEDENTED" (no ',
-      "local occurrence record in the pipeline's occurrence data): absence of ",
-      "a citeable record is NOT evidence of absence. Without specific evidence ",
-      "of a population at or near this site, give an intermediate geographic ",
-      "probability (", geo_p_name, " about 0.3-0.6), not a high one, and say ",
-      "in review_comment that the evidence is thin. Give a low probability ",
-      "(0.05 or lower) only with POSITIVE evidence that it is out of range here ",
-      "-- for example a native range on another continent with no known ",
-      "introduction to this region, or a habitat it cannot use. A widely ",
-      "introduced species, or one known from the region, is at least ",
-      "intermediate.\n"
-    )
-  } else {
-    NULL
-  }
+  # The UNPRECEDENTED guideline used to live here. Its note is no longer sent
+  # -- "no local occurrence record at all" is a statement about the occurrence
+  # data -- so a guideline explaining it would describe something absent. The
+  # principle it carried, that no records is not evidence of absence, is in
+  # the unconditional geography text, which is where it belongs: it is true of
+  # every rare taxon, not only of the ones the pipeline flagged.
   # (a) INDISTINGUISHABLE is a sequence fact (a relative could score as well):
   # it bears on the NAME, never on range or habitat.
   has_indist_note <- "has_indistinguishable" %in% names(taxa_batch) &&
@@ -2348,40 +2370,44 @@ review_assignments <- function(input_df,
     NULL
   }
 
-  # --- Bracket guidance (only when a taxon line actually carries a bracket) ---
-  # The pipeline's own numbers are off by default, so on most runs no line
-  # ends with a "[...]" bracket at all and this guideline would describe
-  # something the model cannot see -- it names a posterior and an occurrence
-  # prior, which is exactly what a review that is meant to judge
-  # independently should not be told to look for. Gated on the batch like
-  # every other conditional guideline above.
-  has_bracket_note <- "pipeline_note" %in% names(taxa_batch) &&
-    any(!is.na(taxa_batch$pipeline_note))
-  # The bracket holds whatever notes are switched on, and under the shipped
-  # defaults that is never a number (see "What the review is not told"). One
-  # guideline calling the bracket "the pipeline's OWN confidence
-  # (posterior/occurrence prior/candidate weights)" therefore described
-  # something no line carried: it told the model to read a sequence fact as a
-  # confidence and sent it looking for a posterior that was not in the prompt.
-  # Found on a live run, where the bracket read "[named taxon has NO reference
-  # sequence -- name supplied by the occurrence records for Albula (genus);
-  # pipeline flags INDISTINGUISHABLE: ...]" and the guideline called that a
-  # confidence. So the text is split: what is true of EVERY bracket, and what
-  # is true only when a number is actually in this batch.
-  has_numeric_note <- has_bracket_note && any(grepl(
-    "pipeline posterior=|occurrence prior=|candidate weights: ",
-    taxa_batch$pipeline_note
+  # --- Bracket guidance, two pieces, each gated on what the batch carries ---
+  # The bracket holds whatever notes are switched on. By default those are
+  # sequence-match facts and nothing else, so the guideline that describes it
+  # has to describe sequence evidence -- it used to call the bracket "the
+  # pipeline's OWN confidence (posterior/occurrence prior/candidate weights)",
+  # which no default bracket carries. A live run produced "[named taxon has NO
+  # reference sequence ...; pipeline flags INDISTINGUISHABLE: ...]" under that
+  # wording, i.e. the model was told to read a sequence fact as a confidence
+  # and to look for a posterior that was not in the prompt.
+  .note_has <- function(pattern) {
+    "pipeline_note" %in% names(taxa_batch) &&
+      any(grepl(pattern, taxa_batch$pipeline_note))
+  }
+  has_seq_note <- .note_has(paste(
+    "best match identity", "pipeline flags INDISTINGUISHABLE",
+    "NO reference sequence", "the sequence does not resolve",
+    sep = "|"
   ))
-  bracket_guideline <- if (has_bracket_note) {
+  # Accurate only when a number is actually in this batch, which takes a
+  # caller naming consensus_posterior_col, winner_prior_col or
+  # plausible_posteriors_col.
+  has_numeric_note <- .note_has(paste(
+    "pipeline posterior=", "occurrence prior=", "candidate weights: ",
+    sep = "|"
+  ))
+  seq_bracket_guideline <- if (has_seq_note) {
     paste0(
-      '- A "[...]" bracket at the end of a taxon line holds FACTS this ',
-      "pipeline recorded about that call -- what the reference data and the ",
-      "records could and could not settle about the NAME. Each note says what ",
-      "it means. None of them is your input, and none is a verdict on the ",
-      "ecology: how a name was arrived at does not by itself make the taxon ",
-      "more or less plausible here. Note any inconsistency between a bracket ",
-      "and your own judgment in review_comment, and do not let one override ",
-      "that judgment.\n"
+      '- A "[...]" bracket at the end of a taxon line reports what the DNA ',
+      "evidence could and could not settle about the NAME: the best match ",
+      "identity for this taxon, whether that match clears any rank threshold ",
+      "for the marker, whether a confusable relative could match as well, ",
+      "whether any reference sequence exists for the name at all, and whether ",
+      "the sequence resolved the call to species. Weigh it as evidence about ",
+      "the identification. It is not a verdict on the ecology: a weak or ",
+      "ambiguous match makes the NAME less certain and must not by itself ",
+      "lower your habitat, geography or scope probabilities for the group ",
+      "that was called. Say in review_comment where the sequence evidence and ",
+      "your own judgment pull in different directions.\n"
     )
   } else {
     NULL
@@ -2390,10 +2416,10 @@ review_assignments <- function(input_df,
     paste0(
       '- Where a bracket carries "pipeline posterior", "occurrence prior" or ',
       '"candidate weights", that is this pipeline\'s OWN statistical ',
-      "confidence in the call. A low pipeline posterior alongside your own ",
-      "high probabilities is worth a note in review_comment -- but it is the ",
-      "pipeline's number, not evidence about the organism, and it must not ",
-      "replace your independent assessment.\n"
+      "confidence in the call, not evidence about the organism. A low ",
+      "pipeline posterior alongside your own high probabilities is worth a ",
+      "note in review_comment, but it must not replace your independent ",
+      "assessment.\n"
     )
   } else {
     NULL
@@ -2449,12 +2475,11 @@ review_assignments <- function(input_df,
     "give an intermediate probability with a wide 90% range rather than making ",
     "a strong claim.\n",
     if (!is.null(sites)) .p_range_guideline_text else .p_study_geo_guideline_text,
-    if (!is.null(unprecedented_guideline)) unprecedented_guideline else "",
     if (!is.null(indistinguishable_guideline)) indistinguishable_guideline else "",
     if (!is.null(call_rank_guideline)) call_rank_guideline else "",
     if (!is.null(spatial_guideline)) spatial_guideline else "",
     if (!is.null(poorfit_guideline)) poorfit_guideline else "",
-    if (!is.null(bracket_guideline)) bracket_guideline else "",
+    if (!is.null(seq_bracket_guideline)) seq_bracket_guideline else "",
     if (!is.null(numeric_bracket_guideline)) numeric_bracket_guideline else "",
     if (!is.null(sites)) .p_detected_guideline_text else "",
     "\n",

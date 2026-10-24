@@ -1068,16 +1068,22 @@ test_that("the review cache key records which model answered", {
 test_that("a call on an unreferenced row is reported as having no reference sequence", {
   note <- .prov_note(.prov_input())
   expect_match(note, "NO reference sequence")
-  expect_match(note, "Erythropeltidales")
-  expect_match(note, "order", fixed = TRUE)
-  # one candidate in scope: an elimination from the record
-  expect_match(note, "the only such species recorded")
 })
 
-test_that("several candidates in scope are reported as a prior tie-break", {
-  note <- .prov_note(.prov_input(n_named = 25L))
-  expect_match(note, "chosen by occurrence records among 25")
-  expect_false(grepl("the only such species", note))
+test_that("the note says nothing about what the occurrence records contain", {
+  # The scope's name and rank, and how many species the records hold in it,
+  # were all once part of this note. They report the CONTENT of the occurrence
+  # data, which is the one thing a review meant to judge that data
+  # independently must not be handed. The sequence fact survives; the rest is
+  # gone, on both the one-species and the many-species path.
+  for (n in c(1L, 25L)) {
+    note <- .prov_note(.prov_input(n_named = n))
+    expect_match(note, "NO reference sequence")
+    expect_false(grepl("Erythropeltidales", note, fixed = TRUE))
+    expect_false(grepl("occurrence records", note, fixed = TRUE))
+    expect_false(grepl("recorded in that scope", note, fixed = TRUE))
+    expect_false(grepl("chosen by occurrence records", note, fixed = TRUE))
+  }
 })
 
 test_that("a referenced call gets no provenance note", {
@@ -1330,18 +1336,21 @@ test_that("no pipeline posterior, prior, GBIF or iNat note is sent by default", 
   expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
 })
 
-test_that("no rank-expansion note is sent by default", {
-  # winner_rank_expanded is TRUE in the fixture. The note says the species
-  # call came from occurrence-prior MASS with nothing in the sequence choosing
-  # between the candidates -- the pipeline's own reasoning about the name, so
-  # it is off with the numbers even though it reaches nothing but the prompt.
+test_that("the rank-expansion note is sent, and says only what the sequence did", {
+  # winner_rank_expanded is TRUE in the fixture. The note is sequence-only
+  # wording: what the sequence did not do, with no mention of what supplied
+  # the name instead. It is also deliberately NOT the INDISTINGUISHABLE
+  # statement -- that is a tail probability saying a relative could score as
+  # well, where this says the sequence never reached species at all.
   p <- .prompt_sent()
+  expect_match(p, "the sequence does not resolve this call to species", fixed = TRUE)
   expect_false(grepl("occurrence-prior tie-break", p, fixed = TRUE))
+  expect_false(grepl("could score equally well", p, fixed = TRUE))
 })
 
-test_that("naming winner_rank_expanded_col sends the rank-expansion note", {
-  p <- .prompt_sent(winner_rank_expanded_col = "winner_rank_expanded")
-  expect_match(p, "species-level ID from occurrence-prior tie-break", fixed = TRUE)
+test_that("winner_rank_expanded_col = NULL suppresses it", {
+  p <- .prompt_sent(winner_rank_expanded_col = NULL)
+  expect_false(grepl("the sequence does not resolve", p, fixed = TRUE))
 })
 
 test_that("no candidate weights are sent by default, and naming the column sends them", {
@@ -1386,7 +1395,7 @@ test_that("naming the columns puts every one of those notes back", {
   # is the other half of the gate: the notes and the words that tell the model
   # how to read them travel together. With a posterior in the batch that
   # includes the NUMERIC piece, which is gated separately.
-  expect_match(p, "holds FACTS this pipeline recorded", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
   expect_match(p, "OWN statistical confidence", fixed = TRUE)
   expect_match(p, "GBIF's density map is RAW", fixed = TRUE)
 })
@@ -1442,7 +1451,7 @@ test_that("a bracket with no number gets the facts guideline and not the numeric
   p <- .prompt_sent()
   # The fixture's poor_absolute_fit is TRUE, so a bracket IS present.
   expect_match(p, "(poor absolute fit)", fixed = TRUE)
-  expect_match(p, "holds FACTS this pipeline recorded", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
   # ... and nothing claims that bracket is a confidence, or names a number
   # the model cannot see.
   expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
@@ -1455,7 +1464,7 @@ test_that("a bracket carrying a number gets both guidelines", {
     winner_prior_col = "winner_prior"
   )
   expect_match(p, "pipeline posterior=0.81", fixed = TRUE)
-  expect_match(p, "holds FACTS this pipeline recorded", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
   expect_match(p, "OWN statistical confidence", fixed = TRUE)
   expect_match(p, "pipeline posterior alongside your own", fixed = TRUE)
 })
@@ -1477,6 +1486,71 @@ test_that("no bracket at all means neither guideline", {
     context = mock_context, llm_fn = fn, verbose = FALSE
   ))
   p <- paste(seen, collapse = "\n")
-  expect_false(grepl("holds FACTS this pipeline recorded", p, fixed = TRUE))
+  expect_false(grepl("reports what the DNA evidence could and could not settle", p, fixed = TRUE))
+  expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
+})
+
+# ===========================================================================
+# Read without showing: UNPRECEDENTED
+# ===========================================================================
+
+test_that("an UNPRECEDENTED row still fills geographic_disagreement_basis", {
+  # The point of the read-vs-show split. "No local occurrence record at all"
+  # is a statement about the occurrence data, so it never reaches the prompt
+  # -- but geographic_disagreement_basis is computed from it in code, and that
+  # column is the deterministic way a reviewer finds a taxon the LLM called
+  # plausible where the records hold nothing. Losing the column would have
+  # traded a safety signal for the prompt change; this test is what says the
+  # trade did not happen.
+  df <- data.frame(
+    observation_id = "S1",
+    consensus_taxon = "Bos taurus",
+    consensus_rank = "species",
+    consensus_plausibility = "unprecedented",
+    consensus_discrimination = "resolved",
+    stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    # geography "likely" is what makes it a disagreement.
+    paste0(
+      '[{"taxon_name": "Bos taurus", "p_habitat": 0.9, "p_geographic": 0.9,',
+      ' "p_scope": 0.9, "p_contamination": 0.1,',
+      ' "review_confidence": "high", "review_comment": null}]'
+    )
+  }
+  out <- review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  )
+  expect_equal(out$geographic_disagreement_basis, "unprecedented")
+  expect_equal(out$llm_geographic_plausibility, "likely")
+  # ... and the prompt said nothing about it.
+  p <- paste(seen, collapse = "\n")
+  expect_false(grepl("UNPRECEDENTED", p, fixed = TRUE))
+  expect_false(grepl("occurrence record", p, fixed = TRUE))
+})
+
+test_that("an identity alone is enough to send the sequence-evidence guideline", {
+  # The commonest default case: a frame out of the pipeline carries
+  # best_identity and no flag is set, so the only bracket note is the number.
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", best_identity = 99.4,
+    stringsAsFactors = FALSE
+  )
+  seen <- character(0)
+  fn <- function(prompt_str, ...) {
+    seen <<- c(seen, prompt_str)
+    paste0("[", .CANNED[["Bos taurus"]], "]")
+  }
+  invisible(review_assignments(
+    data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = fn, verbose = FALSE
+  ))
+  p <- paste(seen, collapse = "\n")
+  expect_match(p, "best match identity 99.4%", fixed = TRUE)
+  expect_match(p, "reports what the DNA evidence could and could not settle", fixed = TRUE)
   expect_false(grepl("OWN statistical confidence", p, fixed = TRUE))
 })

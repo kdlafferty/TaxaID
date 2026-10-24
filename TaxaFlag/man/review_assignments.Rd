@@ -12,7 +12,7 @@ review_assignments(
   irreducible_only = TRUE,
   consensus_posterior_col = NULL,
   winner_prior_col = NULL,
-  winner_rank_expanded_col = NULL,
+  winner_rank_expanded_col = "winner_rank_expanded",
   consensus_provenance = TRUE,
   plausible_posteriors_col = NULL,
   consensus_plausibility_col = "consensus_plausibility",
@@ -78,7 +78,7 @@ posterior=0.81"}), so a sharp disagreement between the pipeline's
 confidence and the LLM's ecological plausibility judgment can be
 surfaced in \code{review_comment}. Purely additive text -- never changes
 which rows are reviewed or any output column. Silently skipped when the
-named column is absent from \code{input_df}. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"consensus_posterior"} to show it.
+named column is absent from \code{input_df}. Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"consensus_posterior"} to show it.
 That name is \code{posterior_consensus()}'s own output column.}
 
 \item{winner_prior_col}{Character or \code{NULL}. Column name for
@@ -86,7 +86,7 @@ That name is \code{posterior_consensus()}'s own output column.}
 database prior for the winning taxon. Same treatment as
 \code{consensus_posterior_col}: shown as median context (e.g.
 \code{"occurrence prior=0.42"}), silently skipped when absent.
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_prior"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"winner_prior"} to show it.}
 
 \item{winner_rank_expanded_col}{Character or \code{NULL}. Column name for
 \code{posterior_consensus()}'s \code{winner_rank_expanded} -- \code{TRUE}
@@ -96,7 +96,11 @@ alone, with no direct sequence/image/acoustic evidence discriminating
 between candidates. When \code{TRUE} for any row sharing a label, a note
 to that effect is added to the LLM's context, since this changes how
 much weight the identification itself deserves. Silently skipped when
-absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"winner_rank_expanded"} to show it.}
+absent. Shown as a sequence fact and nothing more -- that the sequence
+did not resolve the call to species and did not choose this name -- with
+no mention of what supplied the name instead. Default
+\code{"winner_rank_expanded"}; \code{NULL} to suppress it. See
+\emph{What the review is shown, and what it is not}.}
 
 \item{consensus_provenance}{Logical (default \code{TRUE}). When
 \code{TRUE} and \code{input_df} carries
@@ -125,24 +129,28 @@ weights are averaged across every row sharing that label and shown to
 the LLM (e.g. \code{"candidate weights: Bos javanicus 72\%, Bos
 primigenius 28\%"}), so \code{review_comment} can speak to the specific
 weaker member instead of the group as an undifferentiated set. Silently
-skipped when absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"plausible_posteriors"} to show it.}
+skipped when absent. Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"plausible_posteriors"} to show it.}
 
 \item{consensus_plausibility_col}{Character or \code{NULL}. Column name for
 \code{add_posthoc_assessment()}'s \code{consensus_plausibility} --
 specifically its \code{"unprecedented"} value (no local occurrence
 record at all, a pipeline-computed fact, never a threshold on a prior
 VALUE -- see that function's own docs for why). When present, shown to
-the LLM as \code{"pipeline flags UNPRECEDENTED: ..."} and used to gate
-the geography GUIDELINES bullets (see \code{@section Geography guidelines}
-below) and the deterministic \code{geographic_disagreement_basis} output
-column. Silently skipped when absent. Default
-\code{"consensus_plausibility"}. Set to \code{NULL} to disable.}
+READ but never shown: it says "no local occurrence record at all", which
+is a statement about the occurrence data, so it does not enter the prompt
+-- see \emph{What the review is shown, and what it is not}. It populates
+the deterministic \code{geographic_disagreement_basis} output column, and
+that is the whole of what it does. Silently skipped when absent. Default
+\code{"consensus_plausibility"}; \code{NULL} gives up that column.}
 
 \item{consensus_discrimination_col}{Character or \code{NULL}. Column name
 for \code{add_posthoc_assessment()}'s \code{consensus_discrimination} --
 specifically its \code{"indistinguishable"} value (a one-sided tail
-probability says a confusable relative could score just as well).
-Same treatment as \code{consensus_plausibility_col}. Default
+probability says a confusable relative could score just as well). That is
+a statement about the match scores, so unlike
+\code{consensus_plausibility_col} it IS shown, as
+\code{"pipeline flags INDISTINGUISHABLE: ..."}, as well as populating
+\code{geographic_disagreement_basis}. Default
 \code{"consensus_discrimination"}. Set to \code{NULL} to disable.}
 
 \item{dist_nearest_occupied_km_col}{Character or \code{NULL}. Column name
@@ -151,7 +159,7 @@ distance from the study site to the nearest GBIF-mapped occurrence of
 the taxon, worldwide. Shown as median context (e.g. \code{"GBIF: nearest
 occurrence ~41km away"}) alongside \code{patch_diameter_km_col} when
 both are present. Silently skipped when absent.
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"dist_nearest_occupied_km"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"dist_nearest_occupied_km"} to show it.}
 
 \item{patch_diameter_km_col}{Character or \code{NULL}. Column name for
 \code{check_gbif_tile_range()}'s \code{patch_diameter_km} -- shown
@@ -159,24 +167,24 @@ alongside \code{dist_nearest_occupied_km_col} as a rough size for the
 occupied area found (see "Spatial context" below for why this matters
 to interpretation). Silently skipped when absent, or when
 \code{dist_nearest_occupied_km_col} is not shown.
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"patch_diameter_km"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"patch_diameter_km"} to show it.}
 
 \item{beyond_buffer_col}{Character or \code{NULL}. Column name for
 \code{check_gbif_tile_range()}'s \code{beyond_buffer} -- when
 \code{TRUE}, shown instead of the distance/patch note as \code{"GBIF: no
 occurrence found anywhere globally"}. Silently skipped when absent.
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"beyond_buffer"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"beyond_buffer"} to show it.}
 
 \item{inat_in_range_col}{Character or \code{NULL}. Column name for
 \code{TaxaFetch::check_inat_range()}'s \code{in_range}. Shown as
 \code{"in range"}/\code{"outside range"} alongside
 \code{inat_n_observations_col}/\code{inat_matched_name_col} when
 present. Silently skipped when absent.
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"in_range"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"in_range"} to show it.}
 
 \item{inat_n_observations_col}{Character or \code{NULL}. Column name for
 \code{check_inat_range()}'s \code{n_observations}.
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"n_observations"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"n_observations"} to show it.}
 
 \item{inat_matched_name_col}{Character or \code{NULL}. Column name for
 \code{check_inat_range()}'s \code{matched_name} -- the taxon iNaturalist's
@@ -185,7 +193,7 @@ query taxon itself. When it differs from the taxon under review, this is
 flagged in the prompt as \code{"matched to '...' (name differs from
 query)"} -- a plain factual annotation, not a judgment (see "Spatial
 context" below).
-Default \code{NULL}: the review is not shown this, see \emph{What the review is not told}. Pass \code{"matched_name"} to show it.}
+Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"matched_name"} to show it.}
 
 \item{context}{Named list or data frame describing the study context.
 Recognised fields: \code{geography}, \code{habitat} (or
@@ -325,9 +333,14 @@ skipped when absent. Default \code{"poor_absolute_fit"}. Set to
 \code{NULL} to disable.}
 
 \item{best_identity_col}{Character or \code{NULL}. Column name for the
-\code{best_identity} (percent) quoted in that note. Silently skipped when
-absent (the note then omits the number). Default \code{"best_identity"}.
-Set to \code{NULL} to disable.}
+\code{best_identity} (percent). Shown for EVERY taxon that has one, as
+\code{"best match identity 99.4\%"} -- it is the most direct sequence
+evidence there is about the name, and likelihoods are normalised to the
+unit maximum, so the best of a poor set reads as a confident call and the
+raw identity is the only thing that says otherwise. Where
+\code{poor_absolute_fit_col} flags the row the same number is quoted
+inside that note instead. Silently skipped when absent. Default
+\code{"best_identity"}; \code{NULL} to suppress the number.}
 
 \item{sites}{\code{NULL} (default) or a data frame of study sites with
 columns \code{site} (unique names), \code{lat} and \code{lon} (decimal
@@ -604,9 +617,9 @@ recall:
 \itemize{
 \item{this prompt carrying every pipeline note it can:
 73\% (60-85) / 70\% (51-89) / 73\% (54-90).}
-\item{this prompt with no pipeline-derived text at all -- every one of
-the notes listed in \emph{What the review is not told} switched off,
-not just the numbers: 74\% (60-86) / 70\% (50-89) / 65\% (45-85).}
+\item{the same prompt with NO pipeline-derived text at all -- no numbers
+and no notes, so not the DNA evidence the defaults do send:
+74\% (60-86) / 70\% (50-89) / 65\% (45-85).}
 \item{the same guardrails and site block, asked with habitat and scope
 wording written for that one study rather than taken from
 \code{context$habitat} and \code{target_group}:
@@ -620,14 +633,17 @@ that pair and is not an isolated effect of \code{sites}.}
 }
 Every difference among those four sits inside the intervals.
 
-What the defaults send is not exactly either of the first two arms. They
-switch off the posterior, the occurrence prior, the GBIF fields and the
-iNaturalist fields and two of the five notes, and leave three that a
-suitable \code{input_df} can still trigger -- see
-\emph{What the review is not told}. Those three are the only way the
-shipped prompt differs from the second arm. So it sits between two arms
-that scored the same as each other, nearer the blind one, which is the most
-that can be said for it.
+\strong{No arm was asked exactly what the defaults now send}, and this
+section states that rather than claim a figure for it. The two nearest are
+the first two above. The first was told everything, the pipeline's own
+numbers included. The second was told nothing the pipeline produced -- not
+even the match identity or the INDISTINGUISHABLE flag, both of which the
+defaults DO send. What ships differs from the second by the DNA evidence it
+adds back, and from the first by every occurrence-derived number it drops.
+Those two agreed with the maintainer within the intervals on all three
+statistics, so they bracket the shipped configuration without measuring it,
+and that is the most that can be said until an arm is scored on this
+prompt.
 
 \strong{Repeat stability}, as the share of the decisions the verdicts drive
 that a second ask repeats: with the pipeline notes, 90.0\% (82.5-96.1) over
@@ -766,62 +782,62 @@ In \code{TaxaFlag::screen_assignments()}, \code{geography_col} can point at
 each row's own site.
 }
 
-\section{What the review is not told}{
+\section{What the review is shown, and what it is not}{
 
-By default the prompt carries none of the numbers this pipeline computed:
-the posterior, the occurrence prior, the GBIF distance and patch size, the
+The rule, by default: the prompt carries DNA evidence and the study's own
+design, and no text derived from occurrence records.
+
+\strong{Shown.} What the sequence could and could not settle about the name
+-- the best match identity for the taxon, whether that match clears any
+rank threshold for the marker (\code{poor_absolute_fit_col}), whether a
+confusable relative could match as well (\code{consensus_discrimination_col}),
+whether any reference sequence exists for the name at all
+(\code{consensus_provenance}), and whether the sequence resolved the call
+to species at all (\code{winner_rank_expanded_col}). And the study's own
+design, which is not evidence about the taxon: the context (geography,
+habitat, dates, target group, marker), the site table when \code{sites} is
+supplied, and which of those sites each taxon was detected at.
+
+\strong{Not shown.} Everything the occurrence records produced. The
+occurrence prior, the GBIF distance and patch size, the
 \code{beyond_buffer} flag and the three iNaturalist fields are all
-\code{NULL}, so none of them reaches the model and the guideline that
-explains them is not assembled either. Pass the column names to turn any of
-them back on, one at a time or all of them. Two pipeline-derived NOTES are
-off by the same defaults -- \code{winner_rank_expanded_col} and
-\code{plausible_posteriors_col} -- because neither reaches anything but the
-prompt, and the first of them says the species call came from
-occurrence-prior mass, which is the kind of input this is keeping out.
-Three notes remain on; they are listed below.
+\code{NULL} by default, and the guideline that explains them is not
+assembled. The pipeline's posterior and its candidate weights are also
+\code{NULL}, both being a likelihood combined with that prior.
 
-The reason is not accuracy. A review that is shown the pipeline's own
-confidence cannot contradict it independently, and a review that is shown a
-taxon's GBIF distance cannot catch an error IN the occurrence data -- which
-is one of the things it is for. Scored against the maintainer's labels, a
-review told these numbers and a review not told them came out the same
-within the intervals, so independence is had for no measured cost. See
+The rank-expansion flag is the awkward case, and it is SHOWN. The flag is
+set because the occurrence prior supplied a species name where the sequence
+could not, so its existence is occurrence-derived -- but what the prompt
+says about it is only what the sequence did, and a reviewer judging that
+name needs to know the sequence did not choose it. Set
+\code{winner_rank_expanded_col = NULL} to take the other view.
+
+The UNPRECEDENTED flag is the one that is READ but never SHOWN: it means "no
+local occurrence record at all", so it stays out of the prompt, while
+\code{geographic_disagreement_basis} is still computed from it -- that
+column is how a reviewer deterministically finds a taxon the model called
+plausible where the records hold nothing, and it would be silently empty if
+the flag were simply switched off.
+
+Pass any of those column names and the value reaches the prompt again, one
+at a time or all of them.
+
+\strong{Why.} A review shown the pipeline's own confidence cannot
+contradict it independently, and a review shown a taxon's GBIF distance
+cannot catch an error IN the occurrence data -- which is one of the things
+it is for. The DNA evidence is in a different position: it is what the
+identification rests on, so a reviewer judging whether the NAME is right
+needs it. Scored against the maintainer's labels, a review told the
+pipeline's numbers and a review told none of them came out the same within
+the intervals, so the independence costs nothing measurable. See
 \emph{What was measured}.
 
-What the prompt still carries is the study's own design, not evidence about
-the taxon: the study context (geography, habitat, dates, target group,
-marker), the site table when \code{sites} is supplied, and which of those
-sites each taxon was detected at.
-
-Three pipeline notes are NOT switched off, and an \code{input_df} that
-carries the columns behind them will still put them in the prompt:
-\itemize{
-\item{the UNREFERENCED provenance note (\code{consensus_provenance});}
-\item{the UNPRECEDENTED and INDISTINGUISHABLE flags
-(\code{consensus_plausibility_col},
-\code{consensus_discrimination_col});}
-\item{the poor-absolute-fit note (\code{poor_absolute_fit_col}, with
-\code{best_identity_col} for the number in it).}
-}
-They are all three notes about the NAME -- what the reference data and the
-records could settle about which organism this is -- rather than numbers
-scoring it, which is why they are on while the numbers are off. Only the
-second of them reaches anything but the prompt:
-\code{consensus_plausibility_col} and \code{consensus_discrimination_col}
-populate \code{geographic_disagreement_basis}, and the UNPRECEDENTED flag
-also decides whether that guideline is assembled, so switching those two
-off is a decision about an output column and not only about the prompt.
-\code{consensus_provenance} and \code{poor_absolute_fit_col} reach nothing
-but the prompt, and are on because the review is meant to see what the
-sequence could not settle.
-
-For a prompt with no pipeline-derived text in it at all, set
-\code{consensus_provenance = FALSE} and both of
-\code{consensus_plausibility_col} and
-\code{consensus_discrimination_col}, and
-\code{poor_absolute_fit_col}, to \code{NULL}. That is the configuration
-the second arm in \emph{What was measured} was asked in, and those three
-notes are now the only way the shipped prompt differs from it. The cost is
+\strong{For a prompt with no pipeline-derived text at all}, set
+\code{consensus_provenance = FALSE} and
+\code{consensus_discrimination_col}, \code{poor_absolute_fit_col} and
+\code{best_identity_col} to \code{NULL}. \code{consensus_plausibility_col}
+can stay as it is, since nothing it produces is in the prompt; setting it
+to \code{NULL} as well costs
 \code{geographic_disagreement_basis}, which is then \code{NA} throughout.
 }
 
@@ -830,7 +846,7 @@ notes are now the only way the shipped prompt differs from it. The cost is
 All four of \code{consensus_posterior_col}/\code{winner_prior_col}/
 \code{winner_rank_expanded_col}/\code{plausible_posteriors_col} are
 \code{NULL} by default and nothing here happens unless they are passed --
-see \emph{What the review is not told}. Given column names that exist in
+see \emph{What the review is shown, and what it is not}. Given column names that exist in
 \code{input_df}, a compact \code{"[...]"}
 annotation is appended to each taxon's line in the LLM prompt -- the
 pipeline's own median statistical confidence/occurrence prior for that
@@ -848,7 +864,7 @@ from \code{input_df}.
 \section{Spatial context}{
 
 All six of these are \code{NULL} by default and nothing below happens
-unless they are passed -- see \emph{What the review is not told}. When
+unless they are passed -- see \emph{What the review is shown, and what it is not}. When
 \code{dist_nearest_occupied_km_col}/\code{patch_diameter_km_col}/
 \code{beyond_buffer_col} (\code{check_gbif_tile_range()}'s own output
 names) and/or \code{inat_in_range_col}/\code{inat_n_observations_col}/

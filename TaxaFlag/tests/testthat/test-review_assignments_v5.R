@@ -212,48 +212,49 @@ test_that("an echoed '[T<i>] ' prefix is stripped silently", {
   sub("(?s)^.*GUIDELINES:\n(.*)EXAMPLE OUTPUT FORMAT:.*$", "\\1", p, perl = TRUE)
 }
 
-test_that("UNPRECEDENTED and INDISTINGUISHABLE bullets appear only with their flags", {
-  with_flags <- .v5_prompt(c("Cyprinus carpio", "Perca flavescens"), extra = data.frame(
+test_that("the INDISTINGUISHABLE bullet tracks its flag, and UNPRECEDENTED is never shown", {
+  both <- .v5_prompt(c("Cyprinus carpio", "Perca flavescens"), extra = data.frame(
     consensus_plausibility = c("unprecedented", "plausible"),
     consensus_discrimination = c("resolved", "indistinguishable"),
     stringsAsFactors = FALSE
   ))
-  g <- .v5_guidelines(with_flags)
-  expect_match(g, "absence of a citeable record is NOT evidence of absence", fixed = TRUE)
-  expect_match(g, "not a high one", fixed = TRUE)
-  expect_match(g, "Give a low probability (0.05 or lower) only with POSITIVE evidence",
-    fixed = TRUE
-  )
+  g <- .v5_guidelines(both)
+  # INDISTINGUISHABLE is sequence evidence -- a tail probability over the
+  # match scores -- so it is shown, with its bullet.
   expect_match(g, "weakens confidence in the NAME, not the ecology", fixed = TRUE)
-  expect_false(grepl('otherwise rate it "unlikely"', with_flags, fixed = TRUE))
-  expect_false(grepl("hard requirement", with_flags, fixed = TRUE))
-  expect_match(with_flags, "pipeline flags UNPRECEDENTED", fixed = TRUE)
+  expect_match(both, "pipeline flags INDISTINGUISHABLE", fixed = TRUE)
+  # UNPRECEDENTED means "no local occurrence record at all", which is a
+  # statement about the OCCURRENCE DATA. It is read in code, for
+  # geographic_disagreement_basis, and never put in the prompt -- so neither
+  # the note nor the guideline that used to explain it appears, even with the
+  # flag set on a row.
+  expect_false(grepl("pipeline flags UNPRECEDENTED", both, fixed = TRUE))
+  expect_false(grepl("absence of a citeable record", both, fixed = TRUE))
+  expect_false(grepl("Give a low probability (0.05 or lower)", both, fixed = TRUE))
+  expect_false(grepl('otherwise rate it "unlikely"', both, fixed = TRUE))
+  expect_false(grepl("hard requirement", both, fixed = TRUE))
 
-  # only the unprecedented flag: no indistinguishable bullet, and vice versa
-  only_u <- .v5_guidelines(.v5_prompt(c("Cyprinus carpio", "Perca flavescens"),
+  # The unprecedented flag alone adds nothing at all to the prompt.
+  only_u <- .v5_prompt(c("Cyprinus carpio", "Perca flavescens"),
     extra = data.frame(consensus_plausibility = c("unprecedented", "plausible"))
-  ))
-  expect_match(only_u, "NOT evidence of absence", fixed = TRUE)
+  )
+  expect_false(grepl("UNPRECEDENTED", only_u, fixed = TRUE))
   expect_false(grepl("weakens confidence in the NAME", only_u, fixed = TRUE))
+
   only_i <- .v5_guidelines(.v5_prompt(c("Cyprinus carpio", "Perca flavescens"),
     extra = data.frame(consensus_discrimination = c("indistinguishable", "resolved"))
   ))
   expect_match(only_i, "weakens confidence in the NAME", fixed = TRUE)
-  expect_false(grepl("NOT evidence of absence", only_i, fixed = TRUE))
 
   none <- .v5_prompt(c("Cyprinus carpio", "Perca flavescens"), extra = data.frame(
     consensus_plausibility = c("plausible", "plausible"),
     consensus_discrimination = c("resolved", "resolved"),
     stringsAsFactors = FALSE
   ))
-  expect_false(grepl("NOT evidence of absence", none, fixed = TRUE))
   expect_false(grepl("weakens confidence in the NAME", none, fixed = TRUE))
   expect_false(grepl("UNPRECEDENTED", none, fixed = TRUE))
-  expect_false(grepl('otherwise rate it "unlikely"', none, fixed = TRUE))
-  expect_false(grepl("hard requirement", none, fixed = TRUE))
-  # and with no pipeline columns at all
   bare <- .v5_prompt(c("Cyprinus carpio", "Perca flavescens"))
-  expect_false(grepl("NOT evidence of absence", bare, fixed = TRUE))
+  expect_false(grepl("weakens confidence in the NAME", bare, fixed = TRUE))
   expect_false(grepl("hard requirement", bare, fixed = TRUE))
 })
 
