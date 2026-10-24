@@ -308,9 +308,9 @@ helpers, so it does not accumulate unmanaged.}
 after the re-asks: \code{"warn"} (default) reports them and continues,
 \code{"error"} stops the run, \code{"ignore"} is silent. The residue is
 recorded on the result either way (see \code{@section Unreviewed rows}).
-Production workflows pass \code{"error"}: an unreviewed row is dropped
-by the usual export filters, so a run with residue produces a species
-list that is silently short.}
+Production workflows pass \code{"error"}: an unreviewed row is dropped by
+any export filter that tests \code{llm_* != "unlikely"}, so under one of
+those a run with residue produces a species list that is silently short.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 
@@ -559,12 +559,10 @@ derived from those probabilities here. The cuts are
 \code{unlikely < 0.10 <= possible < 0.70 <= likely}, and for contamination
 \code{low < 0.20 <= moderate < 0.70 <= high}.
 
-Why: a category is the least reproducible part of the review. Measured on
-150 taxa of a real study with \code{claude-opus-5-5}, re-asking the same
-categorical prompt repeated 90\% of the decisions the verdicts drive; asking
-for a probability and cutting it here repeats 97\%. On the maintainer's own
-labels for the 34 hardest taxa of that study, this prompt agrees with him on
-75\% of the decisions, at 80\% precision and 66\% recall.
+Why: a category is the least reproducible part of the review, and a
+probability cut in code is both steadier between two asks and closer to the
+maintainer's own labels. The figures are in \emph{What was measured} below,
+which is the only place in this package that states them.
 
 The cut is applied AFTER the cache, never before it. What a cache entry
 holds is the probability -- the model's answer -- and a cut is this
@@ -584,17 +582,37 @@ nothing about any particular study is built in; the worked examples name no
 real taxon for the same reason.
 }
 
+\section{What was measured}{
+
+Every accuracy figure this package states is here, and nowhere else: one
+copy, so that a later measurement is one edit. All of it is
+\code{claude-opus-5-5} on one real study's 12S panel.
+
+\strong{Reproducibility}, over 150 taxa: re-asking the same categorical
+prompt repeated 90\% of the decisions the verdicts drive; asking for a
+probability and cutting it here repeats 97\%. That is the reason the answer
+is a probability.
+
+\strong{Agreement with the maintainer's own labels}, over the 34 hardest
+taxa of that study, as same-decision / precision / recall: this prompt with
+\code{sites}, 75\% / 80\% / 66\%; a plain probability prompt with neither the
+site block nor the guardrail definitions, 67\% / 75\% / 44\%.
+
+\strong{The cuts}: of the extra rows the margin cuts act on and hard cuts
+(0.20/0.70, contamination 0.50) do not, 54\% were rows the maintainer also
+acted on, against 32\% for the hard cuts.
+
+Two limits on all of it. The two arms above differ in BOTH the guardrail
+definitions and the site block, so the difference between them belongs to
+the pair and is not an isolated effect of \code{sites}. And in both arms
+the taxon lines carried the pipeline's own posterior and occurrence prior,
+so neither arm measures the model's unaided judgement.
+}
+
 \section{Site-aware geography}{
 
-\strong{Supply a site table when you have one.} On the maintainer's own
-labels for the hardest 34 taxa of a real study, this prompt with
-\code{sites} agreed with him on 75\% of the decisions, at 80\% precision and
-66\% recall, against 67\%, 75\% and 44\% for a plain probability prompt with
-neither the site block nor the guardrail definitions above. Those two arms
-differ in BOTH respects, so the gain belongs to the pair of them and is not
-an isolated effect of \code{sites}. In both arms the taxon lines also
-carried the pipeline's own posterior and occurrence prior, so neither
-measures the model's unaided judgement.
+\strong{Supply a site table when you have one}: it is the more accurate of
+the two configurations that were scored. See \emph{What was measured}.
 
 A study that spans a coast or a latitude gradient has no single answer to
 "is this taxon geographically plausible here?": a tropical reef fish is
