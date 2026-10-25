@@ -868,3 +868,47 @@ test_that("an empty-string family is still normalised", {
   out <- assign_sampling_group(tax, verbose = FALSE)
   expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
 })
+
+test_that("a rank the scheme reads but the table lacks is named once", {
+  # The quiet edge of "an absent column is never an error": a rule placed
+  # ahead of a broader one to EXCLUDE something cannot fire if its rank is
+  # missing, and the broader rule then claims those rows silently. The
+  # Hydrozoa family clause is that shape, and `family` is not even in the
+  # default rank_cols, so this is the ordinary case rather than an odd one.
+  tax <- data.frame(
+    kingdom = "Animalia", phylum = "Cnidaria", class = "Hydrozoa",
+    order = "Anthoathecata", stringsAsFactors = FALSE
+  )
+  expect_message(
+    assign_sampling_group(tax, verbose = TRUE),
+    "`family`.*cannot fire"
+  )
+  # Supplying the column silences it, because then every rule can fire.
+  tax$family <- "Hydractiniidae"
+  msgs <- character(0)
+  withCallingHandlers(
+    assign_sampling_group(tax, verbose = TRUE),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_false(any(grepl("cannot fire", msgs)))
+})
+
+test_that("without a family column Velella comes out as a benthic invertebrate", {
+  # This is the behaviour the message exists to make visible, asserted so that
+  # nobody later reads the message as cosmetic. It is not a defect in the rule
+  # -- the rule cannot see a column that is not there -- it is a fact about the
+  # input that the caller needs told.
+  velella <- data.frame(
+    kingdom = "Animalia", phylum = "Cnidaria", class = "Hydrozoa",
+    order = "Anthoathecata", stringsAsFactors = FALSE
+  )
+  out <- assign_sampling_group(velella, verbose = FALSE)
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+
+  velella$family <- "Velellidae"
+  out2 <- assign_sampling_group(velella, verbose = FALSE)
+  expect_equal(out2$sampling_group[[1L]], "zooplankton")
+})

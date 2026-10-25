@@ -56,7 +56,12 @@
 #'     rules read \code{family}. Such a column is read AS SUPPLIED: with
 #'     \code{harmonise = TRUE} only kingdom, phylum, class and order are
 #'     rewritten to the backbone, so a family clause still matches the
-#'     caller's own spelling.}
+#'     caller's own spelling. \strong{A rank the table does not carry means
+#'     its clauses cannot fire}: supply no \code{family} column and
+#'     \code{Porpitidae} and \code{Velellidae} fall through to the
+#'     hydroid-order rule and come out as \code{"macroinvertebrates"} rather
+#'     than \code{"zooplankton"}. \code{assign_sampling_group(verbose =
+#'     TRUE)} names any such rank once.}
 #'   \item{\code{animal_phyla}}{Character vector of animal phylum names, used
 #'     by \code{\link{assign_sampling_group}} when a catch-all row's KINGDOM
 #'     cannot decide animal from non-animal (a domain label such as
@@ -646,6 +651,31 @@ assign_sampling_group <- function(taxonomy,
   group <- rep(NA_character_, n)
   basis <- rep(NA_character_, n)
   matched <- rep(FALSE, n)
+
+  # --- Ranks the scheme reads but this table does not carry ----------------
+  # A column absent from `taxonomy` is treated as entirely NA and is never an
+  # error -- that tolerance is documented and deliberate. But it has a quiet
+  # edge: a rule placed AHEAD of a broader one to EXCLUDE something cannot
+  # fire if its rank is missing, and then the broader rule claims those rows
+  # with nothing to say so. The Hydrozoa family clause is exactly that shape:
+  # without a `family` column, Porpitidae and Velellidae fall through to the
+  # hydroid-order rule and come out as benthic macroinvertebrates. Note that
+  # `family` is not in the default rank_cols, so this is the ordinary case for
+  # a caller who has not supplied one.
+  rule_ranks <- unique(unlist(lapply(scheme$rules, function(r) {
+    unlist(lapply(r$when, names), use.names = FALSE)
+  }), use.names = FALSE))
+  missing_rule_ranks <- setdiff(rule_ranks, names(taxonomy))
+  if (verbose && length(missing_rule_ranks)) {
+    message(sprintf(
+      paste0(
+        "assign_sampling_group: this scheme has rules that read %s, which ",
+        "`taxonomy` does not carry, so those clauses cannot fire. Rows they ",
+        "would have claimed fall through to the rules below them."
+      ),
+      paste(sprintf("`%s`", missing_rule_ranks), collapse = ", ")
+    ))
+  }
 
   # --- First-match-wins rule walk -----------------------------------------
   for (rule in scheme$rules) {
