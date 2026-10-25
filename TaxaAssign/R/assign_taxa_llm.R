@@ -1158,9 +1158,16 @@ assign_taxa_llm <- function(match_df,
   }
 
   # Format example
-  ex1 <- taxa_df$taxon_name[[1]]
+  # Placeholders, never the batch's own taxa. Naming the first two real
+  # candidates here and pairing them with invented answers -- native /
+  # expected / high / 0.90 and native / unlikely / moderate / 0.05 -- told the
+  # model what to say about two of the very taxa it was being asked to judge,
+  # and an answer that merely echoed the example was indistinguishable from a
+  # judgement. A placeholder echoed back is at least identifiable as one,
+  # because no such name is in the batch.
+  ex1 <- "Genus species"
   if (nrow(taxa_df) >= 2) {
-    ex2 <- taxa_df$taxon_name[[2]]
+    ex2 <- "Othergenus otherspecies"
     format_example <- paste0(
       "[\n",
       "  {\"taxon_name\": \"", ex1, "\", \"range_status\": \"native\",",
@@ -1276,7 +1283,8 @@ assign_taxa_llm <- function(match_df,
     "                  (e.g. few surveys, taxonomic revision pending)\n",
     "   \"low\"      -- data-deficient taxon, cryptic species complex, or region\n",
     "                  with minimal survey effort\n\n",
-    "Required output format:\n",
+    "Required output format (the taxon names shown are placeholders -- answer\n",
+    "for every taxon in \"Taxa to assess\" below, and for no others):\n",
     format_example, "\n\n",
     "Taxa to assess:\n",
     paste(taxa_lines, collapse = "\n")
