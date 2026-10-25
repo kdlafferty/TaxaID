@@ -4,6 +4,38 @@
 
 ## New features
 
+* `assign_sampling_group()` decides by PHYLUM where the kingdom cannot decide.
+  A kingdom of `"Eukaryota"` is true of every taxon the function sees, so it
+  settles nothing, yet the kingdom guard read it as "not an animal" and refused
+  the catch-all; a missing kingdom was not guarded at all and kept it. Both are
+  now resolved by `scheme$animal_phyla`, a closed list of the animal phyla: a
+  known animal phylum keeps the catch-all, an informative phylum that is not an
+  animal one is refused, and a phylum that is itself missing or a placeholder
+  is refused as undecidable rather than guessed either way. `"Bacteria"` and
+  `"Archaea"` are not treated as uninformative -- they settle the question, so
+  the allowlist refuses them as before. Phylum names are matched trimmed and
+  case-insensitively, and the list carries the junior synonyms the backbones
+  still emit, because omitting one would read as a confident non-animal. The fallback fires
+  only where a row reached the catch-all, so a row any rule already placed --
+  domain-labelled macroalgae, for instance -- is untouched.
+  This WITHDRAWS a documented guarantee: the guard previously did not fire on a
+  row whose kingdom was missing, and such a row kept the catch-all whatever its
+  phylum said. A missing kingdom is now decided by the phylum like any other
+  uninformative kingdom, so a row with no usable taxonomy at all is refused and
+  flagged rather than counted as a benthic invertebrate. A missing kingdom
+  COLUMN is a different statement from a missing kingdom value: a table with no
+  `kingdom` column is still decided on its `phylum` when it has one, and only a
+  table with neither column keeps the old behaviour, with one warning naming the
+  columns it could not find.
+  A caller with a DOWNSTREAM gate that drops units whose every candidate is out
+  of scope should note that a candidate whose only in-scope status came from a
+  bare domain label is now out of scope, so such a gate may drop units it
+  previously kept, and its own identity hold should be set.
+* `assign_sampling_group()` also returns `sampling_group_basis`, naming WHY each
+  row got its group: `"rule"`, `"catch_all"`, `"kingdom_guard"`,
+  `"phylum_animal"`, `"phylum_non_animal"` or `"unknown_phylum"`. A caller
+  counting dropped rows can now say which decision dropped them.
+
 * `verify_taxon_names(input_rank =)` takes one rank per input name. On the NCBI
   path a homonym whose candidates include exactly one node at that rank
   resolves to it, from the summaries already fetched, so a name that is both a

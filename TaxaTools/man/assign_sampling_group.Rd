@@ -48,12 +48,45 @@ plausibly an animal is refused the animal-flavoured catch-all
 ("macroinvertebrates" literally means "not a vertebrate ANIMAL") and
 surfaced as \code{NA} instead, where it is visible to a caller auditing
 unmatched rows rather than silently, indefinitely counted as a benthic
-invertebrate. The guard deliberately does NOT fire on a row with a
-\code{NA} (missing) kingdom -- a row with no usable taxonomy at all is a
-different problem (it may be genuinely novel), not something this
-function should silently discard. Set \code{kingdom_guard = FALSE} to
-make every unmatched row (any kingdom, including \code{NA}) become the
-catch-all instead.}
+invertebrate.
+
+Where the kingdom cannot settle it -- \code{"Eukaryota"} or
+\code{"Eukarya"}, which are true of every taxon here and so say nothing,
+or no usable value at all -- the PHYLUM decides instead, against
+\code{scheme$animal_phyla}, trimmed and case-insensitively. The kingdom
+comparisons are trimmed and case-insensitive too, so a mis-cased or
+space-padded kingdom is not mistaken for an unrecognised one.
+\code{"Bacteria"} and \code{"Archaea"} are NOT in that set: they settle
+the question outright, so the allowlist refuses them and the phylum is
+never consulted. A scheme carrying no \code{animal_phyla} borrows
+\code{default_sampling_scheme()}'s list, with a message, rather than
+treating every phylum as non-animal. A known animal phylum keeps the catch-all; an
+informative phylum that is not an animal one is refused, which is a
+conclusion rather than a default because the animal phyla are a closed
+set; and a phylum that is itself missing or a placeholder is refused with
+\code{sampling_group_basis = "unknown_phylum"}, because no decision is
+possible and saying so is better than guessing either way. A row with no
+usable taxonomy is therefore visible to a caller auditing unmatched rows,
+which is what the guard was always for, rather than being counted
+indefinitely as a benthic invertebrate.
+
+A missing kingdom VALUE and a missing kingdom COLUMN are different
+statements, and are treated differently. A row whose \code{kingdom} is
+\code{NA} is decided on its phylum, as above. A \code{taxonomy} with no
+\code{kingdom} column at all is still decided on its phylum if it HAS a
+\code{phylum} column; only when BOTH columns are absent -- a
+class/order-only table, which this function supports -- is there nothing
+to decide on, and then every unmatched row keeps the catch-all as before,
+with one warning naming the columns it could not find.
+
+Note for a caller with a DOWNSTREAM gate that drops units whose every
+candidate is out of scope: a candidate whose only in-scope status came
+from a bare domain label is now out of scope, so such a gate may drop
+units it previously kept, and its own identity hold should be set.
+
+Set \code{kingdom_guard = FALSE} to make every unmatched row (any
+kingdom, including \code{NA}) become the catch-all instead; that
+disables the phylum fallback with it.}
 
 \item{harmonise}{Logical, default \code{FALSE}. When \code{TRUE},
 \code{taxonomy} is harmonised to \code{scheme}'s backbone BEFORE
@@ -100,10 +133,22 @@ name collision.}
 }
 \value{
 \code{taxonomy} (or its harmonised copy, when \code{harmonise =
-  TRUE}) with a new \code{sampling_group} character column added.
-\code{NA} where no rule matched AND the kingdom guard fired; otherwise
-always one of the group names in \code{scheme$rules} or
-\code{scheme$catch_all}.
+  TRUE}) with TWO new character columns added.
+
+\code{sampling_group}: \code{NA} where no rule matched AND the kingdom
+guard or the phylum fallback refused the row; otherwise always one of the
+group names in \code{scheme$rules} or \code{scheme$catch_all}.
+
+\code{sampling_group_basis}: WHY that value, so that a caller counting
+dropped rows can say which decision dropped them rather than only how
+many. One of \code{"rule"} (a scheme rule matched, at any rank),
+\code{"catch_all"} (no rule matched and the kingdom was an accepted
+animal one), \code{"kingdom_guard"} (refused on an informative
+non-animal kingdom), \code{"phylum_animal"} (the kingdom could not
+decide and the phylum is an animal one, so the catch-all stands),
+\code{"phylum_non_animal"} (refused on the phylum) or
+\code{"unknown_phylum"} (neither rank could decide; see
+\code{kingdom_guard}).
 }
 \description{
 Classifies each row of a taxonomy table into a \code{sampling_group}

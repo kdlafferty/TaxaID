@@ -44,6 +44,13 @@ class-less-Chordata fish clause (\code{phylum == "Chordata"} AND
 }
 \item{\code{catch_all}}{The group name used when no rule matches
 (\code{"macroinvertebrates"}).}
+\item{\code{animal_phyla}}{Character vector of animal phylum names, used
+by \code{\link{assign_sampling_group}} when a catch-all row's KINGDOM
+cannot decide animal from non-animal (a domain label such as
+\code{"Eukaryota"}, or no usable value) and the phylum must. A closed
+set, which is what lets "not in this list" be a confident non-animal
+conclusion instead of an open-ended list of everything that is not an
+animal.}
 \item{\code{kingdom_guard_vocabulary}}{Character vector of kingdom values
 considered "animal" for the kingdom guard (see
 \code{\link{assign_sampling_group}}'s \code{kingdom_guard} argument):

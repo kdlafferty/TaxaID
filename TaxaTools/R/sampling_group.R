@@ -51,6 +51,13 @@
 #'   }
 #'   \item{\code{catch_all}}{The group name used when no rule matches
 #'     (\code{"macroinvertebrates"}).}
+#'   \item{\code{animal_phyla}}{Character vector of animal phylum names, used
+#'     by \code{\link{assign_sampling_group}} when a catch-all row's KINGDOM
+#'     cannot decide animal from non-animal (a domain label such as
+#'     \code{"Eukaryota"}, or no usable value) and the phylum must. A closed
+#'     set, which is what lets "not in this list" be a confident non-animal
+#'     conclusion instead of an open-ended list of everything that is not an
+#'     animal.}
 #'   \item{\code{kingdom_guard_vocabulary}}{Character vector of kingdom values
 #'     considered "animal" for the kingdom guard (see
 #'     \code{\link{assign_sampling_group}}'s \code{kingdom_guard} argument):
@@ -248,7 +255,32 @@ default_sampling_scheme <- function() {
       )
     ),
     catch_all = "macroinvertebrates",
-    kingdom_guard_vocabulary = c("Animalia", "Metazoa")
+    kingdom_guard_vocabulary = c("Animalia", "Metazoa"),
+    # The animal phyla, for the phylum fallback in assign_sampling_group():
+    # when a row reaches the catch-all and its KINGDOM is uninformative (a
+    # domain label, or missing), the PHYLUM decides. This list is reference
+    # taxonomy, not a rule about any dataset -- the animal phyla are a closed
+    # set, which is what makes "not in this list" a confident non-animal
+    # conclusion and spares us an unbounded non-animal list. Both GBIF and
+    # NCBI spellings where they differ, and the junior synonyms both backbones
+    # still emit.
+    animal_phyla = c(
+      "Acanthocephala", "Annelida", "Arthropoda", "Brachiopoda", "Bryozoa",
+      "Chaetognatha", "Chordata", "Cnidaria", "Ctenophora", "Cycliophora",
+      "Dicyemida", "Echinodermata", "Echiura", "Ectoprocta", "Entoprocta",
+      "Gastrotricha", "Gnathostomulida", "Hemichordata", "Kamptozoa",
+      "Kinorhyncha", "Loricifera", "Micrognathozoa", "Mollusca", "Myxozoa",
+      "Nematoda", "Nematomorpha", "Nemertea", "Onychophora", "Orthonectida",
+      "Phoronida", "Placozoa", "Platyhelminthes", "Porifera", "Priapulida",
+      "Rhombozoa", "Rotifera", "Sipuncula", "Tardigrada", "Xenacoelomorpha",
+      # Junior synonyms and superseded names the backbones still emit. Each is
+      # the SAME phylum under another name, so leaving one out would read as a
+      # confident non-animal and drop the row.
+      "Acoelomorpha", "Nemertinea", "Rhynchocoela", "Aschelminthes",
+      "Pogonophora", "Vestimentifera", "Myzostomida", "Craniata",
+      "Vertebrata", "Urochordata", "Tunicata", "Cephalochordata",
+      "Hyolitha", "Monoblastozoa", "Salinella"
+    )
   )
 }
 
@@ -294,12 +326,45 @@ default_sampling_scheme <- function() {
 #'   ("macroinvertebrates" literally means "not a vertebrate ANIMAL") and
 #'   surfaced as \code{NA} instead, where it is visible to a caller auditing
 #'   unmatched rows rather than silently, indefinitely counted as a benthic
-#'   invertebrate. The guard deliberately does NOT fire on a row with a
-#'   \code{NA} (missing) kingdom -- a row with no usable taxonomy at all is a
-#'   different problem (it may be genuinely novel), not something this
-#'   function should silently discard. Set \code{kingdom_guard = FALSE} to
-#'   make every unmatched row (any kingdom, including \code{NA}) become the
-#'   catch-all instead.
+#'   invertebrate.
+#'
+#'   Where the kingdom cannot settle it -- \code{"Eukaryota"} or
+#'   \code{"Eukarya"}, which are true of every taxon here and so say nothing,
+#'   or no usable value at all -- the PHYLUM decides instead, against
+#'   \code{scheme$animal_phyla}, trimmed and case-insensitively. The kingdom
+#'   comparisons are trimmed and case-insensitive too, so a mis-cased or
+#'   space-padded kingdom is not mistaken for an unrecognised one.
+#'   \code{"Bacteria"} and \code{"Archaea"} are NOT in that set: they settle
+#'   the question outright, so the allowlist refuses them and the phylum is
+#'   never consulted. A scheme carrying no \code{animal_phyla} borrows
+#'   \code{default_sampling_scheme()}'s list, with a message, rather than
+#'   treating every phylum as non-animal. A known animal phylum keeps the catch-all; an
+#'   informative phylum that is not an animal one is refused, which is a
+#'   conclusion rather than a default because the animal phyla are a closed
+#'   set; and a phylum that is itself missing or a placeholder is refused with
+#'   \code{sampling_group_basis = "unknown_phylum"}, because no decision is
+#'   possible and saying so is better than guessing either way. A row with no
+#'   usable taxonomy is therefore visible to a caller auditing unmatched rows,
+#'   which is what the guard was always for, rather than being counted
+#'   indefinitely as a benthic invertebrate.
+#'
+#'   A missing kingdom VALUE and a missing kingdom COLUMN are different
+#'   statements, and are treated differently. A row whose \code{kingdom} is
+#'   \code{NA} is decided on its phylum, as above. A \code{taxonomy} with no
+#'   \code{kingdom} column at all is still decided on its phylum if it HAS a
+#'   \code{phylum} column; only when BOTH columns are absent -- a
+#'   class/order-only table, which this function supports -- is there nothing
+#'   to decide on, and then every unmatched row keeps the catch-all as before,
+#'   with one warning naming the columns it could not find.
+#'
+#'   Note for a caller with a DOWNSTREAM gate that drops units whose every
+#'   candidate is out of scope: a candidate whose only in-scope status came
+#'   from a bare domain label is now out of scope, so such a gate may drop
+#'   units it previously kept, and its own identity hold should be set.
+#'
+#'   Set \code{kingdom_guard = FALSE} to make every unmatched row (any
+#'   kingdom, including \code{NA}) become the catch-all instead; that
+#'   disables the phylum fallback with it.
 #' @param harmonise Logical, default \code{FALSE}. When \code{TRUE},
 #'   \code{taxonomy} is harmonised to \code{scheme}'s backbone BEFORE
 #'   classification, via \code{\link{verify_taxon_names}(backbone_id =
@@ -340,10 +405,22 @@ default_sampling_scheme <- function() {
 #'   name collision.
 #'
 #' @return \code{taxonomy} (or its harmonised copy, when \code{harmonise =
-#'   TRUE}) with a new \code{sampling_group} character column added.
-#'   \code{NA} where no rule matched AND the kingdom guard fired; otherwise
-#'   always one of the group names in \code{scheme$rules} or
-#'   \code{scheme$catch_all}.
+#'   TRUE}) with TWO new character columns added.
+#'
+#'   \code{sampling_group}: \code{NA} where no rule matched AND the kingdom
+#'   guard or the phylum fallback refused the row; otherwise always one of the
+#'   group names in \code{scheme$rules} or \code{scheme$catch_all}.
+#'
+#'   \code{sampling_group_basis}: WHY that value, so that a caller counting
+#'   dropped rows can say which decision dropped them rather than only how
+#'   many. One of \code{"rule"} (a scheme rule matched, at any rank),
+#'   \code{"catch_all"} (no rule matched and the kingdom was an accepted
+#'   animal one), \code{"kingdom_guard"} (refused on an informative
+#'   non-animal kingdom), \code{"phylum_animal"} (the kingdom could not
+#'   decide and the phylum is an animal one, so the catch-all stands),
+#'   \code{"phylum_non_animal"} (refused on the phylum) or
+#'   \code{"unknown_phylum"} (neither rank could decide; see
+#'   \code{kingdom_guard}).
 #'
 #' @section Empty-string normalisation:
 #' \code{""} is normalised to \code{NA} across every present \code{rank_cols}
@@ -478,6 +555,7 @@ assign_sampling_group <- function(taxonomy,
 
   n <- nrow(taxonomy)
   group <- rep(NA_character_, n)
+  basis <- rep(NA_character_, n)
   matched <- rep(FALSE, n)
 
   # --- First-match-wins rule walk -----------------------------------------
@@ -504,6 +582,7 @@ assign_sampling_group <- function(taxonomy,
     hit <- remaining & rule_mask
     if (any(hit)) {
       group[hit] <- rule$group
+      basis[hit] <- "rule"
       matched[hit] <- TRUE
     }
   }
@@ -512,18 +591,112 @@ assign_sampling_group <- function(taxonomy,
   catch_all_hit <- !matched
   group[catch_all_hit] <- scheme$catch_all
   matched[catch_all_hit] <- TRUE
+  basis[catch_all_hit] <- "catch_all"
 
-  # --- Kingdom guard ---------------------------------------------------------
+  # --- Kingdom guard, and the phylum fallback behind it ----------------------
+  # Both fire ONLY at the catch-all. A row any rule matched, at any rank, is
+  # never revisited here: the guard is about what to do with rows the scheme
+  # could not place, not a veto over rows it could. Dropping that restriction
+  # would refuse domain-labelled macroalgae that a CLASS rule had already
+  # placed correctly.
   if (kingdom_guard) {
     animal_vocab <- scheme$kingdom_guard_vocabulary
     if (is.null(animal_vocab)) animal_vocab <- c("Animalia", "Metazoa")
     kingdom_col <- if ("kingdom" %in% names(taxonomy)) taxonomy[["kingdom"]] else rep(NA_character_, n)
-    guard_hit <- catch_all_hit & !is.na(kingdom_col) & !(kingdom_col %in% animal_vocab)
+
+    # A missing kingdom VALUE and a missing kingdom COLUMN are different
+    # statements. A row whose kingdom is NA is a taxon we know little about,
+    # and deciding it on the phylum is right. A TABLE with no kingdom column
+    # is the caller saying that rank is unavailable -- and if it has no phylum
+    # column either, there is nothing to decide on, so the old behaviour
+    # stands and the row keeps the catch-all. Silently refusing every
+    # unmatched row of a class/order-only table would be a mass drop on an
+    # input shape this function documents as supported.
+    has_kingdom_col <- "kingdom" %in% names(taxonomy)
+    has_phylum_col <- "phylum" %in% names(taxonomy)
+    fallback_possible <- has_kingdom_col || has_phylum_col
+    if (!fallback_possible && any(catch_all_hit)) {
+      warning(
+        "assign_sampling_group: `taxonomy` has neither a `kingdom` nor a ",
+        "`phylum` column, so the kingdom guard and the phylum fallback have ",
+        "nothing to read. ", sum(catch_all_hit), " unmatched row(s) keep the ",
+        "catch-all (\"", scheme$catch_all, "\"). Supply either rank to have ",
+        "them checked.",
+        call. = FALSE
+      )
+    }
+
+    # An UNINFORMATIVE kingdom is one that cannot decide animal from
+    # non-animal: a domain label, or no usable value. "Eukaryota" is the
+    # common case -- it is true of every taxon here and so says nothing.
+    # Only a kingdom that cannot decide animal from non-animal. "Eukaryota" is
+    # the case: it is true of every taxon here and so says nothing. Bacteria
+    # and Archaea are NOT here -- they are conclusive non-animal answers, and
+    # the allowlist guard below refuses them, as it always did.
+    # Compared trimmed and case-insensitively, for the same reason the phylum
+    # is: the comparison sets are closed reference vocabularies, so " eukaryota"
+    # is a formatting difference and not a different kingdom. Reading it as one
+    # leaves the row refused -- silently, and in the direction that loses data.
+    kingdom_key <- tolower(trimws(as.character(kingdom_col)))
+    uninformative_kingdom <- .sg_is_blank(kingdom_col) |
+      kingdom_key %in% c("eukaryota", "eukarya")
+
+    # Informative kingdom: the allowlist decides, exactly as before. This is
+    # what refuses Plantae, Fungi, Chromista and a control label such as
+    # "PositiveControl" the animal-flavoured catch-all.
+    guard_hit <- catch_all_hit & fallback_possible & !uninformative_kingdom &
+      !(kingdom_key %in% tolower(trimws(animal_vocab)))
     group[guard_hit] <- NA_character_
+    basis[guard_hit] <- "kingdom_guard"
+
+    # Uninformative kingdom: the PHYLUM decides.
+    fallback_hit <- catch_all_hit & fallback_possible & uninformative_kingdom
+    if (any(fallback_hit)) {
+      # FIX 3(c): a scheme built before animal_phyla existed, or by hand
+      # without it, would otherwise send every fallback row to
+      # "phylum_non_animal" -- a silent mass drop. Fall back to the packaged
+      # list and say so once.
+      animal_phyla <- scheme$animal_phyla
+      if (is.null(animal_phyla)) {
+        animal_phyla <- default_sampling_scheme()$animal_phyla
+        if (isTRUE(verbose)) {
+          message(
+            "assign_sampling_group: this scheme has no `animal_phyla`, so the ",
+            "phylum fallback is using default_sampling_scheme()'s list. Add ",
+            "`animal_phyla` to the scheme to control it."
+          )
+        }
+      }
+      phylum_col <- if ("phylum" %in% names(taxonomy)) {
+        taxonomy[["phylum"]]
+      } else {
+        rep(NA_character_, n)
+      }
+      # Compared trimmed and case-insensitively: the list is a closed
+      # reference set, so a leading space or a lower-case spelling is a
+      # formatting difference, not a different phylum -- and reading it as one
+      # would DROP the row as a confident non-animal.
+      phylum_key <- tolower(trimws(as.character(phylum_col)))
+      is_animal <- fallback_hit & phylum_key %in% tolower(trimws(animal_phyla))
+      is_unknown <- fallback_hit & .sg_is_blank(phylum_col)
+      is_other <- fallback_hit & !is_animal & !is_unknown
+
+      # A known animal phylum keeps the catch-all it already has.
+      basis[is_animal] <- "phylum_animal"
+      # An informative phylum that is not an animal one is out. The animal
+      # phyla are a closed set, so this is a conclusion, not a default.
+      group[is_other] <- NA_character_
+      basis[is_other] <- "phylum_non_animal"
+      # No usable phylum: no decision is possible, so say so rather than
+      # guess either way.
+      group[is_unknown] <- NA_character_
+      basis[is_unknown] <- "unknown_phylum"
+    }
   }
 
   out <- taxonomy
   out$sampling_group <- group
+  out$sampling_group_basis <- basis
 
   if (verbose) {
     cat("\nsampling_group counts:\n")
@@ -537,6 +710,22 @@ assign_sampling_group <- function(taxonomy,
 # =============================================================================
 # Internal helpers
 # =============================================================================
+
+#' Is a rank value unusable for a decision?
+#'
+#' NA, empty, or a placeholder a backbone writes where it has no value. The
+#' placeholder patterns are the point: a pipeline that writes the literal
+#' string "unk_phylum" would otherwise be read as having given an informative,
+#' non-animal phylum, and its rows would be DROPPED as confident non-animals
+#' instead of flagged as undecidable.
+#' @noRd
+.sg_is_blank <- function(x) {
+  x <- as.character(x)
+  v <- trimws(tolower(x))
+  is.na(x) | v == "" | v == "na" | v == "null" |
+    grepl("^unk", v) | grepl("unknown", v) | grepl("incertae", v) |
+    grepl("unclassified", v) | grepl("unassigned", v) | grepl("environmental", v)
+}
 
 #' Warn once when the input taxonomy looks like it is not in GBIF vocabulary
 #' @noRd
