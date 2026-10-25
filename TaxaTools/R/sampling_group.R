@@ -189,7 +189,16 @@ default_sampling_scheme <- function() {
       list(
         group = "birds_mammals",
         when = list(
-          list(class = c("Aves", "Mammalia", "Amphibia", "Reptilia")),
+          # The reptile names appear at BOTH ranks and must be listed at both.
+          # GBIF's backbone carries CLASS Testudines with order NA, so a rule
+          # that knew Testudines only as an order left those rows in the
+          # catch-all -- two real 18S rows, found by measuring against the
+          # data rather than by reading the rule. Lepidosauria is NCBI's
+          # class for the squamates.
+          list(class = c(
+            "Aves", "Mammalia", "Amphibia", "Reptilia", "Lepidosauria",
+            "Testudines", "Squamata", "Crocodylia"
+          )),
           list(order = c("Testudines", "Squamata", "Crocodylia"))
         )
       ),

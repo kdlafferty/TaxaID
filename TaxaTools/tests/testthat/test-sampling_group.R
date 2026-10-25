@@ -769,6 +769,15 @@ test_that("amphibians and reptiles join the non-target tetrapods", {
     r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", order = or)
     expect_equal(r$group, "birds_mammals", info = or)
   }
+  # The reptile names at CLASS rank, with no order. GBIF's backbone really
+  # does carry class Testudines this way, and a rule that knew Testudines only
+  # as an order left those rows in the catch-all as "macroinvertebrates" --
+  # found by measuring against real data, not by reading the rule.
+  for (cl in c("Testudines", "Squamata", "Crocodylia", "Lepidosauria")) {
+    r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", class = cl)
+    expect_equal(r$group, "birds_mammals", info = cl)
+    expect_equal(r$basis, "rule", info = cl)
+  }
   # And the classes it began with are unaffected.
   expect_equal(
     .sg_one(kingdom = "Animalia", phylum = "Chordata", class = "Aves")$group,
