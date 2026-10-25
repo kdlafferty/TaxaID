@@ -709,7 +709,10 @@ assign_taxa_llm <- function(match_df,
       not LLM-informed.",
       "i" = "They are marked in the result by {.field prior_source} \\
       {.val uniform_fallback}. A failed answer is never cached, so a re-run \\
-      with the same {.arg cache_dir} re-asks only the calls that failed."
+      with the same {.arg cache_dir} re-asks only the calls that failed.",
+      "i" = "This counts failed and unparsable ANSWERS. A taxon the model \\
+      simply left out of an otherwise good answer is warned about where it \\
+      happens and is not in this count."
     ))
   }
 
@@ -1333,11 +1336,16 @@ assign_taxa_llm <- function(match_df,
 
 #' Parse flat JSON array response into a prior_df (one row per taxon)
 #' @noRd
-# Every top-level "[...]" span of a string, in the order they appear, with
-# brackets inside JSON strings ignored -- a taxon name may legitimately carry
-# one, and a bracket in a string must not open or close a span. One pass over
-# the characters; a response is a few kB.
-.top_level_json_arrays <- function(txt) {
+# Every top-level "[...]" span of a string, in the order they appear. One pass
+# over the characters; a response is a few kB.
+#
+# `respect_strings = TRUE` ignores brackets inside JSON strings: a taxon name
+# may legitimately carry one, and a bracket in a string must not open or close
+# a span. That reading is right for JSON and wrong for the prose around it --
+# one unbalanced quote in the model's own words ("Here is the 5\" answer:")
+# inverts the string parity and hides every array behind it. So the caller
+# scans both ways and trusts the string-aware reading first.
+.top_level_json_arrays <- function(txt, respect_strings = TRUE) {
   if (length(txt) != 1L || is.na(txt)) {
     return(character(0))
   }
@@ -1349,6 +1357,9 @@ assign_taxa_llm <- function(match_df,
   esc <- FALSE
   for (i in seq_along(ch)) {
     cc <- ch[[i]]
+    if (!respect_strings) {
+      in_str <- FALSE
+    }
     if (in_str) {
       if (esc) {
         esc <- FALSE
@@ -1360,7 +1371,7 @@ assign_taxa_llm <- function(match_df,
       next
     }
     if (cc == "\"") {
-      in_str <- TRUE
+      in_str <- respect_strings
     } else if (cc == "[") {
       if (depth == 0L) start <- i
       depth <- depth + 1L
@@ -1416,8 +1427,29 @@ assign_taxa_llm <- function(match_df,
   # failing that, the last that parses at all, so a single incomplete array
   # behaves exactly as it did before and is handled by the omitted-taxa path
   # further down rather than being discarded here.
+  #
+  # "Last word wins" therefore holds only among COMPLETE answers. A full array
+  # followed by a correction covering one taxon keeps the full array and
+  # discards the correction: a short answer is more likely a truncated or
+  # partial retry than a considered revision, and silently returning a table
+  # missing taxa is worse than ignoring a correction.
+  # Candidates, in the order they are trusted:
+  #   1. the top-level arrays with brackets inside JSON strings ignored,
+  #      last first;
+  #   2. the same scan with quotes ignored, because one unbalanced quote in
+  #      the prose BEFORE the array otherwise hides every array behind it --
+  #      measured: `Here is the 5" answer:` followed by a valid array returned
+  #      uniform priors from the string-aware scan alone;
+  #   3. the first-"[" to last-"]" span, so that no reply which parsed before
+  #      this scan existed can stop parsing because of it. It is the floor,
+  #      not the rule.
+  cands <- unique(c(
+    rev(.top_level_json_arrays(response, respect_strings = TRUE)),
+    rev(.top_level_json_arrays(response, respect_strings = FALSE)),
+    sub("(?s).*?(\\[[\\s\\S]*\\]).*", "\\1", response, perl = TRUE)
+  ))
   parsed <- NULL
-  for (arr_str in rev(.top_level_json_arrays(response))) {
+  for (arr_str in cands) {
     cand <- tryCatch(
       jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
       error = function(e) NULL

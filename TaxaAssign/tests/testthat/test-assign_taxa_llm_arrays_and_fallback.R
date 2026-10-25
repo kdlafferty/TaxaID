@@ -192,3 +192,73 @@ test_that("a run with no failure says nothing about fallbacks", {
   )
   expect_false(any(grepl("failed or unparsable LLM answer", warnings_seen)))
 })
+
+# ---- prose noise around the array -----------------------------------------
+# The string-aware scan is right about JSON and wrong about the prose around
+# it: one unbalanced quote in the model's own words inverts the string parity
+# and hides every array behind it. These cases parsed before the scan existed,
+# so they must keep parsing.
+
+test_that("an unbalanced quote in the prose does not hide the array", {
+  resp <- paste0(
+    'Here is the 5" answer:\n',
+    arr(row_for("Eucyclogobius newberryi", 0.7), row_for("Quietula y-cauda", 0.3))
+  )
+  # The string-aware scan alone finds nothing here -- that is the point.
+  expect_equal(.top_level_json_arrays(resp, respect_strings = TRUE), character(0))
+  expect_length(.top_level_json_arrays(resp, respect_strings = FALSE), 1L)
+
+  out <- .parse_taxa_response(resp, taxa_df)
+  expect_equal(out$prior_source, rep("llm", 2))
+  expect_equal(weight_of(out, "Eucyclogobius newberryi"), 0.7)
+})
+
+test_that("an unbalanced quote AND a correction still takes the correction", {
+  # The quote-blind rescan keeps the correction reachable. Falling back to the
+  # old first-"[" to last-"]" span instead would capture both arrays and fail.
+  resp <- paste0(
+    'He said "hi\n',
+    arr(row_for("Eucyclogobius newberryi", 0.2), row_for("Quietula y-cauda", 0.2)),
+    "\n\nCorrection: wrong scale.\n\n",
+    arr(row_for("Eucyclogobius newberryi", 0.9), row_for("Quietula y-cauda", 0.1))
+  )
+  out <- .parse_taxa_response(resp, taxa_df)
+  expect_equal(out$prior_source, rep("llm", 2))
+  expect_equal(weight_of(out, "Eucyclogobius newberryi"), 0.9)
+})
+
+test_that("a stray closing bracket before the array is tolerated", {
+  resp <- paste0(
+    "odd ] here\n",
+    arr(row_for("Eucyclogobius newberryi", 0.6), row_for("Quietula y-cauda", 0.4))
+  )
+  out <- .parse_taxa_response(resp, taxa_df)
+  expect_equal(out$prior_source, rep("llm", 2))
+})
+
+test_that("a stray OPENING bracket before the array is a KNOWN miss", {
+  # A record, not a wish: "see [1 for detail" opens a span that the array's own
+  # brackets nest inside, so nothing closes at depth 0, and the old
+  # first-"[" to last-"]" span captures the prose too. This failed before the
+  # scan existed and still fails -- it is not a regression, and fixing it means
+  # trying every "[" as a start, which is more than the measured failures
+  # justify. If it is ever fixed, this test fails and says so.
+  resp <- paste0(
+    "see [1 for detail\n",
+    arr(row_for("Eucyclogobius newberryi", 0.6), row_for("Quietula y-cauda", 0.4))
+  )
+  expect_warning(out <- .parse_taxa_response(resp, taxa_df), "Failed to parse")
+  expect_equal(out$prior_source, rep("uniform_fallback", 2))
+})
+
+test_that("a full array is not displaced by a one-taxon correction", {
+  # "Last word wins" holds only among COMPLETE answers; asserted so the comment
+  # and the code cannot drift apart.
+  resp <- paste0(
+    arr(row_for("Eucyclogobius newberryi", 0.9), row_for("Quietula y-cauda", 0.1)),
+    "\n\nCorrection: ", arr(row_for("Eucyclogobius newberryi", 0.5))
+  )
+  out <- .parse_taxa_response(resp, taxa_df)
+  expect_setequal(out$taxon_name, taxa_df$taxon_name)
+  expect_equal(weight_of(out, "Eucyclogobius newberryi"), 0.9)
+})
