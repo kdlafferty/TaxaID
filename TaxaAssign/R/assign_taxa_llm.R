@@ -223,8 +223,10 @@ utils::globalVariables(c(
 #'   The key is the full prompt text plus what can be known about the model
 #'   before the call: the code of `llm_fn` (which captures a `model =` set in a
 #'   wrapper), its `model` default, and `getOption("TaxaID.provider")`. Any
-#'   change to the taxa, context, survey lists or guide bands changes the prompt
-#'   and so misses. `TaxaTools::call_api()` chooses its model at call time, so
+#'   change to the taxa, context, survey lists or guide bands -- or to the
+#'   prompt's own wording -- changes the prompt and so misses, and a changed
+#'   prompt means the next run re-asks, and pays, for every taxon the old cache
+#'   held. `TaxaTools::call_api()` chooses its model at call time, so
 #'   after changing the model through `TaxaTools::set_model()` or a registry
 #'   refresh, use a new `cache_dir` or empty the old one. Each entry also stores
 #'   the model the response reports, when the provider function attaches it. A
@@ -1166,11 +1168,13 @@ assign_taxa_llm <- function(match_df,
   # names stop the echo; placeholder values stop the anchor, since a model can
   # settle on 0.90 / 0.05 as a pattern without any name being echoed.
   #
-  # This is the example `estimate_llm_priors()`'s prototype prompt used for the
-  # CI prior run (327 calls, all parsed), minus the `n_local_congeners` field
-  # that this parser does not read. The two examples have not been compared on
-  # the same data, so the claim is alignment with what was run, not a measured
-  # improvement.
+  # This is the example from the LLM-priors prototype prompt that produced the
+  # CI prior run -- 327 calls, every answer parsed -- minus the
+  # `n_local_congeners` field that this parser does not read. The prototype is
+  # not in the package, and not in this repository: it is
+  # `analysis/llm_rework_prompt.R` under the Global eDNA presentation in the
+  # analysis tree. The two examples have not been compared on the same data, so
+  # the claim is alignment with what was run, not a measured improvement.
   #
   # The example is deliberately not valid JSON: the angle brackets say what to
   # put there. The response contract is stated separately, in the prompt's
