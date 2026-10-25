@@ -679,6 +679,40 @@ assign_taxa_llm <- function(match_df,
     cli::cli_inform("LLM prior cache: {n_cache_hits} of {n_calls_total} call(s) served from {.path {cache_dir}}.")
   }
 
+  # A failed or unparsable answer becomes uniform priors with only a per-call
+  # warning, so a partial run looks complete: in one measured run a DNS outage
+  # failed 51 calls and 9,012 rows took uniform priors with nothing but
+  # warnings to show it. Counted once here so the run cannot finish quietly.
+  # Reported, not stopped: a run that completes today must keep completing,
+  # and there is no argument to choose with. The count was always recoverable
+  # from the output -- the rows carry prior_source "uniform_fallback" -- which
+  # is exactly what nobody reads.
+  fb_rows <- vapply(
+    prior_tables,
+    function(d) if (is.null(d)) 0L else sum(d$prior_source == "uniform_fallback"),
+    integer(1)
+  )
+  all_rows <- vapply(
+    prior_tables,
+    function(d) if (is.null(d)) 0L else nrow(d),
+    integer(1)
+  )
+  if (sum(fb_rows) > 0L) {
+    n_fb <- sum(fb_rows)
+    n_all <- sum(all_rows)
+    n_grp <- sum(fb_rows > 0L)
+    cli::cli_warn(c(
+      "{n_fb} of {n_all} taxon prior{?s} came from a failed or unparsable LLM \\
+      answer and are uniform, not a judgement ({n_grp} of \\
+      {length(fb_rows)} group{?s} affected).",
+      "!" = "Treat this run as partial: the posteriors built on those rows are \\
+      not LLM-informed.",
+      "i" = "They are marked in the result by {.field prior_source} \\
+      {.val uniform_fallback}. A failed answer is never cached, so a re-run \\
+      with the same {.arg cache_dir} re-asks only the calls that failed."
+    ))
+  }
+
   # --- Merge likelihoods + priors for each observation -------------------------
   merged_list <- .merge_llm_priors(
     observation_ids    = observation_ids,
@@ -1299,6 +1333,48 @@ assign_taxa_llm <- function(match_df,
 
 #' Parse flat JSON array response into a prior_df (one row per taxon)
 #' @noRd
+# Every top-level "[...]" span of a string, in the order they appear, with
+# brackets inside JSON strings ignored -- a taxon name may legitimately carry
+# one, and a bracket in a string must not open or close a span. One pass over
+# the characters; a response is a few kB.
+.top_level_json_arrays <- function(txt) {
+  if (length(txt) != 1L || is.na(txt)) {
+    return(character(0))
+  }
+  ch <- strsplit(txt, "", fixed = TRUE)[[1]]
+  out <- character(0)
+  depth <- 0L
+  start <- NA_integer_
+  in_str <- FALSE
+  esc <- FALSE
+  for (i in seq_along(ch)) {
+    cc <- ch[[i]]
+    if (in_str) {
+      if (esc) {
+        esc <- FALSE
+      } else if (cc == "\\") {
+        esc <- TRUE
+      } else if (cc == "\"") {
+        in_str <- FALSE
+      }
+      next
+    }
+    if (cc == "\"") {
+      in_str <- TRUE
+    } else if (cc == "[") {
+      if (depth == 0L) start <- i
+      depth <- depth + 1L
+    } else if (cc == "]" && depth > 0L) {
+      depth <- depth - 1L
+      if (depth == 0L) {
+        out <- c(out, paste(ch[start:i], collapse = ""))
+      }
+    }
+  }
+  out
+}
+
+
 .parse_taxa_response <- function(response, taxa_df, group_label = "all") {
   expected <- taxa_df$taxon_name
   n <- length(expected)
@@ -1325,13 +1401,37 @@ assign_taxa_llm <- function(match_df,
     return(make_uniform())
   }
 
-  # Extract JSON array -- handles markdown fences and leading/trailing text
-  # (?s) enables PCRE dotall mode so .* matches across newlines
-  arr_str <- sub("(?s).*?(\\[[\\s\\S]*\\]).*", "\\1", response, perl = TRUE)
-  parsed <- tryCatch(
-    jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
-    error = function(e) NULL
-  )
+  # Extract the JSON array -- handles markdown fences and leading or trailing
+  # text. One regex from the first "[" to the last "]" cannot do this job: a
+  # reply that gives an array, then "Correction: ...", then a corrected array
+  # captures BOTH arrays and the prose between them, fails to parse, and the
+  # whole batch silently becomes uniform priors. Measured: 2 of 327 answers in
+  # one run took that form. It also took the GENERIC parse-failure message
+  # below rather than the actionable truncation one, because that branch keys
+  # on there being no "]" at all and such a reply has several.
+  #
+  # So: find the top-level arrays with a bracket scan, and try them from the
+  # LAST backwards -- a model that corrects itself means its last word.
+  # Which one wins: the last that parses AND names every taxon asked for;
+  # failing that, the last that parses at all, so a single incomplete array
+  # behaves exactly as it did before and is handled by the omitted-taxa path
+  # further down rather than being discarded here.
+  parsed <- NULL
+  for (arr_str in rev(.top_level_json_arrays(response))) {
+    cand <- tryCatch(
+      jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.data.frame(cand) ||
+      !all(c("taxon_name", "prior_weight") %in% names(cand))) {
+      next
+    }
+    if (is.null(parsed)) parsed <- cand
+    if (all(expected %in% cand$taxon_name)) {
+      parsed <- cand
+      break
+    }
+  }
 
   if (is.null(parsed) || !is.data.frame(parsed) ||
     !all(c("taxon_name", "prior_weight") %in% names(parsed))) {
