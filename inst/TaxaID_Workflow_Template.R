@@ -439,7 +439,58 @@ likelihoods <- likelihoods
 # Edge: taxa -> occurrences
 # Source: TaxaFetch/inst/GBIF_workflow.R + Define_search_workflow.R
 
-keys <- TaxaFetch::get_keys_from_context(taxa)
+key_matches <- TaxaFetch::get_keys_from_context(taxa)
+# fetch_gbif_occurrences() takes the usageKey COLUMN, not the whole table that
+# get_keys_from_context() returns: it begins with as.integer(keys), and a data
+# frame cannot be coerced to integer. Passing the table raises
+# "'list' object cannot be coerced to type 'integer'".
+keys <- key_matches$usageKey[!is.na(key_matches$usageKey)]
+
+# --- Check GBIF match quality BEFORE requesting anything ---------------------
+# A populated but WRONG key is worse than a missing one, and neither announces
+# itself downstream: fetch_gbif_occurrences() drops NA keys silently, so an
+# unresolved taxon leaves the occurrence pool without a word, and a FUZZY or
+# HIGHERRANK match fetches a DIFFERENT taxon's records under this taxon's name.
+# get_keys_from_context()'s own documentation says to review these matchTypes
+# before downstream use; this is that review, and it is deliberately a stop.
+# What this does NOT catch: an EXACT, ACCEPTED key whose taxon simply holds no
+# occurrences in your area. That key is correct and the gap is real data, so
+# only a pre-download COUNT can see it -- a separate check, not this one.
+# ERROR and NO_DATA rows carry an NA usageKey, so the NA check below covers
+# them too. To proceed deliberately, inspect `key_matches`, fix or drop the
+# named rows, and re-run -- do not widen the accepted matchTypes.
+.key_label <- function(df) {
+  out <- rep(NA_character_, nrow(df))
+  for (.r in c("species", "genus", "family", "order", "class", "phylum", "kingdom")) {
+    .hit <- names(df)[tolower(names(df)) == .r]
+    if (!length(.hit)) next
+    .v <- trimws(as.character(df[[.hit[1L]]]))
+    .fill <- is.na(out) & !is.na(.v) & nzchar(.v)
+    out[.fill] <- .v[.fill]
+  }
+  out
+}
+# An ALLOWLIST, not a list of known-bad values: GBIF's match API has added
+# matchType values before (its v2 has others again), and a value we have never
+# seen should stop the run rather than pass unexamined because nobody thought
+# to name it. EXACT is the only value that means "this is the taxon you asked
+# for".
+.suspect <- !(key_matches$matchType %in% "EXACT")
+.unresolved <- is.na(key_matches$usageKey)
+if (any(.suspect | .unresolved)) {
+  .bad <- which(.suspect | .unresolved)
+  .labels <- .key_label(key_matches)
+  stop(
+    "GBIF key lookup: ", length(.bad), " of ", nrow(key_matches),
+    " taxa did not resolve to a trustworthy GBIF key.\n",
+    paste0("  ", .labels[.bad], " -- matchType ", key_matches$matchType[.bad],
+           ", usageKey ", key_matches$usageKey[.bad], collapse = "\n"),
+    "\nAn NA key is dropped silently by fetch_gbif_occurrences(); a FUZZY or ",
+    "HIGHERRANK key fetches another taxon's records. Resolve or drop these ",
+    "rows deliberately, then re-run.",
+    call. = FALSE
+  )
+}
 bbox_wkt <- TaxaFetch::make_bbox_wkt(
   lat = SITE_LAT, lon = SITE_LON,
   radius_deg = SEARCH_RADIUS_DEG
@@ -948,15 +999,26 @@ reviewed <- TaxaFlag::review_assignments(
   # posterior_consensus(). poor_absolute_fit is TRUE when the unit's best raw
   # match identity (best_identity, percent) reaches no rank threshold for the
   # marker: likelihoods are normalised to the unit maximum, so such a call can
-  # still carry a high posterior. When it is TRUE the reviewer is told, in one
-  # fact line quoting best_identity. A column that is absent is skipped; both
+  # still carry a high posterior and the raw identity is the only thing that
+  # says otherwise. best_identity is quoted for EVERY taxon that has one, not
+  # only for a poor fit; where poor_absolute_fit is TRUE the same number is
+  # quoted inside that note instead. A column that is absent is skipped; both
   # defaults are shown so the link is visible. NULL turns either off.
   poor_absolute_fit_col = "poor_absolute_fit",
   best_identity_col     = "best_identity",
+  # The review is BLIND to this pipeline's own numbers by default: the
+  # posterior, the occurrence prior, the GBIF distance and the iNaturalist
+  # fields are all NULL unless named, so none of them reaches the prompt. A
+  # review shown the pipeline's confidence cannot contradict it independently,
+  # and one shown a taxon's GBIF distance cannot catch an error in the
+  # occurrence data. What it IS shown is the DNA evidence -- the two arguments
+  # just above among them -- and the study's own design. See
+  # ?review_assignments, "What the review is shown, and what it is not".
   # consensus_provenance (default TRUE): a call that landed on an UNREFERENCED
-  # row (no reference sequence; the NAME came from occurrence records) is
-  # labelled as such for the reviewer, with the scope and rank the name came
-  # from. It reads posterior_consensus()'s consensus_hypothesis_type.
+  # row gets one note, "named taxon has NO reference sequence". The scope the
+  # name came from and how many species the records held there are NOT sent --
+  # both report what the occurrence records contain. It reads
+  # posterior_consensus()'s consensus_hypothesis_type.
   consensus_provenance  = TRUE,
   # model_label: names the model behind llm_fn in the cache key, so a verdict
   # from one model is never served to a call asking another. NULL derives it
@@ -966,12 +1028,18 @@ reviewed <- TaxaFlag::review_assignments(
   # Abort rather than export a silently short species list. An LLM review can
   # parse cleanly, return the right number of objects, and still OMIT specific
   # taxa -- consistently the long compound slash labels, i.e. the hardest
-  # rows. Those get NA in every llm_ column, and the usual export filters
-  # (`llm_* != "unlikely"`) DISCARD NA, so the observation leaves the final
+  # rows. Those get NA in every llm_ column, and any export filter that tests
+  # `llm_* != "unlikely"` DISCARDS NA, so the observation would leave the final
   # species list without a word. Measured on a real PtConception 12S run:
-  # 20 observations across 3 plausible local fishes, gone. review_assignments()
-  # now re-asks for omitted taxa; "error" makes any residue that survives the
-  # re-ask stop the run instead of reaching the filters below.
+  # 20 observations across 3 plausible local fishes, gone.
+  #
+  # Note which filter that is. This script and the template drop nothing on an
+  # LLM VERDICT -- the template's only subsetting is by expert_excluded, a
+  # human decision and empty by default -- so an llm_* filter is one a reader
+  # may add downstream of here, not one above.
+  # review_assignments() now re-asks for omitted taxa; "error" makes any
+  # residue that survives the re-ask stop the run rather than reach such a
+  # filter at all.
   on_unreviewed  = "error"
 )
 message("Reviewed ", nrow(reviewed), " assignments")

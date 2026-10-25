@@ -289,3 +289,73 @@ test_that("every {{placeholder}} used by a CANONICAL_PATH snippet is declared in
     )
   )
 })
+
+# --- GBIF key handling -------------------------------------------------------
+# Both failures guarded here shipped in the generated template: the occurrence
+# step passed get_keys_from_context()'s RESULT TABLE where an integer vector
+# was required (as.integer() on a data frame is an error, so the step could not
+# run), and nothing ever inspected matchType, so an unresolved or fuzzily
+# matched taxon reached the fetch -- where an NA key is dropped silently and a
+# FUZZY or HIGHERRANK key returns another taxon's records.
+
+test_that("the template passes a usageKey vector to fetch_gbif_occurrences, not the key table", {
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+  txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
+  skip_if_not(grepl("get_keys_from_context", txt, fixed = TRUE),
+              "this template does not fetch GBIF occurrences")
+
+  # The variable get_keys_from_context() is assigned to.
+  m <- regmatches(txt, regexpr(
+    "[A-Za-z_.][A-Za-z_.0-9]*[ \t]*<-[ \t]*TaxaFetch::get_keys_from_context", txt))
+  expect_length(m, 1L)
+  v <- sub("[ \t]*<-.*", "", m)
+  expect_true(nzchar(v))
+
+  # It must be subset by usageKey before use ...
+  expect_true(grepl(paste0(v, "$usageKey"), txt, fixed = TRUE))
+  # ... and the table itself must never be handed to the fetch, which would
+  # raise "'list' object cannot be coerced to type 'integer'".
+  expect_false(grepl(paste0("keys[ \t]*=[ \t]*", v, "[ \t]*(,|\\))"), txt))
+})
+
+test_that("the template refuses a GBIF key that did not resolve exactly, before fetching", {
+  f <- .tmpl_path()
+  skip_if(is.null(f), "repo root or template not found")
+  txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
+  skip_if_not(grepl("get_keys_from_context", txt, fixed = TRUE),
+              "this template does not fetch GBIF occurrences")
+
+  expect_true(grepl("matchType", txt, fixed = TRUE))
+  # An ALLOWLIST: the guard must accept only EXACT, so a matchType value GBIF
+  # adds later stops the run instead of passing because nobody named it. A
+  # blacklist of known-bad values cannot do that, and this assertion is what
+  # stops anyone quietly turning it back into one.
+  expect_true(grepl('%in% "EXACT"', txt, fixed = TRUE))
+  expect_false(grepl('c("NONE", "FUZZY", "HIGHERRANK", "LOOKUP_RECOVERED")',
+                     txt, fixed = TRUE))
+  # An unresolved key is caught too, not left to be dropped silently.
+  expect_true(grepl("is.na(key_matches$usageKey)", txt, fixed = TRUE))
+
+  # The check must come BEFORE the request, or it guards nothing.
+  #
+  # Compare the guard against the CALL by PARSING, not by string position.
+  # Every string-matching form of this assertion has been wrong: the snippet
+  # explains in comments why fetch_gbif_occurrences() takes the usageKey
+  # column and that it drops NA keys silently, so the bare name occurs in
+  # prose ABOVE the guard, and even matching the namespaced form only works
+  # for as long as no comment writes it that way. getParseData() excludes
+  # comment tokens by construction, finds a call however it is namespaced, and
+  # cannot be fooled by prose at all.
+  pd <- utils::getParseData(parse(text = txt, keep.source = TRUE))
+  call_ln <- suppressWarnings(min(
+    pd$line1[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "fetch_gbif_occurrences"]
+  ))
+  guard_ln <- suppressWarnings(min(
+    pd$line1[pd$token == "STR_CONST" &
+      grepl("did not resolve to a trustworthy", pd$text, fixed = TRUE)]
+  ))
+  expect_true(is.finite(call_ln))
+  expect_true(is.finite(guard_ln))
+  expect_lt(guard_ln, call_ln)
+})

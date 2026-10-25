@@ -58,7 +58,18 @@
 #' @examples
 #' \dontrun{
 #' keys <- get_keys_from_context(hierarchy_df)
-#' head(keys[, c("inputName", "usageKey", "matchType")])
+#' # The input's own columns are kept and usageKey, matchType and gbif_rank are
+#' # appended, so the name column is whichever rank hierarchy_df carried.
+#' head(keys[, c("usageKey", "matchType", "gbif_rank")])
+#'
+#' # Review match quality before using the keys: a FUZZY or HIGHERRANK match
+#' # resolves to a DIFFERENT taxon, and fetch_gbif_occurrences() drops an NA
+#' # key silently, so an unresolved taxon would vanish without a word.
+#' keys[!keys$matchType %in% "EXACT", ]
+#'
+#' # Pass the usageKey COLUMN, not the table: fetch_gbif_occurrences() coerces
+#' # its `keys` argument with as.integer(), which a data frame cannot satisfy.
+#' valid_keys <- keys$usageKey[!is.na(keys$usageKey)]
 #' }
 #'
 #' @importFrom dplyr bind_rows bind_cols
