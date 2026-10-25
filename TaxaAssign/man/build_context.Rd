@@ -15,7 +15,12 @@ build_context(
 }
 \arguments{
 \item{taxon_names}{Character vector of scientific names (e.g.
-\code{unique(match_df$taxon_name)}).}
+\code{unique(match_df$taxon_name)}). This is the first argument, so a site
+description given positionally lands here instead of in
+\code{geographic_hint}; a single string that does not read like a taxon
+name, with no \code{geographic_hint}, raises a warning before any LLM call
+is made. Genus- and family-rank calls, including the \code{sp.} and
+\code{cf.} forms, are silent.}
 
 \item{geographic_hint}{Optional character string describing the approximate
 geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay
