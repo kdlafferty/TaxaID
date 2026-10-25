@@ -4,6 +4,23 @@
 
 ## New features
 
+* `default_sampling_scheme()` places four groups of rows that were reaching the
+  catch-all, which is `"macroinvertebrates"` and in a marine study means a
+  benthic marine invertebrate. `Diplopoda` and `Diplura` join
+  `terrestrial_arthropods`, beside the centipedes that were already there.
+  Amphibians and reptiles get a new group, `"other_vertebrates"`, with the
+  reptile names listed at BOTH class and order rank because the backbones
+  disagree about where they sit. And `Hydrozoa` is split by habit: the benthic
+  hydroid orders `Leptothecata` and `Anthoathecata` become
+  `macroinvertebrates`, while `Porpitidae`, `Velellidae` and `Hydridae` stay
+  `zooplankton` ahead of them, and the rest of the class stays `zooplankton`
+  as before. A turtle, a millipede, a frog and a benthic hydroid were all
+  classed as benthic marine invertebrates before this.
+  `"other_vertebrates"` is a NEW group name, so a caller grouping on
+  `sampling_group` gains a level, and any taxon that previously fell to the
+  catch-all or to `fishes` through the class-less-Chordata clause moves into it
+  -- which re-estimates priors for those rows.
+
 * `assign_sampling_group()` decides by PHYLUM where the kingdom cannot decide.
   A kingdom of `"Eukaryota"` is true of every taxon the function sees, so it
   settles nothing, yet the kingdom guard read it as "not an animal" and refused

@@ -758,16 +758,16 @@ test_that("terrestrial myriapods and diplurans are terrestrial, not benthic", {
   )
 })
 
-test_that("amphibians and reptiles join the non-target tetrapods", {
+test_that("amphibians and reptiles get their own group", {
   for (cl in c("Amphibia", "Reptilia")) {
     r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", class = cl)
-    expect_equal(r$group, "birds_mammals", info = cl)
+    expect_equal(r$group, "other_vertebrates", info = cl)
   }
   # Backbones disagree about where the reptile ranks sit, so the ORDER
   # spellings must work with no class supplied.
   for (or in c("Testudines", "Squamata", "Crocodylia")) {
     r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", order = or)
-    expect_equal(r$group, "birds_mammals", info = or)
+    expect_equal(r$group, "other_vertebrates", info = or)
   }
   # The reptile names at CLASS rank, with no order. GBIF's backbone really
   # does carry class Testudines this way, and a rule that knew Testudines only
@@ -775,7 +775,7 @@ test_that("amphibians and reptiles join the non-target tetrapods", {
   # found by measuring against real data, not by reading the rule.
   for (cl in c("Testudines", "Squamata", "Crocodylia", "Lepidosauria")) {
     r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", class = cl)
-    expect_equal(r$group, "birds_mammals", info = cl)
+    expect_equal(r$group, "other_vertebrates", info = cl)
     expect_equal(r$basis, "rule", info = cl)
   }
   # And the classes it began with are unaffected.
@@ -837,12 +837,12 @@ test_that("an explicit fish class beats a contradictory reptile order", {
   # And a turtle with no class still reaches the tetrapods.
   expect_equal(
     .sg_one(kingdom = "Animalia", phylum = "Chordata", order = "Testudines")$group,
-    "birds_mammals"
+    "other_vertebrates"
   )
   # The tuatara, which has no class in GBIF, now goes with the tetrapods too.
   expect_equal(
     .sg_one(kingdom = "Animalia", phylum = "Chordata", order = "Rhynchocephalia")$group,
-    "birds_mammals"
+    "other_vertebrates"
   )
 })
 

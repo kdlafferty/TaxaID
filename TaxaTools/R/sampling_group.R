@@ -194,21 +194,33 @@ default_sampling_scheme <- function() {
       # more specific evidence than the absence of a class.
       list(
         group = "birds_mammals",
+        when = list(list(class = c("Aves", "Mammalia")))
+      ),
+
+      # Amphibians and reptiles: their OWN group, not pooled into
+      # birds_mammals. The detection process is the same -- tetrapod DNA
+      # arriving incidentally in a water or sediment sample -- so pooling was
+      # defensible and was the first proposal. Kevin chose a separate group,
+      # named as CalIntertidal names it, because a drop log reading
+      # "birds_mammals" for a frog is a group label that lies, and a label
+      # that lies is worse than a thin stratum.
+      #
+      # The reptile names appear at BOTH ranks and must be listed at both:
+      # GBIF's backbone carries CLASS Testudines with order NA, so a rule that
+      # knew Testudines only as an order left those rows in the catch-all --
+      # two real 18S rows, found by measuring against the data rather than by
+      # reading the rule. Lepidosauria is NCBI's class for the squamates.
+      list(
+        group = "other_vertebrates",
         when = list(
-          # The reptile names appear at BOTH ranks and must be listed at both.
-          # GBIF's backbone carries CLASS Testudines with order NA, so a rule
-          # that knew Testudines only as an order left those rows in the
-          # catch-all -- two real 18S rows, found by measuring against the
-          # data rather than by reading the rule. Lepidosauria is NCBI's
-          # class for the squamates.
           list(class = c(
-            "Aves", "Mammalia", "Amphibia", "Reptilia", "Lepidosauria",
+            "Amphibia", "Reptilia", "Lepidosauria",
             "Testudines", "Squamata", "Crocodylia"
           )),
-          # Guarded on a missing class, the way the fishes rule guards its
-          # own class-less-Chordata clause. Without the guard an explicit fish
+          # Guarded on a missing class, the way the fishes rule guards its own
+          # class-less-Chordata clause. Without the guard an explicit fish
           # CLASS would lose to a contradictory reptile ORDER, because this
-          # rule now runs first: class is the more reliable rank, so a row
+          # rule runs first: class is the more reliable rank, so a row
           # carrying both should follow the class. Only contradictory taxonomy
           # can reach it, but it should resolve the sane way when it does.
           list(
