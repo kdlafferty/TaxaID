@@ -145,9 +145,12 @@
 #' logic and the never-demote guard are unchanged -- only the target scale
 #' moves -- so a stronger/more numerous confirmation (higher `q`) still
 #' produces a stronger boost, bounded by the model's own observed maximum
-#' share. When `result` has no `theta_mean` column (e.g. LLM-pathway priors
-#' from [assign_taxa_llm()], which are not occurrence-share-based),
-#' direct substitution (without rescaling) is used instead.
+#' share. A `result` with no `theta_mean` column would take direct
+#' substitution, without rescaling, but the default
+#' `require_support_columns = TRUE` aborts before reaching it, and that abort
+#' calls `require_support_columns = FALSE` a transitional shim rather than a
+#' supported mode. So the unrescaled branch is not a route this function
+#' offers, whatever built the priors.
 #'
 #' @section Receiver guards:
 #' A raise may choose among candidates the sequence cannot separate; it may
