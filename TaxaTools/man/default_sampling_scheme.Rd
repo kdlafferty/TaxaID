@@ -44,6 +44,12 @@ class-less-Chordata fish clause (\code{phylum == "Chordata"} AND
 }
 \item{\code{catch_all}}{The group name used when no rule matches
 (\code{"macroinvertebrates"}).}
+\item{\code{rules}}{...and note that a rule may read a rank outside
+\code{assign_sampling_group()}'s \code{rank_cols} -- the Hydrozoa
+rules read \code{family}. Such a column is read AS SUPPLIED: with
+\code{harmonise = TRUE} only kingdom, phylum, class and order are
+rewritten to the backbone, so a family clause still matches the
+caller's own spelling.}
 \item{\code{animal_phyla}}{Character vector of animal phylum names, used
 by \code{\link{assign_sampling_group}} when a catch-all row's KINGDOM
 cannot decide animal from non-animal (a domain label such as

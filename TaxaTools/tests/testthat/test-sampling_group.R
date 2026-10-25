@@ -823,3 +823,48 @@ test_that("a family rule still works when no family column is supplied", {
   out <- assign_sampling_group(tax, verbose = FALSE)
   expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
 })
+
+test_that("an explicit fish class beats a contradictory reptile order", {
+  # The tetrapod rule runs ahead of the fishes rule, so without a guard on a
+  # missing class an explicit fish CLASS would lose to a reptile ORDER. Only
+  # contradictory taxonomy reaches this, but class is the more reliable rank
+  # and the row should follow it.
+  for (cl in c("Actinopteri", "Teleostei", "Chondrichthyes")) {
+    r <- .sg_one(kingdom = "Animalia", phylum = "Chordata",
+                 class = cl, order = "Testudines")
+    expect_equal(r$group, "fishes", info = cl)
+  }
+  # And a turtle with no class still reaches the tetrapods.
+  expect_equal(
+    .sg_one(kingdom = "Animalia", phylum = "Chordata", order = "Testudines")$group,
+    "birds_mammals"
+  )
+  # The tuatara, which has no class in GBIF, now goes with the tetrapods too.
+  expect_equal(
+    .sg_one(kingdom = "Animalia", phylum = "Chordata", order = "Rhynchocephalia")$group,
+    "birds_mammals"
+  )
+})
+
+test_that("harmonise = TRUE does not probe the family rank", {
+  # family is read by a rule but deliberately kept out of rank_cols, because
+  # rank_cols drives the harmonise cascade finest-first: family there would
+  # become the finest probe for every row that has one. This asserts the
+  # default, so re-adding it fails here rather than silently changing every
+  # harmonised lookup.
+  # The formal is an unevaluated call, so evaluate it before testing it.
+  default_ranks <- eval(formals(assign_sampling_group)$rank_cols)
+  expect_false("family" %in% default_ranks)
+  expect_equal(default_ranks, c("kingdom", "phylum", "class", "order"))
+})
+
+test_that("an empty-string family is still normalised", {
+  # It is out of rank_cols but a rule reads it, so its "" must become NA or
+  # the family clause could match an empty string.
+  tax <- data.frame(
+    kingdom = "Animalia", phylum = "Cnidaria", class = "Hydrozoa",
+    order = "Anthoathecata", family = "", stringsAsFactors = FALSE
+  )
+  out <- assign_sampling_group(tax, verbose = FALSE)
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+})

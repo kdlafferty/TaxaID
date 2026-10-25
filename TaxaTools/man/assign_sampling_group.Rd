@@ -7,7 +7,7 @@
 assign_sampling_group(
   taxonomy,
   scheme = default_sampling_scheme(),
-  rank_cols = c("kingdom", "phylum", "class", "order", "family"),
+  rank_cols = c("kingdom", "phylum", "class", "order"),
   kingdom_guard = TRUE,
   harmonise = FALSE,
   backbone_id = 11L,

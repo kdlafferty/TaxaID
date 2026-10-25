@@ -51,6 +51,12 @@
 #'   }
 #'   \item{\code{catch_all}}{The group name used when no rule matches
 #'     (\code{"macroinvertebrates"}).}
+#'   \item{\code{rules}}{...and note that a rule may read a rank outside
+#'     \code{assign_sampling_group()}'s \code{rank_cols} -- the Hydrozoa
+#'     rules read \code{family}. Such a column is read AS SUPPLIED: with
+#'     \code{harmonise = TRUE} only kingdom, phylum, class and order are
+#'     rewritten to the backbone, so a family clause still matches the
+#'     caller's own spelling.}
 #'   \item{\code{animal_phyla}}{Character vector of animal phylum names, used
 #'     by \code{\link{assign_sampling_group}} when a catch-all row's KINGDOM
 #'     cannot decide animal from non-animal (a domain label such as
@@ -199,7 +205,16 @@ default_sampling_scheme <- function() {
             "Aves", "Mammalia", "Amphibia", "Reptilia", "Lepidosauria",
             "Testudines", "Squamata", "Crocodylia"
           )),
-          list(order = c("Testudines", "Squamata", "Crocodylia"))
+          # Guarded on a missing class, the way the fishes rule guards its
+          # own class-less-Chordata clause. Without the guard an explicit fish
+          # CLASS would lose to a contradictory reptile ORDER, because this
+          # rule now runs first: class is the more reliable rank, so a row
+          # carrying both should follow the class. Only contradictory taxonomy
+          # can reach it, but it should resolve the sane way when it does.
+          list(
+            order = c("Testudines", "Squamata", "Crocodylia", "Rhynchocephalia"),
+            class = NA_character_
+          )
         )
       ),
 
@@ -565,7 +580,7 @@ default_sampling_scheme <- function() {
 #' assign_sampling_group(tax, verbose = FALSE)$sampling_group
 assign_sampling_group <- function(taxonomy,
                                    scheme = default_sampling_scheme(),
-                                   rank_cols = c("kingdom", "phylum", "class", "order", "family"),
+                                   rank_cols = c("kingdom", "phylum", "class", "order"),
                                    kingdom_guard = TRUE,
                                    harmonise = FALSE,
                                    backbone_id = 11L,
@@ -592,6 +607,15 @@ assign_sampling_group <- function(taxonomy,
 
   # --- Empty strings first (see @section above) --------------------------
   present_ranks <- intersect(rank_cols, names(taxonomy))
+  # The scheme's Hydrozoa rule reads `family`, which is deliberately NOT in
+  # rank_cols: rank_cols also drives .harmonise_taxonomy_to_backbone()'s
+  # probe cascade, which is reversed to run finest-first, so adding family
+  # there would make the FAMILY the finest probe for every row that has one --
+  # different lookups, different overwritten ranks, more API calls and new
+  # family-rank homonym exposure, none of it wanted and none of it needed,
+  # since harmonisation never overwrites family anyway. Its empty strings are
+  # normalised here instead.
+  present_ranks <- union(present_ranks, intersect("family", names(taxonomy)))
   for (r in present_ranks) {
     taxonomy[[r]] <- dplyr::na_if(as.character(taxonomy[[r]]), "")
   }
