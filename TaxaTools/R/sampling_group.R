@@ -671,7 +671,9 @@ assign_sampling_group <- function(taxonomy,
       paste0(
         "assign_sampling_group: this scheme has rules that read %s, which ",
         "`taxonomy` does not carry, so those clauses cannot fire. Rows they ",
-        "would have claimed fall through to the rules below them."
+        "would have claimed fall through to the rules below them -- see ",
+        "?assign_sampling_group for what each rank's clauses do in this ",
+        "scheme."
       ),
       paste(sprintf("`%s`", missing_rule_ranks), collapse = ", ")
     ))
