@@ -331,7 +331,9 @@ default_sampling_scheme <- function() {
 #'   Where the kingdom cannot settle it -- \code{"Eukaryota"} or
 #'   \code{"Eukarya"}, which are true of every taxon here and so say nothing,
 #'   or no usable value at all -- the PHYLUM decides instead, against
-#'   \code{scheme$animal_phyla}, trimmed and case-insensitively.
+#'   \code{scheme$animal_phyla}, trimmed and case-insensitively. The kingdom
+#'   comparisons are trimmed and case-insensitive too, so a mis-cased or
+#'   space-padded kingdom is not mistaken for an unrecognised one.
 #'   \code{"Bacteria"} and \code{"Archaea"} are NOT in that set: they settle
 #'   the question outright, so the allowlist refuses them and the phylum is
 #'   never consulted. A scheme carrying no \code{animal_phyla} borrows
@@ -600,14 +602,19 @@ assign_sampling_group <- function(taxonomy,
     # the case: it is true of every taxon here and so says nothing. Bacteria
     # and Archaea are NOT here -- they are conclusive non-animal answers, and
     # the allowlist guard below refuses them, as it always did.
+    # Compared trimmed and case-insensitively, for the same reason the phylum
+    # is: the comparison sets are closed reference vocabularies, so " eukaryota"
+    # is a formatting difference and not a different kingdom. Reading it as one
+    # leaves the row refused -- silently, and in the direction that loses data.
+    kingdom_key <- tolower(trimws(as.character(kingdom_col)))
     uninformative_kingdom <- .sg_is_blank(kingdom_col) |
-      kingdom_col %in% c("Eukaryota", "Eukarya")
+      kingdom_key %in% c("eukaryota", "eukarya")
 
     # Informative kingdom: the allowlist decides, exactly as before. This is
     # what refuses Plantae, Fungi, Chromista and a control label such as
     # "PositiveControl" the animal-flavoured catch-all.
     guard_hit <- catch_all_hit & !uninformative_kingdom &
-      !(kingdom_col %in% animal_vocab)
+      !(kingdom_key %in% tolower(trimws(animal_vocab)))
     group[guard_hit] <- NA_character_
     basis[guard_hit] <- "kingdom_guard"
 

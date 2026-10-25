@@ -677,3 +677,20 @@ test_that("a scheme with no animal_phyla falls back and says so", {
   expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
   expect_equal(out$sampling_group_basis[[1L]], "phylum_animal")
 })
+
+test_that("the kingdom comparisons ignore case and surrounding space too", {
+  # The same asymmetry the phylum match had: a formatting difference read as an
+  # unrecognised kingdom leaves the row refused, silently and in the direction
+  # that loses data. Both the domain list and the animal allowlist are closed
+  # reference vocabularies, so both are compared forgivingly.
+  for (k in c("eukaryota", "EUKARYOTA", " Eukaryota ")) {
+    r <- .sg_one(kingdom = k, phylum = "Cnidaria")
+    expect_equal(r$group, "macroinvertebrates", info = k)
+    expect_equal(r$basis, "phylum_animal", info = k)
+  }
+  for (k in c("animalia", "ANIMALIA", " Animalia ")) {
+    r <- .sg_one(kingdom = k, phylum = "Mollusca")
+    expect_equal(r$group, "macroinvertebrates", info = k)
+    expect_equal(r$basis, "catch_all", info = k)
+  }
+})

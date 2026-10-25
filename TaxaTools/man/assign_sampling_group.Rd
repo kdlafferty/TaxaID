@@ -53,7 +53,9 @@ invertebrate.
 Where the kingdom cannot settle it -- \code{"Eukaryota"} or
 \code{"Eukarya"}, which are true of every taxon here and so say nothing,
 or no usable value at all -- the PHYLUM decides instead, against
-\code{scheme$animal_phyla}, trimmed and case-insensitively.
+\code{scheme$animal_phyla}, trimmed and case-insensitively. The kingdom
+comparisons are trimmed and case-insensitive too, so a mis-cased or
+space-padded kingdom is not mistaken for an unrecognised one.
 \code{"Bacteria"} and \code{"Archaea"} are NOT in that set: they settle
 the question outright, so the allowlist refuses them and the phylum is
 never consulted. A scheme carrying no \code{animal_phyla} borrows
