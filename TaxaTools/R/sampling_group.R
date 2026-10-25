@@ -171,6 +171,29 @@ default_sampling_scheme <- function() {
         )
       ),
 
+      # Non-target tetrapods. The group is named for the two classes it began
+      # with; amphibians and reptiles are the same DETECTION process -- tetrapod
+      # DNA arriving incidentally in a water or sediment sample -- and belong
+      # in the same prior stratum rather than in their own thin one. Without
+      # them they reached the catch-all and were called
+      # "macroinvertebrates": a turtle classed as a benthic invertebrate.
+      # Class and order spellings both, because backbones disagree on where
+      # the reptile ranks sit.
+      #
+      # AHEAD of the fishes rule, deliberately. That rule's last clause
+      # reads "Chordata with no class" as a ray-finned fish, which is
+      # right for GBIF's class-less actinopterygians -- but it would also
+      # swallow a turtle supplied as order Testudines with no class, and
+      # did, until this rule was moved above it. A named tetrapod order is
+      # more specific evidence than the absence of a class.
+      list(
+        group = "birds_mammals",
+        when = list(
+          list(class = c("Aves", "Mammalia", "Amphibia", "Reptilia")),
+          list(order = c("Testudines", "Squamata", "Crocodylia"))
+        )
+      ),
+
       # Fishes. GBIF's backbone carries NO class at all for the ray-finned
       # fishes (its Actinopterygii/Actinopteri node is not an accepted
       # backbone class) and names the cartilaginous fishes "Elasmobranchii",
@@ -191,16 +214,18 @@ default_sampling_scheme <- function() {
         )
       ),
 
-      # Birds & mammals
-      list(
-        group = "birds_mammals",
-        when = list(list(class = c("Aves", "Mammalia")))
-      ),
 
       # Terrestrial arthropods
       list(
         group = "terrestrial_arthropods",
-        when = list(list(class = c("Insecta", "Arachnida", "Collembola", "Chilopoda")))
+        when = list(list(class = c(
+          "Insecta", "Arachnida", "Collembola", "Chilopoda",
+          # Millipedes and diplurans sat beside the centipedes in nature and
+          # nowhere in this scheme, so the catch-all called them
+          # "macroinvertebrates" -- which in a marine study means a benthic
+          # marine invertebrate, not a terrestrial myriapod.
+          "Diplopoda", "Diplura"
+        )))
       ),
 
       # Parasites (monogeneans, cestodes, trematodes, parasitic copepods, myxozoans)
@@ -218,6 +243,25 @@ default_sampling_scheme <- function() {
       # Zooplankton. GBIF's current backbone calls this class Hexanauplia;
       # NCBI's calls it Copepoda. Both spellings appear in real data, so
       # both map to the same group.
+      # Hydrozoa spans two habits and one group cannot hold both: benthic
+      # colonial hydroids belong with the macroinvertebrates, while
+      # hydromedusae and siphonophores are plankton. First match wins, so the
+      # order of these three clauses IS the rule:
+      #   1. the floating families, which are Anthoathecata but pelagic;
+      #   2. the two hydroid orders, which would otherwise fall to the
+      #      zooplankton CLASS clause below;
+      #   3. the rest of Hydrozoa, still zooplankton, via that clause.
+      # Reversing 1 and 2 would send Porpita and Velella -- by-the-wind
+      # sailors, unambiguously pelagic -- to the benthos.
+      list(
+        group = "zooplankton",
+        when = list(list(family = c("Porpitidae", "Velellidae", "Hydridae")))
+      ),
+      list(
+        group = "macroinvertebrates",
+        when = list(list(order = c("Leptothecata", "Anthoathecata")))
+      ),
+
       list(
         group = "zooplankton",
         when = list(
@@ -512,7 +556,7 @@ default_sampling_scheme <- function() {
 #' assign_sampling_group(tax, verbose = FALSE)$sampling_group
 assign_sampling_group <- function(taxonomy,
                                    scheme = default_sampling_scheme(),
-                                   rank_cols = c("kingdom", "phylum", "class", "order"),
+                                   rank_cols = c("kingdom", "phylum", "class", "order", "family"),
                                    kingdom_guard = TRUE,
                                    harmonise = FALSE,
                                    backbone_id = 11L,

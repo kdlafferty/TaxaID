@@ -734,3 +734,83 @@ test_that("the missing-column warning does not fire when nothing is unmatched", 
   expect_silent(out <- assign_sampling_group(tax, verbose = FALSE))
   expect_equal(out$sampling_group[[1L]], "terrestrial_arthropods")
 })
+
+# ===========================================================================
+# Catch-all gaps, and Hydrozoa's two habits
+# ===========================================================================
+
+# The catch-all is "macroinvertebrates", which in a marine study means a
+# benthic marine invertebrate. Anything animal that no rule matched became one,
+# so a millipede, a dipluran, a frog and a turtle were all benthic marine
+# invertebrates. These are not kingdom problems -- every one of these rows has
+# kingdom Animalia -- so the phylum fallback cannot see them.
+
+test_that("terrestrial myriapods and diplurans are terrestrial, not benthic", {
+  for (cl in c("Diplopoda", "Diplura")) {
+    r <- .sg_one(kingdom = "Animalia", phylum = "Arthropoda", class = cl)
+    expect_equal(r$group, "terrestrial_arthropods", info = cl)
+    expect_equal(r$basis, "rule", info = cl)
+  }
+  # The centipedes were already there; this is the sibling that was missing.
+  expect_equal(
+    .sg_one(kingdom = "Animalia", phylum = "Arthropoda", class = "Chilopoda")$group,
+    "terrestrial_arthropods"
+  )
+})
+
+test_that("amphibians and reptiles join the non-target tetrapods", {
+  for (cl in c("Amphibia", "Reptilia")) {
+    r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", class = cl)
+    expect_equal(r$group, "birds_mammals", info = cl)
+  }
+  # Backbones disagree about where the reptile ranks sit, so the ORDER
+  # spellings must work with no class supplied.
+  for (or in c("Testudines", "Squamata", "Crocodylia")) {
+    r <- .sg_one(kingdom = "Animalia", phylum = "Chordata", order = or)
+    expect_equal(r$group, "birds_mammals", info = or)
+  }
+  # And the classes it began with are unaffected.
+  expect_equal(
+    .sg_one(kingdom = "Animalia", phylum = "Chordata", class = "Aves")$group,
+    "birds_mammals"
+  )
+})
+
+test_that("Hydrozoa splits by habit, and the clause order is the rule", {
+  hz <- function(order = NA_character_, family = NA_character_) {
+    tax <- data.frame(
+      kingdom = "Animalia", phylum = "Cnidaria", class = "Hydrozoa",
+      order = order, family = family, stringsAsFactors = FALSE
+    )
+    out <- assign_sampling_group(tax, verbose = FALSE)
+    out$sampling_group[[1L]]
+  }
+  # Benthic colonial hydroids: macroinvertebrates.
+  expect_equal(hz(order = "Leptothecata"), "macroinvertebrates")
+  expect_equal(hz(order = "Anthoathecata"), "macroinvertebrates")
+  # The floating families are Anthoathecata but pelagic, and must win over the
+  # order clause. If these two rules were ever reordered, Porpita and Velella
+  # would be sent to the benthos and this is the assertion that says so.
+  expect_equal(hz(order = "Anthoathecata", family = "Porpitidae"), "zooplankton")
+  expect_equal(hz(order = "Anthoathecata", family = "Velellidae"), "zooplankton")
+  expect_equal(hz(order = "Anthoathecata", family = "Hydridae"), "zooplankton")
+  # The rest of the class stays zooplankton, via the class clause.
+  expect_equal(hz(), "zooplankton")
+  expect_equal(hz(order = "Siphonophorae"), "zooplankton")
+  # And the true jellyfish beside it are untouched.
+  expect_equal(
+    .sg_one(kingdom = "Animalia", phylum = "Cnidaria", class = "Scyphozoa")$group,
+    "zooplankton"
+  )
+})
+
+test_that("a family rule still works when no family column is supplied", {
+  # The family clause reads the column directly, so a frame without one must
+  # simply not match rather than error.
+  tax <- data.frame(
+    kingdom = "Animalia", phylum = "Cnidaria", class = "Hydrozoa",
+    order = "Anthoathecata", stringsAsFactors = FALSE
+  )
+  out <- assign_sampling_group(tax, verbose = FALSE)
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+})
