@@ -50,10 +50,15 @@ surfaced as \code{NA} instead, where it is visible to a caller auditing
 unmatched rows rather than silently, indefinitely counted as a benthic
 invertebrate.
 
-Where the kingdom cannot settle it -- a domain label such as
-\code{"Eukaryota"}, which is true of every taxon here and so says
-nothing, or no usable value at all -- the PHYLUM decides instead, against
-\code{scheme$animal_phyla}. A known animal phylum keeps the catch-all; an
+Where the kingdom cannot settle it -- \code{"Eukaryota"} or
+\code{"Eukarya"}, which are true of every taxon here and so say nothing,
+or no usable value at all -- the PHYLUM decides instead, against
+\code{scheme$animal_phyla}, trimmed and case-insensitively.
+\code{"Bacteria"} and \code{"Archaea"} are NOT in that set: they settle
+the question outright, so the allowlist refuses them and the phylum is
+never consulted. A scheme carrying no \code{animal_phyla} borrows
+\code{default_sampling_scheme()}'s list, with a message, rather than
+treating every phylum as non-animal. A known animal phylum keeps the catch-all; an
 informative phylum that is not an animal one is refused, which is a
 conclusion rather than a default because the animal phyla are a closed
 set; and a phylum that is itself missing or a placeholder is refused with

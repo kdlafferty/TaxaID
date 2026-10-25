@@ -272,7 +272,14 @@ default_sampling_scheme <- function() {
       "Kinorhyncha", "Loricifera", "Micrognathozoa", "Mollusca", "Myxozoa",
       "Nematoda", "Nematomorpha", "Nemertea", "Onychophora", "Orthonectida",
       "Phoronida", "Placozoa", "Platyhelminthes", "Porifera", "Priapulida",
-      "Rhombozoa", "Rotifera", "Sipuncula", "Tardigrada", "Xenacoelomorpha"
+      "Rhombozoa", "Rotifera", "Sipuncula", "Tardigrada", "Xenacoelomorpha",
+      # Junior synonyms and superseded names the backbones still emit. Each is
+      # the SAME phylum under another name, so leaving one out would read as a
+      # confident non-animal and drop the row.
+      "Acoelomorpha", "Nemertinea", "Rhynchocoela", "Aschelminthes",
+      "Pogonophora", "Vestimentifera", "Myzostomida", "Craniata",
+      "Vertebrata", "Urochordata", "Tunicata", "Cephalochordata",
+      "Hyolitha", "Monoblastozoa", "Salinella"
     )
   )
 }
@@ -321,10 +328,15 @@ default_sampling_scheme <- function() {
 #'   unmatched rows rather than silently, indefinitely counted as a benthic
 #'   invertebrate.
 #'
-#'   Where the kingdom cannot settle it -- a domain label such as
-#'   \code{"Eukaryota"}, which is true of every taxon here and so says
-#'   nothing, or no usable value at all -- the PHYLUM decides instead, against
-#'   \code{scheme$animal_phyla}. A known animal phylum keeps the catch-all; an
+#'   Where the kingdom cannot settle it -- \code{"Eukaryota"} or
+#'   \code{"Eukarya"}, which are true of every taxon here and so say nothing,
+#'   or no usable value at all -- the PHYLUM decides instead, against
+#'   \code{scheme$animal_phyla}, trimmed and case-insensitively.
+#'   \code{"Bacteria"} and \code{"Archaea"} are NOT in that set: they settle
+#'   the question outright, so the allowlist refuses them and the phylum is
+#'   never consulted. A scheme carrying no \code{animal_phyla} borrows
+#'   \code{default_sampling_scheme()}'s list, with a message, rather than
+#'   treating every phylum as non-animal. A known animal phylum keeps the catch-all; an
 #'   informative phylum that is not an animal one is refused, which is a
 #'   conclusion rather than a default because the animal phyla are a closed
 #'   set; and a phylum that is itself missing or a placeholder is refused with
@@ -584,8 +596,12 @@ assign_sampling_group <- function(taxonomy,
     # An UNINFORMATIVE kingdom is one that cannot decide animal from
     # non-animal: a domain label, or no usable value. "Eukaryota" is the
     # common case -- it is true of every taxon here and so says nothing.
+    # Only a kingdom that cannot decide animal from non-animal. "Eukaryota" is
+    # the case: it is true of every taxon here and so says nothing. Bacteria
+    # and Archaea are NOT here -- they are conclusive non-animal answers, and
+    # the allowlist guard below refuses them, as it always did.
     uninformative_kingdom <- .sg_is_blank(kingdom_col) |
-      kingdom_col %in% c("Eukaryota", "Eukarya", "Bacteria", "Archaea")
+      kingdom_col %in% c("Eukaryota", "Eukarya")
 
     # Informative kingdom: the allowlist decides, exactly as before. This is
     # what refuses Plantae, Fungi, Chromista and a control label such as
@@ -598,14 +614,32 @@ assign_sampling_group <- function(taxonomy,
     # Uninformative kingdom: the PHYLUM decides.
     fallback_hit <- catch_all_hit & uninformative_kingdom
     if (any(fallback_hit)) {
+      # FIX 3(c): a scheme built before animal_phyla existed, or by hand
+      # without it, would otherwise send every fallback row to
+      # "phylum_non_animal" -- a silent mass drop. Fall back to the packaged
+      # list and say so once.
       animal_phyla <- scheme$animal_phyla
-      if (is.null(animal_phyla)) animal_phyla <- character(0)
+      if (is.null(animal_phyla)) {
+        animal_phyla <- default_sampling_scheme()$animal_phyla
+        if (isTRUE(verbose)) {
+          message(
+            "assign_sampling_group: this scheme has no `animal_phyla`, so the ",
+            "phylum fallback is using default_sampling_scheme()'s list. Add ",
+            "`animal_phyla` to the scheme to control it."
+          )
+        }
+      }
       phylum_col <- if ("phylum" %in% names(taxonomy)) {
         taxonomy[["phylum"]]
       } else {
         rep(NA_character_, n)
       }
-      is_animal <- fallback_hit & phylum_col %in% animal_phyla
+      # Compared trimmed and case-insensitively: the list is a closed
+      # reference set, so a leading space or a lower-case spelling is a
+      # formatting difference, not a different phylum -- and reading it as one
+      # would DROP the row as a confident non-animal.
+      phylum_key <- tolower(trimws(as.character(phylum_col)))
+      is_animal <- fallback_hit & phylum_key %in% tolower(trimws(animal_phyla))
       is_unknown <- fallback_hit & .sg_is_blank(phylum_col)
       is_other <- fallback_hit & !is_animal & !is_unknown
 

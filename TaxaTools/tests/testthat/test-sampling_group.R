@@ -628,3 +628,52 @@ test_that("kingdom_guard = FALSE disables the fallback with the guard", {
   expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
   expect_equal(out$sampling_group_basis[[1L]], "catch_all")
 })
+
+test_that("Bacteria and Archaea are conclusive, not uninformative", {
+  # A domain label is only "uninformative" if it cannot decide animal from
+  # non-animal. Eukaryota cannot. Bacteria and Archaea decide it outright, so
+  # the allowlist guard refuses them and the phylum is never consulted -- which
+  # matters because a prokaryote row carrying an animal-sounding phylum string
+  # must not be let through on that.
+  for (k in c("Bacteria", "Archaea")) {
+    r <- .sg_one(kingdom = k, phylum = "Arthropoda")
+    expect_true(is.na(r$group), info = k)
+    expect_equal(r$basis, "kingdom_guard", info = k)
+  }
+})
+
+test_that("phylum matching ignores case and surrounding space", {
+  # The animal list is a closed reference set, so "  cnidaria " is a
+  # formatting difference, not a different phylum. Reading it as one would
+  # drop the row as a confident non-animal.
+  for (ph in c("cnidaria", "CNIDARIA", "  Cnidaria", "Cnidaria  ")) {
+    r <- .sg_one(kingdom = "Eukaryota", phylum = ph)
+    expect_equal(r$group, "macroinvertebrates", info = ph)
+    expect_equal(r$basis, "phylum_animal", info = ph)
+  }
+})
+
+test_that("a superseded phylum name is still the same animal phylum", {
+  # Each of these is one phylum under another name. Omitting any would read as
+  # a confident non-animal.
+  for (ph in c("Acoelomorpha", "Nemertinea", "Rhynchocoela", "Pogonophora",
+               "Craniata", "Urochordata", "Tunicata")) {
+    r <- .sg_one(kingdom = "Eukaryota", phylum = ph)
+    expect_equal(r$basis, "phylum_animal", info = ph)
+  }
+})
+
+test_that("a scheme with no animal_phyla falls back and says so", {
+  sch <- default_sampling_scheme()
+  sch$animal_phyla <- NULL
+  tax <- data.frame(kingdom = "Eukaryota", phylum = "Cnidaria",
+                    class = NA_character_, order = NA_character_,
+                    stringsAsFactors = FALSE)
+  expect_message(
+    out <- assign_sampling_group(tax, scheme = sch, verbose = TRUE),
+    "no `animal_phyla`"
+  )
+  # And it still gets the right answer rather than dropping the row.
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+  expect_equal(out$sampling_group_basis[[1L]], "phylum_animal")
+})

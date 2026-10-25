@@ -11,7 +11,11 @@
   now resolved by `scheme$animal_phyla`, a closed list of the animal phyla: a
   known animal phylum keeps the catch-all, an informative phylum that is not an
   animal one is refused, and a phylum that is itself missing or a placeholder
-  is refused as undecidable rather than guessed either way. The fallback fires
+  is refused as undecidable rather than guessed either way. `"Bacteria"` and
+  `"Archaea"` are not treated as uninformative -- they settle the question, so
+  the allowlist refuses them as before. Phylum names are matched trimmed and
+  case-insensitively, and the list carries the junior synonyms the backbones
+  still emit, because omitting one would read as a confident non-animal. The fallback fires
   only where a row reached the catch-all, so a row any rule already placed --
   domain-labelled macroalgae, for instance -- is untouched.
   This WITHDRAWS a documented guarantee: the guard previously did not fire on a
