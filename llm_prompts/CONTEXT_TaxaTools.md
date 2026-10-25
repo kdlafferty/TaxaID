@@ -528,6 +528,8 @@ list( group = "fishes", when = list( list(class = c("Actinopteri", "Elasmobranch
 
 - catch_all: The group name used when no rule matches ("macroinvertebrates").
 
+- rules: ...and note that a rule may read a rank outside assign_sampling_group()'s rank_cols -- the Hydrozoa rules read family. Such a column is read AS SUPPLIED: with harmonise = TRUE only kingdom, phylum, class and order are rewritten to the backbone, so a family clause still matches the caller's own spelling. A rank the table does not carry means its clauses cannot fire: supply no family column and Porpitidae and Velellidae fall through to the hydroid-order rule and come out as "macroinvertebrates" rather than "zooplankton". assign_sampling_group(verbose = TRUE) names any such rank once.
+
 - animal_phyla: Character vector of animal phylum names, used by assign_sampling_group when a catch-all row's KINGDOM cannot decide animal from non-animal (a domain label such as "Eukaryota", or no usable value) and the phylum must. A closed set, which is what lets "not in this list" be a confident non-animal conclusion instead of an open-ended list of everything that is not an animal.
 
 - kingdom_guard_vocabulary: Character vector of kingdom values considered "animal" for the kingdom guard (see assign_sampling_group's kingdom_guard argument): c("Animalia", "Metazoa").

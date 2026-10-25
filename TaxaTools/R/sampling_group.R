@@ -51,6 +51,17 @@
 #'   }
 #'   \item{\code{catch_all}}{The group name used when no rule matches
 #'     (\code{"macroinvertebrates"}).}
+#'   \item{\code{rules}}{...and note that a rule may read a rank outside
+#'     \code{assign_sampling_group()}'s \code{rank_cols} -- the Hydrozoa
+#'     rules read \code{family}. Such a column is read AS SUPPLIED: with
+#'     \code{harmonise = TRUE} only kingdom, phylum, class and order are
+#'     rewritten to the backbone, so a family clause still matches the
+#'     caller's own spelling. \strong{A rank the table does not carry means
+#'     its clauses cannot fire}: supply no \code{family} column and
+#'     \code{Porpitidae} and \code{Velellidae} fall through to the
+#'     hydroid-order rule and come out as \code{"macroinvertebrates"} rather
+#'     than \code{"zooplankton"}. \code{assign_sampling_group(verbose =
+#'     TRUE)} names any such rank once.}
 #'   \item{\code{animal_phyla}}{Character vector of animal phylum names, used
 #'     by \code{\link{assign_sampling_group}} when a catch-all row's KINGDOM
 #'     cannot decide animal from non-animal (a domain label such as
@@ -171,6 +182,59 @@ default_sampling_scheme <- function() {
         )
       ),
 
+      # Non-target tetrapods. The group is named for the two classes it began
+      # with; amphibians and reptiles are the same DETECTION process -- tetrapod
+      # DNA arriving incidentally in a water or sediment sample -- and belong
+      # in the same prior stratum rather than in their own thin one. Without
+      # them they reached the catch-all and were called
+      # "macroinvertebrates": a turtle classed as a benthic invertebrate.
+      # Class and order spellings both, because backbones disagree on where
+      # the reptile ranks sit.
+      #
+      # AHEAD of the fishes rule, deliberately. That rule's last clause
+      # reads "Chordata with no class" as a ray-finned fish, which is
+      # right for GBIF's class-less actinopterygians -- but it would also
+      # swallow a turtle supplied as order Testudines with no class, and
+      # did, until this rule was moved above it. A named tetrapod order is
+      # more specific evidence than the absence of a class.
+      list(
+        group = "birds_mammals",
+        when = list(list(class = c("Aves", "Mammalia")))
+      ),
+
+      # Amphibians and reptiles: their OWN group, not pooled into
+      # birds_mammals. The detection process is the same -- tetrapod DNA
+      # arriving incidentally in a water or sediment sample -- so pooling was
+      # defensible and was the first proposal. Kevin chose a separate group,
+      # named as CalIntertidal names it, because a drop log reading
+      # "birds_mammals" for a frog is a group label that lies, and a label
+      # that lies is worse than a thin stratum.
+      #
+      # The reptile names appear at BOTH ranks and must be listed at both:
+      # GBIF's backbone carries CLASS Testudines with order NA, so a rule that
+      # knew Testudines only as an order left those rows in the catch-all --
+      # two real 18S rows, found by measuring against the data rather than by
+      # reading the rule. Lepidosauria is NCBI's class for the squamates.
+      list(
+        group = "other_vertebrates",
+        when = list(
+          list(class = c(
+            "Amphibia", "Reptilia", "Lepidosauria",
+            "Testudines", "Squamata", "Crocodylia"
+          )),
+          # Guarded on a missing class, the way the fishes rule guards its own
+          # class-less-Chordata clause. Without the guard an explicit fish
+          # CLASS would lose to a contradictory reptile ORDER, because this
+          # rule runs first: class is the more reliable rank, so a row
+          # carrying both should follow the class. Only contradictory taxonomy
+          # can reach it, but it should resolve the sane way when it does.
+          list(
+            order = c("Testudines", "Squamata", "Crocodylia", "Rhynchocephalia"),
+            class = NA_character_
+          )
+        )
+      ),
+
       # Fishes. GBIF's backbone carries NO class at all for the ray-finned
       # fishes (its Actinopterygii/Actinopteri node is not an accepted
       # backbone class) and names the cartilaginous fishes "Elasmobranchii",
@@ -191,16 +255,18 @@ default_sampling_scheme <- function() {
         )
       ),
 
-      # Birds & mammals
-      list(
-        group = "birds_mammals",
-        when = list(list(class = c("Aves", "Mammalia")))
-      ),
 
       # Terrestrial arthropods
       list(
         group = "terrestrial_arthropods",
-        when = list(list(class = c("Insecta", "Arachnida", "Collembola", "Chilopoda")))
+        when = list(list(class = c(
+          "Insecta", "Arachnida", "Collembola", "Chilopoda",
+          # Millipedes and diplurans sat beside the centipedes in nature and
+          # nowhere in this scheme, so the catch-all called them
+          # "macroinvertebrates" -- which in a marine study means a benthic
+          # marine invertebrate, not a terrestrial myriapod.
+          "Diplopoda", "Diplura"
+        )))
       ),
 
       # Parasites (monogeneans, cestodes, trematodes, parasitic copepods, myxozoans)
@@ -218,6 +284,25 @@ default_sampling_scheme <- function() {
       # Zooplankton. GBIF's current backbone calls this class Hexanauplia;
       # NCBI's calls it Copepoda. Both spellings appear in real data, so
       # both map to the same group.
+      # Hydrozoa spans two habits and one group cannot hold both: benthic
+      # colonial hydroids belong with the macroinvertebrates, while
+      # hydromedusae and siphonophores are plankton. First match wins, so the
+      # order of these three clauses IS the rule:
+      #   1. the floating families, which are Anthoathecata but pelagic;
+      #   2. the two hydroid orders, which would otherwise fall to the
+      #      zooplankton CLASS clause below;
+      #   3. the rest of Hydrozoa, still zooplankton, via that clause.
+      # Reversing 1 and 2 would send Porpita and Velella -- by-the-wind
+      # sailors, unambiguously pelagic -- to the benthos.
+      list(
+        group = "zooplankton",
+        when = list(list(family = c("Porpitidae", "Velellidae", "Hydridae")))
+      ),
+      list(
+        group = "macroinvertebrates",
+        when = list(list(order = c("Leptothecata", "Anthoathecata")))
+      ),
+
       list(
         group = "zooplankton",
         when = list(
@@ -539,6 +624,15 @@ assign_sampling_group <- function(taxonomy,
 
   # --- Empty strings first (see @section above) --------------------------
   present_ranks <- intersect(rank_cols, names(taxonomy))
+  # The scheme's Hydrozoa rule reads `family`, which is deliberately NOT in
+  # rank_cols: rank_cols also drives .harmonise_taxonomy_to_backbone()'s
+  # probe cascade, which is reversed to run finest-first, so adding family
+  # there would make the FAMILY the finest probe for every row that has one --
+  # different lookups, different overwritten ranks, more API calls and new
+  # family-rank homonym exposure, none of it wanted and none of it needed,
+  # since harmonisation never overwrites family anyway. Its empty strings are
+  # normalised here instead.
+  present_ranks <- union(present_ranks, intersect("family", names(taxonomy)))
   for (r in present_ranks) {
     taxonomy[[r]] <- dplyr::na_if(as.character(taxonomy[[r]]), "")
   }
@@ -557,6 +651,33 @@ assign_sampling_group <- function(taxonomy,
   group <- rep(NA_character_, n)
   basis <- rep(NA_character_, n)
   matched <- rep(FALSE, n)
+
+  # --- Ranks the scheme reads but this table does not carry ----------------
+  # A column absent from `taxonomy` is treated as entirely NA and is never an
+  # error -- that tolerance is documented and deliberate. But it has a quiet
+  # edge: a rule placed AHEAD of a broader one to EXCLUDE something cannot
+  # fire if its rank is missing, and then the broader rule claims those rows
+  # with nothing to say so. The Hydrozoa family clause is exactly that shape:
+  # without a `family` column, Porpitidae and Velellidae fall through to the
+  # hydroid-order rule and come out as benthic macroinvertebrates. Note that
+  # `family` is not in the default rank_cols, so this is the ordinary case for
+  # a caller who has not supplied one.
+  rule_ranks <- unique(unlist(lapply(scheme$rules, function(r) {
+    unlist(lapply(r$when, names), use.names = FALSE)
+  }), use.names = FALSE))
+  missing_rule_ranks <- setdiff(rule_ranks, names(taxonomy))
+  if (verbose && length(missing_rule_ranks)) {
+    message(sprintf(
+      paste0(
+        "assign_sampling_group: this scheme has rules that read %s, which ",
+        "`taxonomy` does not carry, so those clauses cannot fire. Rows they ",
+        "would have claimed fall through to the rules below them -- see ",
+        "?assign_sampling_group for what each rank's clauses do in this ",
+        "scheme."
+      ),
+      paste(sprintf("`%s`", missing_rule_ranks), collapse = ", ")
+    ))
+  }
 
   # --- First-match-wins rule walk -----------------------------------------
   for (rule in scheme$rules) {
