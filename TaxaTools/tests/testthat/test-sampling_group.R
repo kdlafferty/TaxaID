@@ -75,11 +75,18 @@ test_that("kingdom guard sends an unmatched non-animal row to NA, not the catch-
   expect_equal(out_unguarded$sampling_group, "macroinvertebrates")
 })
 
-test_that("kingdom guard does not fire when kingdom itself is missing", {
+test_that("a missing kingdom and an unusable phylum are flagged, not kept", {
+  # This row used to become "macroinvertebrates": the guard skipped a NA
+  # kingdom entirely, so a row with no usable taxonomy kept the
+  # animal-flavoured catch-all. It is now refused with a basis that says the
+  # decision could not be made -- which is what the guard was always for, to
+  # make such a row visible to a caller auditing unmatched rows rather than
+  # counting it indefinitely as a benthic invertebrate.
   tax <- data.frame(kingdom = NA_character_, phylum = "Something_unclassified",
                      class = NA_character_, order = NA_character_, stringsAsFactors = FALSE)
   out <- assign_sampling_group(tax, kingdom_guard = TRUE, verbose = FALSE)
-  expect_equal(out$sampling_group, "macroinvertebrates")
+  expect_true(is.na(out$sampling_group))
+  expect_equal(out$sampling_group_basis, "unknown_phylum")
 })
 
 test_that("kingdom guard does not fire for a genuine animal reaching the catch-all", {
@@ -522,4 +529,102 @@ test_that("harmonise: an unmarked cache's lineage-less row is re-resolved, a lin
   expect_true("Annelida" %in% lookup$source_name)              # kept, not re-asked
   expect_true("Polychaeta" %in% lookup$source_name)            # re-resolved and rewritten
   expect_false(all(is.na(lookup[lookup$source_name == "Polychaeta", c("kingdom", "phylum")])))
+})
+
+# ===========================================================================
+# The phylum fallback: when the kingdom cannot decide, the phylum does
+# ===========================================================================
+
+# A kingdom of "Eukaryota" is true of every taxon this function sees, so it
+# decides nothing -- but the allowlist guard read it as "not an animal" and
+# refused the catch-all, while a MISSING kingdom was not guarded at all and
+# kept it. Both wrong, and in opposite directions. These tests pin the three
+# outcomes of the fallback and, as importantly, that it does not reach rows
+# the scheme already placed.
+
+.sg_row <- function(kingdom = NA_character_, phylum = NA_character_,
+                    class = NA_character_, order = NA_character_) {
+  data.frame(
+    kingdom = kingdom, phylum = phylum, class = class, order = order,
+    stringsAsFactors = FALSE
+  )
+}
+.sg_one <- function(...) {
+  out <- assign_sampling_group(.sg_row(...), verbose = FALSE)
+  list(group = out$sampling_group[[1L]], basis = out$sampling_group_basis[[1L]])
+}
+
+test_that("a domain-labelled ANIMAL reaches the catch-all", {
+  r <- .sg_one(kingdom = "Eukaryota", phylum = "Cnidaria")
+  expect_equal(r$group, "macroinvertebrates")
+  expect_equal(r$basis, "phylum_animal")
+})
+
+test_that("a domain-labelled NON-animal is refused, as a conclusion", {
+  # Discosea is an amoebozoan phylum. It is out because it is not in the
+  # closed animal list, not because anyone enumerated the protists.
+  r <- .sg_one(kingdom = "Eukaryota", phylum = "Discosea")
+  expect_true(is.na(r$group))
+  expect_equal(r$basis, "phylum_non_animal")
+})
+
+test_that("an unknown phylum is undecidable, and says so", {
+  # A placeholder string, not NA: a bare is.na() test would read "unk_phylum"
+  # as an informative non-animal phylum and DROP the row as a confident
+  # non-animal instead of flagging it.
+  for (ph in c(NA_character_, "", "unk_phylum", "unknown", "incertae sedis")) {
+    r <- .sg_one(kingdom = "Eukaryota", phylum = ph)
+    expect_true(is.na(r$group), info = ph %||% "NA")
+    expect_equal(r$basis, "unknown_phylum", info = ph %||% "NA")
+  }
+})
+
+test_that("the fallback never reaches a row a rule already placed", {
+  # The regression this test exists for: with the catch-all restriction
+  # dropped, "non-animal or unknown phylum -> NA" would override a CLASS rule
+  # and refuse domain-labelled macroalgae the scheme gets right.
+  r <- .sg_one(kingdom = "Eukaryota", phylum = "unk_phylum", class = "Ulvophyceae")
+  expect_equal(r$group, "macroalgae")
+  expect_equal(r$basis, "rule")
+})
+
+test_that("an informative non-animal kingdom is still refused by the allowlist", {
+  # The control label is the real case: kingdom "PositiveControl" is
+  # informative under the fallback's test, so the fallback never sees it and
+  # the allowlist guard handles it -- which is why the guard is kept.
+  r <- .sg_one(kingdom = "PositiveControl")
+  expect_true(is.na(r$group))
+  expect_equal(r$basis, "kingdom_guard")
+})
+
+test_that("a row with an informative kingdom is unchanged by any of this", {
+  animal <- .sg_one(kingdom = "Animalia", phylum = "Mollusca")
+  expect_equal(animal$group, "macroinvertebrates")
+  expect_equal(animal$basis, "catch_all")
+  for (k in c("Plantae", "Fungi", "Chromista")) {
+    r <- .sg_one(kingdom = k, phylum = "Ascomycota")
+    expect_true(is.na(r$group), info = k)
+    expect_equal(r$basis, "kingdom_guard", info = k)
+  }
+})
+
+test_that("a missing kingdom now decides by phylum, not by default", {
+  # Previously an NA kingdom was not guarded at all and kept the catch-all
+  # whatever its phylum was.
+  expect_equal(.sg_one(phylum = "Arthropoda")$basis, "phylum_animal")
+  expect_equal(.sg_one(phylum = "Arthropoda")$group, "macroinvertebrates")
+  expect_equal(.sg_one(phylum = "Discosea")$basis, "phylum_non_animal")
+  expect_true(is.na(.sg_one(phylum = "Discosea")$group))
+  # Chlorophyta deliberately NOT used here: a phylum rule claims it for
+  # macroalgae, so it never reaches the fallback at all.
+  expect_equal(.sg_one(phylum = "Chlorophyta")$basis, "rule")
+})
+
+test_that("kingdom_guard = FALSE disables the fallback with the guard", {
+  out <- assign_sampling_group(
+    .sg_row(kingdom = "Eukaryota", phylum = "Discosea"),
+    kingdom_guard = FALSE, verbose = FALSE
+  )
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+  expect_equal(out$sampling_group_basis[[1L]], "catch_all")
 })
