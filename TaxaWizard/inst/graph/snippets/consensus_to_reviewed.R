@@ -59,8 +59,10 @@ reviewed <- TaxaFlag::review_assignments(
   # species list without a word. Measured on a real PtConception 12S run:
   # 20 observations across 3 plausible local fishes, gone.
   #
-  # Note which filter that is. This script and the template FLAG and drop
-  # nothing, so it is one a reader may add downstream of here, not one above.
+  # Note which filter that is. This script and the template drop nothing on an
+  # LLM VERDICT -- the template's only subsetting is by expert_excluded, a
+  # human decision and empty by default -- so an llm_* filter is one a reader
+  # may add downstream of here, not one above.
   # review_assignments() now re-asks for omitted taxa; "error" makes any
   # residue that survives the re-ask stop the run rather than reach such a
   # filter at all.

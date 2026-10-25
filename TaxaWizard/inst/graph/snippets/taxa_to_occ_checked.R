@@ -22,9 +22,9 @@ keys <- key_matches$usageKey[!is.na(key_matches$usageKey)]
 # HIGHERRANK match fetches a DIFFERENT taxon's records under this taxon's name.
 # get_keys_from_context()'s own documentation says to review these matchTypes
 # before downstream use; this is that review, and it is deliberately a stop.
-# A real CalIntertidal run requested the family "Alopiidae" for Carcharodon
-# carcharias -- NCBI and GBIF both say Lamnidae -- and nothing in the fetch
-# path questioned it, because the name was populated.
+# What this does NOT catch: an EXACT, ACCEPTED key whose taxon simply holds no
+# occurrences in your area. That key is correct and the gap is real data, so
+# only a pre-download COUNT can see it -- a separate check, not this one.
 # ERROR and NO_DATA rows carry an NA usageKey, so the NA check below covers
 # them too. To proceed deliberately, inspect `key_matches`, fix or drop the
 # named rows, and re-run -- do not widen the accepted matchTypes.
@@ -39,8 +39,12 @@ keys <- key_matches$usageKey[!is.na(key_matches$usageKey)]
   }
   out
 }
-.suspect <- key_matches$matchType %in%
-  c("NONE", "FUZZY", "HIGHERRANK", "LOOKUP_RECOVERED")
+# An ALLOWLIST, not a list of known-bad values: GBIF's match API has added
+# matchType values before (its v2 has others again), and a value we have never
+# seen should stop the run rather than pass unexamined because nobody thought
+# to name it. EXACT is the only value that means "this is the taxon you asked
+# for".
+.suspect <- !(key_matches$matchType %in% "EXACT")
 .unresolved <- is.na(key_matches$usageKey)
 if (any(.suspect | .unresolved)) {
   .bad <- which(.suspect | .unresolved)

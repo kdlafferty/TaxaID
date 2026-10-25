@@ -327,25 +327,35 @@ test_that("the template refuses a GBIF key that did not resolve exactly, before 
               "this template does not fetch GBIF occurrences")
 
   expect_true(grepl("matchType", txt, fixed = TRUE))
-  # Every matchType that must not pass unexamined is named.
-  for (mt in c("NONE", "FUZZY", "HIGHERRANK", "LOOKUP_RECOVERED")) {
-    expect_true(grepl(mt, txt, fixed = TRUE), info = mt)
-  }
+  # An ALLOWLIST: the guard must accept only EXACT, so a matchType value GBIF
+  # adds later stops the run instead of passing because nobody named it. A
+  # blacklist of known-bad values cannot do that, and this assertion is what
+  # stops anyone quietly turning it back into one.
+  expect_true(grepl('%in% "EXACT"', txt, fixed = TRUE))
+  expect_false(grepl('c("NONE", "FUZZY", "HIGHERRANK", "LOOKUP_RECOVERED")',
+                     txt, fixed = TRUE))
   # An unresolved key is caught too, not left to be dropped silently.
   expect_true(grepl("is.na(key_matches$usageKey)", txt, fixed = TRUE))
 
   # The check must come BEFORE the request, or it guards nothing.
   #
-  # Compare the guard against the CALL, and match the call by its NAMESPACED
-  # form. The snippet explains in comments why fetch_gbif_occurrences() takes
-  # the usageKey column and that it drops NA keys silently, so the bare name --
-  # with or without "(" -- occurs in prose ABOVE the guard, and regexpr() on it
-  # finds a comment rather than the call. Only the call is written
-  # "TaxaFetch::fetch_gbif_occurrences(". An earlier form of this assertion
-  # compared bare strings and so compared one comment against another.
-  guard_at <- regexpr("did not resolve to a trustworthy GBIF key", txt, fixed = TRUE)[[1L]]
-  call_at <- regexpr("TaxaFetch::fetch_gbif_occurrences(", txt, fixed = TRUE)[[1L]]
-  expect_gt(guard_at, 0L)
-  expect_gt(call_at, 0L)
-  expect_lt(guard_at, call_at)
+  # Compare the guard against the CALL by PARSING, not by string position.
+  # Every string-matching form of this assertion has been wrong: the snippet
+  # explains in comments why fetch_gbif_occurrences() takes the usageKey
+  # column and that it drops NA keys silently, so the bare name occurs in
+  # prose ABOVE the guard, and even matching the namespaced form only works
+  # for as long as no comment writes it that way. getParseData() excludes
+  # comment tokens by construction, finds a call however it is namespaced, and
+  # cannot be fooled by prose at all.
+  pd <- utils::getParseData(parse(text = txt, keep.source = TRUE))
+  call_ln <- suppressWarnings(min(
+    pd$line1[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "fetch_gbif_occurrences"]
+  ))
+  guard_ln <- suppressWarnings(min(
+    pd$line1[pd$token == "STR_CONST" &
+      grepl("did not resolve to a trustworthy", pd$text, fixed = TRUE)]
+  ))
+  expect_true(is.finite(call_ln))
+  expect_true(is.finite(guard_ln))
+  expect_lt(guard_ln, call_ln)
 })
