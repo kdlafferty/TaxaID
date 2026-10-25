@@ -25,15 +25,26 @@ reviewed <- TaxaFlag::review_assignments(
   # posterior_consensus(). poor_absolute_fit is TRUE when the unit's best raw
   # match identity (best_identity, percent) reaches no rank threshold for the
   # marker: likelihoods are normalised to the unit maximum, so such a call can
-  # still carry a high posterior. When it is TRUE the reviewer is told, in one
-  # fact line quoting best_identity. A column that is absent is skipped; both
+  # still carry a high posterior and the raw identity is the only thing that
+  # says otherwise. best_identity is quoted for EVERY taxon that has one, not
+  # only for a poor fit; where poor_absolute_fit is TRUE the same number is
+  # quoted inside that note instead. A column that is absent is skipped; both
   # defaults are shown so the link is visible. NULL turns either off.
   poor_absolute_fit_col = "poor_absolute_fit",
   best_identity_col     = "best_identity",
+  # The review is BLIND to this pipeline's own numbers by default: the
+  # posterior, the occurrence prior, the GBIF distance and the iNaturalist
+  # fields are all NULL unless named, so none of them reaches the prompt. A
+  # review shown the pipeline's confidence cannot contradict it independently,
+  # and one shown a taxon's GBIF distance cannot catch an error in the
+  # occurrence data. What it IS shown is the DNA evidence -- the two arguments
+  # just above among them -- and the study's own design. See
+  # ?review_assignments, "What the review is shown, and what it is not".
   # consensus_provenance (default TRUE): a call that landed on an UNREFERENCED
-  # row (no reference sequence; the NAME came from occurrence records) is
-  # labelled as such for the reviewer, with the scope and rank the name came
-  # from. It reads posterior_consensus()'s consensus_hypothesis_type.
+  # row gets one note, "named taxon has NO reference sequence". The scope the
+  # name came from and how many species the records held there are NOT sent --
+  # both report what the occurrence records contain. It reads
+  # posterior_consensus()'s consensus_hypothesis_type.
   consensus_provenance  = TRUE,
   # model_label: names the model behind llm_fn in the cache key, so a verdict
   # from one model is never served to a call asking another. NULL derives it
@@ -43,12 +54,16 @@ reviewed <- TaxaFlag::review_assignments(
   # Abort rather than export a silently short species list. An LLM review can
   # parse cleanly, return the right number of objects, and still OMIT specific
   # taxa -- consistently the long compound slash labels, i.e. the hardest
-  # rows. Those get NA in every llm_ column, and the usual export filters
-  # (`llm_* != "unlikely"`) DISCARD NA, so the observation leaves the final
+  # rows. Those get NA in every llm_ column, and any export filter that tests
+  # `llm_* != "unlikely"` DISCARDS NA, so the observation would leave the final
   # species list without a word. Measured on a real PtConception 12S run:
-  # 20 observations across 3 plausible local fishes, gone. review_assignments()
-  # now re-asks for omitted taxa; "error" makes any residue that survives the
-  # re-ask stop the run instead of reaching the filters below.
+  # 20 observations across 3 plausible local fishes, gone.
+  #
+  # Note which filter that is. This script and the template FLAG and drop
+  # nothing, so it is one a reader may add downstream of here, not one above.
+  # review_assignments() now re-asks for omitted taxa; "error" makes any
+  # residue that survives the re-ask stop the run rather than reach such a
+  # filter at all.
   on_unreviewed  = "error"
 )
 message("Reviewed ", nrow(reviewed), " assignments")

@@ -335,6 +335,17 @@ test_that("the template refuses a GBIF key that did not resolve exactly, before 
   expect_true(grepl("is.na(key_matches$usageKey)", txt, fixed = TRUE))
 
   # The check must come BEFORE the request, or it guards nothing.
-  expect_lt(regexpr("matchType", txt, fixed = TRUE)[[1L]],
-            regexpr("fetch_gbif_occurrences", txt, fixed = TRUE)[[1L]])
+  #
+  # Compare the guard against the CALL, and match the call by its NAMESPACED
+  # form. The snippet explains in comments why fetch_gbif_occurrences() takes
+  # the usageKey column and that it drops NA keys silently, so the bare name --
+  # with or without "(" -- occurs in prose ABOVE the guard, and regexpr() on it
+  # finds a comment rather than the call. Only the call is written
+  # "TaxaFetch::fetch_gbif_occurrences(". An earlier form of this assertion
+  # compared bare strings and so compared one comment against another.
+  guard_at <- regexpr("did not resolve to a trustworthy GBIF key", txt, fixed = TRUE)[[1L]]
+  call_at <- regexpr("TaxaFetch::fetch_gbif_occurrences(", txt, fixed = TRUE)[[1L]]
+  expect_gt(guard_at, 0L)
+  expect_gt(call_at, 0L)
+  expect_lt(guard_at, call_at)
 })
