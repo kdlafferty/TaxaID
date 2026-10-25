@@ -102,3 +102,20 @@ test_that("build_context() warns before the LLM request is made", {
     "does not read like a taxon name"
   )
 })
+
+test_that("a place name shaped like a binomial is a KNOWN miss", {
+  # Not a wish -- a record. The test is one of shape, and these read exactly
+  # like "Genus epithet", so no shape rule can separate them from a real name.
+  # Asserted so that nobody widens the regex to catch them: that would warn on
+  # genus-rank calls, which are common, to catch site strings in this form,
+  # which are not. If the guard ever does catch these, this test fails and the
+  # trade has to be argued again.
+  known_misses <- c(
+    "Gulf of Mexico", "Sea of Cortez", "Strait of Georgia",
+    "Mugu lagoon", "Burns harbor", "Los angeles"
+  )
+  expect_equal(
+    vapply(known_misses, guard_warns, logical(1)),
+    stats::setNames(rep(FALSE, length(known_misses)), known_misses)
+  )
+})

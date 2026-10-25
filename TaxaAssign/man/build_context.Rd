@@ -20,7 +20,11 @@ description given positionally lands here instead of in
 \code{geographic_hint}; a single string that does not read like a taxon
 name, with no \code{geographic_hint}, raises a warning before any LLM call
 is made. Genus- and family-rank calls, including the \code{sp.} and
-\code{cf.} forms, are silent.}
+\code{cf.} forms, are silent. The test is one of shape, so a place name
+shaped like a binomial -- \code{"Gulf of Mexico"}, \code{"Mugu lagoon"} --
+reads like a name and is not caught; what is caught is the
+capitalised-later-word forms (\code{"Lake Michigan"}) and strings that are
+not name-shaped at all.}
 
 \item{geographic_hint}{Optional character string describing the approximate
 geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay

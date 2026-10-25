@@ -20,7 +20,11 @@
 #'   \code{geographic_hint}; a single string that does not read like a taxon
 #'   name, with no \code{geographic_hint}, raises a warning before any LLM call
 #'   is made. Genus- and family-rank calls, including the \code{sp.} and
-#'   \code{cf.} forms, are silent.
+#'   \code{cf.} forms, are silent. The test is one of shape, so a place name
+#'   shaped like a binomial -- \code{"Gulf of Mexico"}, \code{"Mugu lagoon"} --
+#'   reads like a name and is not caught; what is caught is the
+#'   capitalised-later-word forms (\code{"Lake Michigan"}) and strings that are
+#'   not name-shaped at all.
 #' @param geographic_hint Optional character string describing the approximate
 #'   geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay
 #'   watershed"}). Passed to \code{build_habitat_prompt(geographic_context = ...)}.
@@ -201,8 +205,6 @@ build_context <- function(taxon_names,
 # Internal helpers
 # ==============================================================================
 
-#' Build a short synthesis prompt from habitat proportions
-#' @noRd
 # A single `taxon_names` string that does not read like a taxon name, with no
 # `geographic_hint`, is almost always a site description passed positionally:
 # `taxon_names` is the FIRST argument, so `build_context("<site>, <marker>")`
@@ -225,6 +227,16 @@ build_context <- function(taxon_names,
 # junk forms; either clause alone misses some. False positives on genus- and
 # family-rank calls are this guard's failure mode, so the silent cases are
 # asserted explicitly in the tests.
+#
+# Limit, by design: the shape clause accepts a capitalised first word followed
+# by lowercase words, and so does is_plausible_binomial(), so a place name of
+# that shape reads like a binomial and is NOT caught. Measured silent:
+# "Gulf of Mexico", "Sea of Cortez", "Strait of Georgia", "Mugu lagoon",
+# "Burns harbor", "Los angeles". What the guard does catch is the
+# capitalised-later-word forms ("Lake Michigan", "Chesapeake Bay") and the
+# non-name shapes -- punctuation, marker names, ASV ids. Widening it is not
+# worth it: a false positive on a genus-rank call is worse than a missed site
+# string, because the genus-rank call is the common one.
 .warn_if_site_passed_as_taxa <- function(taxon_names, geographic_hint) {
   if (length(taxon_names) != 1L || !is.null(geographic_hint)) {
     return(invisible(NULL))
@@ -252,6 +264,8 @@ build_context <- function(taxon_names,
   invisible(NULL)
 }
 
+#' Build a short synthesis prompt from habitat proportions
+#' @noRd
 .build_synthesis_prompt <- function(taxon_names, props, geographic_hint,
                                     ecoregion) {
   # Format proportions as a readable string (only habitats > 1%)
