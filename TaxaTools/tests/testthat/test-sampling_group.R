@@ -694,3 +694,43 @@ test_that("the kingdom comparisons ignore case and surrounding space too", {
     expect_equal(r$basis, "catch_all", info = k)
   }
 })
+
+test_that("a phylum-only table still gets the phylum rule", {
+  # No kingdom COLUMN, but a phylum column: the caller has supplied the rank
+  # the fallback needs, so use it.
+  animal <- data.frame(phylum = "Mollusca", class = NA_character_,
+                       order = NA_character_, stringsAsFactors = FALSE)
+  out <- assign_sampling_group(animal, verbose = FALSE)
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+  expect_equal(out$sampling_group_basis[[1L]], "phylum_animal")
+
+  other <- data.frame(phylum = "Discosea", class = NA_character_,
+                      order = NA_character_, stringsAsFactors = FALSE)
+  out2 <- assign_sampling_group(other, verbose = FALSE)
+  expect_true(is.na(out2$sampling_group[[1L]]))
+  expect_equal(out2$sampling_group_basis[[1L]], "phylum_non_animal")
+})
+
+test_that("a class/order-only table keeps the catch-all, and says why", {
+  # Neither rank the guard or the fallback reads is present, so there is
+  # nothing to decide on. Refusing every unmatched row here would be a mass
+  # drop on an input shape this function documents as supported -- a column
+  # absent from `taxonomy` is explicitly never an error.
+  tax <- data.frame(class = "Gastropoda", order = NA_character_,
+                    stringsAsFactors = FALSE)
+  expect_warning(
+    out <- assign_sampling_group(tax, verbose = FALSE),
+    "neither a `kingdom` nor a `phylum` column"
+  )
+  expect_equal(out$sampling_group[[1L]], "macroinvertebrates")
+  expect_equal(out$sampling_group_basis[[1L]], "catch_all")
+})
+
+test_that("the missing-column warning does not fire when nothing is unmatched", {
+  # A class/order-only table whose rows a rule DID place has nothing for the
+  # guard to check, so there is nothing to warn about.
+  tax <- data.frame(class = "Insecta", order = NA_character_,
+                    stringsAsFactors = FALSE)
+  expect_silent(out <- assign_sampling_group(tax, verbose = FALSE))
+  expect_equal(out$sampling_group[[1L]], "terrestrial_arthropods")
+})

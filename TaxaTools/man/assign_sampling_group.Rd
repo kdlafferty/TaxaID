@@ -70,6 +70,15 @@ usable taxonomy is therefore visible to a caller auditing unmatched rows,
 which is what the guard was always for, rather than being counted
 indefinitely as a benthic invertebrate.
 
+A missing kingdom VALUE and a missing kingdom COLUMN are different
+statements, and are treated differently. A row whose \code{kingdom} is
+\code{NA} is decided on its phylum, as above. A \code{taxonomy} with no
+\code{kingdom} column at all is still decided on its phylum if it HAS a
+\code{phylum} column; only when BOTH columns are absent -- a
+class/order-only table, which this function supports -- is there nothing
+to decide on, and then every unmatched row keeps the catch-all as before,
+with one warning naming the columns it could not find.
+
 Note for a caller with a DOWNSTREAM gate that drops units whose every
 candidate is out of scope: a candidate whose only in-scope status came
 from a bare domain label is now out of scope, so such a gate may drop

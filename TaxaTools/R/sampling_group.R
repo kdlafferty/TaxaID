@@ -348,6 +348,15 @@ default_sampling_scheme <- function() {
 #'   which is what the guard was always for, rather than being counted
 #'   indefinitely as a benthic invertebrate.
 #'
+#'   A missing kingdom VALUE and a missing kingdom COLUMN are different
+#'   statements, and are treated differently. A row whose \code{kingdom} is
+#'   \code{NA} is decided on its phylum, as above. A \code{taxonomy} with no
+#'   \code{kingdom} column at all is still decided on its phylum if it HAS a
+#'   \code{phylum} column; only when BOTH columns are absent -- a
+#'   class/order-only table, which this function supports -- is there nothing
+#'   to decide on, and then every unmatched row keeps the catch-all as before,
+#'   with one warning naming the columns it could not find.
+#'
 #'   Note for a caller with a DOWNSTREAM gate that drops units whose every
 #'   candidate is out of scope: a candidate whose only in-scope status came
 #'   from a bare domain label is now out of scope, so such a gate may drop
@@ -595,6 +604,28 @@ assign_sampling_group <- function(taxonomy,
     if (is.null(animal_vocab)) animal_vocab <- c("Animalia", "Metazoa")
     kingdom_col <- if ("kingdom" %in% names(taxonomy)) taxonomy[["kingdom"]] else rep(NA_character_, n)
 
+    # A missing kingdom VALUE and a missing kingdom COLUMN are different
+    # statements. A row whose kingdom is NA is a taxon we know little about,
+    # and deciding it on the phylum is right. A TABLE with no kingdom column
+    # is the caller saying that rank is unavailable -- and if it has no phylum
+    # column either, there is nothing to decide on, so the old behaviour
+    # stands and the row keeps the catch-all. Silently refusing every
+    # unmatched row of a class/order-only table would be a mass drop on an
+    # input shape this function documents as supported.
+    has_kingdom_col <- "kingdom" %in% names(taxonomy)
+    has_phylum_col <- "phylum" %in% names(taxonomy)
+    fallback_possible <- has_kingdom_col || has_phylum_col
+    if (!fallback_possible && any(catch_all_hit)) {
+      warning(
+        "assign_sampling_group: `taxonomy` has neither a `kingdom` nor a ",
+        "`phylum` column, so the kingdom guard and the phylum fallback have ",
+        "nothing to read. ", sum(catch_all_hit), " unmatched row(s) keep the ",
+        "catch-all (\"", scheme$catch_all, "\"). Supply either rank to have ",
+        "them checked.",
+        call. = FALSE
+      )
+    }
+
     # An UNINFORMATIVE kingdom is one that cannot decide animal from
     # non-animal: a domain label, or no usable value. "Eukaryota" is the
     # common case -- it is true of every taxon here and so says nothing.
@@ -613,13 +644,13 @@ assign_sampling_group <- function(taxonomy,
     # Informative kingdom: the allowlist decides, exactly as before. This is
     # what refuses Plantae, Fungi, Chromista and a control label such as
     # "PositiveControl" the animal-flavoured catch-all.
-    guard_hit <- catch_all_hit & !uninformative_kingdom &
+    guard_hit <- catch_all_hit & fallback_possible & !uninformative_kingdom &
       !(kingdom_key %in% tolower(trimws(animal_vocab)))
     group[guard_hit] <- NA_character_
     basis[guard_hit] <- "kingdom_guard"
 
     # Uninformative kingdom: the PHYLUM decides.
-    fallback_hit <- catch_all_hit & uninformative_kingdom
+    fallback_hit <- catch_all_hit & fallback_possible & uninformative_kingdom
     if (any(fallback_hit)) {
       # FIX 3(c): a scheme built before animal_phyla existed, or by hand
       # without it, would otherwise send every fallback row to

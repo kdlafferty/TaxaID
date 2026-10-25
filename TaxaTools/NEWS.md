@@ -22,7 +22,11 @@
   row whose kingdom was missing, and such a row kept the catch-all whatever its
   phylum said. A missing kingdom is now decided by the phylum like any other
   uninformative kingdom, so a row with no usable taxonomy at all is refused and
-  flagged rather than counted as a benthic invertebrate.
+  flagged rather than counted as a benthic invertebrate. A missing kingdom
+  COLUMN is a different statement from a missing kingdom value: a table with no
+  `kingdom` column is still decided on its `phylum` when it has one, and only a
+  table with neither column keeps the old behaviour, with one warning naming the
+  columns it could not find.
   A caller with a DOWNSTREAM gate that drops units whose every candidate is out
   of scope should note that a candidate whose only in-scope status came from a
   bare domain label is now out of scope, so such a gate may drop units it
