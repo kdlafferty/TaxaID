@@ -1,9 +1,11 @@
 # tests/testthat/test-assign_taxa_llm_prompt_example.R
 #
-# The prompt's "Required output format" example must use placeholders. Naming
-# the batch's own first two candidates there handed the model ready-made
-# answers for taxa it was being asked to judge, and an answer that merely
-# echoed the example could not be told from a judgement.
+# The prompt's "Required output format" example must be placeholders all the
+# way down -- names AND values. Naming the batch's own first two candidates
+# there handed the model ready-made answers for taxa it was being asked to
+# judge, and an answer that merely echoed the example could not be told from a
+# judgement. Placeholder names alone would still leave the invented 0.90 / 0.05
+# for a model to settle on as a pattern.
 
 # The function's own default, not a copy of it: the prompt interpolates
 # prior_weight_guide$transported, so a wrong guide would silently give an
@@ -26,6 +28,14 @@ batch <- function(n) {
     hypothesis_type = rep("specific_candidate", n),
     stringsAsFactors = FALSE
   )
+}
+
+# The example block alone: everything between the format heading and the taxa
+# list. The surrounding rules legitimately name the vocabulary and the weight
+# ranges, so absence has to be asserted here, not over the whole prompt.
+example_block <- function(prompt) {
+  after <- strsplit(prompt, "is a placeholder; fill it in.", fixed = TRUE)[[1]][[2]]
+  strsplit(after, "Taxa to assess:", fixed = TRUE)[[1]][[1]]
 }
 
 # Everything before "Taxa to assess:" is instruction, including the example;
@@ -60,15 +70,29 @@ test_that("the format example names no taxon from a single-taxon batch", {
   expect_match(prompt, taxa_df$taxon_name[[1]], fixed = TRUE)
 })
 
-test_that("the example is labelled as placeholders", {
+test_that("every value in the example is a placeholder", {
   prompt <- .build_taxa_prompt(batch(3), ctx, prior_weight_guide = pwg)
-  expect_match(prompt, "placeholders", fixed = TRUE)
-  expect_match(prompt, '"taxon_name": "Genus species"', fixed = TRUE)
+  ex <- example_block(prompt)
+  expect_match(ex, '"taxon_name": "<name exactly as listed>"', fixed = TRUE)
+  expect_match(ex, '"prior_weight": <number>', fixed = TRUE)
+  for (field in c("range_status", "habitat_fit", "information_quality")) {
+    expect_match(ex, paste0('"', field, '": "<'), fixed = TRUE)
+  }
+  # No invented answer survives in the example: a model can anchor on 0.90 /
+  # 0.05 as a pattern with no name echoed at all.
+  expect_false(grepl("[0-9]", ex))
+  expect_false(grepl("native|expected|unlikely|moderate|high", ex))
 })
 
-test_that("the example keeps one entry for a single-taxon batch and two otherwise", {
-  one <- .build_taxa_prompt(batch(1), ctx, prior_weight_guide = pwg)
-  many <- .build_taxa_prompt(batch(3), ctx, prior_weight_guide = pwg)
-  expect_false(grepl("Othergenus otherspecies", one, fixed = TRUE))
-  expect_match(many, "Othergenus otherspecies", fixed = TRUE)
+test_that("the heading says the angle brackets are placeholders", {
+  prompt <- .build_taxa_prompt(batch(3), ctx, prior_weight_guide = pwg)
+  expect_match(prompt, "placeholder", fixed = TRUE)
+  expect_match(prompt, "for no others", fixed = TRUE)
+})
+
+test_that("only a multi-taxon batch is shown the ... continuation", {
+  one <- example_block(.build_taxa_prompt(batch(1), ctx, prior_weight_guide = pwg))
+  many <- example_block(.build_taxa_prompt(batch(3), ctx, prior_weight_guide = pwg))
+  expect_false(grepl("...", one, fixed = TRUE))
+  expect_match(many, "...", fixed = TRUE)
 })

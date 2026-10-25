@@ -1158,36 +1158,36 @@ assign_taxa_llm <- function(match_df,
   }
 
   # Format example
-  # Placeholders, never the batch's own taxa. Naming the first two real
-  # candidates here and pairing them with invented answers -- native /
-  # expected / high / 0.90 and native / unlikely / moderate / 0.05 -- told the
-  # model what to say about two of the very taxa it was being asked to judge,
-  # and an answer that merely echoed the example was indistinguishable from a
-  # judgement. A placeholder echoed back is at least identifiable as one,
-  # because no such name is in the batch.
-  ex1 <- "Genus species"
-  if (nrow(taxa_df) >= 2) {
-    ex2 <- "Othergenus otherspecies"
-    format_example <- paste0(
-      "[\n",
-      "  {\"taxon_name\": \"", ex1, "\", \"range_status\": \"native\",",
-      " \"habitat_fit\": \"expected\",",
-      " \"information_quality\": \"high\", \"prior_weight\": 0.90},\n",
-      "  {\"taxon_name\": \"", ex2, "\", \"range_status\": \"native\",",
-      " \"habitat_fit\": \"unlikely\",",
-      " \"information_quality\": \"moderate\", \"prior_weight\": 0.05},\n",
-      "  ...\n",
-      "]"
-    )
-  } else {
-    format_example <- paste0(
-      "[\n",
-      "  {\"taxon_name\": \"", ex1, "\", \"range_status\": \"native\",",
-      " \"habitat_fit\": \"expected\",",
-      " \"information_quality\": \"high\", \"prior_weight\": 0.90}\n",
-      "]"
-    )
-  }
+  # Placeholders for every VALUE, not only the names. The example named the
+  # batch's own first two candidates and paired them with invented answers --
+  # native / expected / high / 0.90 and native / unlikely / moderate / 0.05 --
+  # and it sits above "Taxa to assess", so the model was shown ready-made
+  # answers for two of the very taxa it was then asked to judge. Placeholder
+  # names stop the echo; placeholder values stop the anchor, since a model can
+  # settle on 0.90 / 0.05 as a pattern without any name being echoed.
+  #
+  # This is the example `estimate_llm_priors()`'s prototype prompt used for the
+  # CI prior run (327 calls, all parsed), minus the `n_local_congeners` field
+  # that this parser does not read. The two examples have not been compared on
+  # the same data, so the claim is alignment with what was run, not a measured
+  # improvement.
+  #
+  # The example is deliberately not valid JSON: the angle brackets say what to
+  # put there. The response contract is stated separately, in the prompt's
+  # first line.
+  format_example <- paste0(
+    "[\n",
+    "  {\"taxon_name\": \"<name exactly as listed>\",",
+    " \"range_status\": \"<status>\",",
+    " \"habitat_fit\": \"<fit>\",",
+    " \"information_quality\": \"<quality>\",",
+    " \"prior_weight\": <number>}",
+    # One object per taxon: the trailing "..." is shown only when the batch
+    # has more than one taxon, so a one-taxon batch is not invited to invent
+    # extra rows.
+    if (nrow(taxa_df) >= 2) ",\n  ...\n" else "\n",
+    "]"
+  )
 
   # Taxa list
   # Lineage after the rank lets the model tell homonyms apart.
@@ -1283,8 +1283,9 @@ assign_taxa_llm <- function(match_df,
     "                  (e.g. few surveys, taxonomic revision pending)\n",
     "   \"low\"      -- data-deficient taxon, cryptic species complex, or region\n",
     "                  with minimal survey effort\n\n",
-    "Required output format (the taxon names shown are placeholders -- answer\n",
-    "for every taxon in \"Taxa to assess\" below, and for no others):\n",
+    "Required output format -- one object per taxon, for every taxon in\n",
+    "\"Taxa to assess\" below and for no others. Everything in angle brackets\n",
+    "is a placeholder; fill it in.\n",
     format_example, "\n\n",
     "Taxa to assess:\n",
     paste(taxa_lines, collapse = "\n")
