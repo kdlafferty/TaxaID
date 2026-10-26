@@ -223,8 +223,10 @@ utils::globalVariables(c(
 #'   The key is the full prompt text plus what can be known about the model
 #'   before the call: the code of `llm_fn` (which captures a `model =` set in a
 #'   wrapper), its `model` default, and `getOption("TaxaID.provider")`. Any
-#'   change to the taxa, context, survey lists or guide bands changes the prompt
-#'   and so misses. `TaxaTools::call_api()` chooses its model at call time, so
+#'   change to the taxa, context, survey lists or guide bands -- or to the
+#'   prompt's own wording -- changes the prompt and so misses, and a changed
+#'   prompt means the next run re-asks, and pays, for every taxon the old cache
+#'   held. `TaxaTools::call_api()` chooses its model at call time, so
 #'   after changing the model through `TaxaTools::set_model()` or a registry
 #'   refresh, use a new `cache_dir` or empty the old one. Each entry also stores
 #'   the model the response reports, when the provider function attaches it. A
@@ -675,6 +677,43 @@ assign_taxa_llm <- function(match_df,
   cli::cli_progress_done(id = pb)
   if (!is.null(cache_dir)) {
     cli::cli_inform("LLM prior cache: {n_cache_hits} of {n_calls_total} call(s) served from {.path {cache_dir}}.")
+  }
+
+  # A failed or unparsable answer becomes uniform priors with only a per-call
+  # warning, so a partial run looks complete: in one measured run a DNS outage
+  # failed 51 calls and 9,012 rows took uniform priors with nothing but
+  # warnings to show it. Counted once here so the run cannot finish quietly.
+  # Reported, not stopped: a run that completes today must keep completing,
+  # and there is no argument to choose with. The count was always recoverable
+  # from the output -- the rows carry prior_source "uniform_fallback" -- which
+  # is exactly what nobody reads.
+  fb_rows <- vapply(
+    prior_tables,
+    function(d) if (is.null(d)) 0L else sum(d$prior_source == "uniform_fallback"),
+    integer(1)
+  )
+  all_rows <- vapply(
+    prior_tables,
+    function(d) if (is.null(d)) 0L else nrow(d),
+    integer(1)
+  )
+  if (sum(fb_rows) > 0L) {
+    n_fb <- sum(fb_rows)
+    n_all <- sum(all_rows)
+    n_grp <- sum(fb_rows > 0L)
+    cli::cli_warn(c(
+      "{n_fb} of {n_all} taxon prior{?s} came from a failed or unparsable LLM \\
+      answer and are uniform, not a judgement ({n_grp} of \\
+      {length(fb_rows)} group{?s} affected).",
+      "!" = "Treat this run as partial: the posteriors built on those rows are \\
+      not LLM-informed.",
+      "i" = "They are marked in the result by {.field prior_source} \\
+      {.val uniform_fallback}. A failed answer is never cached, so a re-run \\
+      with the same {.arg cache_dir} re-asks only the calls that failed.",
+      "i" = "This counts failed and unparsable ANSWERS. A taxon the model \\
+      simply left out of an otherwise good answer is warned about where it \\
+      happens and is not in this count."
+    ))
   }
 
   # --- Merge likelihoods + priors for each observation -------------------------
@@ -1158,29 +1197,38 @@ assign_taxa_llm <- function(match_df,
   }
 
   # Format example
-  ex1 <- taxa_df$taxon_name[[1]]
-  if (nrow(taxa_df) >= 2) {
-    ex2 <- taxa_df$taxon_name[[2]]
-    format_example <- paste0(
-      "[\n",
-      "  {\"taxon_name\": \"", ex1, "\", \"range_status\": \"native\",",
-      " \"habitat_fit\": \"expected\",",
-      " \"information_quality\": \"high\", \"prior_weight\": 0.90},\n",
-      "  {\"taxon_name\": \"", ex2, "\", \"range_status\": \"native\",",
-      " \"habitat_fit\": \"unlikely\",",
-      " \"information_quality\": \"moderate\", \"prior_weight\": 0.05},\n",
-      "  ...\n",
-      "]"
-    )
-  } else {
-    format_example <- paste0(
-      "[\n",
-      "  {\"taxon_name\": \"", ex1, "\", \"range_status\": \"native\",",
-      " \"habitat_fit\": \"expected\",",
-      " \"information_quality\": \"high\", \"prior_weight\": 0.90}\n",
-      "]"
-    )
-  }
+  # Placeholders for every VALUE, not only the names. The example named the
+  # batch's own first two candidates and paired them with invented answers --
+  # native / expected / high / 0.90 and native / unlikely / moderate / 0.05 --
+  # and it sits above "Taxa to assess", so the model was shown ready-made
+  # answers for two of the very taxa it was then asked to judge. Placeholder
+  # names stop the echo; placeholder values stop the anchor, since a model can
+  # settle on 0.90 / 0.05 as a pattern without any name being echoed.
+  #
+  # This is the example from the LLM-priors prototype prompt that produced the
+  # CI prior run -- 327 calls, every answer parsed -- minus the
+  # `n_local_congeners` field that this parser does not read. The prototype is
+  # not in the package, and not in this repository: it is
+  # `analysis/llm_rework_prompt.R` under the Global eDNA presentation in the
+  # analysis tree. The two examples have not been compared on the same data, so
+  # the claim is alignment with what was run, not a measured improvement.
+  #
+  # The example is deliberately not valid JSON: the angle brackets say what to
+  # put there. The response contract is stated separately, in the prompt's
+  # first line.
+  format_example <- paste0(
+    "[\n",
+    "  {\"taxon_name\": \"<name exactly as listed>\",",
+    " \"range_status\": \"<status>\",",
+    " \"habitat_fit\": \"<fit>\",",
+    " \"information_quality\": \"<quality>\",",
+    " \"prior_weight\": <number>}",
+    # One object per taxon: the trailing "..." is shown only when the batch
+    # has more than one taxon, so a one-taxon batch is not invited to invent
+    # extra rows.
+    if (nrow(taxa_df) >= 2) ",\n  ...\n" else "\n",
+    "]"
+  )
 
   # Taxa list
   # Lineage after the rank lets the model tell homonyms apart.
@@ -1276,7 +1324,9 @@ assign_taxa_llm <- function(match_df,
     "                  (e.g. few surveys, taxonomic revision pending)\n",
     "   \"low\"      -- data-deficient taxon, cryptic species complex, or region\n",
     "                  with minimal survey effort\n\n",
-    "Required output format:\n",
+    "Required output format -- one object per taxon, for every taxon in\n",
+    "\"Taxa to assess\" below and for no others. Everything in angle brackets\n",
+    "is a placeholder; fill it in.\n",
     format_example, "\n\n",
     "Taxa to assess:\n",
     paste(taxa_lines, collapse = "\n")
@@ -1286,6 +1336,56 @@ assign_taxa_llm <- function(match_df,
 
 #' Parse flat JSON array response into a prior_df (one row per taxon)
 #' @noRd
+# Every top-level "[...]" span of a string, in the order they appear. One pass
+# over the characters; a response is a few kB.
+#
+# `respect_strings = TRUE` ignores brackets inside JSON strings: a taxon name
+# may legitimately carry one, and a bracket in a string must not open or close
+# a span. That reading is right for JSON and wrong for the prose around it --
+# one unbalanced quote in the model's own words ("Here is the 5\" answer:")
+# inverts the string parity and hides every array behind it. So the caller
+# scans both ways and trusts the string-aware reading first.
+.top_level_json_arrays <- function(txt, respect_strings = TRUE) {
+  if (length(txt) != 1L || is.na(txt)) {
+    return(character(0))
+  }
+  ch <- strsplit(txt, "", fixed = TRUE)[[1]]
+  out <- character(0)
+  depth <- 0L
+  start <- NA_integer_
+  in_str <- FALSE
+  esc <- FALSE
+  for (i in seq_along(ch)) {
+    cc <- ch[[i]]
+    if (!respect_strings) {
+      in_str <- FALSE
+    }
+    if (in_str) {
+      if (esc) {
+        esc <- FALSE
+      } else if (cc == "\\") {
+        esc <- TRUE
+      } else if (cc == "\"") {
+        in_str <- FALSE
+      }
+      next
+    }
+    if (cc == "\"") {
+      in_str <- respect_strings
+    } else if (cc == "[") {
+      if (depth == 0L) start <- i
+      depth <- depth + 1L
+    } else if (cc == "]" && depth > 0L) {
+      depth <- depth - 1L
+      if (depth == 0L) {
+        out <- c(out, paste(ch[start:i], collapse = ""))
+      }
+    }
+  }
+  out
+}
+
+
 .parse_taxa_response <- function(response, taxa_df, group_label = "all") {
   expected <- taxa_df$taxon_name
   n <- length(expected)
@@ -1312,13 +1412,58 @@ assign_taxa_llm <- function(match_df,
     return(make_uniform())
   }
 
-  # Extract JSON array -- handles markdown fences and leading/trailing text
-  # (?s) enables PCRE dotall mode so .* matches across newlines
-  arr_str <- sub("(?s).*?(\\[[\\s\\S]*\\]).*", "\\1", response, perl = TRUE)
-  parsed <- tryCatch(
-    jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
-    error = function(e) NULL
-  )
+  # Extract the JSON array -- handles markdown fences and leading or trailing
+  # text. One regex from the first "[" to the last "]" cannot do this job: a
+  # reply that gives an array, then "Correction: ...", then a corrected array
+  # captures BOTH arrays and the prose between them, fails to parse, and the
+  # whole batch silently becomes uniform priors. Measured: 2 of 327 answers in
+  # one run took that form. It also took the GENERIC parse-failure message
+  # below rather than the actionable truncation one, because that branch keys
+  # on there being no "]" at all and such a reply has several.
+  #
+  # So: find the top-level arrays with a bracket scan, and try them from the
+  # LAST backwards -- a model that corrects itself means its last word.
+  # Which one wins: the last that parses AND names every taxon asked for;
+  # failing that, the last that parses at all, so a single incomplete array
+  # behaves exactly as it did before and is handled by the omitted-taxa path
+  # further down rather than being discarded here.
+  #
+  # "Last word wins" therefore holds only among COMPLETE answers. A full array
+  # followed by a correction covering one taxon keeps the full array and
+  # discards the correction: a short answer is more likely a truncated or
+  # partial retry than a considered revision, and silently returning a table
+  # missing taxa is worse than ignoring a correction.
+  # Candidates, in the order they are trusted:
+  #   1. the top-level arrays with brackets inside JSON strings ignored,
+  #      last first;
+  #   2. the same scan with quotes ignored, because one unbalanced quote in
+  #      the prose BEFORE the array otherwise hides every array behind it --
+  #      measured: `Here is the 5" answer:` followed by a valid array returned
+  #      uniform priors from the string-aware scan alone;
+  #   3. the first-"[" to last-"]" span, so that no reply which parsed before
+  #      this scan existed can stop parsing because of it. It is the floor,
+  #      not the rule.
+  cands <- unique(c(
+    rev(.top_level_json_arrays(response, respect_strings = TRUE)),
+    rev(.top_level_json_arrays(response, respect_strings = FALSE)),
+    sub("(?s).*?(\\[[\\s\\S]*\\]).*", "\\1", response, perl = TRUE)
+  ))
+  parsed <- NULL
+  for (arr_str in cands) {
+    cand <- tryCatch(
+      jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.data.frame(cand) ||
+      !all(c("taxon_name", "prior_weight") %in% names(cand))) {
+      next
+    }
+    if (is.null(parsed)) parsed <- cand
+    if (all(expected %in% cand$taxon_name)) {
+      parsed <- cand
+      break
+    }
+  }
 
   if (is.null(parsed) || !is.data.frame(parsed) ||
     !all(c("taxon_name", "prior_weight") %in% names(parsed))) {

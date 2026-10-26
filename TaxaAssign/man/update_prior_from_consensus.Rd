@@ -269,9 +269,12 @@ study-wide maximum when the group has none). The confirmation-quantile
 logic and the never-demote guard are unchanged -- only the target scale
 moves -- so a stronger/more numerous confirmation (higher \code{q}) still
 produces a stronger boost, bounded by the model's own observed maximum
-share. When \code{result} has no \code{theta_mean} column (e.g. LLM-pathway priors
-from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, which are not occurrence-share-based),
-direct substitution (without rescaling) is used instead.
+share. A \code{result} with no \code{theta_mean} column would take direct
+substitution, without rescaling, but the default
+\code{require_support_columns = TRUE} aborts before reaching it, and that abort
+calls \code{require_support_columns = FALSE} a transitional shim rather than a
+supported mode. So the unrescaled branch is not a route this function
+offers, whatever built the priors.
 }
 
 \section{Receiver guards}{

@@ -15,7 +15,16 @@
 #' mechanical argmax of habitat weights.
 #'
 #' @param taxon_names Character vector of scientific names (e.g.
-#'   \code{unique(match_df$taxon_name)}).
+#'   \code{unique(match_df$taxon_name)}). This is the first argument, so a site
+#'   description given positionally lands here instead of in
+#'   \code{geographic_hint}; a single string that does not read like a taxon
+#'   name, with no \code{geographic_hint}, raises a warning before any LLM call
+#'   is made. Genus- and family-rank calls, including the \code{sp.} and
+#'   \code{cf.} forms, are silent. The test is one of shape, so a place name
+#'   shaped like a binomial -- \code{"Gulf of Mexico"}, \code{"Mugu lagoon"} --
+#'   reads like a name and is not caught; what is caught is the
+#'   capitalised-later-word forms (\code{"Lake Michigan"}) and strings that are
+#'   not name-shaped at all.
 #' @param geographic_hint Optional character string describing the approximate
 #'   geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay
 #'   watershed"}). Passed to \code{build_habitat_prompt(geographic_context = ...)}.
@@ -117,6 +126,8 @@ build_context <- function(taxon_names,
   taxon_names <- unique(trimws(taxon_names))
   taxon_names <- taxon_names[!is.na(taxon_names) & nzchar(taxon_names)]
 
+  .warn_if_site_passed_as_taxa(taxon_names, geographic_hint)
+
   # --- Step 1: build habitat prompt ---
   prompt <- TaxaHabitat::build_habitat_prompt(
     taxon_list         = taxon_names,
@@ -193,6 +204,65 @@ build_context <- function(taxon_names,
 # ==============================================================================
 # Internal helpers
 # ==============================================================================
+
+# A single `taxon_names` string that does not read like a taxon name, with no
+# `geographic_hint`, is almost always a site description passed positionally:
+# `taxon_names` is the FIRST argument, so `build_context("<site>, <marker>")`
+# sends the site in as a taxon and leaves `geographic_hint` NA. The call then
+# costs an LLM request and returns a context built from a place name, so the
+# warning is raised before the request is made.
+#
+# Warn, never stop: a legitimate one-taxon call must keep working.
+#
+# Two clauses, because neither alone is enough (measured, 20 cases):
+#   * `is_plausible_binomial()` answers "is this a usable species name", which
+#     is a different question from "is this a taxon name at all". It rejects the
+#     `sp.` and `cf.` forms as uninformative, so it alone warns on
+#     "Mytilus sp." and "Salmo cf. salar" -- both legitimate genus-rank calls.
+#   * the shape clause takes a capitalised first word followed only by
+#     lowercase words and an optional `sp.`/`spp.`/`cf.`/`aff.` qualifier, which
+#     covers "Salmo", "Salmonidae" and "Mytilus sp." but alone warns on a name
+#     carrying a parenthetical, e.g. "Carcharodon carcharias (great white)".
+# The union is silent on all eleven name forms and warns on all nine site and
+# junk forms; either clause alone misses some. False positives on genus- and
+# family-rank calls are this guard's failure mode, so the silent cases are
+# asserted explicitly in the tests.
+#
+# Limit, by design: the shape clause accepts a capitalised first word followed
+# by lowercase words, and so does is_plausible_binomial(), so a place name of
+# that shape reads like a binomial and is NOT caught. Measured silent:
+# "Gulf of Mexico", "Sea of Cortez", "Strait of Georgia", "Mugu lagoon",
+# "Burns harbor", "Los angeles". What the guard does catch is the
+# capitalised-later-word forms ("Lake Michigan", "Chesapeake Bay") and the
+# non-name shapes -- punctuation, marker names, ASV ids. Widening it is not
+# worth it: a false positive on a genus-rank call is worse than a missed site
+# string, because the genus-rank call is the common one.
+.warn_if_site_passed_as_taxa <- function(taxon_names, geographic_hint) {
+  if (length(taxon_names) != 1L || !is.null(geographic_hint)) {
+    return(invisible(NULL))
+  }
+  reads_like_a_name <-
+    TaxaTools::is_plausible_binomial(taxon_names) ||
+    grepl("^[A-Z][a-z]+( +(sp|spp|cf|aff)\\.?)?( +[a-z-]+)*$", taxon_names)
+  if (reads_like_a_name) {
+    return(invisible(NULL))
+  }
+  cli::cli_warn(c(
+    paste0(
+      "build_context: {.arg taxon_names} is a single string that does not ",
+      "read like a taxon name: {.val {taxon_names}}."
+    ),
+    "i" = paste0(
+      "{.arg taxon_names} is the first argument, so a site description given ",
+      "positionally becomes a taxon and {.arg geographic_hint} stays {.code NA}."
+    ),
+    "i" = paste0(
+      "If this is the site, pass it as {.arg geographic_hint} and give ",
+      "{.arg taxon_names} the candidate names."
+    )
+  ))
+  invisible(NULL)
+}
 
 #' Build a short synthesis prompt from habitat proportions
 #' @noRd

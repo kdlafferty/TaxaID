@@ -179,8 +179,10 @@ runs, so a cache is what makes a re-run reproducible. \code{NULL} disables it.
 The key is the full prompt text plus what can be known about the model
 before the call: the code of \code{llm_fn} (which captures a \verb{model =} set in a
 wrapper), its \code{model} default, and \code{getOption("TaxaID.provider")}. Any
-change to the taxa, context, survey lists or guide bands changes the prompt
-and so misses. \code{TaxaTools::call_api()} chooses its model at call time, so
+change to the taxa, context, survey lists or guide bands -- or to the
+prompt's own wording -- changes the prompt and so misses, and a changed
+prompt means the next run re-asks, and pays, for every taxon the old cache
+held. \code{TaxaTools::call_api()} chooses its model at call time, so
 after changing the model through \code{TaxaTools::set_model()} or a registry
 refresh, use a new \code{cache_dir} or empty the old one. Each entry also stores
 the model the response reports, when the provider function attaches it. A
