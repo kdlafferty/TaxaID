@@ -26,7 +26,6 @@ code rules below.
    - Wrapper paths are simpler but less customizable.
    - Manual paths expose every intermediate step for inspection and tuning.
    - Score-based consensus needs no model or API key but is less accurate.
-   - LLM pipelines require an API key and cost money.
    - Full Bayesian pipelines are the most rigorous but take the longest.
 3. **Use EXACT edge IDs from the `edge_ids` arrays above.** Copy them verbatim into `selected_path`. NEVER invent, rename, or paraphrase edge IDs. The edge IDs look like `consensus_df_to_taxa`, `taxa_to_context`, etc. -- use those exact strings.
 4. Set `selected_path` to the edge ID array once the user confirms. Keep it null while waiting for confirmation.
