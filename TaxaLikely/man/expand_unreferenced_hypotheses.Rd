@@ -29,7 +29,11 @@ whose rejected congeners are returned in exactly this shape via
 }
 \value{
 \code{likelihood_df} with named species rows added under each genus
-ring where matches are found; generic rows are kept.  Column set is unchanged; new rows carry \code{NA} for most extra
+ring where matches are found; generic rows are kept.  Only the H2 and H3
+rows are rebuilt: \code{specific_candidate} rows, the \code{"unreferenced_family"}
+catch-all and any coarser catch-all pass through unchanged, so the
+posterior still sees every hypothesis the caller supplied.
+Column set is unchanged; new rows carry \code{NA} for most extra
 columns in the input (e.g. \code{constraint_applied}, which is genuinely
 row-specific), except \code{score_likelihood_cov}, \code{score_likelihood_evidence},
 and \code{h2_delta_source} when present -- these, like \code{score_likelihood}/
