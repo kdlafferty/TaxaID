@@ -183,13 +183,16 @@ generate_report <- function(result,
   }
 
   # --- Build Methods ----------------------------------------------------------
+  prior_kind <- .detect_prior_kind(result)
   methods_text <- .build_methods_text(workflow, params, data_type, marker,
     !is.null(unreferenced_result),
     !is.null(unref_stats) &&
       unref_stats$has_family_expansion,
     stats$has_empirical_bayes,
     llm_model_name,
-    kernel_priors = "prior_branch" %in% names(result)
+    kernel_priors = identical(prior_kind, "kernel"),
+    prior_kind = prior_kind,
+    beta_priors = all(c("prior_alpha", "prior_beta") %in% names(result))
   )
 
   # --- Build Results ----------------------------------------------------------
@@ -492,12 +495,37 @@ generate_report <- function(result,
 # Methods text (template-based)
 # ==============================================================================
 
+# Which prior the Methods paragraph is entitled to claim.  Read off the result
+# table rather than taken on trust from an argument, so the text cannot assert a
+# prior the run did not use.  "kernel" is the kernel/curve architecture, which
+# carries its own prior_branch column.  One prior value shared by two or more
+# competing hypotheses is a flat prior.  A single row, a single non-missing
+# prior_mean, or no prior_mean column at all is no evidence either way: those
+# report "unknown" and get neutral text, because a wrong source is worse in a
+# manuscript than an unstated one.
+#' @noRd
+.detect_prior_kind <- function(result) {
+  if ("prior_branch" %in% names(result)) {
+    return("kernel")
+  }
+  if (!"prior_mean" %in% names(result)) {
+    return("unknown")
+  }
+  pm <- result$prior_mean[!is.na(result$prior_mean)]
+  if (length(pm) < 2L) {
+    return("unknown")
+  }
+  if (length(unique(pm)) == 1L) "flat" else "occurrence"
+}
+
 #' @noRd
 .build_methods_text <- function(workflow, params, data_type, marker,
                                 has_unreferenced, has_family_expansion,
                                 has_empirical_bayes,
                                 llm_model_name = NULL,
-                                kernel_priors = FALSE) {
+                                kernel_priors = FALSE,
+                                prior_kind = "occurrence",
+                                beta_priors = TRUE) {
   sections <- character(0)
 
   # --- Data type preamble ---
@@ -520,10 +548,18 @@ generate_report <- function(result,
       "search results."
     )
   } else {
+    # The prior clause here has to agree with the prior paragraph below, which
+    # names the source: a flat-prior run must not be introduced as using
+    # occurrence-based priors.  Kernel priors are occurrence-based, so they keep
+    # the original wording.
+    prior_clause <- switch(prior_kind,
+      flat = "a flat prior over the competing hypotheses",
+      unknown = "the prior probabilities supplied with them",
+      "occurrence-based priors"
+    )
     intro <- paste0(
       "Assignments were estimated using a hierarchical Bayesian framework ",
-      "combining statistically modeled match likelihoods with occurrence-based ",
-      "priors."
+      "combining statistically modeled match likelihoods with ", prior_clause, "."
     )
   }
   sections <- c(sections, paste(data_desc, intro))
@@ -641,6 +677,19 @@ generate_report <- function(result,
       "were priced on a separate transport branch reflecting non-resident ",
       "sources of DNA."
     )
+  } else if (identical(prior_kind, "flat")) {
+    prior_text <- paste0(
+      "A flat prior was used: every competing hypothesis for an observation was ",
+      "given the same prior probability, so the posterior ordering within each ",
+      "observation follows the likelihoods alone. No occurrence, habitat or ",
+      "other external information entered the prior."
+    )
+  } else if (identical(prior_kind, "unknown")) {
+    prior_text <- paste0(
+      "Prior probabilities were supplied with the likelihood table. Their source ",
+      "is not recorded in the posterior result, so it is not described here and ",
+      "should be stated by the authors."
+    )
   } else {
     prior_text <- paste0(
       "Prior probabilities were generated from species occurrence records and ",
@@ -687,18 +736,25 @@ generate_report <- function(result,
   # --- Posterior computation ---
   n_sims <- if (!is.null(params$n_sims)) params$n_sims else 1000L
   if (n_sims > 0) {
+    # compute_posterior() samples the prior only where prior_alpha/prior_beta are
+    # supplied; otherwise it holds the prior fixed at prior_mean across the
+    # simulations.  The sentence has to say which of the two happened.
+    prior_sim_clause <- if (isTRUE(beta_priors)) {
+      "and priors were sampled from their Beta distributions"
+    } else {
+      "while the prior was held fixed at its point value, no distribution for it having been supplied"
+    }
     post_text <- sprintf(
       paste0(
         "Posterior probabilities were computed for each observation as the normalized ",
         "product of likelihood and prior (Bayes' theorem). To propagate uncertainty, ",
         "%d Monte Carlo simulations were performed: in each simulation, likelihoods ",
-        "were drawn from their estimated distributions and priors were sampled from ",
-        "their Beta distributions. The posterior mean and standard deviation across ",
-        "simulations were recorded, along with a confidence score representing the ",
-        "fraction of simulations in which each taxon had the highest posterior ",
-        "probability."
+        "were drawn from their estimated distributions %s. The posterior mean and ",
+        "standard deviation across simulations were recorded, along with a confidence ",
+        "score representing the fraction of simulations in which each taxon had the ",
+        "highest posterior probability."
       ),
-      n_sims
+      n_sims, prior_sim_clause
     )
   } else {
     post_text <- paste0(
