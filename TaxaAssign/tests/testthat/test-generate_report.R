@@ -321,3 +321,95 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
   expect_true(grepl("logit-transformed", no_transform_text))
 })
 
+
+# --- the Methods paragraph must match the prior the run actually used ---------
+
+test_that(".detect_prior_kind reads the prior off the result table", {
+  # kernel/curve architecture: identified by its own column
+  expect_equal(.detect_prior_kind(data.frame(prior_branch = "resident", prior_mean = 0.3)), "kernel")
+  # one prior value shared by competing hypotheses is a flat prior
+  expect_equal(.detect_prior_kind(data.frame(prior_mean = c(0.01, 0.01, 0.01))), "flat")
+  # varying priors are the occurrence/habitat model's signature
+  expect_equal(.detect_prior_kind(data.frame(prior_mean = c(0.5, 0.3, 0.2))), "occurrence")
+  # a constant is not evidence of flatness when there is nothing to compare
+  expect_equal(.detect_prior_kind(data.frame(prior_mean = 0.3)), "unknown")
+  expect_equal(.detect_prior_kind(data.frame(prior_mean = c(0.3, NA_real_))), "unknown")
+  expect_equal(.detect_prior_kind(data.frame(prior_mean = c(NA_real_, NA_real_))), "unknown")
+  # nothing to read at all
+  expect_equal(.detect_prior_kind(data.frame(taxon_name = c("a", "b"))), "unknown")
+})
+
+test_that("generate_report does not claim TaxaExpect priors on a flat-prior run", {
+  result <- .mock_posterior_result()
+  result$prior_mean <- 0.01
+  result$prior_alpha <- NULL
+  result$prior_beta <- NULL
+  report <- generate_report(result, .mock_consensus(), llm_fn = NULL)
+
+  expect_true(grepl("flat prior was used", report))
+  expect_true(grepl("follows the likelihoods alone", report))
+  # the false Methods sentences a collaborator could paste into a manuscript
+  expect_false(grepl("TaxaExpect", report))
+  expect_false(grepl("occurrence records and habitat models", report))
+  # the workflow preamble asserts a prior source of its own, and must agree
+  expect_false(grepl("occurrence-based priors", report))
+  expect_true(grepl("flat prior over the competing hypotheses", report))
+})
+
+test_that("generate_report keeps the TaxaExpect paragraph when the priors vary", {
+  # the detector has to be able to fail: a real varying prior must still be
+  # described as the occurrence/habitat model's
+  result <- .mock_posterior_result()
+  expect_equal(length(unique(result$prior_mean)), 3L)
+  report <- generate_report(result, .mock_consensus(), llm_fn = NULL)
+
+  expect_true(grepl("occurrence records and", report))
+  expect_true(grepl("TaxaExpect", report))
+  expect_true(grepl("occurrence-based priors", report))
+  expect_false(grepl("flat prior was used", report))
+})
+
+test_that("generate_report states nothing about a prior it cannot read", {
+  result <- .mock_posterior_result()
+  result$prior_mean <- NULL
+  report <- generate_report(result, .mock_consensus(), llm_fn = NULL)
+
+  expect_true(grepl("not recorded in the posterior result", report))
+  expect_false(grepl("TaxaExpect", report))
+  expect_false(grepl("occurrence-based priors", report))
+  expect_false(grepl("flat prior was used", report))
+})
+
+test_that(".build_methods_text leaves the kernel paragraph to the kernel branch", {
+  params <- list(n_sims = 1000L)
+  # prior_kind never overrides the kernel/curve text
+  text <- .build_methods_text("bayesian", params, "eDNA", NULL,
+    FALSE, FALSE, FALSE, NULL,
+    kernel_priors = TRUE, prior_kind = "flat"
+  )
+  expect_true(grepl("site-centered kernel estimation", text))
+  expect_false(grepl("flat prior was used", text))
+})
+
+test_that("generate_report says the prior was fixed when no Beta was supplied", {
+  # compute_posterior() samples the prior only where prior_alpha/prior_beta are
+  # present; without them it holds the prior at prior_mean, so the Monte Carlo
+  # sentence must not claim Beta draws.
+  result <- .mock_posterior_result()
+  result$prior_mean <- 0.01
+  result$prior_alpha <- NULL
+  result$prior_beta <- NULL
+  report <- generate_report(result, .mock_consensus(), llm_fn = NULL)
+
+  expect_true(grepl("prior was held fixed at its point value", report))
+  expect_false(grepl("sampled from their Beta distributions", report))
+})
+
+test_that("generate_report keeps the Beta-draw sentence when alpha and beta are present", {
+  result <- .mock_posterior_result()
+  expect_true(all(c("prior_alpha", "prior_beta") %in% names(result)))
+  report <- generate_report(result, .mock_consensus(), llm_fn = NULL)
+
+  expect_true(grepl("sampled from their Beta distributions", report))
+  expect_false(grepl("prior was held fixed", report))
+})
