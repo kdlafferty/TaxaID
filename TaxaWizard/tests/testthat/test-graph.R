@@ -74,17 +74,13 @@ test_that(".compute_paths() finds match_df -> consensus (3+ paths)", {
   paths <- .compute_paths("match_df", "consensus")
 
   expect_true(length(paths) >= 2,
-    info = "Should find score, LLM wrapper, and possibly Bayesian paths"
+    info = "Should find score and Bayesian paths"
   )
 
   # Score-based path should exist (single edge)
   edge_sets <- lapply(paths, `[[`, "edges")
   has_score <- any(vapply(edge_sets, function(e) "match_to_consensus_score" %in% e, FALSE))
   expect_true(has_score, info = "Score-based path should exist")
-
-  # LLM wrapper path should exist
-  has_llm <- any(vapply(edge_sets, function(e) "match_to_consensus_llm" %in% e, FALSE))
-  expect_true(has_llm, info = "LLM wrapper path should exist")
 })
 
 test_that(".compute_paths() finds consensus_df -> reviewed", {

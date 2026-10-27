@@ -19,7 +19,7 @@ update_prior_from_consensus(
 )
 }
 \arguments{
-\item{result}{Dataframe. Output of \code{\link[=assign_taxa_llm]{assign_taxa_llm()}} or \code{\link[=compute_posterior]{compute_posterior()}}.
+\item{result}{Dataframe. Output of \code{\link[=compute_posterior]{compute_posterior()}}.
 Must contain: \code{observation_id}, \code{taxon_name}, \code{score_likelihood},
 \code{score_likelihood_mean}, \code{score_likelihood_sd}, \code{prior_mean}. When
 \code{prior_alpha}/\code{prior_beta} (Beta shape parameters) are present, they are
@@ -86,8 +86,8 @@ prior table); with \code{TRUE} the function stops, naming any that is missing.
 \code{FALSE} is a TRANSITIONAL shim for callers not yet migrated, not a
 supported mode: it skips every guard (including the species guard) and raises without
 likelihood-consensus support (a message says so), so its results are not
-comparable to a guarded run. Within this package it is used only for the
-LLM pathway, whose priors are not occurrence-based.}
+comparable to a guarded run. It exists for priors that are not
+occurrence-based and so carry no \code{theta_mean}.}
 
 \item{max_raise_factor}{Numeric (default \code{2000}). Upper bound on a
 non-mixture raise, as a MULTIPLE of the row's existing \code{prior_mean}:
@@ -390,6 +390,6 @@ result_updated <- update_prior_from_consensus(
 
 }
 \seealso{
-\code{\link[=posterior_consensus]{posterior_consensus()}}, \code{\link[=compute_posterior]{compute_posterior()}}, \code{\link[=assign_taxa_llm]{assign_taxa_llm()}},
+\code{\link[=posterior_consensus]{posterior_consensus()}}, \code{\link[=compute_posterior]{compute_posterior()}},
 \code{\link[=combine_multisite_priors]{combine_multisite_priors()}}
 }

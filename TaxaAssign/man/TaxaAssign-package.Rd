@@ -6,7 +6,7 @@
 \alias{TaxaAssign}
 \title{TaxaAssign: Bayesian Taxonomic Assignment from Match Scores and Priors}
 \description{
-Estimates the posterior probability that a biological sample (sequence, image, sound) was produced by a particular taxon, using Bayes' theorem. Combines per-taxon likelihoods (from TaxaLikely or an LLM) with spatial priors (from TaxaExpect or an LLM) to compute posteriors via Monte Carlo simulation. Provides consensus taxonomy assignment at the appropriate rank (species, genus, family, etc.), empirical Bayes prior refinement, score-based consensus for comparison, and automated report generation. Part of the TaxaID ecosystem.
+Estimates the posterior probability that a biological sample (sequence, image, sound) was produced by a particular taxon, using Bayes' theorem. Combines per-taxon likelihoods (from TaxaLikely) with spatial priors (from TaxaExpect) to compute posteriors via Monte Carlo simulation. Provides consensus taxonomy assignment at the appropriate rank (species, genus, family, etc.), empirical Bayes prior refinement, score-based consensus for comparison, and automated report generation. Part of the TaxaID ecosystem.
 
 Estimates the posterior probability that a biological sample (sequence,
 image, sound) was produced by a particular taxon, using Bayes' theorem.
@@ -17,7 +17,6 @@ then determines consensus taxonomy at the appropriate rank.
 
 \itemize{
 \item \code{\link{compute_posterior}} -- Bayes' theorem with MC uncertainty
-\item \code{\link{assign_taxa_llm}} -- LLM-shortcut (priors + likelihoods)
 \item \code{\link{join_priors}} -- merge TaxaExpect priors with likelihoods
 }
 }
@@ -34,14 +33,11 @@ refinement
 
 \section{Unreferenced species}{
 
-Two separate mechanisms, one per workflow -- not used together. Full
-Bayesian: \code{TaxaLikely::audit_barcode_coverage()} feeds
+\code{TaxaLikely::audit_barcode_coverage()} feeds
 \code{TaxaLikely::expand_unreferenced_hypotheses()} (models likelihoods for
-named unreferenced taxa). LLM-shortcut:
-\code{TaxaLikely::suggest_unreferenced_species()} (a fast, LLM-first
-alternative to \code{audit_barcode_coverage()}) feeds
-\code{\link{assign_taxa_llm}}'s own \code{unreferenced_taxa} parameter
-directly.
+named unreferenced taxa). \code{TaxaLikely::suggest_unreferenced_species()}
+is a faster, LLM-first alternative to \code{audit_barcode_coverage()} for
+finding the names.
 \itemize{
 \item \code{TaxaLikely::expand_unreferenced_hypotheses()} -- models
 likelihoods for named unreferenced taxa (lives in TaxaLikely, next to

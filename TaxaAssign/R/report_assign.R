@@ -19,18 +19,15 @@
 #' \code{\link{generate_report}} instead.
 #'
 #' @param result Data frame or \code{NULL}. Posterior output from
-#'   \code{\link{compute_posterior}} or \code{\link{assign_taxa_llm}}.
+#'   \code{\link{compute_posterior}}.
 #'   Required for posterior-based consensus. Pass \code{NULL} for score-based.
 #' @param consensus Data frame. Output from \code{\link{posterior_consensus}}
 #'   or \code{\link{score_consensus}}.
 #' @param data_type Character or \code{NULL}. One of \code{"eDNA"},
 #'   \code{"image"}, \code{"acoustic"}.
-#' @param workflow Character or \code{NULL}. One of \code{"bayesian"} or
-#'   \code{"llm"} -- overrides the auto-detected workflow used to select
-#'   Methods-text wording (same auto-detection caveat as
-#'   \code{\link{generate_report}}'s \code{workflow} argument: reliable for
-#'   this package's own pipeline output, but can misclassify a hand-built or
-#'   third-party \code{result}). Ignored when \code{consensus} comes from
+#' @param workflow Character or \code{NULL}. \code{"bayesian"} -- overrides
+#'   the resolved workflow used to select Methods-text wording. Ignored when
+#'   \code{consensus} comes from
 #'   \code{\link{score_consensus}} (workflow is always \code{"score"}).
 #' @param verbose Logical. Print summary messages. Default \code{FALSE}.
 #'
@@ -70,7 +67,7 @@ report_assign <- function(result = NULL,
     cli::cli_abort("{.arg consensus} must be a non-empty data frame.")
   }
   if (!is.null(workflow)) {
-    workflow <- match.arg(workflow, c("bayesian", "llm"))
+    workflow <- match.arg(workflow, "bayesian")
   }
 
   # --- Detect consensus type --------------------------------------------------
@@ -82,8 +79,7 @@ report_assign <- function(result = NULL,
   } else if (!is.null(workflow)) {
     # explicitly supplied -- use as-is, no detection needed
   } else if (!is.null(result) && is.data.frame(result)) {
-    llm_cols <- c("range_status", "habitat_fit", "information_quality")
-    workflow <- if (all(llm_cols %in% names(result))) "llm" else "bayesian"
+    workflow <- "bayesian"
   } else {
     workflow <- "posterior"
   }
@@ -146,7 +142,6 @@ report_assign <- function(result = NULL,
 
   # --- Methods text -----------------------------------------------------------
   workflow_desc <- switch(workflow,
-    llm      = "LLM-shortcut Bayesian assignment with LLM-derived priors",
     bayesian = "full Bayesian assignment with occurrence-based priors",
     score    = "score-based consensus assignment",
     "taxonomic assignment"
@@ -161,7 +156,7 @@ report_assign <- function(result = NULL,
   }
   methods_text <- paste0(methods_text, ".")
 
-  if (workflow %in% c("llm", "bayesian")) {
+  if (workflow == "bayesian") {
     threshold <- all_params$cumulative_threshold
     if (!is.null(threshold)) {
       methods_text <- paste0(methods_text, sprintf(

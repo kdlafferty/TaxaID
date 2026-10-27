@@ -14,7 +14,7 @@ report_assign(
 }
 \arguments{
 \item{result}{Data frame or \code{NULL}. Posterior output from
-\code{\link{compute_posterior}} or \code{\link{assign_taxa_llm}}.
+\code{\link{compute_posterior}}.
 Required for posterior-based consensus. Pass \code{NULL} for score-based.}
 
 \item{consensus}{Data frame. Output from \code{\link{posterior_consensus}}
@@ -23,12 +23,9 @@ or \code{\link{score_consensus}}.}
 \item{data_type}{Character or \code{NULL}. One of \code{"eDNA"},
 \code{"image"}, \code{"acoustic"}.}
 
-\item{workflow}{Character or \code{NULL}. One of \code{"bayesian"} or
-\code{"llm"} -- overrides the auto-detected workflow used to select
-Methods-text wording (same auto-detection caveat as
-\code{\link{generate_report}}'s \code{workflow} argument: reliable for
-this package's own pipeline output, but can misclassify a hand-built or
-third-party \code{result}). Ignored when \code{consensus} comes from
+\item{workflow}{Character or \code{NULL}. \code{"bayesian"} -- overrides
+the resolved workflow used to select Methods-text wording. Ignored when
+\code{consensus} comes from
 \code{\link{score_consensus}} (workflow is always \code{"score"}).}
 
 \item{verbose}{Logical. Print summary messages. Default \code{FALSE}.}

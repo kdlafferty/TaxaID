@@ -10,12 +10,9 @@ utils::globalVariables(c(
 
 # Fixed likelihood weight for unreferenced_family rows.
 # Not fit from data -- a deliberately conservative, low-but-nonzero nominal
-# constant, chosen to match TaxaAssign::assign_taxa_llm()'s analogous
-# unknown_lik_weight parameter (also 0.05) so an unreferenced_family hypothesis
-# gets comparable, non-degenerate treatment whether it enters the posterior via
-# the scored (TaxaLikely) or LLM (TaxaAssign) pathway. Kept as one shared
-# nominal value across the ecosystem rather than independently tuned per
-# package.
+# constant, so an unreferenced_family hypothesis gets non-degenerate
+# treatment. Kept as one shared nominal value across the ecosystem rather
+# than independently tuned per package.
 .unreferenced_family_weight <- 0.05
 
 #' Assign score_likelihood values to a hypotheses data frame

@@ -36,7 +36,7 @@
 #' already-summarized fitted values, not the raw match scores or the model
 #' that produced them (e.g. `TaxaLikely::train_likelihood_model()`'s
 #' `score_transform`), and `likelihood_w_prior` may come from a non-TaxaLikely
-#' source (e.g. `assign_taxa_llm()`'s LLM-derived likelihood proxy). Treating
+#' source supplying its own likelihood proxy. Treating
 #' the summary as approximately Normal, truncated only at 0 (no upper
 #' truncation, since `score_likelihood` need not sum to 1 across candidates
 #' before `normalize_vec()` runs), is a documented approximation, not a claim
@@ -62,10 +62,8 @@
 #'   When absent, priors are treated as fixed (no prior uncertainty). Not
 #'   required unconditionally because a caller can have a genuinely fixed,
 #'   non-probabilistic prior with no natural concentration parameter -- e.g.
-#'   [assign_taxa_llm()]'s `prior_phi = NULL` disables Beta sampling entirely
-#'   when the LLM's per-taxon confidence isn't being modelled as data volume.
-#'   All other real callers in this ecosystem (`join_priors()`-derived
-#'   TaxaExpect priors) always supply both columns.
+#'   a prior read off a published range map. Real callers in this ecosystem
+#'   (`join_priors()`-derived TaxaExpect priors) always supply both columns.
 #' @param n_sims Integer. Number of Monte Carlo simulations. Default 1000.
 #'   Set to 0 to skip simulation and return point estimates only.
 #'
@@ -177,7 +175,7 @@
 #'   \item \code{"unreferenced_genus"} -- genus absent from the reference DB
 #'     (from TaxaLikely H3).
 #'   \item \code{"unknown_species"} -- catch-all for uncharacterised diversity
-#'     (from \code{assign_taxa_llm()}).
+#'     (accepted on input; no function in this ecosystem emits it).
 #'   \item \code{"unresolved_species"} -- the placeholder of a fully-sampled
 #'     genus (from \code{apply_coverage_constraints()}); its posterior is
 #'     passed to the genus's referenced members, see above.

@@ -2,7 +2,7 @@
 # Test and exploration workflow for add_slash_taxon()
 #
 # Prereq: consensus_final must already be in your environment
-# (output of posterior_consensus() from the Bayesian or LLM pipeline).
+# (output of posterior_consensus()).
 #
 # Sections:
 #   1. Audit plausible_taxa for invalid species names (run this first)

@@ -47,13 +47,13 @@ You MUST respond with a single JSON object. No text outside the JSON. The schema
 - NEVER invent a file path. Always ask the user for file paths.
 - NEVER guess a parameter value that has no sensible default. Ask.
 - You MAY use documented defaults for parameters that have them (e.g., `score_threshold = 80`, `rank_system = c("family", "genus", "species")`).
-- If the user's goal is ambiguous (could be solved by the Bayesian pipeline OR the LLM pipeline), explain the tradeoff and ask which they prefer.
+- If the user's goal is ambiguous (could be solved by the Bayesian pipeline OR score-only consensus), explain the tradeoff and ask which they prefer.
 
 ## Interview Flow
 
 1. **Goal**: What does the user want to accomplish? (species ID from eDNA? camera trap images? acoustic data?)
 2. **Data**: What data do they have? (DADA2 output? FASTA? match table? occurrence data?)
-3. **Pipeline**: Which workflow fits? (LLM-shortcut? Full Bayesian? Score-only consensus?)
+3. **Pipeline**: Which workflow fits? (Full Bayesian? Score-only consensus?)
 4. **Parameters**: What are the site-specific details? (geographic region, barcode marker, reference database)
 5. **Outputs**: What do they want generated? (.R script? Methods text? Shiny app? All three?)
 6. **Confirm**: Summarize the planned workflow and ask for confirmation before setting status to "complete".
@@ -62,12 +62,9 @@ You may combine steps when the user provides enough information upfront. Do not 
 
 ## Pipeline Awareness
 
-The TaxaID ecosystem has two main assignment workflows:
+The TaxaID ecosystem's assignment workflow:
 
-**LLM-Shortcut Pipeline** (faster, requires API key):
-TaxaMatch → assign_taxa_llm() → posterior_consensus() → report
-
-**Full Bayesian Pipeline** (no API needed for assignment, but slower):
+**Full Bayesian Pipeline:**
 TaxaMatch → TaxaLikely (train model) → TaxaExpect (build priors) → TaxaAssign (compute posterior) → consensus → report
 Or: evaluate_likelihoods() → join_priors() → compute_posterior() → posterior_consensus()
 

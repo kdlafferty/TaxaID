@@ -1,17 +1,11 @@
-# TaxaAssign: Full Bayesian Workflow (non-LLM pipeline)
+# TaxaAssign: Full Bayesian Workflow
 # ============================================================================
 #
-# Non-LLM counterpart to TaxaAssign_llm_workflow.R.
 # Combines score-based likelihoods (TaxaLikely) with occurrence-based priors
 # (TaxaExpect) using a formal Bayesian update.
 #
-# Parallel structure to the LLM workflow:
-#   LLM workflow     -- assign_taxa_llm() generates both likelihoods and priors
-#   Bayesian workflow -- TaxaLikely and TaxaExpect supply them independently
-#
-# When to use this workflow vs. the LLM workflow:
-#   Bayesian -- preferred when you have a well-trained TaxaLikely model and
-#               TaxaExpect priors; fully reproducible; no API costs
+# Use it when you have a well-trained TaxaLikely model and TaxaExpect priors;
+# fully reproducible; no API costs
 #   LLM      -- preferred for rapid exploration, novel taxa, or when reference
 #               training data are sparse
 #

@@ -12,7 +12,8 @@
 #' \code{\link{workflow_fix}} while debugging a generated script, can add up.
 #' Keep replies focused and type \code{"quit"} once you have what you need;
 #' the resulting script itself makes no further LLM calls (aside from any
-#' LLM-backed TaxaID step it explicitly includes, e.g. \code{assign_taxa_llm()}).
+#' LLM-backed TaxaID step it explicitly includes, e.g.
+#' \code{TaxaFlag::review_assignments()}).
 #'
 #' @param mode Character. Where to run the chat interface:
 #'   \describe{

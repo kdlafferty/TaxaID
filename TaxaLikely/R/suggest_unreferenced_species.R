@@ -602,10 +602,11 @@ print.unreferenced_species_result <- function(x, ...) {
 #'
 #' ## Return value
 #' The visible return is a character vector of unreferenced species names of class
-#' `c("unreferenced_species_result", "character")`, suitable for direct use as
-#' `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`.  `assign_taxa_llm` automatically
-#' detects the `unreferenced_family` attribute and activates family-level
-#' unreferenced species insertion when it is present.
+#' `c("unreferenced_species_result", "character")`.  To use them as competing
+#' hypotheses, reshape them into the `unreferenced_df` taken by
+#' [expand_unreferenced_hypotheses()], which needs `species`, `genus` and
+#' `family` columns; the `unreferenced_family` attribute records which names
+#' are family-level rather than congeners.
 #'
 #' Additional details are attached as attributes:
 #' \itemize{
@@ -676,13 +677,11 @@ print.unreferenced_species_result <- function(x, ...) {
 #'
 #' @return A character vector of unreferenced species names with class
 #'   `c("unreferenced_species_result", "character")`.  `length()` returns the total number of
-#'   unreferenced species (congener + family-level combined).  Pass directly to
-#'   `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`.
+#'   unreferenced species (congener + family-level combined).  Reshape into
+#'   [expand_unreferenced_hypotheses()]'s `unreferenced_df` to use them.
 #'
-#' @seealso [TaxaAssign::assign_taxa_llm()] to use the returned unreferenced species names in the
-#'   LLM-shortcut assignment pipeline -- a fast, approximate substitute for this
-#'   package's own modeled likelihoods (`train_likelihood_model()`/`evaluate_likelihoods()`)
-#'   and TaxaExpect's modeled priors, not a parallel first-class pipeline.
+#' @seealso [expand_unreferenced_hypotheses()] to turn the returned names into
+#'   competing hypotheses with modeled likelihoods.
 #'   [audit_barcode_coverage()] for exhaustive (slower)
 #'   unreferenced species detection that does not require an LLM.
 #'
@@ -731,8 +730,8 @@ print.unreferenced_species_result <- function(x, ...) {
 #' )
 #' attr(unref_names, "family_census")
 #'
-#' # Pass directly to TaxaAssign::assign_taxa_llm()
-#' result <- TaxaAssign::assign_taxa_llm(match_df, context = ctx, unreferenced_taxa = unref_names)
+#' # Reshape for expand_unreferenced_hypotheses()
+#' unref_df <- data.frame(species = as.character(unref_names))
 #' }
 suggest_unreferenced_species <- function(match_df,
                                          context = NULL,

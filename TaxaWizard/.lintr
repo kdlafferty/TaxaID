@@ -27,7 +27,6 @@ exclusions: list(
     # local variables) were fixed directly instead of suppressed.
     "R/shiny.R" = list(line_length_linter = Inf),
     "inst/graph/snippets/match_to_consensus_bayes.R" = list(line_length_linter = Inf),
-    "inst/graph/snippets/match_to_consensus_llm.R" = list(line_length_linter = Inf),
     "inst/graph/snippets/match_to_consensus_score.R" = list(line_length_linter = Inf),
     "inst/graph/snippets/match_to_taxa.R" = list(line_length_linter = Inf),
     "inst/graph/snippets/occ_to_std.R" = list(line_length_linter = Inf),

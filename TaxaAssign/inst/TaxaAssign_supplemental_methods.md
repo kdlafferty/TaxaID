@@ -46,9 +46,6 @@ priors are obtained:
 -   **Full Bayesian workflow**: calibrated likelihoods from TaxaLikely's
     hierarchical model + spatially-explicit priors from TaxaExpect's
     kernel-based occurrence estimator.
--   **LLM-shortcut workflow**: exponential score weighting as a
-    likelihood proxy + LLM-estimated priors from a large language model
-    acting as an expert biogeographer.
 
 Both workflows converge on the same `compute_posterior()` function and
 downstream consensus machinery.
@@ -141,9 +138,9 @@ non-informative special case. Key relationships:
 
 The full Bayesian workflow receives $\alpha$ and $\beta$ directly from
 TaxaExpect's moment-matching procedure (see
-`TaxaExpect/inst/TaxaExpect_supplemental_methods.md`). The LLM-shortcut workflow constructs them
-from `prior_mean × phi` and `(1 - prior_mean) × phi`, where $\phi$ is
-determined by the LLM's `information_quality` rating (see Section 4.3).
+`TaxaExpect/inst/TaxaExpect_supplemental_methods.md`). A caller supplying a
+fixed `prior_mean` with a concentration $\phi$ instead constructs them as
+`prior_mean × phi` and `(1 - prior_mean) × phi`.
 
 ------------------------------------------------------------------------
 
@@ -175,10 +172,9 @@ level. `expand_unreferenced_hypotheses()` replaces these generic rows
 with named species from an `unreferenced_df` (a species/genus/family
 data frame -- in every real production workflow, built from
 `audit_barcode_coverage()`'s `$unreferenced` vector run through
-`TaxaTools::fill_higher_ranks()`; NOT `suggest_unreferenced_species()`,
-whose flat character-vector output has no parameter shape this function
-accepts -- that output goes to `assign_taxa_llm(unreferenced_taxa = ...)`
-in the separate LLM-shortcut pathway instead):
+`TaxaTools::fill_higher_ranks()`; `suggest_unreferenced_species()`'s flat
+character-vector output must be reshaped into the same data-frame form
+first):
 
 -   **H2 rows**: each generic genus-level row is replaced by one row per
     unreferenced species in that genus. All inherit the generic H2
@@ -248,191 +244,13 @@ performs both the point estimate and Monte Carlo updates.
 
 ------------------------------------------------------------------------
 
-## 4. LLM-Shortcut Workflow
-
-The LLM-shortcut workflow (`assign_taxa_llm()`) provides a faster
-alternative when a full TaxaLikely model and TaxaExpect spatial model
-are not available. It replaces calibrated likelihoods and spatial priors
-with score-based proxies and LLM expert judgment, respectively.
-
-### 4.1 Likelihood Proxy via Exponential Score Weighting
-
-Instead of the bivariate normal density from TaxaLikely, the
-LLM-shortcut workflow converts raw match scores to likelihood proxies
-using an exponential weighting function:
-
-$$L_i = \exp(\lambda \times s_i)$$
-
-where $s_i$ is the match score for candidate $i$ and $\lambda$ is the
-`score_sharpness` parameter (default 0.1). The exponential function has
-two desirable properties:
-
-1.  **Monotonicity**: higher scores always produce higher likelihoods.
-2.  **Tuneable discrimination**: $\lambda$ controls how aggressively
-    small score differences translate to large likelihood ratios.
-    -   $\lambda = 0.1$ (default): a 10-point score difference produces
-        a likelihood ratio of $e^1 \approx 2.7$, appropriate for percent
-        identity scores on a 0--100 scale.
-    -   Larger $\lambda$: more aggressive discrimination; suitable when
-        scores are highly informative.
-    -   Smaller $\lambda$: flatter discrimination; appropriate when
-        scores are noisy or on a narrow range.
-
-For each observation, scores are aggregated to one value per taxon_name
-(median across reference accessions), then converted:
-
-$$\hat{L}_i = (1 - w_u) \times \frac{\exp(\lambda \times s_i)}{\sum_j \exp(\lambda \times s_j)}$$
-
-where $w_u$ is the `unknown_lik_weight` (default 0.05), reserved for an
-`unreferenced_family` hypothesis (NA `taxon_name`) that captures the
-probability that the true taxon is not among any of the candidates.
-
-### 4.2 Unreferenced Species Insertion
-
-When `unreferenced_taxa` is provided (typically from
-`TaxaLikely::suggest_unreferenced_species()`), unreferenced species are inserted
-into the likelihood table with scores derived from their referenced
-congeners:
-
--   **Genus-level unreferenced** (`unreferenced_species`): each species
-    receives the median exponential score of its congeners in the
-    candidate set.
--   **Family-level unreferenced** (`unreferenced_genus`): each species
-    from a represented family but unrepresented genus receives the
-    median exponential score of family members.
-
-This parallels TaxaLikely's H2/H3 hypotheses but uses score-based
-proxies rather than the trained delta-offset model.
-
-### 4.3 LLM Prior Estimation
-
-The core innovation of the LLM-shortcut workflow is using a large
-language model as an expert biogeographer to estimate priors. For each
-group of observations (optionally stratified by `context_group`), the
-LLM receives:
-
--   **Context**: ecoregion, coordinates, date/season, habitat
--   **Survey context**: known present/absent species
--   **Taxa list**: each candidate taxon with rank and hypothesis type
--   **Prior weight guide**: structured ranges mapping ecological
-    categories to prior weight bounds
-
-The LLM returns a JSON array with four fields per taxon:
-
-| Field | Values | Purpose |
-|------------------------|------------------------|------------------------|
-| `range_status` | native, introduced_established, documented_nearby, not_documented, taxonomically_impossible, uncertain | Geographic presence |
-| `habitat_fit` | expected, occasional, unlikely | Habitat suitability |
-| `information_quality` | high, moderate, low | Data availability for this taxon in this region |
-| `prior_weight` | numeric | Raw prior weight integrating range and habitat |
-
-#### Prior Weight Guide
-
-The `prior_weight_guide` parameter provides structured ranges that
-anchor the LLM's prior weights to ecologically defensible bounds:
-
-| Category | Default range | Rationale |
-|------------------------|------------------------|------------------------|
-| native + expected habitat | 0.5 -- 1.0 | Species in its primary habitat |
-| native + occasional habitat | 0.03 -- 0.15 | Species uses habitat peripherally |
-| native + unlikely habitat | 0.003 -- 0.03 | Right region, wrong habitat |
-| documented_nearby + expected | 0.05 -- 0.3 | Broader region, could occur |
-| documented_nearby + occasional/unlikely | 0.002 -- 0.05 | Marginal range, marginal habitat |
-| not_documented | 0.001 -- 0.02 | No records from region |
-| taxonomically_impossible | 0.0001 -- 0.002 | Wrong continent/realm |
-
-These ranges produce approximately a 10-fold reduction per ecological
-step. The step size is our own choice rather than a prescribed scheme;
-O'Hagan and others (2006) provide the general framework for eliciting and
-encoding judgements of this kind. The user can customize ranges via the
-`prior_weight_guide` parameter.
-
-#### Information Quality and Beta Concentration
-
-The LLM's `information_quality` assessment maps to Beta distribution
-concentration $\phi$ via the `prior_phi` parameter:
-
-| Quality  | Default $\phi$ | Interpretation                             |
-|----------|----------------|--------------------------------------------|
-| high     | 50             | Well-studied; prior tightly held           |
-| moderate | 10             | Some records; prior moderately informative |
-| low      | 3              | Data-deficient; prior easily overridden    |
-
-Beta parameters are then: $\alpha = \mu \times \phi$,
-$\beta = (1 - \mu) \times \phi$
-
-where $\mu$ is the normalized prior weight from the LLM.
-
-This design means that a data-deficient taxon with a moderate prior
-weight can still be overridden by strong likelihood evidence (low $\phi$
-→ wide Beta → large MC variance), while a well-studied taxon requires
-stronger evidence to shift its posterior away from the prior.
-
-### 4.4 Incorporating Local Knowledge
-
-The LLM may have blind spots, and users often have local knowledge
-that can improve priors. `assign_taxa_llm()` provides two parameters
-for injecting this knowledge:
-
-#### Known-absent species
-
-The `known_absent` parameter accepts a character vector of taxon names
-or a data.frame with `taxon_name` and `detection_prob` columns. For
-each known-absent taxon found among the candidates, the prior is
-mathematically suppressed:
-
-$$\pi'_i = \pi_i \times (1 - p_{\text{det}})$$
-
-where $p_{\text{det}}$ is the estimated detection probability (default
-0.80 for a character vector; user-specified per taxon in the data.frame
-form). This is applied after LLM prior estimation but before posterior
-computation. The suppression is ecologically motivated: if a species was
-not detected despite adequate survey effort, its prior should be reduced
-by the complement of the detection probability.
-
-#### Known-present species
-
-The `known_present` parameter accepts a character vector of taxon names
-confirmed to occur at the site (e.g., from visual surveys, prior eDNA
-studies, or expert knowledge). These names are passed to the LLM as
-ecological context, allowing it to make more informed `range_status` and
-`habitat_fit` judgments. However, `known_present` does not
-mathematically elevate priors -- the LLM integrates this information
-qualitatively when setting `prior_weight`.
-
-Mathematical prior elevation for known-present species is handled
-separately by `update_prior_from_consensus()` (Section 6), which boosts
-priors for species confirmed by the data itself across multiple
-observations. Direct user-specified elevation (analogous to the
-`known_absent` suppression formula) is not currently implemented, as it
-would risk double-counting when the LLM has already incorporated
-presence information into its weights.
-
-### 4.5 The Unreferenced-Family Hypothesis
-
-Both workflows include an explicit `unreferenced_family` hypothesis
-that captures the probability that the observation belongs to a taxon
-not represented by any named candidate. This makes it possible to
-discover range expansions and newly introduced species. In the
-LLM-shortcut workflow:
-
--   Likelihood: fixed at `unknown_lik_weight` (default 0.05)
--   Prior: set to `unknown_lik_weight` after all named priors are
-    rescaled to sum to $1 - w_u$
-
-This ensures there is always a non-zero posterior probability that the
-observation is something unexpected, preventing overconfident assignment
-to the best-matching candidate when that match is poor.
-
-------------------------------------------------------------------------
-
-## 5. Posterior Consensus
+## 4. Posterior Consensus
 
 After computing posteriors for all observations, TaxaAssign derives a
 single consensus taxonomic assignment per observation. Two methods are
 available.
 
-### 5.1 Posterior-Based Consensus
+### 4.1 Posterior-Based Consensus
 
 `posterior_consensus()` uses posterior probabilities to determine the
 finest taxonomic rank at which assignment is confident:
@@ -478,7 +296,7 @@ of the plausible set at the consensus rank),
 `consensus_confidence_score` (summed confidence scores), `n_hypotheses`,
 and `consensus_reason`.
 
-### 5.2 Score-Based Consensus
+### 4.2 Score-Based Consensus
 
 There are many conventional (non Bayesian) taxonomic assignment methods
 that evaluate candidates according to scores. Some, for instance, keep
@@ -512,7 +330,7 @@ outcome.
 
 ------------------------------------------------------------------------
 
-## 6. Empirical Bayes Refinement
+## 5. Empirical Bayes Refinement
 
 `update_prior_from_consensus()` implements a one-pass empirical Bayes
 refinement that leverages resolved observations to improve unresolved
@@ -556,7 +374,7 @@ different confidence levels.
 
 ------------------------------------------------------------------------
 
-## 7. Hypothesis Types
+## 6. Hypothesis Types
 
 TaxaAssign recognizes five hypothesis types, each with distinct
 statistical treatment:
@@ -566,7 +384,7 @@ statistical treatment:
 | `specific_candidate` | TaxaLikely H1 or score-based | Species in the reference database | TaxaExpect Tier 1/2 or LLM |
 | `unreferenced_species` | TaxaLikely H2 or LLM | Congener absent from reference | TaxaExpect Tier 3 or LLM |
 | `unreferenced_genus` | TaxaLikely H3 or LLM | Family-level unreferenced taxon | TaxaExpect Tier 3 or LLM |
-| `unreferenced_family` | assign_taxa_llm() | Uncharacterised diversity (NA taxon_name) | Fixed weight |
+| `unreferenced_family` | assign_scores() | Uncharacterised diversity (NA taxon_name) | Fixed weight |
 | `unresolved_species` | apply_coverage_constraints() | Ambiguous among referenced genus members | Inherited from genus |
 
 The `unreferenced_family` hypothesis is excluded from consensus (it
@@ -576,7 +394,7 @@ computation.
 
 ------------------------------------------------------------------------
 
-## 8. Pipeline Position and Data Flow
+## 7. Pipeline Position and Data Flow
 
 ```         
 TaxaMatch ──→ TaxaLikely ──→┐
@@ -589,22 +407,18 @@ Within TaxaAssign:
     → join_priors() → compute_posterior()
     → posterior_consensus() → update_prior_from_consensus()
 
-  LLM-shortcut:
-    assign_taxa_llm() [internally: .score_to_likelihood()
-    → LLM prior estimation → compute_posterior()]
-    → posterior_consensus() → update_prior_from_consensus()
 ```
 
 ------------------------------------------------------------------------
 
-## 9. Assumptions and Limitations
+## 8. Assumptions and Limitations
 
 ### Independence assumptions
 
 -   **Conditional independence of observations**: each observation is
     treated independently given its candidate set. In practice,
     observations from the same sample may share species composition --
-    the empirical Bayes refinement (Section 6) partially addresses this,
+    the empirical Bayes refinement (Section 5) partially addresses this,
     but a full hierarchical model across observations is not
     implemented.
 
@@ -612,24 +426,6 @@ Within TaxaAssign:
     assumes the likelihood and prior are derived from independent data.
     This holds when TaxaLikely's reference library and TaxaExpect's
     occurrence data are separate from the observation being classified.
-
-### LLM-shortcut workflow limitations
-
--   **Exponential weighting is not calibrated**: unlike TaxaLikely's
-    trained model, the exponential score transformation is a monotone
-    proxy, not a density estimate. Score differences may not accurately
-    reflect true likelihood ratios.
-
--   **LLM prior stochasticity**: LLM responses are stochastic -- the
-    same prompt may produce different prior weights on different calls.
-    The Beta concentration parameter ($\phi$) captures this uncertainty
-    in the Monte Carlo simulation, but the prior_weight itself is a
-    single draw from the LLM.
-
--   **Prior weight guide ranges are heuristic**: the default ranges were
-    calibrated against expert judgment for coastal California eDNA data.
-    Other systems (tropical forests, deep-sea, etc.) may require
-    different ranges.
 
 ### Consensus limitations
 
@@ -669,7 +465,7 @@ Within TaxaAssign:
 
 ------------------------------------------------------------------------
 
-## 10. Glossary
+## 9. Glossary
 
 | Term | Definition |
 |------------------------------------|------------------------------------|
@@ -681,7 +477,6 @@ Within TaxaAssign:
 | **confidence_score** | Fraction of MC simulations in which a hypothesis had the highest posterior |
 | **cumulative_threshold** | Minimum posterior mass that the plausible set must capture (default 0.95) |
 | **LCA** | Lowest Common Ancestor: finest rank at which all plausible candidates agree (can lead to upranking). |
-| **score_sharpness** | $\lambda$ in the exponential weighting function (LLM-shortcut workflow) |
 | **prior_phi** | $\phi = \alpha + \beta$: Beta concentration controlling prior tightness |
 | **dark diversity** | Species expected to occur at a site but not yet observed there |
 | **unreferenced species** | Described species absent from the reference database |
@@ -697,7 +492,6 @@ Within TaxaAssign:
 | `compute_posterior()` | Bayesian update: likelihood × prior → posterior (point + MC) |
 | `join_priors()` | Bridge TaxaLikely likelihoods + TaxaExpect priors; dark diversity fallback |
 | `expand_unreferenced_hypotheses()` | Replace generic H2/H3 rows with named unreferenced species |
-| `assign_taxa_llm()` | LLM-shortcut: score weighting + LLM priors → posterior |
 | `posterior_consensus()` | Posterior-based consensus: cumulative threshold + LCA |
 | `score_consensus()` | Score-based consensus: rank thresholds + LCA (no model required) |
 | `update_prior_from_consensus()` | Empirical Bayes: boost confirmed species in unresolved observations |

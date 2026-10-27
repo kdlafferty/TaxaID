@@ -247,7 +247,7 @@
 #' from the occurrence priors through an upstream join gap is therefore not
 #' raised either; fix that gap upstream.
 #'
-#' @param result Dataframe. Output of [assign_taxa_llm()] or [compute_posterior()].
+#' @param result Dataframe. Output of [compute_posterior()].
 #'   Must contain: `observation_id`, `taxon_name`, `score_likelihood`,
 #'   `score_likelihood_mean`, `score_likelihood_sd`, `prior_mean`. When
 #'   `prior_alpha`/`prior_beta` (Beta shape parameters) are present, they are
@@ -280,8 +280,8 @@
 #'   `FALSE` is a TRANSITIONAL shim for callers not yet migrated, not a
 #'   supported mode: it skips every guard (including the species guard) and raises without
 #'   likelihood-consensus support (a message says so), so its results are not
-#'   comparable to a guarded run. Within this package it is used only for the
-#'   LLM pathway, whose priors are not occurrence-based.
+#'   comparable to a guarded run. It exists for priors that are not
+#'   occurrence-based and so carry no `theta_mean`.
 #' @param max_raise_factor Numeric (default `2000`). Upper bound on a
 #'   non-mixture raise, as a MULTIPLE of the row's existing `prior_mean`:
 #'   a row's prior can rise at most `max_raise_factor` times. `Inf` does not
@@ -340,7 +340,7 @@
 #'   `n_rows_raised`). Attribute `round2_species_guard` holds the
 #'   `observation_id`s whose raises the species guard undid (empty when none).
 #'
-#' @seealso [posterior_consensus()], [compute_posterior()], [assign_taxa_llm()],
+#' @seealso [posterior_consensus()], [compute_posterior()],
 #'   [combine_multisite_priors()]
 #'
 #' @examples
@@ -997,8 +997,8 @@ update_prior_from_consensus <- function(result,
     dplyr::arrange(.data$observation_id, dplyr::desc(.data$posterior_point_est))
 
   # Merge onto (not overwrite) any report_params already attached to `result`
-  # -- e.g. assign_taxa_llm()'s score_sharpness/unknown_lik_weight/
-  # score_threshold/top_n. This function's own compute_posterior() call
+  # -- e.g. an upstream caller's score_sharpness/score_threshold/top_n.
+  # This function's own compute_posterior() call
   # above already set attr(updated_rows, "report_params") <- list(n_sims=...)
   # (compute_posterior()'s own, narrower default), which would otherwise
   # silently discard those upstream values for every caller that reaches

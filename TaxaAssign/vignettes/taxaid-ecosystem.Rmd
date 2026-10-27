@@ -63,20 +63,12 @@ the observation match each candidate taxon? The right branch (TaxaFetch ->
 TaxaHabitat -> TaxaExpect) handles **priors**: how likely is each taxon to occur
 at this location? TaxaAssign combines them.
 
-### Two Pathways
+### The Assignment Pathway
 
-TaxaID offers two workflows for taxonomic assignment:
-
-| | Bayesian Pathway | LLM Pathway |
-|---|---|---|
-| **Priors from** | Occurrence data (GBIF) + spatial model | LLM expert knowledge |
-| **Likelihoods from** | Trained hierarchical model (TaxaLikely) | Trained model or LLM scores |
-| **Best for** | Large datasets, reproducible pipelines | Quick exploration, data-poor regions |
-| **Packages used** | All 8 | TaxaMatch + TaxaAssign + TaxaFlag (+ TaxaTools) |
-| **API calls** | GBIF + NCBI | LLM provider (Anthropic, OpenAI, etc.) |
-
-Both pathways end at `TaxaAssign::posterior_consensus()` and can be compared
-with `TaxaAssign::score_consensus()`.
+TaxaID assigns taxa with a Bayesian pathway: priors from occurrence data
+(GBIF) through a spatial model, likelihoods from TaxaLikely's trained
+hierarchical model. It ends at `TaxaAssign::posterior_consensus()` and can be
+compared with `TaxaAssign::score_consensus()`.
 
 ---
 
@@ -247,43 +239,9 @@ result_updated <- update_prior_from_consensus(result, consensus)
 consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
 ```
 
-## LLM Pathway: Quick Assignment
-
-The LLM pathway skips the occurrence data pipeline entirely. An LLM assigns
-priors based on expert knowledge of species ranges and habitat.
-
-```{r llm_manual}
-library(TaxaAssign)
-library(TaxaTools)
-
-# Build context (auto-populates habitat, ecoregion, date via LLM)
-ctx <- build_context(
-  match_df,
-  llm_fn = call_anthropic_api,
-  geographic_hint = "Southern California estuaries"
-)
-
-# LLM assigns priors + detects unreferenced species in one call
-result <- assign_taxa_llm(
-  match_df, ctx,
-  llm_fn = call_anthropic_api,
-  detect_unreferenced = TRUE,
-  barcode_term = "MiFish"
-)
-
-# Posterior computation and consensus
-posterior <- compute_posterior(result, n_sims = 1000)
-consensus <- posterior_consensus(posterior, cumulative_threshold = 0.95)
-# LLM priors are not occurrence-based (no theta_mean), so Round 2's support
-# columns cannot be supplied: transitional opt-out (see ?update_prior_from_consensus)
-result_updated <- update_prior_from_consensus(posterior, consensus, require_support_columns = FALSE)
-consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.95)
-```
-
 ## Comparing Approaches
 
-Both pathways produce posterior-based consensus. You can also run a conventional
-score-based consensus for comparison:
+You can also run a conventional score-based consensus for comparison:
 
 ```{r compare}
 # Score-based consensus (no model needed). rank_thresholds has no default --
@@ -314,13 +272,6 @@ disagree <- comparison[comparison$consensus_taxon_posterior != comparison$consen
 - Occurrence data are available for your study region
 - Reproducibility is critical (no LLM stochasticity)
 - You are processing large datasets (model trains once, applies to all)
-
-**Use the LLM pathway when:**
-
-- You are exploring a new dataset quickly
-- Occurrence data are sparse or unavailable
-- You want expert-level context without building a spatial model
-- You are working in a data-poor region where GBIF coverage is thin
 
 **Use score consensus when:**
 

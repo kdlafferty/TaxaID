@@ -255,9 +255,9 @@ audit_reference_coverage <- function(reference_df,
 #' for the target marker in any reference database.  Because TaxaMatch can
 #' only return taxa that have reference sequences, an unreferenced species can never
 #' appear as a named match candidate -- even if it is the true source of the
-#' observed sequence.  Adding unreferenced species as explicit hypotheses allows the
-#' LLM (via [TaxaAssign::assign_taxa_llm()]) to evaluate their geographic
-#' plausibility alongside the named match candidates.
+#' observed sequence.  Adding unreferenced species as explicit hypotheses lets
+#' their geographic plausibility be weighed alongside the named match
+#' candidates.
 #'
 #' **Example:** a 12S eDNA read from *Fundulus parvipinnis* (no reference
 #' sequence) matches most closely to *Fundulus lima* (has reference).
@@ -389,8 +389,8 @@ audit_reference_coverage <- function(reference_df,
 #'     (TRUE when NCBI could not be asked about this group; its species are
 #'     then absent from `unreferenced`, `is_complete` is FALSE, and the group
 #'     is named in `attr(x, "lookup_failures")` -- see `on_lookup_failure`).}
-#'   \item{`unreferenced`}{Character vector of unreferenced species names, suitable for
-#'     `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`.}
+#'   \item{`unreferenced`}{Character vector of unreferenced species names, for
+#'     [expand_unreferenced_hypotheses()]'s `unreferenced_df`.}
 #' }
 #'
 #' @note Requires an internet connection and the `rentrez` package.  NCBI
@@ -1110,8 +1110,8 @@ audit_barcode_coverage <- function(match_df,
 #'           if it has very few training recordings.}
 #'       }}
 #'     \item{`unreferenced`}{Character vector of species names absent from
-#'       `reference_species`.  Pass directly to
-#'       `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)` to build H2
+#'       `reference_species`.  Reshape into
+#'       [expand_unreferenced_hypotheses()]'s `unreferenced_df` to build H2
 #'       hypotheses for these species.}
 #'   }
 #'

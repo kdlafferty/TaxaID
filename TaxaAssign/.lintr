@@ -31,7 +31,6 @@ exclusions: list(
     # re-verified against a full, unfiltered lint_package() run (pre-review
     # pass B4) after the surrounding files were edited.
     "R/adjust_inat_range_priors.R" = list(object_usage_linter = Inf, line_length_linter = Inf),
-    "R/assign_taxa_llm.R" = list(object_usage_linter = Inf),
     "R/combine_multisite_priors.R" = list(object_usage_linter = Inf, line_length_linter = Inf),
     "R/join_priors.R" = list(
       object_usage_linter = Inf,
@@ -68,6 +67,5 @@ exclusions: list(
     "R/build_context.R" = list(line_length_linter = Inf),
     "tests/testthat/test-update_prior.R" = list(line_length_linter = Inf),
     "tests/testthat/test-posterior_consensus.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-join_priors.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-assign_taxa_llm.R" = list(line_length_linter = Inf)
+    "tests/testthat/test-join_priors.R" = list(line_length_linter = Inf)
   )

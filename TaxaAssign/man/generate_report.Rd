@@ -19,7 +19,7 @@ generate_report(
 }
 \arguments{
 \item{result}{Data frame or \code{NULL}. Posterior output from
-\code{\link{compute_posterior}} or \code{\link{assign_taxa_llm}}. Required
+\code{\link{compute_posterior}}. Required
 when \code{consensus} comes from \code{\link{posterior_consensus}}.
 Pass \code{NULL} when \code{consensus} comes from
 \code{\link{score_consensus}} (no posterior data exists).}
@@ -35,17 +35,12 @@ S3 object from \code{\link[TaxaLikely]{suggest_unreferenced_species}}. When prov
 the report includes reference database completeness statistics and
 unreferenced species findings.}
 
-\item{workflow}{Character or \code{NULL}. One of \code{"bayesian"} or
-\code{"llm"}, describing how \code{result}/\code{consensus} were
-produced -- selects which Methods-text template to use. Default
-\code{NULL} auto-detects from column presence (\code{range_status},
-\code{habitat_fit}, \code{information_quality} all present -> \code{"llm"}; otherwise
-\code{"bayesian"}), which is reliable for output produced by this package's
-own \code{assign_taxa_llm()}, but can misclassify a hand-built or
-third-party \code{result} that happens to share (or omit) those column
-names. Pass this explicitly to avoid relying on the guess. Ignored when
-\code{consensus} comes from \code{\link{score_consensus}} (workflow is
-always \code{"score"} in that case, not a guess).}
+\item{workflow}{Character or \code{NULL}. \code{"bayesian"}, describing
+how \code{result}/\code{consensus} were produced -- selects which
+Methods-text template to use. Default \code{NULL} resolves to
+\code{"bayesian"} for posterior output. Ignored when \code{consensus}
+comes from \code{\link{score_consensus}} (workflow is always
+\code{"score"} in that case).}
 
 \item{data_type}{Character. One of \code{"eDNA"}, \code{"image"},
 \code{"acoustic"}, or \code{NULL}. Used to tailor methods language.}
@@ -75,7 +70,7 @@ invisibly.
 \description{
 Produces a Methods and Results text suitable for inclusion in a scientific
 paper. The Methods section is assembled from templates that adapt to the
-workflow used (LLM-shortcut or Bayesian). The Results section summarises
+workflow used (Bayesian or score-based). The Results section summarises
 assignment outcomes, either as LLM-composed prose or as a structured
 bullet-point summary when \code{llm_fn = NULL}.
 }

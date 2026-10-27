@@ -264,7 +264,7 @@ message(sprintf(
 # ==============================================================================
 # The match object is now ready for:
 #   - TaxaLikely: train_likelihood_model() + evaluate_likelihoods()
-#   - TaxaAssign: assign_taxa_llm() or compute_posterior()
+#   - TaxaAssign: compute_posterior()
 
 saveRDS(match_obj, "match_obj.rds")
 match_obj$taxon_name |> unique()

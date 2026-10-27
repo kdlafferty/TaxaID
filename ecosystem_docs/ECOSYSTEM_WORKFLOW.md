@@ -8,42 +8,9 @@
 The TaxaID ecosystem uses Bayes' Theorem to assign a consensus taxon to a sample -- a DNA sequence, sound, or image -- for which there are several competing hypothesized matches.
 It can also clean taxonomic databases, reassign taxonomic backbones, generate species distribution priors, check the completeness of reference libraries, and translate match scores into probabilities.
 The ecosystem does not calculate matches from a reference library; those are obtained elsewhere. The TaxaMatch package ingests a data frame with a `sample_id`, a match score, and one or more reference taxa that closely match the sample, and standardizes it for other packages to process.
-The Bayesian part of TaxaID lives in TaxaAssign. It multiplies a likelihood -- how well a sample matches a reference -- by a prior expectation that the reference occurs at the sample location, to generate a posterior probability that the sample came from a particular taxon. Comparing among these posterior probabilities lets a user estimate confidence in the taxon or taxa hypothesized to have generated the sample. TaxaAssign also uses process of elimination to hypothesize unreferenced taxa (taxa missing from a reference database). It does this via two workflows, described below. Both can use an API account with a large language model, or operate through prompt generation for manual submission (an API is strongly recommended).
+The Bayesian part of TaxaID lives in TaxaAssign. It multiplies a likelihood -- how well a sample matches a reference -- by a prior expectation that the reference occurs at the sample location, to generate a posterior probability that the sample came from a particular taxon. Comparing among these posterior probabilities lets a user estimate confidence in the taxon or taxa hypothesized to have generated the sample. TaxaAssign also uses process of elimination to hypothesize unreferenced taxa (taxa missing from a reference database). Finding the candidate names can use an API account with a large language model, or operate through prompt generation for manual submission (an API is strongly recommended).
 
-For the full multi-path pipeline diagram and function catalog, see the root [README.md](../README.md)'s "Pipeline Overview" and "Which Entry Point Do I Need?" sections. This document is the detailed, package-by-package walkthrough of the two most common complete paths: the fast LLM workflow and the thorough Bayesian workflow. `inst/TaxaID_Workflow_Template.R` at the repository root is a single-site template that runs the Bayesian path top to bottom with real function calls; it is generated from the same workflow graph this document describes, so its step order and argument names are the ground truth for that path.
-
-## Fast and Simple LLM Workflow
-
-The fastest workflow in TaxaAssign uses a large language model to estimate priors for a stated habitat, location, and taxonomic group. With a simple assumption about scores and an LLM-assisted check of the reference database's completeness, a consensus taxonomy can be generated with relatively little effort. It is suitable for exploration and for cases where reproducibility is not required or time is short.
-
-| Workflow | Likelihoods source | Priors source | Habitat input | TaxaLikely objects needed |
-|---|---|---|---|---|
-| LLM | LLM-elicited scores, generated internally | LLM judgement | User enters manually (location + habitat label) | None |
-
-`TaxaAssign::build_context()` infers ecological context from the taxon list, `TaxaAssign::assign_taxa_llm()` elicits priors and likelihoods from an LLM, and `TaxaAssign::posterior_consensus()` turns the posteriors into a consensus data frame -- see `TaxaAssign/inst/TaxaAssign_llm_workflow.R` for a worked, step-by-step version of the path.
-
-## LLM Pipeline Map
-
-```
-[Raw match data: eDNA / images / sounds]
-         |
-    ┌────▼───────────────────────────────┐
-    │         Match data input           │
-    │           TaxaMatch                │
-    │   workflow_fastq_to_match.R        │
-    │   → match_df                       │
-    └────────────────────────────────────┘
-                    |
-    TaxaAssign::assign_taxa_llm()
-    (habitat + location supplied manually;
-     likelihoods and priors both LLM-elicited)
-                    │
-    TaxaAssign/inst/TaxaAssign_llm_workflow.R
-                    │
-              → consensus
-```
-
----
+For the full multi-path pipeline diagram and function catalog, see the root [README.md](../README.md)'s "Pipeline Overview" and "Which Entry Point Do I Need?" sections. This document is the detailed, package-by-package walkthrough of the complete Bayesian path. `inst/TaxaID_Workflow_Template.R` at the repository root is a single-site template that runs the Bayesian path top to bottom with real function calls; it is generated from the same workflow graph this document describes, so its step order and argument names are the ground truth for that path.
 
 ## Thorough and Complex Statistical Workflow
 
@@ -288,20 +255,7 @@ Non-DNA match data (image/acoustic classifier output) skips training and goes st
 
 ### CONVERGENCE -- TaxaAssign
 
-#### Option A: LLM workflow
-**Script:** `TaxaAssign/inst/TaxaAssign_llm_workflow.R`.
-
-Does **not** require TaxaLikely or TaxaExpect objects. The LLM generates both
-likelihood judgements and prior context internally from the match data.
-
-**User must supply manually:**
-- A location (coordinates or descriptive)
-- A habitat label for the sampling site
-
-**Required inputs:**
-- `match_df` -- provides species candidates and match scores
-
-#### Option B: Bayesian workflow
+#### Bayesian workflow
 **Script:** `TaxaAssign/inst/TaxaAssign_bayesian_workflow.R`
 
 Combines TaxaLikely likelihoods with TaxaExpect priors via `TaxaAssign::join_priors()`.

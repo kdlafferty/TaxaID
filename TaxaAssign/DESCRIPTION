@@ -5,9 +5,9 @@ Authors@R:
     person("Kevin", "Lafferty", , "klafferty@usgs.gov", role = c("aut", "cre"))
 Description: Estimates the posterior probability that a biological sample
     (sequence, image, sound) was produced by a particular taxon, using
-    Bayes' theorem. Combines per-taxon likelihoods (from TaxaLikely or an
-    LLM) with spatial priors (from TaxaExpect or an LLM) to compute
-    posteriors via Monte Carlo simulation. Provides consensus taxonomy
+    Bayes' theorem. Combines per-taxon likelihoods (from TaxaLikely) with
+    spatial priors (from TaxaExpect) to compute posteriors via Monte Carlo
+    simulation. Provides consensus taxonomy
     assignment at the appropriate rank (species, genus, family, etc.),
     empirical Bayes prior refinement, score-based consensus for comparison,
     and automated report generation. Part of the TaxaID ecosystem.
@@ -27,7 +27,6 @@ Depends:
 Imports:
     cli,
     dplyr,
-    jsonlite,
     rlang,
     stats,
     TaxaTools
