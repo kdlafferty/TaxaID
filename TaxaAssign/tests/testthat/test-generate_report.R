@@ -156,7 +156,6 @@ test_that(".build_methods_text produces Bayesian workflow methods", {
   )
 
   text <- .build_methods_text("bayesian", params, "eDNA", NULL,
-    context_source = "user",
     has_unreferenced = FALSE,
     has_family_expansion = FALSE,
     has_empirical_bayes = TRUE
@@ -262,7 +261,6 @@ test_that(".build_methods_text describes kernel + curve priors when flagged (202
     confirmation_quantile = 0.9, confirmation_discount = 0.25
   )
   text <- .build_methods_text("bayesian", params, "eDNA", NULL,
-    context_source = "user",
     has_unreferenced = FALSE,
     has_family_expansion = FALSE,
     has_empirical_bayes = TRUE,
@@ -281,7 +279,6 @@ test_that(".build_methods_text describes kernel + curve priors when flagged (202
   expect_false(grepl("habitat models", text)) # the GLMM-era paragraph must be gone
   # default (legacy tables) keeps the original paragraph byte-identical
   legacy <- .build_methods_text("bayesian", params, "eDNA", NULL,
-    context_source = "user",
     has_unreferenced = FALSE,
     has_family_expansion = FALSE,
     has_empirical_bayes = TRUE
@@ -300,7 +297,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
 
   logit_text <- .build_methods_text(
     "bayesian", c(base_params, list(score_transform = "logit")), "eDNA", NULL,
-    context_source = "user", has_unreferenced = FALSE,
+    has_unreferenced = FALSE,
     has_family_expansion = FALSE, has_empirical_bayes = FALSE
   )
   expect_true(grepl("logit-transformed", logit_text))
@@ -308,7 +305,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
 
   sqrt_text <- .build_methods_text(
     "bayesian", c(base_params, list(score_transform = "sqrt_mismatch")), "eDNA", NULL,
-    context_source = "user", has_unreferenced = FALSE,
+    has_unreferenced = FALSE,
     has_family_expansion = FALSE, has_empirical_bayes = FALSE
   )
   expect_true(grepl("square-root-mismatch", sqrt_text))
@@ -318,7 +315,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
   # the historical "logit" assumption rather than erroring.
   no_transform_text <- .build_methods_text(
     "bayesian", base_params, "eDNA", NULL,
-    context_source = "user", has_unreferenced = FALSE,
+    has_unreferenced = FALSE,
     has_family_expansion = FALSE, has_empirical_bayes = FALSE
   )
   expect_true(grepl("logit-transformed", no_transform_text))

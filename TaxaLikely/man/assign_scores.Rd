@@ -71,8 +71,7 @@ no trained statistical model available.  Scores are normalized to (0,1)
 via \code{.normalize_scores()}, exponentiated
 (\eqn{e^{sharpness \times score_{norm}}}), then ratio-normalized.
 H2/H3 are anchored at the median softmax-normalized score of same-genus
-(H2) or same-family (H3) H1 candidates.  Appropriate for the LLM
-shortcut pathway when no trained model exists.}
+(H2) or same-family (H3) H1 candidates.}
 \item{\code{"similarity"}}{Similarity scores destined for the
 bivariate-normal model.  This function only adds \code{score_norm} to
 H1 rows and sets \code{score_method = "similarity"}; it does

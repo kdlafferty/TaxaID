@@ -60,10 +60,6 @@ utils::globalVariables(c(
 #'   \code{"acoustic"}, or \code{NULL}. Used to tailor methods language.
 #' @param marker Character. Molecular marker name (e.g. \code{"12S MiFish"}).
 #'   Used only when \code{data_type = "eDNA"}.
-#' @param context_source Character. One of \code{"user"} (user provided
-#'   geographic context manually) or \code{"llm"} (context was inferred by
-#'   \code{\link{build_context}}). Affects the methods description of how
-#'   geographic context was determined. Default \code{"user"}.
 #' @param study_description Character. One or two sentences describing the study
 #'   context, passed to the LLM to ground the results narrative.
 #' @param llm_fn Function or \code{NULL}. LLM provider function following the
@@ -110,7 +106,6 @@ generate_report <- function(result,
                             workflow = NULL,
                             data_type = NULL,
                             marker = NULL,
-                            context_source = "user",
                             study_description = NULL,
                             llm_fn = NULL,
                             verbose = FALSE) {
@@ -156,8 +151,6 @@ generate_report <- function(result,
     data_type <- match.arg(data_type, c("eDNA", "image", "acoustic"))
   }
 
-  context_source <- match.arg(context_source, c("user", "llm"))
-
   if (!is.null(llm_fn) && !is.function(llm_fn)) {
     cli::cli_abort("{.arg llm_fn} must be a function or NULL.")
   }
@@ -191,7 +184,6 @@ generate_report <- function(result,
 
   # --- Build Methods ----------------------------------------------------------
   methods_text <- .build_methods_text(workflow, params, data_type, marker,
-    context_source,
     !is.null(unreferenced_result),
     !is.null(unref_stats) &&
       unref_stats$has_family_expansion,
@@ -502,7 +494,6 @@ generate_report <- function(result,
 
 #' @noRd
 .build_methods_text <- function(workflow, params, data_type, marker,
-                                context_source,
                                 has_unreferenced, has_family_expansion,
                                 has_empirical_bayes,
                                 llm_model_name = NULL,
@@ -659,18 +650,6 @@ generate_report <- function(result,
       "Prior uncertainty was parameterized using a Beta distribution, where the ",
       "shape parameters (alpha, beta) encode both the expected probability and ",
       "the degree of confidence in that estimate."
-    )
-  }
-  # Geographic context provenance: build_context() can infer the ecoregion and
-  # dominant habitat with an LLM instead of taking the analyst's own
-  # description, so the prior paragraph records which it was. Silent for the
-  # "user" default, so a report that specified its own context is unchanged.
-  if (context_source == "llm") {
-    prior_text <- paste0(
-      prior_text,
-      " Geographic context (ecoregion and dominant habitat) was inferred from ",
-      "the assemblage of candidate taxa by a large language model, rather than ",
-      "specified by the analyst."
     )
   }
   sections <- c(sections, prior_text)

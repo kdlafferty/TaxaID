@@ -11,7 +11,6 @@ generate_report(
   workflow = NULL,
   data_type = NULL,
   marker = NULL,
-  context_source = "user",
   study_description = NULL,
   llm_fn = NULL,
   verbose = FALSE
@@ -47,11 +46,6 @@ comes from \code{\link{score_consensus}} (workflow is always
 
 \item{marker}{Character. Molecular marker name (e.g. \code{"12S MiFish"}).
 Used only when \code{data_type = "eDNA"}.}
-
-\item{context_source}{Character. One of \code{"user"} (user provided
-geographic context manually) or \code{"llm"} (context was inferred by
-\code{\link{build_context}}). Affects the methods description of how
-geographic context was determined. Default \code{"user"}.}
 
 \item{study_description}{Character. One or two sentences describing the study
 context, passed to the LLM to ground the results narrative.}
