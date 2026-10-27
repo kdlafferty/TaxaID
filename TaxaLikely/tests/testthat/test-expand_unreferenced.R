@@ -481,3 +481,59 @@ test_that("expand: two genus rings copy each onto its own genus; family rings na
   expect_equal(sum(out$taxon_name_rank %in% c("genus", "family") &
     out$hypothesis_type != "specific_candidate"), 4L)
 })
+
+# ---- hypotheses this function does not model must survive --------------------
+# unreferenced_candidates(include_unreferenced_family = TRUE) adds an
+# "unreferenced_family" catch-all row (all rank columns NA).  Only H2 and H3 are
+# rebuilt here; anything else has to reach compute_posterior() untouched, or the
+# catch-all silently stops competing and the argument that adds it is a no-op.
+.make_expand_lik_h4 <- function() {
+  data.frame(
+    observation_id = "ESV_001",
+    taxon_name = c("Atherinops affinis", "Fundulus", "Fundulidae", NA_character_),
+    taxon_name_rank = c("species", "genus", "family", NA_character_),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus", "unreferenced_family"
+    ),
+    score_likelihood = c(0.95, 0.31, 0.04, 0.01),
+    score_likelihood_mean = c(0.95, 0.31, 0.04, 0.01),
+    score_likelihood_sd = c(0, 0, 0, 0),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("expand_unreferenced_hypotheses: unreferenced_family rows pass through", {
+  lik <- .make_expand_lik_h4()
+  out <- suppressMessages(expand_unreferenced_hypotheses(lik, .make_unref_df()))
+  h4 <- out[out$hypothesis_type == "unreferenced_family", ]
+  expect_equal(nrow(h4), 1L)
+  # passed through, not rebuilt: the likelihood columns are the input's own
+  expect_equal(h4$score_likelihood, 0.01)
+  expect_equal(h4$score_likelihood_mean, 0.01)
+  expect_true(is.na(h4$taxon_name))
+})
+
+test_that("expand_unreferenced_hypotheses: the family catch-all is not a no-op", {
+  # Without the pass-through, dropping the H4 row left the output identical with
+  # and without it, so include_unreferenced_family had no effect on any call.
+  unref <- .make_unref_df()
+  with_h4 <- suppressMessages(expand_unreferenced_hypotheses(.make_expand_lik_h4(), unref))
+  without_h4 <- suppressMessages(expand_unreferenced_hypotheses(.make_expand_lik(), unref))
+  expect_equal(nrow(with_h4), nrow(without_h4) + 1L)
+  expect_true("unreferenced_family" %in% with_h4$hypothesis_type)
+  expect_false("unreferenced_family" %in% without_h4$hypothesis_type)
+  # every row the H4-free call produced is still there
+  expect_equal(
+    sort(without_h4$hypothesis_type),
+    sort(with_h4$hypothesis_type[with_h4$hypothesis_type != "unreferenced_family"])
+  )
+})
+
+test_that("expand_unreferenced_hypotheses: an empty unreferenced_df keeps the catch-all", {
+  lik <- .make_expand_lik_h4()
+  empty <- .make_unref_df()[0, , drop = FALSE]
+  out <- suppressMessages(expand_unreferenced_hypotheses(lik, empty))
+  expect_equal(nrow(out), nrow(lik))
+  expect_true("unreferenced_family" %in% out$hypothesis_type)
+})

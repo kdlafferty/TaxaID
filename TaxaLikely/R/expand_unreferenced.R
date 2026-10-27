@@ -105,7 +105,11 @@ utils::globalVariables(c("hypothesis_type"))
 #'   `attr(result, "regional_unreferenced")`.
 #'
 #' @return `likelihood_df` with named species rows added under each genus
-#'   ring where matches are found; generic rows are kept.  Column set is unchanged; new rows carry `NA` for most extra
+#'   ring where matches are found; generic rows are kept.  Only the H2 and H3
+#'   rows are rebuilt: `specific_candidate` rows, the `"unreferenced_family"`
+#'   catch-all and any coarser catch-all pass through unchanged, so the
+#'   posterior still sees every hypothesis the caller supplied.
+#'   Column set is unchanged; new rows carry `NA` for most extra
 #'   columns in the input (e.g. `constraint_applied`, which is genuinely
 #'   row-specific), except `score_likelihood_cov`, `score_likelihood_evidence`,
 #'   and `h2_delta_source` when present -- these, like `score_likelihood`/
@@ -216,6 +220,15 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   h1_rows <- dplyr::filter(likelihood_df, hypothesis_type == "specific_candidate")
   h2_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_species")
   h3_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_genus")
+  # Only H2 and H3 are consumed here: each generic row is replaced below by its
+  # named expansions plus the generic row itself.  Every other hypothesis passes
+  # through untouched -- H1 candidates, the `"unreferenced_family"` catch-all
+  # from [unreferenced_candidates()], and any coarser catch-all a caller
+  # supplies.  Selecting the pass-through rows by what is NOT consumed, rather
+  # than by listing the types to keep, is what stops a hypothesis type this
+  # function does not model from being dropped from the posterior.
+  consumed_types <- c("specific_candidate", "unreferenced_species", "unreferenced_genus")
+  other_rows <- dplyr::filter(likelihood_df, !hypothesis_type %in% consumed_types)
 
   # Which genera HAVE references for this marker: every genus that matched any
   # read anywhere in this table (a candidate exists only because a reference
@@ -413,7 +426,15 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     n_h3_species, n_h3_generic_kept, n_h3_covered
   ))
 
-  out <- dplyr::bind_rows(h1_rows, expanded)
+  if (nrow(other_rows) > 0L) {
+    message(sprintf(
+      "expand_unreferenced_hypotheses: %d row(s) of %s passed through unchanged (not modelled here).",
+      nrow(other_rows),
+      paste(sort(unique(other_rows$hypothesis_type)), collapse = ", ")
+    ))
+  }
+
+  out <- dplyr::bind_rows(h1_rows, expanded, other_rows)
   attr(out, "unreferenced_withheld") <- withheld_df
   out
 }

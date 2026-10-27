@@ -52,10 +52,10 @@
 #'     taxonomy TSV with \code{qiime tools export} before calling this function.
 #'     Greengenes2 (2022+) uses GTDB-derived taxonomy.}
 #'   \item{RDP}{Download FASTA + lineage file from
-#'     \url{https://rdp.cme.msu.edu/misc/resources.jsp}.  RDP lineage files
-#'     are tab-delimited with a multi-column hierarchy; reformat to a 2-column
-#'     (ID TAB taxonomy string) TSV before use, or load as a data frame and
-#'     pass via \code{taxonomy}.}
+#'     \url{https://sourceforge.net/projects/rdp-classifier/files/RDP_Classifier_TrainingData/}.
+#'     RDP lineage files are tab-delimited with a multi-column hierarchy;
+#'     reformat to a 2-column (ID TAB taxonomy string) TSV before use, or load
+#'     as a data frame and pass via \code{taxonomy}.}
 #'   \item{CRUX or custom FASTA}{If you already have a data frame of taxonomy
 #'     (e.g., from [read_reference_fasta()]), pass it via \code{taxonomy}
 #'     instead of \code{taxonomy_file}.  For CRABS internal-format files use
