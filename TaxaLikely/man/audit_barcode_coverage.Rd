@@ -109,8 +109,8 @@ but not in the reference -- a completeness gap),
 (TRUE when NCBI could not be asked about this group; its species are
 then absent from \code{unreferenced}, \code{is_complete} is FALSE, and the group
 is named in \code{attr(x, "lookup_failures")} -- see \code{on_lookup_failure}).}
-\item{\code{unreferenced}}{Character vector of unreferenced species names, suitable for
-\code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)}.}
+\item{\code{unreferenced}}{Character vector of unreferenced species names, for
+\code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}'s \code{unreferenced_df}.}
 }
 }
 \description{
@@ -118,9 +118,9 @@ An \strong{unreferenced species} is a described taxon that has \strong{no barcod
 for the target marker in any reference database.  Because TaxaMatch can
 only return taxa that have reference sequences, an unreferenced species can never
 appear as a named match candidate -- even if it is the true source of the
-observed sequence.  Adding unreferenced species as explicit hypotheses allows the
-LLM (via \code{\link[TaxaAssign:assign_taxa_llm]{TaxaAssign::assign_taxa_llm()}}) to evaluate their geographic
-plausibility alongside the named match candidates.
+observed sequence.  Adding unreferenced species as explicit hypotheses lets
+their geographic plausibility be weighed alongside the named match
+candidates.
 }
 \details{
 \strong{Example:} a 12S eDNA read from \emph{Fundulus parvipinnis} (no reference

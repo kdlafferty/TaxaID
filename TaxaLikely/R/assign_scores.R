@@ -10,12 +10,9 @@ utils::globalVariables(c(
 
 # Fixed likelihood weight for unreferenced_family rows.
 # Not fit from data -- a deliberately conservative, low-but-nonzero nominal
-# constant, chosen to match TaxaAssign::assign_taxa_llm()'s analogous
-# unknown_lik_weight parameter (also 0.05) so an unreferenced_family hypothesis
-# gets comparable, non-degenerate treatment whether it enters the posterior via
-# the scored (TaxaLikely) or LLM (TaxaAssign) pathway. Kept as one shared
-# nominal value across the ecosystem rather than independently tuned per
-# package.
+# constant, so an unreferenced_family hypothesis gets non-degenerate
+# treatment. Kept as one shared nominal value across the ecosystem rather
+# than independently tuned per package.
 .unreferenced_family_weight <- 0.05
 
 #' Assign score_likelihood values to a hypotheses data frame
@@ -47,8 +44,7 @@ utils::globalVariables(c(
 #'     via \code{.normalize_scores()}, exponentiated
 #'     (\eqn{e^{sharpness \times score_{norm}}}), then ratio-normalized.
 #'     H2/H3 are anchored at the median softmax-normalized score of same-genus
-#'     (H2) or same-family (H3) H1 candidates.  Appropriate for the LLM
-#'     shortcut pathway when no trained model exists.}
+#'     (H2) or same-family (H3) H1 candidates.}
 #'   \item{\code{"similarity"}}{Similarity scores destined for the
 #'     bivariate-normal model.  This function only adds \code{score_norm} to
 #'     H1 rows and sets \code{score_method = "similarity"}; it does

@@ -51,7 +51,7 @@ test_that("token_usage with empty ledger emits message and returns invisibly", {
 test_that("token_usage by='call' returns one row per record", {
   .inject_records(
     .make_record(input = 100L, output = 50L),
-    .make_record(caller = "assign_taxa_llm", input = 200L, output = 80L)
+    .make_record(caller = "review_assignments", input = 200L, output = 80L)
   )
   result <- token_usage(by = "call")
   expect_s3_class(result, "data.frame")
@@ -80,7 +80,7 @@ test_that("token_usage by='function' aggregates by caller", {
   .inject_records(
     .make_record(caller = "review_assignments", input = 100L, output = 50L),
     .make_record(caller = "review_assignments", input = 120L, output = 60L),
-    .make_record(caller = "assign_taxa_llm", input = 200L, output = 80L)
+    .make_record(caller = "build_habitat_lookup", input = 200L, output = 80L)
   )
   result <- token_usage(by = "function")
   expect_equal(nrow(result), 2L)

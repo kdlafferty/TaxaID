@@ -110,7 +110,7 @@ TaxaAssign:::.check_rank_system_order(NULL, "review demo")
 # needed because several of those columns (e.g. score_likelihood_cov,
 # species_confusion_risk) are OPTIONAL upstream outputs -- present only when
 # the caller's posterior_df came from a TaxaLikely version/pathway that
-# populates them, absent otherwise (e.g. assign_taxa_llm() input).
+# populates them, absent otherwise (e.g. a hand-built input).
 winner_row <- data.frame(
   taxon_name           = "Sardinops sagax",
   hypothesis_type      = "specific_candidate",

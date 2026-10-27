@@ -8,9 +8,6 @@ test_that("report_assign works with posterior consensus", {
     taxon_name = rep(c("Sp A", "Sp B"), 5),
     posterior_mean = c(0.8, 0.2, 0.9, 0.1, 0.7, 0.3, 0.85, 0.15, 0.6, 0.4),
     hypothesis_type = "specific_candidate",
-    range_status = "present",
-    habitat_fit = "expected",
-    information_quality = "high",
     stringsAsFactors = FALSE
   )
   attr(result, "report_params") <- list(n_sims = 1000L)
@@ -29,11 +26,11 @@ test_that("report_assign works with posterior consensus", {
   expect_s3_class(sec, "report_section")
   expect_equal(sec$package, "TaxaAssign")
   expect_equal(sec$section, "assign")
-  expect_equal(sec$params$workflow, "llm")
+  expect_equal(sec$params$workflow, "bayesian")
   expect_equal(sec$statistics$n_samples, 5L)
   expect_equal(sec$statistics$n_resolved, 4L)
   expect_equal(sec$statistics$resolution_rate, 80.0)
-  expect_true(grepl("LLM-shortcut", sec$methods))
+  expect_true(grepl("full Bayesian", sec$methods))
   expect_true(grepl("eDNA", sec$methods))
   expect_true(grepl("95%", sec$methods))
 })

@@ -226,18 +226,14 @@ cat("Total unreferenced:", length(coverage_c$unreferenced), "\n")
 # )
 # print(coverage_c_annotated$census)
 
-# ---- C4. Pass unreferenced species to TaxaAssign ----------------------------
+# ---- C4. Pass unreferenced species on as hypotheses -------------------------
 # Acoustic data uses unreferenced_candidates() + assign_scores() for
 # likelihoods (see Workflow 6). The unreferenced species list from this audit
-# feeds TaxaAssign's LLM-shortcut pipeline directly (assign_taxa_llm()'s own
-# unreferenced_taxa= parameter accepts exactly this flat character-vector
-# shape), building additional H2 hypotheses for species that cannot appear as
-# classifier candidates.
+# builds additional H2 hypotheses for species that cannot appear as classifier
+# candidates: reshape it into expand_unreferenced_hypotheses()'s
+# unreferenced_df, which needs species/genus/family columns.
 #
-# llm_posteriors <- TaxaAssign::assign_taxa_llm(
-#   match_df          = birdnet_match_df,
-#   unreferenced_taxa = coverage_c$unreferenced
-# )
+# unref_df <- data.frame(species = coverage_c$unreferenced)
 
 message("\nWorkflow 5C complete.")
 message("Next: Workflow 6 (no-score pathway) for acoustic likelihoods, then TaxaAssign.")

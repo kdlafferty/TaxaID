@@ -2,7 +2,7 @@
 
 # --- Helpers: mock data -------------------------------------------------------
 
-.mock_llm_result <- function() {
+.mock_posterior_result <- function() {
   df <- data.frame(
     observation_id = rep(c("S1", "S2", "S3"), each = 3),
     taxon_name = rep(c("Gobius niger", "Pomatoschistus minutus", NA_character_), 3),
@@ -77,23 +77,11 @@
 }
 
 
-# --- .detect_workflow ---------------------------------------------------------
-
-test_that(".detect_workflow identifies LLM workflow", {
-  result <- .mock_llm_result()
-  expect_equal(.detect_workflow(result), "llm")
-})
-
-test_that(".detect_workflow identifies Bayesian workflow", {
-  result <- .mock_bayesian_result()
-  expect_equal(.detect_workflow(result), "bayesian")
-})
-
 
 # --- .gather_report_params ----------------------------------------------------
 
 test_that(".gather_report_params merges attributes from both objects", {
-  result <- .mock_llm_result()
+  result <- .mock_posterior_result()
   consensus <- .mock_consensus()
   params <- .gather_report_params(result, consensus)
 
@@ -107,7 +95,7 @@ test_that(".gather_report_params merges attributes from both objects", {
 # --- .extract_report_stats ----------------------------------------------------
 
 test_that(".extract_report_stats computes correct summary statistics", {
-  result <- .mock_llm_result()
+  result <- .mock_posterior_result()
   consensus <- .mock_consensus()
   stats <- .extract_report_stats(result, consensus)
 
@@ -139,7 +127,7 @@ test_that(".extract_unreferenced_stats extracts from S3 object", {
     )
   )
 
-  result <- .mock_llm_result()
+  result <- .mock_posterior_result()
   consensus <- .mock_consensus()
 
   us <- .extract_unreferenced_stats(unref, result, consensus)
@@ -157,37 +145,6 @@ test_that(".extract_unreferenced_stats extracts from S3 object", {
 
 # --- .build_methods_text ------------------------------------------------------
 
-test_that(".build_methods_text produces LLM workflow methods", {
-  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
-  params <- list(
-    score_sharpness = 0.1,
-    unknown_lik_weight = 0.05,
-    score_threshold = 80,
-    top_n = 10L,
-    prior_phi = c(high = 50, moderate = 10, low = 3),
-    absent_detection_prob = 0.80,
-    n_sims = 1000L,
-    cumulative_threshold = 0.9,
-    min_posterior = 0.05
-  )
-
-  text <- .build_methods_text("llm", params, "eDNA", "12S MiFish",
-    context_source = "user",
-    has_unreferenced = TRUE,
-    has_family_expansion = FALSE,
-    has_empirical_bayes = FALSE
-  )
-
-  expect_true(grepl("12S MiFish", text))
-  expect_true(grepl("exponential weighting", text))
-  expect_true(grepl("large language model", text))
-  expect_true(grepl("Monte Carlo", text))
-  expect_true(grepl("lowest common ancestor", text))
-  expect_true(grepl("unreferenced", text))
-  expect_true(grepl("specified by the analyst", text))
-  expect_false(grepl("family level", text)) # no family expansion
-})
-
 test_that(".build_methods_text produces Bayesian workflow methods", {
   set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   params <- list(
@@ -199,7 +156,6 @@ test_that(".build_methods_text produces Bayesian workflow methods", {
   )
 
   text <- .build_methods_text("bayesian", params, "eDNA", NULL,
-    context_source = "user",
     has_unreferenced = FALSE,
     has_family_expansion = FALSE,
     has_empirical_bayes = TRUE
@@ -215,7 +171,7 @@ test_that(".build_methods_text produces Bayesian workflow methods", {
 # --- .build_results_template --------------------------------------------------
 
 test_that(".build_results_template produces structured text", {
-  result <- .mock_llm_result()
+  result <- .mock_posterior_result()
   consensus <- .mock_consensus()
   stats <- .extract_report_stats(result, consensus)
 
@@ -229,8 +185,8 @@ test_that(".build_results_template produces structured text", {
 
 # --- generate_report (integration) -------------------------------------------
 
-test_that("generate_report works with LLM result and NULL llm_fn", {
-  result <- .mock_llm_result()
+test_that("generate_report works with a Beta-prior result and NULL llm_fn", {
+  result <- .mock_posterior_result()
   consensus <- .mock_consensus()
 
   report <- generate_report(result, consensus, llm_fn = NULL)
@@ -238,7 +194,7 @@ test_that("generate_report works with LLM result and NULL llm_fn", {
   expect_type(report, "character")
   expect_true(grepl("## Methods", report))
   expect_true(grepl("## Results", report))
-  expect_true(grepl("exponential weighting", report))
+  expect_true(grepl("hierarchical statistical model", report))
 })
 
 test_that("generate_report works with Bayesian result and NULL llm_fn", {
@@ -253,7 +209,7 @@ test_that("generate_report works with Bayesian result and NULL llm_fn", {
 })
 
 test_that("generate_report includes unreferenced stats when provided", {
-  result <- .mock_llm_result()
+  result <- .mock_posterior_result()
   consensus <- .mock_consensus()
 
   unref <- structure(
@@ -305,7 +261,6 @@ test_that(".build_methods_text describes kernel + curve priors when flagged (202
     confirmation_quantile = 0.9, confirmation_discount = 0.25
   )
   text <- .build_methods_text("bayesian", params, "eDNA", NULL,
-    context_source = "user",
     has_unreferenced = FALSE,
     has_family_expansion = FALSE,
     has_empirical_bayes = TRUE,
@@ -324,7 +279,6 @@ test_that(".build_methods_text describes kernel + curve priors when flagged (202
   expect_false(grepl("habitat models", text)) # the GLMM-era paragraph must be gone
   # default (legacy tables) keeps the original paragraph byte-identical
   legacy <- .build_methods_text("bayesian", params, "eDNA", NULL,
-    context_source = "user",
     has_unreferenced = FALSE,
     has_family_expansion = FALSE,
     has_empirical_bayes = TRUE
@@ -343,7 +297,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
 
   logit_text <- .build_methods_text(
     "bayesian", c(base_params, list(score_transform = "logit")), "eDNA", NULL,
-    context_source = "user", has_unreferenced = FALSE,
+    has_unreferenced = FALSE,
     has_family_expansion = FALSE, has_empirical_bayes = FALSE
   )
   expect_true(grepl("logit-transformed", logit_text))
@@ -351,7 +305,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
 
   sqrt_text <- .build_methods_text(
     "bayesian", c(base_params, list(score_transform = "sqrt_mismatch")), "eDNA", NULL,
-    context_source = "user", has_unreferenced = FALSE,
+    has_unreferenced = FALSE,
     has_family_expansion = FALSE, has_empirical_bayes = FALSE
   )
   expect_true(grepl("square-root-mismatch", sqrt_text))
@@ -361,51 +315,9 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
   # the historical "logit" assumption rather than erroring.
   no_transform_text <- .build_methods_text(
     "bayesian", base_params, "eDNA", NULL,
-    context_source = "user", has_unreferenced = FALSE,
+    has_unreferenced = FALSE,
     has_family_expansion = FALSE, has_empirical_bayes = FALSE
   )
   expect_true(grepl("logit-transformed", no_transform_text))
 })
 
-test_that("LLM Methods text describes what ran", {
-  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
-  params <- list(
-    score_sharpness = 0.1, unknown_lik_weight = 0.05, score_threshold = 80,
-    top_n = 10L, prior_phi = c(high = 50, moderate = 10, low = 3),
-    absent_detection_prob = 0.80, n_sims = 1000L,
-    cumulative_threshold = 0.9, min_posterior = 0.05
-  )
-  build <- function(p) {
-    .build_methods_text("llm", p, "eDNA", "12S MiFish",
-      context_source = "user", has_unreferenced = FALSE,
-      has_family_expansion = FALSE, has_empirical_bayes = FALSE
-    )
-  }
-  text <- build(params)
-  # The LLM elicits priors only; likelihoods come from match scores.
-  expect_false(grepl("both match likelihoods and occurrence priors", text))
-  expect_true(grepl("priors were elicited from", text))
-  expect_true(grepl("uncalibrated approximation", text))
-  expect_true(grepl("documented nearby", text))
-  # No known_absent supplied: no absence sentence.
-  expect_false(grepl("non-detection", text))
-  text_abs <- build(c(params, n_known_absent = 2L))
-  expect_true(grepl("2 taxa not detected", text_abs))
-})
-
-test_that("assign_taxa_llm() records how many known-absent taxa it used", {
-  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
-  md <- data.frame(
-    observation_id = "S1", score_original = c(99, 95),
-    taxon_name = c("Gobius niger", "Pomatoschistus minutus"),
-    taxon_name_rank = "species", stringsAsFactors = FALSE
-  )
-  stub <- function(prompt_str) {
-    '[{"taxon_name":"Gobius niger","prior_weight":1},{"taxon_name":"Pomatoschistus minutus","prior_weight":1}]'
-  }
-  r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
-    llm_fn = stub, pause_seconds = 0, n_sims = 0L,
-    known_absent = "Pomatoschistus minutus"
-  )))
-  expect_equal(attr(r, "report_params")$n_known_absent, 1L)
-})

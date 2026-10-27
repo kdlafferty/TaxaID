@@ -47,15 +47,15 @@
 #' derived from a species binomial even when no `genus` column is present.
 #' Family and above require an explicit column.
 #'
-#' **Taxonomy columns in posterior_df:** `assign_taxa_llm()` automatically
-#' carries taxonomy columns from `match_df` into its output. When using the
-#' full pipeline (`compute_posterior()`), taxonomy columns pass through from
-#' `evaluate_likelihoods()`. Unreferenced species rows have `NA` in taxonomy columns;
+#' **Taxonomy columns in posterior_df:** when using the full pipeline
+#' (`compute_posterior()`), taxonomy columns pass through from
+#' `evaluate_likelihoods()`. A hand-built `posterior_df` must carry them
+#' itself. Unreferenced species rows have `NA` in taxonomy columns;
 #' set `lookup_missing_taxonomy = TRUE` to attempt lookup via
 #' `TaxaTools::verify_taxon_names()`.
 #'
-#' @param posterior_df Dataframe. Output of [compute_posterior()] or
-#'   [assign_taxa_llm()]. Required columns: `observation_id`, `taxon_name`,
+#' @param posterior_df Dataframe. Output of [compute_posterior()].
+#'   Required columns: `observation_id`, `taxon_name`,
 #'   `taxon_name_rank`, `hypothesis_type`, and the column named by
 #'   `posterior_col`.
 #' @param rank_system Optional character vector of taxonomy column names,
@@ -238,8 +238,6 @@
 #'       \code{attr(x, "plausible")}. This includes referenced species (e.g.
 #'       \emph{Leptocottus armatus}) that the LLM flagged as plausible but that
 #'       were filtered out of the unreferenced vector by the NCBI step.
-#'       Use in the LLM workflow by passing the same object supplied to
-#'       \code{assign_taxa_llm(unreferenced_taxa = ...)}.
 #'     \item \strong{data.frame}: must contain a \code{taxon_name} column
 #'       (species-level names) and columns named after each coarser rank in
 #'       \code{rank_system} (e.g. \code{genus}, \code{family}). Pass
@@ -498,8 +496,8 @@
 #'       Complementary to `consensus_posterior`: while `consensus_posterior`
 #'       reflects mean posterior mass, `consensus_confidence_score` reflects how
 #'       consistently that taxon dominated across simulations.  `NA` when
-#'       `confidence_score` is absent from `posterior_df` (e.g. input from
-#'       [assign_taxa_llm()]) or when `consensus_taxon` is `NA`.}
+#'       `confidence_score` is absent from `posterior_df` (e.g. a hand-built
+#'       input) or when `consensus_taxon` is `NA`.}
 #'     \item{`n_plausible`}{Number of hypotheses in the plausible set,
 #'       including the members of a pooled tail block (0 when there is no
 #'       named hypothesis).}
@@ -570,7 +568,7 @@
 #'       plausible set. Use with `winner_likelihood` / `winner_likelihood_cov`
 #'       to detect implausible winners (e.g. a low-prior taxon winning due to
 #'       a reference error). `NA` when `prior_mean` is absent from
-#'       `posterior_df` (e.g. input from [assign_taxa_llm()]) or when
+#'       `posterior_df` (e.g. a hand-built input) or when
 #'       `consensus_taxon` is `NA`. NOTE: when `prior_mean` was sourced from
 #'       TaxaExpect, this value can be substantially inflated by
 #'       `update_prior_from_consensus()`'s cross-observation confirmation
@@ -777,7 +775,7 @@
 #'   subsetting keeps it; [merge()], [dplyr::summarise()] or rebuilding the data
 #'   frame drop it.
 #'
-#' @seealso [assign_taxa_llm()], [compute_posterior()],
+#' @seealso [compute_posterior()],
 #'   [TaxaLikely::suggest_unreferenced_species()]
 #'
 #' @examples
@@ -1251,7 +1249,7 @@ posterior_consensus <- function(posterior_df,
 
 #' Read a single-row data frame's column, or a default when the column is
 #' absent (an optional upstream output, e.g. a source predating this column,
-#' or posterior_df coming from assign_taxa_llm() rather than
+#' or a hand-built posterior_df rather than one from
 #' compute_posterior()). Consolidates a pattern repeated ~8 times below for
 #' the winner_* pass-through columns.
 #' @noRd
@@ -1926,7 +1924,7 @@ posterior_consensus <- function(posterior_df,
 
   # Winner diagnostics: first row of plausible = highest-posterior hypothesis.
   # Extract prior and likelihood values; NA when the source column is absent
-  # (e.g. when posterior_df comes from assign_taxa_llm() rather than compute_posterior()).
+  # (e.g. when posterior_df is hand-built rather than from compute_posterior()).
   winner_row <- plausible[1L, ]
   winner_prior <- .row_col_or(winner_row, "prior_mean")
   winner_likelihood <- .row_col_or(winner_row, "score_likelihood")
@@ -1947,7 +1945,7 @@ posterior_consensus <- function(posterior_df,
   # own_rank_confusion_risk -- a model-independent diagnostic read directly
   # off the actual winning row rather than recomputed here. Optional
   # upstream output: NA when the source column is
-  # absent (e.g. any call predating these columns, or assign_taxa_llm()
+  # absent (e.g. any call predating these columns, or a hand-built
   # input). Purely informational -- never changes consensus_taxon/
   # consensus_rank. See TaxaFlag::add_posthoc_assessment()'s confusion-risk
   # wiring for how a downstream consumer reads these.

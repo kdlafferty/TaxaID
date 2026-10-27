@@ -514,8 +514,8 @@ could use a different LLM by modifying one of the existing LLM calls.
 | `OPENALEX_API_KEY` | TaxaFetch (literature search) | <https://openalex.org/settings/api> (free) |
 
 No API key is needed for GBIF or NCBI queries. At least one LLM provider
-key is needed for the LLM-shortcut workflow, TaxaHabitat habitat
-assignment, and TaxaWizard.
+key is needed for TaxaHabitat habitat assignment, TaxaFlag's review
+functions, and TaxaWizard.
 
 # Software Installation
 
@@ -772,7 +772,6 @@ between projects:
 | TaxaMatch | Yes (`evaluate_reference_accessions()`, `investigate_flagged_accession()`, `review_flagged_accessions()`) | Reference-accession mislabel-screen verdicts (BLAST + LLM review) | Yes (expensive to rebuild, and it's row-level with its own TTLs, not a flat file store) |
 | TaxaHabitat | No, off unless you pass `cache_dir` (`build_habitat_lookup()`) | Per-taxon LLM habitat assignments | Yes (an unstable verdict shifts which occurrence records count toward a site, so keeping it is what makes a re-run reproducible) |
 | TaxaFlag | No, off unless you pass `cache_dir` (`review_assignments()`, `check_gbif_tile_range()`) | LLM review verdicts / GBIF density-tile verdicts | Yes, for the same reproducibility reason as TaxaHabitat |
-| TaxaAssign | No, off unless you pass `cache_dir` (`assign_taxa_llm()`) | LLM-shortcut prior responses, one per prompt | Yes, for the same reproducibility reason as TaxaHabitat |
 | TaxaTools | Mixed | `refresh_models()`'s LLM model registry caches to a fixed, non-configurable path; `scientific_to_common()` and `fetch_worms_attributes()` default to no persistent cache (`cache_dir = NULL`) unless you supply one | Model registry: yes, tiny. Common-name/WoRMS lookups: worth turning on if you re-run over the same taxon list |
 | TaxaWizard | Yes, fixed path, not configurable | The introspected function/workflow registry (`workflow_registry()`) | Yes, but it's tiny and rebuilds itself when a package version changes |
 
@@ -781,10 +780,7 @@ All of the "Yes" and "Mixed" defaults above use
 your project, invisible unless you go looking for it. Where a function
 defaults to `cache_dir = NULL`, nothing is written to disk until you
 pass a directory; the production workflows pass one explicitly for
-exactly the functions listed above as "No," except TaxaAssign's, since
-no production workflow runs the LLM shortcut. TaxaAssign has no clear
-function; to start its cache over, delete the directory or pass a new
-one.
+exactly the functions listed above as "No."
 
 The five `<pkg>_clear_cache()` functions (`taxafetch_clear_cache()`,
 `taxalikely_clear_cache()`, `taxahabitat_clear_cache()`,
@@ -916,11 +912,11 @@ describe each in full.
 | TaxaMatch   | 30                 | 22         | Yes      |
 | TaxaLikely  | 33                 | 40         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 14                 | 27         | Yes      |
+| TaxaAssign  | 13                 | 24         | Yes      |
 | TaxaFlag    | 17                 | 22         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
-**Export surface: 224 = 219 functions + 5 data objects.** The per-package counts
+**Export surface: 223 = 218 functions + 5 data objects.** The per-package counts
 above are checked against the packages themselves on every run of the test suite,
 so this table and the code cannot drift apart.
 

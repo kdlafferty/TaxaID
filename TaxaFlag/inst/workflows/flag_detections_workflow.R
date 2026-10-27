@@ -158,10 +158,7 @@ if (DEBUG_MODE) {
   # Replace the block above with your real consensus + tiers objects:
   #
   #   taxaassign_consensus <- readRDS("path/to/your_taxaassign_consensus.rds")
-  #     (the object produced by TaxaAssign's compute_posteriors_workflow.R --
-  #     either taxaassign_consensus (Bayesian pathway) or
-  #     taxaassign_consensus_llm (LLM pathway); both share the identical
-  #     column shape, so either works unchanged below)
+  #     (the object produced by TaxaAssign's compute_posteriors_workflow.R)
   #
   #   taxaexpect_priors <- readRDS("path/to/your_taxaexpect_priors.rds")
   #     (the object produced by TaxaExpect's generate_priors_workflow.R;

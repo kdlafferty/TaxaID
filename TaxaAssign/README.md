@@ -90,30 +90,11 @@ consensus_cn <- posterior_consensus(posteriors, consensus_method = "credible_nod
                                     backbone_id = 11)
 ```
 
-### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
-
-``` r
-library(TaxaAssign)
-
-context <- build_context(
-  taxon_names     = unique(match_obj$taxon_name),
-  geographic_hint = "Point Conception, California (34.45 N, 120.47 W)"
-)
-result    <- assign_taxa_llm(match_obj, context = context)  # from TaxaMatch
-consensus <- posterior_consensus(result, backbone_id = 11)
-head(consensus)
-```
-
 ## Key Functions
 
 Core assignment:
 
 -   `compute_posterior()`: Bayes' theorem with MC uncertainty
--   `assign_taxa_llm()`: LLM-shortcut (priors + likelihoods in one call;
-    accepts named unreferenced species from
-    `TaxaLikely::suggest_unreferenced_species()` via
-    `unreferenced_taxa`; see TaxaLikely's README for the full
-    unreferenced-species mechanism)
 -   `join_priors()`: merge TaxaExpect priors with likelihood output.
     Both sides must be on one backbone; harmonise the likelihood side
     onto the occurrence backbone, never the priors onto NCBI, which
@@ -175,10 +156,8 @@ taxonomic assignment:
 
 $$P(H_i \mid D) = \frac{L(D \mid H_i) \times \pi(H_i)}{\sum_j L(D \mid H_j) \times \pi(H_j)}$$
 
-where $L$ is the likelihood (TaxaLikely's trained model, or the
-LLM-shortcut pathway's exponential score-weighting proxy) and $\pi$ is
-the prior (TaxaExpect's occurrence model, or the LLM-shortcut pathway's
-LLM-estimated biogeographic prior).
+where $L$ is the likelihood (TaxaLikely's trained model) and $\pi$ is
+the prior (TaxaExpect's occurrence model).
 
 -   Two workflows: the full Bayesian workflow uses calibrated
     likelihoods from TaxaLikely's hierarchical model and
@@ -397,7 +376,8 @@ release process.
 -   TaxaLikely and TaxaExpect (for the Bayesian workflow; in Suggests)
 -   An Application Programming Interface (API) key for an LLM provider
     (Anthropic Claude, Google Gemini, OpenAI, or local Ollama; see
-    TaxaTools) is needed for the LLM-shortcut workflow
+    TaxaTools) is needed for `build_context()` and for the LLM-composed
+    Results narrative in `generate_report()`
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.

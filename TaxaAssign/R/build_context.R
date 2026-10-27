@@ -2,8 +2,9 @@
 #'
 #' Infers a site-level context data frame (\code{main_habitat}, \code{ecoregion},
 #' \code{date}) from a list of candidate taxon names using LLM-based habitat
-#' assignment. This automates the manual creation of the \code{context} argument
-#' required by \code{\link{assign_taxa_llm}}.
+#' assignment. This automates the manual creation of the \code{context}
+#' argument taken by \code{\link[TaxaFlag]{review_assignments}} and
+#' \code{\link[TaxaLikely]{suggest_unreferenced_species}}.
 #'
 #' The function calls \code{\link[TaxaHabitat]{build_habitat_prompt}} to generate
 #' an LLM prompt, submits it via \code{llm_fn}, parses the response with
@@ -50,13 +51,13 @@
 #'   \item{main_habitat}{Character. Consensus habitat across the assemblage.}
 #'   \item{date}{Character. Passed through from the \code{date} argument.}
 #'   \item{geographic_hint}{Character. Passed through from the
-#'     \code{geographic_hint} argument, or \code{NA}. \code{assign_taxa_llm()}
-#'     shows it to the LLM alongside the ecoregion.}
+#'     \code{geographic_hint} argument, or \code{NA}. Consumers show it to
+#'     the LLM alongside the ecoregion.}
 #' }
 #' The per-species habitat weight table is attached as
 #' \code{attr(result, "habitats_df")} for inspection.
 #'
-#' @seealso \code{\link{assign_taxa_llm}},
+#' @seealso \code{\link[TaxaFlag]{review_assignments}},
 #'   \code{\link[TaxaHabitat]{build_habitat_prompt}},
 #'   \code{\link[TaxaHabitat]{consensus_habitat}}
 #'
@@ -92,8 +93,10 @@
 #' attr(ctx, "habitats_df")
 #'
 #' \dontrun{
-#' # Feed the result into assign_taxa_llm()'s context argument
-#' result <- assign_taxa_llm(match_df, context = ctx, llm_fn = TaxaTools::call_api)
+#' # Feed the result into a consumer's context argument
+#' reviewed <- TaxaFlag::review_assignments(consensus_df,
+#'   context = ctx, llm_fn = TaxaTools::call_api
+#' )
 #' }
 build_context <- function(taxon_names,
                           geographic_hint = NULL,
@@ -181,8 +184,8 @@ build_context <- function(taxon_names,
   if (is.na(ecoregion)) ecoregion <- consensus$ecoregion
 
   # --- Step 6: assemble ctx data frame ---
-  # geographic_hint is kept in the analyst's own words so assign_taxa_llm()
-  # sees it; otherwise only the synthesised ecoregion reaches that prompt.
+  # geographic_hint is kept in the analyst's own words so a consumer's prompt
+  # sees it; otherwise only the synthesised ecoregion would reach that prompt.
   ctx <- data.frame(
     ecoregion = ecoregion,
     main_habitat = main_habitat,

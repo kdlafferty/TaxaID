@@ -34,8 +34,8 @@ downstream package needs solved consistently:
     likelihoods to generate posteriors). Original names can be kept to
     maintain connections with the source data.
 -   Every LLM-calling function in the ecosystem uses one interface.
-    TaxaHabitat's habitat assignment, TaxaAssign's LLM-shortcut
-    pipeline, and TaxaFlag's expert review all submit custom prompts to
+    TaxaHabitat's habitat assignment, TaxaAssign's context inference,
+    and TaxaFlag's expert review all submit custom prompts to
     a language model and none of them should have to know which provider
     is configured. `call_api()` dispatches to Anthropic Claude, Google
     Gemini, OpenAI, Azure OpenAI, or a local Ollama model behind one

@@ -91,7 +91,7 @@
       {
         "id": "posteriors",
         "label": "Posterior Probabilities",
-        "description": "Bayesian posteriors from compute_posterior() or LLM pipeline"
+        "description": "Bayesian posteriors from compute_posterior()"
       },
       {
         "id": "site_table",
@@ -585,33 +585,6 @@
       "requires": []
     },
     {
-      "id": "match_to_consensus_llm",
-      "from": [
-        "match_df"
-      ],
-      "to": "consensus",
-      "label": "LLM-shortcut consensus -- ecological reasoning from context, no trained model or priors needed",
-      "description": "Use this when the user wants a fast, ecologically-informed consensus call without first training a likelihood model or building occurrence-based priors -- an LLM reasons directly from geographic/habitat context. Builds context, assigns via LLM, then runs two consensus rounds with a confirmation update between them. Requires API key. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing.",
-      "packages": [
-        "TaxaAssign",
-        "TaxaTools"
-      ],
-      "functions": [
-        "detect_ranks",
-        "create_taxon_names",
-        "build_context",
-        "assign_taxa_llm",
-        "posterior_consensus",
-        "update_prior_from_consensus"
-      ],
-      "wrapper": false,
-      "snippet": "match_to_consensus_llm.R",
-      "time_estimate": "2-10 min (LLM calls)",
-      "requires": [
-        "key:llm"
-      ]
-    },
-    {
       "id": "match_to_consensus_bayes",
       "from": [
         "match_df",
@@ -620,7 +593,7 @@
       ],
       "to": "consensus",
       "label": "Full Bayesian consensus -- trained likelihood model combined with occurrence-based priors",
-      "description": "Use this when the user wants the full Bayesian pipeline -- a trained likelihood model combined with spatially explicit occurrence priors -- rather than a simple score rule or an LLM shortcut. Needs model_params and priors already built. Evaluates likelihoods, joins priors, computes posteriors, then runs two consensus rounds with a confirmation update between them. Requires pre-trained model and priors. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing. IMPORTANT: this edge does NOT call combine_multisite_priors() -- if observations span multiple distinct sites, use the manual lik_prior_to_post_multisite path instead (via post_to_consensus), or duplicate per-site candidate rows will reach compute_posterior() uncombined.",
+      "description": "Use this when the user wants the full Bayesian pipeline -- a trained likelihood model combined with spatially explicit occurrence priors -- rather than a simple score rule. Needs model_params and priors already built. Evaluates likelihoods, joins priors, computes posteriors, then runs two consensus rounds with a confirmation update between them. Requires pre-trained model and priors. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing. IMPORTANT: this edge does NOT call combine_multisite_priors() -- if observations span multiple distinct sites, use the manual lik_prior_to_post_multisite path instead (via post_to_consensus), or duplicate per-site candidate rows will reach compute_posterior() uncombined.",
       "packages": [
         "TaxaAssign",
         "TaxaLikely",

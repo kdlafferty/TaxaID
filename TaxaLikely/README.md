@@ -325,11 +325,8 @@ coverage <- audit_barcode_coverage(reference_df, barcode_term = "MiFishU")
 coverage$unreferenced   # species with NO barcode in NCBI -- cannot be detected
 coverage$census         # per-genus completeness summary
 
-# Pass gap list to the LLM-shortcut pipeline for ghost hypothesis handling
-llm_posteriors <- TaxaAssign::assign_taxa_llm(
-  match_df          = match_data,
-  unreferenced_taxa = coverage$unreferenced
-)
+# Reshape the gap list for ghost hypothesis handling
+unref_df <- data.frame(species = coverage$unreferenced)
 
 write_reference_fasta(
   reference_df,
@@ -481,9 +478,8 @@ predicted NCBI sequences, the value `audit_barcode_coverage()`'s
 `exclude_predicted` argument should take -
 `suggest_unreferenced_species()`: fast, LLM-first alternative to
 `audit_barcode_coverage()` (also supports acoustic/image via
-`data_type`); feeds
-`TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`, the LLM-shortcut
-pathway
+`data_type`); its names reshape into
+`expand_unreferenced_hypotheses()`'s `unreferenced_df`
 - `audit_acoustic_coverage()`: find plausible species absent
 from classifier's known list (acoustic/image) -
 `fetch_xc_recording_locations()`: fetch per-recording latitude/longitude

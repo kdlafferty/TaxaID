@@ -64,7 +64,7 @@
 #' `TaxaTools::.onAttach()`, which only fires via `library(TaxaTools)` --
 #' never via a bare `TaxaTools::` namespace reference. A caller that never
 #' explicitly loads TaxaTools (e.g. a fully-namespaced script calling only
-#' `TaxaAssign::assign_taxa_llm()`) will find `getOption("TaxaID.llm_fn")`
+#' `TaxaAssign::build_context()`) will find `getOption("TaxaID.llm_fn")`
 #' unset here even with a real API key configured, and fall through to the
 #' bare `TaxaTools::call_api` below -- which itself has no provider
 #' configured either, and (per that package's own documented behavior)
@@ -109,8 +109,9 @@
 
 #' Build a "Context:" prompt block from a context list
 #'
-#' Shared context-formatting logic for LLM prompts. Used by
-#' `assign_taxa_llm()`'s `.build_taxa_prompt()`.
+#' Shared context-formatting logic for LLM prompts, and the reference
+#' implementation of that format: it has no caller inside TaxaAssign, and is
+#' kept because it is the copy the tests pin.
 #' `TaxaLikely::suggest_unreferenced_species()` keeps its own copy of
 #' equivalent logic (`.build_plausible_prompt()`/`.build_family_prompt()`,
 #' differing only in which field name in `ctx` holds the habitat value --

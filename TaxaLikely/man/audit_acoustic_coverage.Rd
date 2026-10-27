@@ -54,8 +54,8 @@ Even a species present in the BirdNET list may be poorly classified
 if it has very few training recordings.}
 }}
 \item{\code{unreferenced}}{Character vector of species names absent from
-\code{reference_species}.  Pass directly to
-\code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)} to build H2
+\code{reference_species}.  Reshape into
+\code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}'s \code{unreferenced_df} to build H2
 hypotheses for these species.}
 }
 }

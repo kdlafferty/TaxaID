@@ -38,8 +38,8 @@
 #' @param include_unreferenced_family Logical (default \code{FALSE}).  When
 #'   \code{TRUE}, one \code{"unreferenced_family"} catch-all row is added per
 #'   observation with all taxonomy columns set to \code{NA}.  Use when
-#'   running [assign_scores()] without TaxaExpect priors (e.g., the LLM
-#'   shortcut pathway) to absorb posterior mass from taxa outside all
+#'   running [assign_scores()] without TaxaExpect priors (e.g. under a flat
+#'   prior) to absorb posterior mass from taxa outside all
 #'   represented families.  Do \strong{not} set to \code{TRUE} when using
 #'   TaxaExpect priors -- the prior distribution already covers unrepresented
 #'   families.

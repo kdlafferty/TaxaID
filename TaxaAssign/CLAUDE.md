@@ -19,7 +19,6 @@ state only.
 | `add_slash_taxon` | Add Slash Taxon Name and Irreducibility Flag to a Consensus Dataframe |
 | `add_unreferenced_prior_mass` | Add the prior mass of unreferenced local relatives to generic hypotheses |
 | `adjust_inat_range_priors` | Elevate priors for iNaturalist range-supported unobserved taxa |
-| `assign_taxa_llm` | Assign Taxa Using an LLM-Approximated Bayesian Pipeline |
 | `build_context` | Build Site Context from Taxon Names |
 | `combine_multisite_priors` | Combine Per-Site Priors for Multi-Site Observations |
 | `compute_group_priors` | Aggregate occurrence-model shares to genus/family level |

@@ -11,7 +11,6 @@
 #' @section Posterior computation:
 #' \itemize{
 #'   \item \code{\link{compute_posterior}} -- Bayes' theorem with MC uncertainty
-#'   \item \code{\link{assign_taxa_llm}} -- LLM-shortcut (priors + likelihoods)
 #'   \item \code{\link{join_priors}} -- merge TaxaExpect priors with likelihoods
 #' }
 #'
@@ -24,14 +23,11 @@
 #' }
 #'
 #' @section Unreferenced species:
-#' Two separate mechanisms, one per workflow -- not used together. Full
-#' Bayesian: \code{TaxaLikely::audit_barcode_coverage()} feeds
+#' \code{TaxaLikely::audit_barcode_coverage()} feeds
 #' \code{TaxaLikely::expand_unreferenced_hypotheses()} (models likelihoods for
-#' named unreferenced taxa). LLM-shortcut:
-#' \code{TaxaLikely::suggest_unreferenced_species()} (a fast, LLM-first
-#' alternative to \code{audit_barcode_coverage()}) feeds
-#' \code{\link{assign_taxa_llm}}'s own \code{unreferenced_taxa} parameter
-#' directly.
+#' named unreferenced taxa). \code{TaxaLikely::suggest_unreferenced_species()}
+#' is a faster, LLM-first alternative to \code{audit_barcode_coverage()} for
+#' finding the names.
 #' \itemize{
 #'   \item \code{TaxaLikely::expand_unreferenced_hypotheses()} -- models
 #'     likelihoods for named unreferenced taxa (lives in TaxaLikely, next to

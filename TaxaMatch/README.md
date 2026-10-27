@@ -275,9 +275,9 @@ Expected Animl output format (long): one or more CSV files with columns
 Coverage audit: check which expected species are absent from the
 classifier's known list with
 `TaxaLikely::audit_acoustic_coverage(plausible_species, reference_species)`.
-Pass the result's `$unreferenced` vector directly to
-`TaxaAssign::assign_taxa_llm()` as `unreferenced_taxa` (the LLM-shortcut
-pipeline's own parameter for exactly this shape).
+Reshape the result's `$unreferenced` vector into the `unreferenced_df` taken
+by `TaxaLikely::expand_unreferenced_hypotheses()`, which needs `species`,
+`genus` and `family` columns.
 
 ### Confirmed vs. Unconfirmed Assignments
 

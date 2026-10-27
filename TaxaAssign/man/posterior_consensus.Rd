@@ -26,8 +26,8 @@ posterior_consensus(
 )
 }
 \arguments{
-\item{posterior_df}{Dataframe. Output of \code{\link[=compute_posterior]{compute_posterior()}} or
-\code{\link[=assign_taxa_llm]{assign_taxa_llm()}}. Required columns: \code{observation_id}, \code{taxon_name},
+\item{posterior_df}{Dataframe. Output of \code{\link[=compute_posterior]{compute_posterior()}}.
+Required columns: \code{observation_id}, \code{taxon_name},
 \code{taxon_name_rank}, \code{hypothesis_type}, and the column named by
 \code{posterior_col}.}
 
@@ -86,8 +86,6 @@ species list is extracted automatically from
 \code{attr(x, "plausible")}. This includes referenced species (e.g.
 \emph{Leptocottus armatus}) that the LLM flagged as plausible but that
 were filtered out of the unreferenced vector by the NCBI step.
-Use in the LLM workflow by passing the same object supplied to
-\code{assign_taxa_llm(unreferenced_taxa = ...)}.
 \item \strong{data.frame}: must contain a \code{taxon_name} column
 (species-level names) and columns named after each coarser rank in
 \code{rank_system} (e.g. \code{genus}, \code{family}). Pass
@@ -384,8 +382,8 @@ simulations in which \emph{any} member of the consensus taxon won.
 Complementary to \code{consensus_posterior}: while \code{consensus_posterior}
 reflects mean posterior mass, \code{consensus_confidence_score} reflects how
 consistently that taxon dominated across simulations.  \code{NA} when
-\code{confidence_score} is absent from \code{posterior_df} (e.g. input from
-\code{\link[=assign_taxa_llm]{assign_taxa_llm()}}) or when \code{consensus_taxon} is \code{NA}.}
+\code{confidence_score} is absent from \code{posterior_df} (e.g. a hand-built
+input) or when \code{consensus_taxon} is \code{NA}.}
 \item{\code{n_plausible}}{Number of hypotheses in the plausible set,
 including the members of a pooled tail block (0 when there is no
 named hypothesis).}
@@ -455,7 +453,7 @@ consensus taxon, taken from the highest-posterior hypothesis in the
 plausible set. Use with \code{winner_likelihood} / \code{winner_likelihood_cov}
 to detect implausible winners (e.g. a low-prior taxon winning due to
 a reference error). \code{NA} when \code{prior_mean} is absent from
-\code{posterior_df} (e.g. input from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}) or when
+\code{posterior_df} (e.g. a hand-built input) or when
 \code{consensus_taxon} is \code{NA}. NOTE: when \code{prior_mean} was sourced from
 TaxaExpect, this value can be substantially inflated by
 \code{update_prior_from_consensus()}'s cross-observation confirmation
@@ -686,10 +684,10 @@ hypotheses agree. Explicit taxonomy columns (e.g. \code{family}, \code{genus},
 derived from a species binomial even when no \code{genus} column is present.
 Family and above require an explicit column.
 
-\strong{Taxonomy columns in posterior_df:} \code{assign_taxa_llm()} automatically
-carries taxonomy columns from \code{match_df} into its output. When using the
-full pipeline (\code{compute_posterior()}), taxonomy columns pass through from
-\code{evaluate_likelihoods()}. Unreferenced species rows have \code{NA} in taxonomy columns;
+\strong{Taxonomy columns in posterior_df:} when using the full pipeline
+(\code{compute_posterior()}), taxonomy columns pass through from
+\code{evaluate_likelihoods()}. A hand-built \code{posterior_df} must carry them
+itself. Unreferenced species rows have \code{NA} in taxonomy columns;
 set \code{lookup_missing_taxonomy = TRUE} to attempt lookup via
 \code{TaxaTools::verify_taxon_names()}.
 
@@ -844,6 +842,6 @@ consensus_image[, c("observation_id", "consensus_taxon", "consensus_rank", "is_r
 
 }
 \seealso{
-\code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, \code{\link[=compute_posterior]{compute_posterior()}},
+\code{\link[=compute_posterior]{compute_posterior()}},
 \code{\link[TaxaLikely:suggest_unreferenced_species]{TaxaLikely::suggest_unreferenced_species()}}
 }

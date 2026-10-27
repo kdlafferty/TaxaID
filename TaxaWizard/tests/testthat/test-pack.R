@@ -78,8 +78,8 @@ test_that("CONTEXT_TaxaID.md's canonical-pipelines section is read live from sys
   on.exit(unlink(dir, recursive = TRUE), add = TRUE)
 
   ctx <- paste(readLines(file.path(dir, "CONTEXT_TaxaID.md"), warn = FALSE), collapse = "\n")
-  expect_true(grepl("LLM-Shortcut Pipeline", ctx, fixed = TRUE))
   expect_true(grepl("Full Bayesian Pipeline", ctx, fixed = TRUE))
+  expect_true(grepl("Score-Only Consensus", ctx, fixed = TRUE))
 })
 
 

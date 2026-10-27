@@ -106,7 +106,7 @@ test_that("build_context falls back to consensus when synthesis fails", {
   expect_equal(ctx$ecoregion, "Southern California Bight")
 })
 
-test_that("geographic_hint reaches the assign_taxa_llm() prompt", {
+test_that("geographic_hint reaches the context prompt block", {
   set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   ctx <- build_context(
     taxon_names     = c("Sebastes mystinus", "Gadus morhua"),

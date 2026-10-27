@@ -21,29 +21,13 @@
 # data -- the same "tutorial-only shortcut, real downstream data" pattern used
 # in TaxaHabitat's inline main_habitat tag and TaxaExpect's live-fallback fetch.
 #
-# TWO VARIANTS -- BOTH run live in DEBUG_MODE, on the same tutorial taxa:
-#   VARIANT A (Steps 1-4) -- THE BAYESIAN PATHWAY
-#     join_priors() -> compute_posterior() -> posterior_consensus() ->
-#     add_slash_taxon(). Consumes the real taxaexpect_priors checkpoint plus
-#     the synthetic likelihood object described above.
-#   VARIANT B (Step 5) -- THE LLM/NO-SCORE PATHWAY
-#     assign_taxa_llm() -> posterior_consensus() -> add_slash_taxon().
-#     IMPORTANT: this pathway has NO
-#     taxaexpect_priors parameter at all -- it asks the LLM directly for
-#     range_status/habitat_fit/information_quality per taxon and builds its
-#     OWN priors from that ecological reasoning, completely bypassing
-#     TaxaExpect's occurrence-based priors. It is a genuinely parallel,
-#     independent pathway, not a variant of the Bayesian one -- useful when no
-#     occurrence-based prior model exists (e.g. morphological/expert-ID data
-#     with no reference database, or when TaxaExpect's GLMM can't converge on
-#     sparse tutorial-scale data -- see generate_priors_workflow.R's own
-#     fallback-level messages). Runs its own real LLM call, on a separate
-#     synthetic match_df (a different object shape from Variant A's
-#     likelihoods -- see Step 5).
+# THE BAYESIAN PATHWAY (Steps 1-4), run live in DEBUG_MODE on the tutorial
+# taxa: join_priors() -> compute_posterior() -> posterior_consensus() ->
+# add_slash_taxon(). Consumes the real taxaexpect_priors checkpoint plus the
+# synthetic likelihood object described above.
 #
-# Output: two consensus tibbles, taxaassign_consensus (Variant A) and
-#   taxaassign_consensus_llm (Variant B); see "Output" block at the end of
-#   this file for the full column contract consumed by TaxaFlag.
+# Output: one consensus tibble, taxaassign_consensus; see the "Output" block
+#   at the end of this file for the full column contract consumed by TaxaFlag.
 # ==============================================================================
 
 # --- Namespaces used in this script (loaded, never attached) ----------------
@@ -327,11 +311,10 @@ OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_gadus"
 
 # ==============================================================================
-# VARIANT A: THE BAYESIAN PATHWAY (join_priors -> compute_posterior ->
-#            posterior_consensus -> add_slash_taxon)
+# THE BAYESIAN PATHWAY (join_priors -> compute_posterior ->
+#                       posterior_consensus -> add_slash_taxon)
 # ==============================================================================
 # This is the pathway that consumes TaxaExpect's occurrence-based priors.
-# VARIANT B (the LLM/no-score pathway) is documented, NOT run, in Section 5.
 # ==============================================================================
 
 # ==============================================================================
@@ -453,183 +436,17 @@ message(sprintf(
   taxaassign_consensus_path
 ))
 
-# ==============================================================================
-# 5.  VARIANT B (DOCUMENTED, NOT RUN) -- THE LLM/NO-SCORE PATHWAY
-# ==============================================================================
-# assign_taxa_llm() is a GENUINELY PARALLEL, INDEPENDENT pathway, not a variant
-# of the Bayesian one above. IMPORTANT DESIGN FACT: it has NO taxaexpect_priors
-# parameter at all. Instead of joining occurrence-based priors from TaxaExpect,
-# it asks the LLM directly for range_status / habitat_fit / information_quality
-# per taxon (ecological reasoning) and derives Beta(alpha, beta) priors from
-# that via prior_phi -- completely bypassing everything Steps 1-2 do above.
-#
-# Use this pathway when no occurrence-based prior model exists at all -- e.g.
-# morphological/expert-ID data, or a classifier's candidate list with no
-# reference database to build a TaxaExpect model from. It still ends in the
-# same compute_posterior() Bayes update internally, so its output posterior
-# columns are directly compatible with posterior_consensus() + add_slash_taxon()
-# below -- only the PRIOR SOURCE differs, not the downstream mechanics.
-#
-# Run live here (below), on its own synthetic match_df -- a genuinely
-# different object shape from Variant A's `likelihoods` (0-100 score_original,
-# no score_likelihood/prior columns at all; assign_taxa_llm() derives both
-# likelihood AND prior internally). Reuses the same real taxa pool and
-# observation ids as Variant A (.synth_taxa/.synth_genus/.synth_family/
-# .obs_ids/.n_synth_taxa, all still in scope from the DEBUG_MODE block above)
-# for a clean side-by-side comparison against the Bayesian pathway's result.
-
-message("\n--- Step 5: VARIANT B -- THE LLM/NO-SCORE PATHWAY (assign_taxa_llm) ---")
-
-# match_df here is TaxaMatch's candidate-list shape: observation_id,
-# score_original (0-100 scale -- e.g. BLAST percent identity; NOT the same
-# scale or column as Variant A's score_likelihood), taxon_name,
-# taxon_name_rank, plus genus/family for rank_system. Required columns per
-# assign_taxa_llm()'s own validation: observation_id, score_original,
-# taxon_name, taxon_name_rank.
-.build_match_row <- function(obs_id, taxa_idx) {
-  n_cand <- length(taxa_idx)
-  top_score <- stats::runif(1, 92, 99)
-  if (n_cand == 1L) {
-    scores <- top_score
-  } else {
-    # Kept above score_threshold's default (80) so all competing congeners
-    # survive into the candidate set -- otherwise assign_taxa_llm() silently
-    # drops any row below score_threshold before the LLM ever sees it.
-    remaining <- sort(stats::runif(n_cand - 1L, 82, 90), decreasing = TRUE)
-    scores <- c(top_score, remaining)
-  }
-  tibble::tibble(
-    observation_id  = obs_id,
-    taxon_name      = .synth_taxa[taxa_idx],
-    taxon_name_rank = "species",
-    genus           = .synth_genus[taxa_idx],
-    family          = .synth_family,
-    score_original  = scores
-  )
-}
-
-.match_list <- lapply(seq_along(.obs_ids), function(i) {
-  n_cand <- min(sample(2:3, 1L), .n_synth_taxa)
-  top_idx <- ((i - 1L) %% .n_synth_taxa) + 1L
-  other_idx <- setdiff(seq_len(.n_synth_taxa), top_idx)
-  cand_idx <- c(top_idx, head(other_idx, n_cand - 1L))
-  .build_match_row(.obs_ids[i], cand_idx)
-})
-match_df <- dplyr::bind_rows(.match_list)
-
-message(sprintf(
-  "  Synthetic match_df: %d observation(s), %d candidate row(s), score_original in [80,100].",
-  length(.obs_ids), nrow(match_df)
-))
-message(
-  "  *** SYNTHETIC DATA NOTICE *** -- score_original values are illustrative ",
-  "placeholders, NOT real BLAST/classifier output."
-)
-
-# context: one row with main_habitat, applied uniformly to every observation
-# (context_group is left NULL, so .build_group_map()/.get_group_context()
-# apply this single row's fields to all observations regardless of an
-# observation_id column being present). Built directly from SITE_HABITAT
-# (already derived from taxaexpect_priors earlier in this script) rather than
-# via TaxaAssign::build_context() -- that function would re-run TaxaHabitat's
-# LLM-based habitat classification on this same taxon set, for which we
-# already have a real answer from the upstream chain. A real workflow with
-# per-observation context (e.g. different sites) would supply context_group
-# and an observation_id column on context.
-context <- tibble::tibble(main_habitat = SITE_HABITAT)
-
-# CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: leaving llm_fn at its default
-# (NULL) does NOT error -- it silently degrades to uniform priors. Root cause:
-# assign_taxa_llm()'s internal .resolve_llm_fn() falls back to
-# TaxaTools::call_api() (the generic multi-provider dispatcher), and
-# call_api()'s own provider auto-detection
-# requires TaxaTools to have been library()-attached (its .onAttach() hook is
-# what sets getOption("TaxaID.llm_fn") from detected API keys) -- see
-# TaxaTools/R/call_api.R's own comment: "this means .onAttach() hasn't run
-# (package loaded via :: not library())". This house style's fully-namespaced,
-# never-attached calling convention (TaxaTools::..., never library(TaxaTools))
-# is therefore incompatible with EVERY function's NULL-default llm_fn across
-# the ecosystem (assign_taxa_llm(), build_context() and
-# TaxaLikely::suggest_unreferenced_species() all share .resolve_llm_fn()).
-# Explicit
-# llm_fn -- exactly the pattern already used in TaxaHabitat's
-# assign_habitat_workflow.R -- avoids the auto-detection path entirely.
-message("  Requires ANTHROPIC_API_KEY to actually run.")
-posterior_llm <- TaxaAssign::assign_taxa_llm(
-  match_df    = match_df,
-  context     = context,
-  rank_system = RANK_SYSTEM,
-  llm_fn      = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api),
-  n_sims      = 1000L
-)
-
-message(sprintf(
-  "  %d posterior row(s) computed across %d observation(s) (LLM-derived priors).",
-  nrow(posterior_llm), dplyr::n_distinct(posterior_llm$observation_id)
-))
-
-# ---- Explicit checkpoint ----------------------------------------------------
-posterior_llm_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_posterior_llm.rds"))
-saveRDS(posterior_llm, posterior_llm_path)
-message(sprintf("  Saved: %s", posterior_llm_path))
-message(sprintf(
-  "  To reuse without re-querying the LLM, paste:\n    posterior_llm <- readRDS(\"%s\")",
-  posterior_llm_path
-))
-
-taxaassign_consensus_llm <- TaxaAssign::posterior_consensus(
-  posterior_df = posterior_llm,
-  rank_system  = RANK_SYSTEM
-) |>
-  TaxaAssign::add_slash_taxon()
-
-message(sprintf(
-  "  %d consensus row(s) (LLM pathway); %d resolved.",
-  nrow(taxaassign_consensus_llm),
-  sum(taxaassign_consensus_llm$is_resolved, na.rm = TRUE)
-))
-
-# ---- Explicit checkpoint ----------------------------------------------------
-taxaassign_consensus_llm_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaassign_consensus_llm.rds"))
-saveRDS(taxaassign_consensus_llm, taxaassign_consensus_llm_path)
-message(sprintf("  Saved: %s", taxaassign_consensus_llm_path))
-message(sprintf(
-  "  To reuse without re-running this variant, paste:\n    taxaassign_consensus_llm <- readRDS(\"%s\")",
-  taxaassign_consensus_llm_path
-))
-
 message("\nWorkflow complete.")
 message(
-  "Next: pass taxaassign_consensus (Bayesian pathway) or taxaassign_consensus_llm ",
-  "(LLM pathway) to TaxaFlag for anomalous-detection flagging."
+  "Next: pass taxaassign_consensus to TaxaFlag for anomalous-detection flagging."
 )
 
 # ==============================================================================
 # Output
 # ==============================================================================
-# This workflow produces TWO consensus objects -- one per pathway, both with
-# the identical column shape (posterior_consensus() + add_slash_taxon()
-# output), since only the prior SOURCE differs between them, not the
-# downstream mechanics:
-#
-#   taxaassign_consensus      -- VARIANT A (Bayesian pathway). Priors from
-#                                 TaxaExpect's real occurrence model
-#                                 (taxaexpect_priors). Use this as the primary/
-#                                 default output when an occurrence-based
-#                                 prior model exists.
-#   taxaassign_consensus_llm  -- VARIANT B (LLM/no-score pathway). Priors from
-#                                 the LLM's direct ecological reasoning
-#                                 (assign_taxa_llm()), bypassing TaxaExpect
-#                                 entirely. Use this when no occurrence-based
-#                                 prior model exists (e.g. morphological/
-#                                 expert-ID data, or insufficient occurrence
-#                                 data to fit TaxaExpect's GLMM -- see
-#                                 generate_priors_workflow.R's own fallback-
-#                                 level messages for how easily that threshold
-#                                 is missed on tutorial-scale real data).
-#
-# Both are independent, complete pipelines over the same tutorial taxa --
-# compare them directly to see how prior source alone changes the consensus.
+# This workflow produces one consensus object, taxaassign_consensus, from
+# posterior_consensus() + add_slash_taxon(). Priors come from TaxaExpect's
+# real occurrence model (taxaexpect_priors).
 #
 # Columns:
 #   observation_id          -- character/any; groups competing hypotheses

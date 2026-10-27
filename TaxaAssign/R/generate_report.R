@@ -15,7 +15,7 @@ utils::globalVariables(c(
 #   generate_report()         Orchestrator: Methods + Results -> markdown string
 #
 # Internal helpers:
-#   .detect_workflow()        Detect "llm" or "bayesian" from column presence
+#   (posterior workflows are always "bayesian"; only score_consensus() differs)
 #   .extract_report_stats()   Compute summary statistics from result + consensus
 #   .extract_unreferenced_stats()  Unreferenced species stats from S3 object
 #   .build_methods_text()     Template-based methods section
@@ -27,7 +27,7 @@ utils::globalVariables(c(
 #'
 #' Produces a Methods and Results text suitable for inclusion in a scientific
 #' paper. The Methods section is assembled from templates that adapt to the
-#' workflow used (LLM-shortcut or Bayesian). The Results section summarises
+#' workflow used (Bayesian or score-based). The Results section summarises
 #' assignment outcomes, either as LLM-composed prose or as a structured
 #' bullet-point summary when \code{llm_fn = NULL}.
 #'
@@ -37,7 +37,7 @@ utils::globalVariables(c(
 #' functions. If these attributes are absent, sensible defaults are assumed.
 #'
 #' @param result Data frame or \code{NULL}. Posterior output from
-#'   \code{\link{compute_posterior}} or \code{\link{assign_taxa_llm}}. Required
+#'   \code{\link{compute_posterior}}. Required
 #'   when \code{consensus} comes from \code{\link{posterior_consensus}}.
 #'   Pass \code{NULL} when \code{consensus} comes from
 #'   \code{\link{score_consensus}} (no posterior data exists).
@@ -50,25 +50,16 @@ utils::globalVariables(c(
 #'   S3 object from \code{\link[TaxaLikely]{suggest_unreferenced_species}}. When provided,
 #'   the report includes reference database completeness statistics and
 #'   unreferenced species findings.
-#' @param workflow Character or \code{NULL}. One of \code{"bayesian"} or
-#'   \code{"llm"}, describing how \code{result}/\code{consensus} were
-#'   produced -- selects which Methods-text template to use. Default
-#'   \code{NULL} auto-detects from column presence (`range_status`,
-#'   `habitat_fit`, `information_quality` all present -> `"llm"`; otherwise
-#'   `"bayesian"`), which is reliable for output produced by this package's
-#'   own \code{assign_taxa_llm()}, but can misclassify a hand-built or
-#'   third-party \code{result} that happens to share (or omit) those column
-#'   names. Pass this explicitly to avoid relying on the guess. Ignored when
-#'   \code{consensus} comes from \code{\link{score_consensus}} (workflow is
-#'   always \code{"score"} in that case, not a guess).
+#' @param workflow Character or \code{NULL}. \code{"bayesian"}, describing
+#'   how \code{result}/\code{consensus} were produced -- selects which
+#'   Methods-text template to use. Default \code{NULL} resolves to
+#'   \code{"bayesian"} for posterior output. Ignored when \code{consensus}
+#'   comes from \code{\link{score_consensus}} (workflow is always
+#'   \code{"score"} in that case).
 #' @param data_type Character. One of \code{"eDNA"}, \code{"image"},
 #'   \code{"acoustic"}, or \code{NULL}. Used to tailor methods language.
 #' @param marker Character. Molecular marker name (e.g. \code{"12S MiFish"}).
 #'   Used only when \code{data_type = "eDNA"}.
-#' @param context_source Character. One of \code{"user"} (user provided
-#'   geographic context manually) or \code{"llm"} (context was inferred by
-#'   \code{\link{build_context}}). Affects the methods description of how
-#'   geographic context was determined. Default \code{"user"}.
 #' @param study_description Character. One or two sentences describing the study
 #'   context, passed to the LLM to ground the results narrative.
 #' @param llm_fn Function or \code{NULL}. LLM provider function following the
@@ -115,7 +106,6 @@ generate_report <- function(result,
                             workflow = NULL,
                             data_type = NULL,
                             marker = NULL,
-                            context_source = "user",
                             study_description = NULL,
                             llm_fn = NULL,
                             verbose = FALSE) {
@@ -124,7 +114,7 @@ generate_report <- function(result,
     cli::cli_abort("{.arg consensus} must be a data frame.")
   }
   if (!is.null(workflow)) {
-    workflow <- match.arg(workflow, c("bayesian", "llm"))
+    workflow <- match.arg(workflow, "bayesian")
   }
 
   required_consensus <- c(
@@ -161,8 +151,6 @@ generate_report <- function(result,
     data_type <- match.arg(data_type, c("eDNA", "image", "acoustic"))
   }
 
-  context_source <- match.arg(context_source, c("user", "llm"))
-
   if (!is.null(llm_fn) && !is.function(llm_fn)) {
     cli::cli_abort("{.arg llm_fn} must be a function or NULL.")
   }
@@ -170,8 +158,7 @@ generate_report <- function(result,
   # --- Detect workflow and gather parameters ----------------------------------
   if (consensus_type == "posterior") {
     if (is.null(workflow)) {
-      workflow <- .detect_workflow(result)
-      if (verbose) cli::cli_inform("Detected workflow: {.val {workflow}} (pass {.arg workflow} explicitly to override).")
+      workflow <- "bayesian"
     } else if (verbose) {
       cli::cli_inform("Using explicitly supplied workflow: {.val {workflow}}")
     }
@@ -197,7 +184,6 @@ generate_report <- function(result,
 
   # --- Build Methods ----------------------------------------------------------
   methods_text <- .build_methods_text(workflow, params, data_type, marker,
-    context_source,
     !is.null(unreferenced_result),
     !is.null(unref_stats) &&
       unref_stats$has_family_expansion,
@@ -231,12 +217,6 @@ generate_report <- function(result,
 # ==============================================================================
 # Internal helpers
 # ==============================================================================
-
-#' @noRd
-.detect_workflow <- function(result) {
-  llm_cols <- c("range_status", "habitat_fit", "information_quality")
-  if (all(llm_cols %in% names(result))) "llm" else "bayesian"
-}
 
 
 #' @noRd
@@ -514,7 +494,6 @@ generate_report <- function(result,
 
 #' @noRd
 .build_methods_text <- function(workflow, params, data_type, marker,
-                                context_source,
                                 has_unreferenced, has_family_expansion,
                                 has_empirical_bayes,
                                 llm_model_name = NULL,
@@ -539,23 +518,6 @@ generate_report <- function(result,
       "Taxonomic consensus was determined using a conventional score-based ",
       "approach based on match quality thresholds applied to reference database ",
       "search results."
-    )
-  } else if (workflow == "llm") {
-    llm_label <- if (!is.null(llm_model_name)) {
-      sprintf("a large language model (LLM; %s)", llm_model_name)
-    } else {
-      "a large language model (LLM)"
-    }
-    intro <- sprintf(
-      paste0(
-        "Rather than the conventional method of basing taxonomic assignments on ",
-        "likelihood scores alone, assignments were estimated using a Bayesian ",
-        "framework in which occurrence priors were elicited from %s and match ",
-        "likelihoods were approximated by weighting match scores, rather than ",
-        "derived from species occurrence records and statistical training on the ",
-        "reference database, respectively."
-      ),
-      llm_label
     )
   } else {
     intro <- paste0(
@@ -621,114 +583,33 @@ generate_report <- function(result,
   }
 
   # --- Likelihood estimation (posterior workflows only) ---
-  if (workflow == "llm") {
-    sharpness <- if (!is.null(params$score_sharpness)) params$score_sharpness else 0.1
-    unk_wt <- if (!is.null(params$unknown_lik_weight)) params$unknown_lik_weight else 0.05
-    threshold <- if (!is.null(params$score_threshold)) params$score_threshold else 80
-    top_n <- if (!is.null(params$top_n)) params$top_n else 10L
-
-    lik_text <- sprintf(
-      paste0(
-        "Likelihoods were derived from match scores using exponential weighting. ",
-        "For each observation, candidate taxa with scores above %s were retained (up to ",
-        "the top %d candidates). Match scores were transformed via an exponential ",
-        "function (sharpness parameter = %s) and normalized to sum to one, producing ",
-        "a likelihood estimate for each candidate taxon. A residual likelihood of %s ",
-        "was reserved for the possibility that the true taxon was not among the named ",
-        "candidates. This weighting is an uncalibrated approximation: it does not model ",
-        "each species' score distribution, the gap between the best and second-best ",
-        "match, or the chance that the true species or genus is missing from the ",
-        "reference, so candidates with similar scores were separated mainly by their priors."
-      ),
-      threshold, top_n, sharpness, unk_wt
-    )
-  } else {
-    # score_transform ("logit"/"sqrt_mismatch") comes from the trained model's
-    # own Score_Transform field, threaded through via report_params by the
-    # caller -- NOT assumed. Falls
-    # back to "logit" when report_params carries no score_transform field,
-    # rather than erroring.
-    score_transform <- if (!is.null(params$score_transform)) params$score_transform else "logit"
-    transform_desc <- switch(score_transform,
-      "sqrt_mismatch" = "a square-root-mismatch-transformed (Anscombe-stabilized fraction of mismatched bases)",
-      "logit-transformed"
-    )
-    lik_text <- sprintf(
-      paste0(
-        "Likelihoods were estimated using a hierarchical statistical model trained ",
-        "on the reference database (TaxaLikely package). Per-species score ",
-        "distributions were modeled as bivariate normal distributions in ",
-        "%s score and gap (difference between best and second-best ",
-        "match) space, with empirical Bayes shrinkage toward a global mean. ",
-        "Three hypothesis types were evaluated for each observation: that the true taxon ",
-        "is a species present in the reference database (H1), a congener absent from ",
-        "the reference (H2), or a member of a different genus entirely (H3)."
-      ),
-      transform_desc
-    )
-  }
+  # score_transform ("logit"/"sqrt_mismatch") comes from the trained model's
+  # own Score_Transform field, threaded through via report_params by the
+  # caller -- NOT assumed. Falls
+  # back to "logit" when report_params carries no score_transform field,
+  # rather than erroring.
+  score_transform <- if (!is.null(params$score_transform)) params$score_transform else "logit"
+  transform_desc <- switch(score_transform,
+    "sqrt_mismatch" = "a square-root-mismatch-transformed (Anscombe-stabilized fraction of mismatched bases)",
+    "logit-transformed"
+  )
+  lik_text <- sprintf(
+    paste0(
+      "Likelihoods were estimated using a hierarchical statistical model trained ",
+      "on the reference database (TaxaLikely package). Per-species score ",
+      "distributions were modeled as bivariate normal distributions in ",
+      "%s score and gap (difference between best and second-best ",
+      "match) space, with empirical Bayes shrinkage toward a global mean. ",
+      "Three hypothesis types were evaluated for each observation: that the true taxon ",
+      "is a species present in the reference database (H1), a congener absent from ",
+      "the reference (H2), or a member of a different genus entirely (H3)."
+    ),
+    transform_desc
+  )
   sections <- c(sections, lik_text)
 
   # --- Prior estimation ---
-  if (workflow == "llm") {
-    phi <- params$prior_phi
-    phi_text <- if (!is.null(phi) && length(phi) == 3) {
-      sprintf(
-        paste0(
-          "The LLM also rated its information quality for each taxon as high, moderate, ",
-          "or low; these ratings controlled the concentration of the Beta-distributed ",
-          "prior (phi = %s, %s, and %s, respectively), with higher concentration ",
-          "indicating greater certainty in the prior estimate."
-        ),
-        phi["high"], phi["moderate"], phi["low"]
-      )
-    } else {
-      ""
-    }
-
-    absent_prob <- if (!is.null(params$absent_detection_prob)) params$absent_detection_prob else 0.80
-    # The absence sentence describes a step that only ran when known_absent
-    # was supplied. A result without n_known_absent predates the field, and
-    # nothing says the step ran, so it is left out.
-    n_absent <- if (!is.null(params$n_known_absent)) params$n_known_absent else 0L
-
-    context_desc <- if (context_source == "llm") {
-      paste0(
-        "Geographic context (ecoregion and dominant habitat) was inferred by the ",
-        "LLM from the assemblage of candidate taxa, rather than specified by the analyst. "
-      )
-    } else {
-      paste0(
-        "Geographic context (ecoregion and dominant habitat) was specified by the ",
-        "analyst based on the study site. "
-      )
-    }
-
-    prior_text <- paste0(
-      "Prior probabilities of occurrence were estimated by a large language model ",
-      "(LLM) based on geographic context and habitat information. ",
-      context_desc,
-      "For each unique ",
-      "taxon, the LLM assessed geographic range status (native, introduced and ",
-      "established, documented nearby, not documented, taxonomically impossible, ",
-      "transported by people, or uncertain) and habitat fit (expected, occasional, or unlikely), returning a ",
-      "relative weight reflecting the plausibility of encountering that taxon at ",
-      "the study site. Weights were normalized to produce prior probabilities. ",
-      phi_text,
-      if (n_absent > 0L && absent_prob < 1) {
-        sprintf(
-          paste0(
-            " %d taxa not detected by an independent survey of the study area had their ",
-            "priors reduced by a factor of %s (the estimated probability of non-detection), ",
-            "accounting for the possibility of rare or transient occurrences."
-          ),
-          as.integer(n_absent), 1 - absent_prob
-        )
-      } else {
-        ""
-      }
-    )
-  } else if (kernel_priors) {
+  if (kernel_priors) {
     # Kernel-priors + curve-pricing architecture,
     # detected from the result table's prior_branch column.
     prior_text <- paste0(
@@ -784,23 +665,13 @@ generate_report <- function(result,
       "relevant barcode sequences."
     )
 
-    if (workflow == "llm") {
-      unref_lik <- paste0(
-        " Each unreferenced species was assigned a ",
-        "likelihood equal to the median likelihood of its referenced congeners ",
-        "(or family members, for family-level unreferenced taxa), reflecting the ",
-        "expectation that an unreferenced species would produce match scores ",
-        "similar to those of its closest relatives in the reference."
-      )
-    } else {
-      unref_lik <- paste0(
-        " Likelihoods for unreferenced species were derived from the trained ",
-        "likelihood model (TaxaLikely package), which estimates the expected score ",
-        "distribution for a species absent from the reference (H2 hypothesis) based ",
-        "on the distance between within-species and cross-species match score ",
-        "distributions observed in the training data."
-      )
-    }
+    unref_lik <- paste0(
+      " Likelihoods for unreferenced species were derived from the trained ",
+      "likelihood model (TaxaLikely package), which estimates the expected score ",
+      "distribution for a species absent from the reference (H2 hypothesis) based ",
+      "on the distance between within-species and cross-species match score ",
+      "distributions observed in the training data."
+    )
     unref_text <- paste0(unref_intro, unref_lik)
     if (has_family_expansion) {
       unref_text <- paste0(

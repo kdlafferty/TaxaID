@@ -108,8 +108,8 @@ if (!all(c("family", "genus", "species") %in% names(consensus_df))) {
 #
 # include_unreferenced_family = FALSE (default) is appropriate when using
 # TaxaExpect priors — the prior distribution already covers unrepresented
-# families. Set to TRUE only when running without TaxaExpect priors (e.g. the
-# LLM shortcut pathway) to add an additional catch-all row.
+# families. Set to TRUE only when running without TaxaExpect priors, to add
+# an additional catch-all row.
 
 hyp_df <- unreferenced_candidates(
   match_df = consensus_df,

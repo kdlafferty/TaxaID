@@ -93,8 +93,8 @@ Default \code{FALSE}.}
 \value{
 A character vector of unreferenced species names with class
 \code{c("unreferenced_species_result", "character")}.  \code{length()} returns the total number of
-unreferenced species (congener + family-level combined).  Pass directly to
-\code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)}.
+unreferenced species (congener + family-level combined).  Reshape into
+\code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}'s \code{unreferenced_df} to use them.
 }
 \description{
 A fast, LLM-first alternative to \code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}} for
@@ -127,10 +127,11 @@ Requires a \code{family} column in \code{match_df}.
 \subsection{Return value}{
 
 The visible return is a character vector of unreferenced species names of class
-\code{c("unreferenced_species_result", "character")}, suitable for direct use as
-\code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)}.  \code{assign_taxa_llm} automatically
-detects the \code{unreferenced_family} attribute and activates family-level
-unreferenced species insertion when it is present.
+\code{c("unreferenced_species_result", "character")}.  To use them as competing
+hypotheses, reshape them into the \code{unreferenced_df} taken by
+\code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}, which needs \code{species}, \code{genus} and
+\code{family} columns; the \code{unreferenced_family} attribute records which names
+are family-level rather than congeners.
 
 Additional details are attached as attributes:
 \itemize{
@@ -185,15 +186,13 @@ unref_names <- suggest_unreferenced_species(
 )
 attr(unref_names, "family_census")
 
-# Pass directly to TaxaAssign::assign_taxa_llm()
-result <- TaxaAssign::assign_taxa_llm(match_df, context = ctx, unreferenced_taxa = unref_names)
+# Reshape for expand_unreferenced_hypotheses()
+unref_df <- data.frame(species = as.character(unref_names))
 }
 }
 \seealso{
-\code{\link[TaxaAssign:assign_taxa_llm]{TaxaAssign::assign_taxa_llm()}} to use the returned unreferenced species names in the
-LLM-shortcut assignment pipeline -- a fast, approximate substitute for this
-package's own modeled likelihoods (\code{train_likelihood_model()}/\code{evaluate_likelihoods()})
-and TaxaExpect's modeled priors, not a parallel first-class pipeline.
+\code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}} to turn the returned names into
+competing hypotheses with modeled likelihoods.
 \code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}} for exhaustive (slower)
 unreferenced species detection that does not require an LLM.
 }
