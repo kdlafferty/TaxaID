@@ -15,9 +15,10 @@
 .parse_lat_lon <- function(...) get(".parse_lat_lon", envir = asNamespace("TaxaMatch"))(...)
 .resolve_locations_by_acc <- function(...) get(".resolve_locations_by_acc", envir = asNamespace("TaxaMatch"))(...)
 .split_batches_by_length <- function(...) get(".split_batches_by_length", envir = asNamespace("TaxaMatch"))(...)
-.blast_version <- function(...) get(".blast_version", envir = asNamespace("TaxaMatch"))(...)
+.tool_version <- function(...) get(".tool_version", envir = asNamespace("TaxaMatch"))(...)
 .blast_xml_provenance <- function(...) get(".blast_xml_provenance", envir = asNamespace("TaxaMatch"))(...)
 .match_report_params <- function(...) get(".match_report_params", envir = asNamespace("TaxaMatch"))(...)
+.empty_provenance <- function(...) get(".empty_provenance", envir = asNamespace("TaxaMatch"))(...)
 
 # --- Helpers ------------------------------------------------------------------
 
@@ -1234,9 +1235,20 @@ test_that(".blast_remote() announces an empty poll result as it happens", {
 # some paths only cannot be told apart from a field the search could not record.
 PROVENANCE_KEYS <- c(
   "method", "database", "min_score", "min_query_coverage", "n_samples",
-  "blast_version", "database_reported", "db_build_dates",
-  "search_started", "search_finished"
+  "tool_version", "database_reported", "database_date",
+  "search_started", "search_finished", "parameters"
 )
+
+test_that("one provenance vocabulary serves every match source", {
+  # blast_sequences() fills these from the search it ran; an imported hit list
+  # fills the same names through standardize_match_data(provenance=). A field
+  # one source records and the other rejects cannot arise from one definition.
+  expect_setequal(names(.empty_provenance()), setdiff(PROVENANCE_KEYS, c(
+    "method", "database", "min_score", "min_query_coverage", "n_samples"
+  )))
+  expect_true(all(names(.empty_provenance()) %in%
+    names(.match_report_params("local", "db", 70, 80, n_samples = 0L))))
+})
 
 test_that(".match_report_params always carries the full key set", {
   bare <- .match_report_params("local", "db", 70, 80, n_samples = 0L)
@@ -1246,22 +1258,22 @@ test_that(".match_report_params always carries the full key set", {
     "local", "db", 70, 80,
     n_samples = 3L,
     provenance = list(
-      blast_version = "2.14.0+", db_build_dates = "Jan 5, 2026",
+      tool_version = "2.14.0+", database_date = "Jan 5, 2026",
       search_started = as.POSIXct("2026-10-29 09:00:00", tz = "UTC"),
       search_finished = as.POSIXct("2026-10-29 09:10:00", tz = "UTC")
     )
   )
   # Same keys, same order -- the only difference is the values.
   expect_identical(names(full), names(bare))
-  expect_identical(full$blast_version, "2.14.0+")
-  expect_identical(full$db_build_dates, "Jan 5, 2026")
+  expect_identical(full$tool_version, "2.14.0+")
+  expect_identical(full$database_date, "Jan 5, 2026")
 })
 
 test_that(".match_report_params NA-fills what a search could not record", {
   rp <- .match_report_params("local", "db", 70, 80, n_samples = 0L)
-  expect_true(is.na(rp$blast_version))
+  expect_true(is.na(rp$tool_version))
   expect_true(is.na(rp$database_reported))
-  expect_true(is.na(rp$db_build_dates))
+  expect_true(is.na(rp$database_date))
   expect_true(is.na(rp$search_started))
   expect_true(is.na(rp$search_finished))
 })
@@ -1271,10 +1283,10 @@ test_that(".match_report_params ignores a provenance field it does not define", 
   # that no consumer reads and no test covers.
   rp <- .match_report_params(
     "local", "db", 70, 80, n_samples = 0L,
-    provenance = list(blast_versoin = "typo", blast_version = "2.14.0+")
+    provenance = list(blast_versoin = "typo", tool_version = "2.14.0+")
   )
   expect_setequal(names(rp), PROVENANCE_KEYS)
-  expect_identical(rp$blast_version, "2.14.0+")
+  expect_identical(rp$tool_version, "2.14.0+")
 })
 
 test_that(".match_report_params labels remote and local searches distinctly", {
@@ -1282,10 +1294,10 @@ test_that(".match_report_params labels remote and local searches distinctly", {
   expect_identical(.match_report_params("local", "nt", 70, 80, 1L)$method, "local BLAST")
 })
 
-test_that(".blast_version returns NA when blastn is not available", {
+test_that(".tool_version returns NA when blastn is not available", {
   # The NA branch, not a guess and not an error: a match object whose tool
   # version is unknown has to say so.
-  expect_true(is.na(.blast_version(blastn = "")))
+  expect_true(is.na(.tool_version(blastn = "")))
 })
 
 test_that(".blast_xml_provenance reads version and database from NCBI XML", {
@@ -1300,7 +1312,7 @@ test_that(".blast_xml_provenance reads version and database from NCBI XML", {
     sep = "\n"
   )
   prov <- .blast_xml_provenance(xml)
-  expect_identical(prov$blast_version, "BLASTN 2.14.0+")
+  expect_identical(prov$tool_version, "BLASTN 2.14.0+")
   expect_identical(prov$database_reported, "nt")
 })
 
@@ -1312,7 +1324,7 @@ test_that(".blast_xml_provenance returns NAs for a status page or malformed XML"
     NULL
   )) {
     prov <- .blast_xml_provenance(bad)
-    expect_true(is.na(prov$blast_version))
+    expect_true(is.na(prov$tool_version))
     expect_true(is.na(prov$database_reported))
   }
 })

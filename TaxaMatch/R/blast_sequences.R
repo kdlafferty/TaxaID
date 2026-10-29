@@ -252,11 +252,11 @@ NULL
 #'   \code{min_query_coverage} -- the coverage floor, read by
 #'   \code{TaxaLikely::evaluate_likelihoods()} to check it against the model's
 #'   \code{min_pair_coverage} -- \code{min_score} and \code{n_samples},
-#'   followed by the search's provenance: \code{blast_version} (from
+#'   followed by the search's provenance: \code{tool_version} (from
 #'   \code{blastn -version} for a local search, from NCBI's reported
 #'   \code{BlastOutput_version} for a remote one), \code{database_reported}
 #'   (remote only -- the database NCBI says it searched, which the
-#'   \code{database} argument only asked for), \code{db_build_dates} (local
+#'   \code{database} argument only asked for), \code{database_date} (local
 #'   only -- the build date the consistency check read from the database
 #'   itself), and the \code{search_started} / \code{search_finished}
 #'   timestamps.
@@ -570,9 +570,9 @@ blast_sequences <- function(seq_df,
   search_provenance <- if (method == "remote") {
     rp <- attr(raw_hits, "remote_provenance")
     list(
-      blast_version     = if (is.null(rp$blast_version)) NA_character_ else rp$blast_version,
+      tool_version     = if (is.null(rp$tool_version)) NA_character_ else rp$tool_version,
       database_reported = if (is.null(rp$database_reported)) NA_character_ else rp$database_reported,
-      db_build_dates    = NA_character_,
+      database_date    = NA_character_,
       search_started    = search_started,
       search_finished   = search_finished
     )
@@ -583,9 +583,9 @@ blast_sequences <- function(seq_df,
     # compares the volumes against, and that name is not part of the value.
     bd <- .blastdb_checked[[database]]
     list(
-      blast_version     = .blast_version(),
+      tool_version     = .tool_version(),
       database_reported = NA_character_,
-      db_build_dates    = if (is.null(bd)) NA_character_ else unname(bd),
+      database_date    = if (is.null(bd)) NA_character_ else unname(bd),
       search_started    = search_started,
       search_finished   = search_finished
     )
@@ -1451,7 +1451,7 @@ blast_sequences <- function(seq_df,
 # PATH or does not answer, because a match object whose provenance is unknown
 # must say so rather than omit the field: see .match_report_params().
 #' @noRd
-.blast_version <- function(blastn = Sys.which("blastn")) {
+.tool_version <- function(blastn = Sys.which("blastn")) {
   if (!nzchar(blastn)) {
     return(NA_character_)
   }
@@ -1475,7 +1475,7 @@ blast_sequences <- function(seq_df,
 # genuinely found no hits still reports its provenance.
 #' @noRd
 .blast_xml_provenance <- function(xml_text) {
-  miss <- list(blast_version = NA_character_, database_reported = NA_character_)
+  miss <- list(tool_version = NA_character_, database_reported = NA_character_)
   if (!is.character(xml_text) || !length(xml_text) ||
     !grepl("<BlastOutput", xml_text[[1L]], fixed = TRUE)) {
     return(miss)
@@ -1496,7 +1496,7 @@ blast_sequences <- function(seq_df,
     if (is.na(v) || !nzchar(v)) NA_character_ else trimws(v)
   }
   list(
-    blast_version     = one("BlastOutput_version"),
+    tool_version     = one("BlastOutput_version"),
     database_reported = one("BlastOutput_db")
   )
 }
@@ -1507,16 +1507,31 @@ blast_sequences <- function(seq_df,
 # TaxaLikely::evaluate_likelihoods()), and a key present on one path only is
 # indistinguishable from a field the search genuinely could not record -- so
 # every key is always present, carrying NA when unknown.
+# The ONE provenance vocabulary every match source fills, whatever produced the
+# hits: blast_sequences() fills it from the search it ran, and an imported hit
+# list fills it through standardize_match_data(provenance=). One vocabulary
+# means report_match() has one set of names to print and a downstream consumer
+# one set to read -- a BLAST-specific name (a "blastn version" field) is one an
+# imported vsearch or classifier result cannot fill honestly.
+#
+# The single source of truth for the field names: validation reads
+# names(.empty_provenance()) rather than repeating them.
+#' @noRd
+.empty_provenance <- function() {
+  list(
+    tool_version      = NA_character_,
+    database_reported = NA_character_,
+    database_date     = NA_character_,
+    search_started    = as.POSIXct(NA),
+    search_finished   = as.POSIXct(NA),
+    parameters        = NA_character_
+  )
+}
+
 #' @noRd
 .match_report_params <- function(method, database, min_score, min_query_coverage,
                                  n_samples, provenance = NULL) {
-  prov <- list(
-    blast_version     = NA_character_,
-    database_reported = NA_character_,
-    db_build_dates    = NA_character_,
-    search_started    = as.POSIXct(NA),
-    search_finished   = as.POSIXct(NA)
-  )
+  prov <- .empty_provenance()
   if (length(provenance)) {
     keep <- intersect(names(provenance), names(prov))
     prov[keep] <- provenance[keep]

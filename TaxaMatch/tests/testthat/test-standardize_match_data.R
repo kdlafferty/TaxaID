@@ -358,3 +358,142 @@ test_that("standardize_match_data() leaves a non-blank rank value untouched", {
   ))
   expect_equal(out$genus, " Gobius ")
 })
+
+# ==============================================================================
+# provenance: recording the search behind an imported hit list
+# ==============================================================================
+
+# The real CalIntertidal shape: a Jonah Ventures vsearch hit list, whose tool,
+# version, reference database and search date exist only in the provider's own
+# documentation and so cannot be derived from the table.
+.jv_provenance <- list(
+  method = "vsearch --usearch_global",
+  tool_version = "2.22.1",
+  database = "Jonah Ventures 12S reference library",
+  database_date = "2024-12-31",
+  search_started = "2025-02-14",
+  parameters = "query-centric percent identity; hits kept at 100% or within 1% of the top hit"
+)
+
+test_that("standardize_match_data attaches provenance as report_params", {
+  out <- standardize_match_data(
+    .mifish,
+    observation_id_col = "ESVId", score_col = "PercMatch",
+    provenance = .jv_provenance
+  )
+  rp <- attr(out, "report_params")
+  expect_type(rp, "list")
+  expect_identical(rp$method, "vsearch --usearch_global")
+  expect_identical(rp$tool_version, "2.22.1")
+  expect_identical(rp$database_date, "2024-12-31")
+  expect_true(grepl("within 1%", rp$parameters, fixed = TRUE))
+})
+
+test_that("standardize_match_data attaches nothing when provenance is NULL", {
+  out <- standardize_match_data(
+    .mifish,
+    observation_id_col = "ESVId", score_col = "PercMatch"
+  )
+  expect_null(attr(out, "report_params"))
+})
+
+test_that("provenance survives to report_match, which then names the real tool", {
+  # The point of the whole record: the published methods sentence names
+  # vsearch, not BLAST, and carries no BLAST citation.
+  out <- standardize_match_data(
+    .mifish,
+    observation_id_col = "ESVId", score_col = "PercMatch",
+    provenance = .jv_provenance
+  )
+  sec <- report_match(out)
+  expect_true(grepl("vsearch", sec$methods, fixed = TRUE))
+  expect_false(grepl("BLAST", sec$methods, fixed = TRUE))
+  expect_false(any(grepl("BLAST", unlist(sec$citations), fixed = TRUE)))
+  expect_true(grepl("2.22.1", sec$methods, fixed = TRUE))
+  expect_true(grepl("2024-12-31", sec$methods, fixed = TRUE))
+})
+
+test_that("provenance merges into an existing report_params, taking precedence", {
+  d <- .mifish
+  attr(d, "report_params") <- list(method = "stale", n_samples = 99L)
+  out <- standardize_match_data(
+    d,
+    observation_id_col = "ESVId", score_col = "PercMatch",
+    provenance = .jv_provenance
+  )
+  rp <- attr(out, "report_params")
+  expect_identical(rp$method, "vsearch --usearch_global")
+  # An unrelated field already present is kept, not discarded.
+  expect_identical(rp$n_samples, 99L)
+})
+
+test_that("provenance requires every field a methods section needs", {
+  for (drop in c("method", "tool_version", "database", "database_date", "search_started")) {
+    expect_error(
+      standardize_match_data(
+        .mifish,
+        observation_id_col = "ESVId", score_col = "PercMatch",
+        provenance = .jv_provenance[setdiff(names(.jv_provenance), drop)]
+      ),
+      drop,
+      fixed = TRUE
+    )
+  }
+})
+
+test_that("provenance accepts an explicit NA for a field genuinely unknown", {
+  # NA is reportable; an absent field is indistinguishable from an oversight.
+  prov <- .jv_provenance
+  prov$database_date <- NA_character_
+  out <- standardize_match_data(
+    .mifish,
+    observation_id_col = "ESVId", score_col = "PercMatch",
+    provenance = prov
+  )
+  expect_true(is.na(attr(out, "report_params")$database_date))
+  # And the methods text stays silent rather than printing "NA".
+  sec <- report_match(out)
+  expect_false(grepl("Reference database build date", sec$methods, fixed = TRUE))
+})
+
+test_that("provenance rejects an unrecognised field rather than dropping it", {
+  prov <- .jv_provenance
+  prov$tool_verison <- "2.22.1" # typo
+  expect_error(
+    standardize_match_data(
+      .mifish,
+      observation_id_col = "ESVId", score_col = "PercMatch",
+      provenance = prov
+    ),
+    "tool_verison",
+    fixed = TRUE
+  )
+})
+
+test_that("provenance rejects a non-list and a multi-value field", {
+  expect_error(
+    standardize_match_data(
+      .mifish,
+      observation_id_col = "ESVId", score_col = "PercMatch",
+      provenance = "vsearch"
+    ),
+    "named list"
+  )
+  prov <- .jv_provenance
+  prov$tool_version <- c("2.22.1", "2.23.0")
+  expect_error(
+    standardize_match_data(
+      .mifish,
+      observation_id_col = "ESVId", score_col = "PercMatch",
+      provenance = prov
+    ),
+    "single value"
+  )
+})
+
+test_that("provenance is the LAST formal of standardize_match_data", {
+  # New arguments go last so a positional call written against the previous
+  # signature cannot silently bind to a different argument.
+  fm <- names(formals(standardize_match_data))
+  expect_identical(fm[length(fm)], "provenance")
+})

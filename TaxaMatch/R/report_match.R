@@ -232,24 +232,27 @@ report_match <- function(match_data,
   # the match object never carried is worse than the gap.
   .recorded <- function(x) !is.null(x) && length(x) >= 1L && !all(is.na(x))
   prov_parts <- character(0L)
-  if (.recorded(rp$blast_version)) {
-    prov_parts <- c(prov_parts, sprintf("Search tool version: %s.", rp$blast_version))
+  if (.recorded(rp$tool_version)) {
+    prov_parts <- c(prov_parts, sprintf("Search tool version: %s.", rp$tool_version))
   }
   if (.recorded(rp$database_reported)) {
     prov_parts <- c(prov_parts, sprintf(
       "Database as reported by the search server: %s.", rp$database_reported
     ))
   }
-  if (.recorded(rp$db_build_dates)) {
+  if (.recorded(rp$database_date)) {
     prov_parts <- c(prov_parts, sprintf(
       "Reference database build date: %s.",
-      paste(unique(stats::na.omit(rp$db_build_dates)), collapse = ", ")
+      paste(unique(stats::na.omit(rp$database_date)), collapse = ", ")
     ))
   }
   if (.recorded(rp$search_started)) {
     prov_parts <- c(prov_parts, sprintf(
       "Search run: %s.", format(as.POSIXct(rp$search_started), "%Y-%m-%d")
     ))
+  }
+  if (.recorded(rp$parameters)) {
+    prov_parts <- c(prov_parts, sprintf("Search parameters: %s.", rp$parameters))
   }
 
   methods_text <- paste(c(sample_desc, match_desc, prov_parts), collapse = " ")

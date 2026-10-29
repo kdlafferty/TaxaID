@@ -125,8 +125,8 @@ test_that("report_match prints every provenance field the match object records",
   df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
   attr(df, "report_params") <- list(
     method = "local BLAST", database = "core_nt", min_score = 90,
-    blast_version = "2.14.0+",
-    db_build_dates = "Jan 5, 2026",
+    tool_version = "2.14.0+",
+    database_date = "Jan 5, 2026",
     search_started = as.POSIXct("2026-10-29 09:00:00", tz = "UTC"),
     search_finished = as.POSIXct("2026-10-29 09:10:00", tz = "UTC")
   )
@@ -143,8 +143,8 @@ test_that("report_match prints no provenance sentence for an NA field", {
   df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
   attr(df, "report_params") <- list(
     method = "local BLAST", database = "core_nt",
-    blast_version = NA_character_,
-    db_build_dates = NA_character_,
+    tool_version = NA_character_,
+    database_date = NA_character_,
     search_started = as.POSIXct(NA),
     search_finished = as.POSIXct(NA)
   )
