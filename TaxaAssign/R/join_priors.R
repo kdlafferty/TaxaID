@@ -581,6 +581,16 @@ utils::globalVariables(c(
 #' `rank_system`. A `unreferenced_species` row AT the finest rank is a named
 #' unsequenced species, not a ring, and keeps its own occurrence prior.
 #'
+#' The floor itself is `Beta(1, N_total - 1)`, the prior that the detected
+#' taxon is one arbitrary unrecorded taxon from the regional pool, and
+#' `N_total` is the size of that pool at ONE rank. A `taxaexpect_priors`
+#' carrying a `global_floor` row per rank therefore carries a different
+#' `N_total` per rank, there being fewer genera than species and fewer
+#' families than genera. The floor is read from the finest rank in
+#' `rank_system` alone, since it prices an unmodelled species and a ring that
+#' no clade budget priced; averaging the ranks' rows would price those against
+#' a pool that is no rank's pool.
+#'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
 #' `"family"` or `"genus"`), the primary join finds no match -- it requires
@@ -1209,6 +1219,34 @@ join_priors <- function(likelihoods,
   # species from the regional pool that have zero detections -- appropriate here.
   gf_rows <- taxaexpect_priors |>
     dplyr::filter(undetected_type == "global_floor")
+
+  # The floor is Beta(1, N_total - 1): the prior that the detected taxon is one
+  # arbitrary unrecorded taxon drawn from the regional pool. N_total is the size
+  # of that pool AT ONE RANK, so a prior table carrying a global_floor row per
+  # rank carries one N_total per rank -- measured on CalIntertidal, beta is
+  # 290,064 at species, 307,198 at genus and 318,147 at family, because there
+  # are fewer genera than species and fewer families than genera. Averaging
+  # them averages three different pool sizes and prices a species-scale
+  # fallback off a mixed-rank denominator.
+  #
+  # This floor is the fallback for an unmodelled SPECIES, and for a ring row
+  # that no clade budget priced, so it reads the finest rank only. A table whose
+  # floor rows are all at one rank is unaffected.
+  if ("taxon_name_rank" %in% names(gf_rows) && nrow(gf_rows) > 0L) {
+    gf_finest <- gf_rows[!is.na(gf_rows$taxon_name_rank) &
+      gf_rows$taxon_name_rank == finest_rank, , drop = FALSE]
+    if (nrow(gf_finest) > 0L) {
+      if (nrow(gf_finest) < nrow(gf_rows)) {
+        cli::cli_inform(
+          "join_priors: global floor read from {nrow(gf_finest)} {finest_rank}-rank row(s) rather than all {nrow(gf_rows)} ({paste(sort(unique(gf_rows$taxon_name_rank)), collapse = ', ')}); each rank's floor encodes the size of its own pool."
+        )
+      }
+      gf_rows <- gf_finest
+    }
+    # No finest-rank floor row at all: keep every floor row rather than lose the
+    # principled fallback entirely, which is what the branch below would do.
+  }
+
   if (nrow(gf_rows) > 0 && !is.na(mean(gf_rows$alpha, na.rm = TRUE))) {
     gf_alpha <- mean(gf_rows$alpha, na.rm = TRUE)
     gf_beta <- mean(gf_rows$beta, na.rm = TRUE)

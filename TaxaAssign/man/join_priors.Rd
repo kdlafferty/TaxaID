@@ -248,6 +248,16 @@ what the ring means and count those relatives twice in one unit. The rule
 applies to a ring row -- a complement hypothesis ABOVE the finest rank in
 \code{rank_system}. A \code{unreferenced_species} row AT the finest rank is a named
 unsequenced species, not a ring, and keeps its own occurrence prior.
+
+The floor itself is \code{Beta(1, N_total - 1)}, the prior that the detected
+taxon is one arbitrary unrecorded taxon from the regional pool, and
+\code{N_total} is the size of that pool at ONE rank. A \code{taxaexpect_priors}
+carrying a \code{global_floor} row per rank therefore carries a different
+\code{N_total} per rank, there being fewer genera than species and fewer
+families than genera. The floor is read from the finest rank in
+\code{rank_system} alone, since it prices an unmodelled species and a ring that
+no clade budget priced; averaging the ranks' rows would price those against
+a pool that is no rank's pool.
 }
 
 \section{Coarse-rank expansion}{

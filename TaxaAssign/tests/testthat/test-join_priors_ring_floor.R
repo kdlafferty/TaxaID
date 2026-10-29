@@ -250,3 +250,73 @@ test_that("coarse prior rows change nothing when no named coarse hypothesis comp
     .jp(lik, .ring_priors(all_ranks = TRUE))
   )
 })
+
+
+# ==============================================================================
+# The global floor reads one rank's pool, not an average of several
+# ==============================================================================
+
+# Beta(1, N_total - 1) prices "one arbitrary unrecorded taxon from the regional
+# pool", and N_total is that pool's size at ONE rank. CalIntertidal's prior
+# table carries a global_floor row at all three ranks, with beta 290,064 at
+# species, 307,198 at genus and 318,147 at family -- fewer genera than species,
+# fewer families than genera. Averaging them prices a species-scale fallback
+# against a pool that is no rank's pool.
+.floor_priors <- function(ranks = "species") {
+  base <- data.frame(
+    taxon_name = c("Sebastes atrovirens", "Sebastes chrysomelas"),
+    taxon_name_rank = "species",
+    grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = c(5, 4), beta = c(5, 6), undetected_type = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  beta_by_rank <- c(species = 290063, genus = 307197, family = 318147)
+  floors <- data.frame(
+    taxon_name = "global_floor",
+    taxon_name_rank = ranks,
+    grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = 1, beta = unname(beta_by_rank[ranks]),
+    undetected_type = "global_floor",
+    stringsAsFactors = FALSE
+  )
+  rbind(base, floors)
+}
+
+.ring_only_lik <- function() {
+  data.frame(
+    observation_id = "u1",
+    taxon_name = c("Sebastes atrovirens", "Sebastes"),
+    taxon_name_rank = c("species", "genus"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species"),
+    score_likelihood = c(0.8, 0.2),
+    score_likelihood_mean = c(0.8, 0.2),
+    score_likelihood_sd = c(0.05, 0.02),
+    family = "Sebastidae", genus = "Sebastes",
+    species = c("Sebastes atrovirens", NA_character_),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("the floor ignores coarse-rank global_floor rows", {
+  lik <- .ring_only_lik()
+  sp_only <- .jp(lik, .floor_priors("species"))
+  all_rk <- .jp(lik, .floor_priors(c("species", "genus", "family")))
+  ring <- function(o) o$prior_mean[o$taxon_name == "Sebastes" & o$taxon_name_rank == "genus"]
+  # Adding a genus and a family floor row must not move the species-scale floor.
+  expect_equal(ring(all_rk), ring(sp_only))
+})
+
+test_that("an r12-shaped prior table is byte-identical under the floor rule", {
+  lik <- .ring_only_lik()
+  expect_identical(.jp(lik, .floor_priors("species")), .jp(lik, .floor_priors("species")))
+})
+
+test_that("a floor row only at a coarse rank is still used rather than discarded", {
+  # Losing the principled fallback entirely would be worse than using the one
+  # floor row the table does carry.
+  lik <- .ring_only_lik()
+  out <- .jp(lik, .floor_priors("genus"))
+  ring <- out$prior_mean[out$taxon_name == "Sebastes" & out$taxon_name_rank == "genus"]
+  expect_false(is.na(ring))
+  expect_gt(ring, 0)
+})
