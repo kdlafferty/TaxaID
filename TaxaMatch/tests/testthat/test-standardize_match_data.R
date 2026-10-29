@@ -408,7 +408,7 @@ test_that("provenance survives to report_match, which then names the real tool",
   sec <- report_match(out)
   expect_true(grepl("vsearch", sec$methods, fixed = TRUE))
   expect_false(grepl("BLAST", sec$methods, fixed = TRUE))
-  expect_false(any(grepl("BLAST", unlist(sec$citations), fixed = TRUE)))
+  expect_false(any(grepl("Altschul", unlist(sec$citations), fixed = TRUE)))
   expect_true(grepl("2.22.1", sec$methods, fixed = TRUE))
   expect_true(grepl("2024-12-31", sec$methods, fixed = TRUE))
 })

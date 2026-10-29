@@ -1357,8 +1357,9 @@ test_that("blast_sequences records provenance when the search found no hits", {
     .blast_local = function(...) .empty_raw_hits(),
     .package = "TaxaMatch"
   )
-  out <- expect_warning(
-    blast_sequences(
+  out <- NULL
+  expect_warning(
+    out <- blast_sequences(
       seq_df, method = "local", database = "fake_db",
       resolve_taxonomy = FALSE, resolve_location = FALSE, verbose = FALSE
     ),
@@ -1377,8 +1378,9 @@ test_that("blast_sequences records provenance when filtering removes every hit",
     .blast_local = function(...) make_raw_hits(),
     .package = "TaxaMatch"
   )
-  out <- expect_warning(
-    blast_sequences(
+  out <- NULL
+  expect_warning(
+    out <- blast_sequences(
       seq_df, method = "local", database = "fake_db",
       min_score = 100, resolve_taxonomy = FALSE, resolve_location = FALSE,
       verbose = FALSE

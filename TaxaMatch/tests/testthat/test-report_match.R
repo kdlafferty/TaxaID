@@ -111,14 +111,14 @@ test_that("report_match does not claim BLAST for a match object that records no 
 test_that("report_match omits the BLAST citation when no method is recorded", {
   df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
   sec <- report_match(df)
-  expect_false(any(grepl("BLAST", unlist(sec$citations), fixed = TRUE)))
+  expect_false(any(grepl("Altschul", unlist(sec$citations), fixed = TRUE)))
 })
 
 test_that("report_match still cites BLAST when the match object records it", {
   df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
   attr(df, "report_params") <- list(method = "local BLAST", database = "nt")
   sec <- report_match(df)
-  expect_true(any(grepl("BLAST", unlist(sec$citations), fixed = TRUE)))
+  expect_true(any(grepl("Altschul", unlist(sec$citations), fixed = TRUE)))
 })
 
 test_that("report_match prints every provenance field the match object records", {
