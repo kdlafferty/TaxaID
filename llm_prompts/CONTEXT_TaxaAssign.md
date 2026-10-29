@@ -341,6 +341,10 @@ Because compute_posterior() normalizes likelihoods within each observation_id gr
 
 Rows whose coarse-rank constraint finds no matching species in taxaexpect_priors (e.g. a family absent from the study region) are left unchanged and receive the dark diversity floor prior as before.
 
+#### Taxa that matched no prior
+
+A row whose prior lookup failed at every tier takes the global floor. That is right for a taxon genuinely absent from taxaexpect_priors, and it is also what a NAME MISMATCH looks like: a call under a currently accepted name cannot meet a prior row filed under a synonym, and the floored row is indistinguishable from an honest absence. Every such named taxon is counted in a message and listed in attr(result, "prior_floor_fallthrough") (taxon_name, taxon_name_rank), which is present, possibly with zero rows, on every return. It is REPORTED and never corrected here: this function cannot tell a synonym from a real absence, and the join is an exact string match on (taxon_name, taxon_name_rank, grid_id, main_habitat). Resolving both the likelihood side and the prior side to one backbone is the caller's job -- see TaxaMatch::convert_taxonomy_backbone() -- and this report is how a caller finds out that it has not been done.
+
 ### posterior_consensus(posterior_df, rank_system = NULL, cumulative_threshold = 0.9, min_posterior = 0.05, posterior_col = "posterior_point_est", lookup_missing_taxonomy = FALSE, backbone_id = NULL, species_reference = NULL, downrank_requires_candidate = TRUE, group_priors = NULL, min_effective_records = 0, taxonomy_cache_dir = NULL, pool_tail = FALSE, unnamed_in_threshold = TRUE, consensus_method = c("lca", "credible_node"), likelihood_consensus = TRUE, robust_prior_s = 1, cross_phylum_eps = 0.05)
 
 Derive Consensus Taxonomy from a Posterior Dataframe
