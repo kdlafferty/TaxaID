@@ -1892,3 +1892,120 @@ test_that("the completion message counts answers, not rows", {
   expect_match(done, "Review complete. 3 taxa reviewed.", fixed = TRUE)
   expect_false(any(grepl("unreviewed", done, fixed = TRUE)))
 })
+
+
+# ===========================================================================
+# Per-batch cache writes: answers already paid for survive a stop
+# ===========================================================================
+
+# An interrupt is what a kill, a Ctrl-C or a spend cap actually raises. Unlike
+# an error it is NOT caught by the per-batch tryCatch inside review_assignments
+# -- that one turns a failed call into NA defaults and carries on -- so raising
+# one unwinds the batch loop exactly the way a real stop does.
+.interrupt_after <- function(n_calls, inner = mock_llm_fn) {
+  calls <- 0L
+  list(
+    fn = function(prompt_str, ...) {
+      calls <<- calls + 1L
+      if (calls == n_calls) {
+        signalCondition(structure(
+          class = c("interrupt", "condition"),
+          list(message = "stopped mid-marker", call = NULL)
+        ))
+      }
+      inner(prompt_str, ...)
+    },
+    calls = function() calls
+  )
+}
+
+.cached_names <- function(cache_dir) {
+  f <- list.files(cache_dir, pattern = "_review\\.rds$", full.names = TRUE)
+  unname(sort(vapply(f, function(p) readRDS(p)$row$taxon_name, character(1L))))
+}
+
+test_that("a run stopped mid-marker keeps the batches already answered", {
+  cache_dir <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  m <- .interrupt_after(3L)
+
+  outcome <- tryCatch(
+    review_assignments(
+      data_type = "eDNA",
+      input_df = mock_consensus, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = m$fn, taxa_per_call = 1L,
+      pause_seconds = 0, max_retries = 0L, model_label = "test-model",
+      cache_dir = cache_dir, verbose = FALSE
+    ),
+    interrupt = function(i) "stopped"
+  )
+
+  expect_identical(outcome, "stopped")
+  expect_equal(m$calls(), 3L)
+
+  # The two verdicts that came back before the stop are on disk. Written after
+  # the marker's whole loop instead, nothing would be here and every answer
+  # already paid for would be bought again on the next run.
+  expect_identical(
+    .cached_names(cache_dir),
+    c("Bos taurus", "Carcharhinus melanopterus")
+  )
+})
+
+test_that("after a mid-marker stop the next run re-asks only what is missing", {
+  cache_dir <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+
+  stopped <- .interrupt_after(3L)
+  invisible(tryCatch(
+    review_assignments(
+      data_type = "eDNA",
+      input_df = mock_consensus, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = stopped$fn, taxa_per_call = 1L,
+      pause_seconds = 0, max_retries = 0L, model_label = "test-model",
+      cache_dir = cache_dir, verbose = FALSE
+    ),
+    interrupt = function(i) NULL
+  ))
+
+  ctr <- new.env(parent = emptyenv())
+  ctr$n <- 0L
+  counting <- function(prompt_str, ...) {
+    ctr$n <- ctr$n + 1L
+    mock_llm_fn(prompt_str, ...)
+  }
+  result <- review_assignments(
+    data_type = "eDNA",
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = counting, taxa_per_call = 1L,
+    pause_seconds = 0, max_retries = 0L, model_label = "test-model",
+    cache_dir = cache_dir, verbose = FALSE
+  )
+
+  # Three taxa were never answered, so three calls -- not five. The two cached
+  # ones are served from disk.
+  expect_equal(ctr$n, 3L)
+  expect_equal(nrow(result), nrow(mock_consensus))
+  expect_length(list.files(cache_dir, pattern = "_review\\.rds$"), 5L)
+})
+
+test_that("an unreviewed row is not cached even when its own batch is answered", {
+  # The never-cache-a-non-answer rule used the marker's whole unreviewed list.
+  # Written per batch it has to hold per batch: with one taxon per call, the
+  # omitted taxon IS its own batch, and the batches around it must still cache.
+  cache_dir <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  m <- .omitting_llm()
+
+  suppressWarnings(review_assignments(
+    data_type = "eDNA",
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = m$fn, taxa_per_call = 1L,
+    pause_seconds = 0, max_retries = 0L, model_label = "test-model",
+    cache_dir = cache_dir, verbose = FALSE
+  ))
+
+  nm <- .cached_names(cache_dir)
+  expect_false("Bos taurus" %in% nm)
+  expect_length(nm, 4L)
+})

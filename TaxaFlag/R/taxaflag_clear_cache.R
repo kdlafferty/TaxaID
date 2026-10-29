@@ -117,6 +117,39 @@ taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cach
 }
 
 # ------------------------------------------------------------------------------
+# .review_cache_write_rows(): persist one batch's answered verdicts
+#
+# Called as soon as a batch returns, not after the whole marker, so answers
+# already paid for survive a stop part-way through. `taxa_info` carries the
+# cache bookkeeping: `cache_paths` and `cache_keys` are indexed by its rows, so
+# a verdict is mapped back to its own key by taxon name.
+#
+# An unreviewed row is NEVER cached: caching a non-answer makes the omission
+# permanent, because every later run is then a cache HIT on a row of NAs and
+# the re-ask never gets a chance to fire. `unreviewed` is this batch's own
+# missing labels, so the rule holds per batch exactly as it did per marker.
+#' @noRd
+.review_cache_write_rows <- function(rows, taxa_info, cache_paths, cache_keys,
+                                     unreviewed = NULL) {
+  if (is.null(cache_paths) || is.null(cache_keys)) {
+    return(invisible(NULL))
+  }
+  if (is.null(rows) || !is.data.frame(rows) || nrow(rows) == 0L) {
+    return(invisible(NULL))
+  }
+  unreviewed <- as.character(unreviewed %||% character(0))
+  pos <- match(rows$taxon_name, taxa_info$taxon_name)
+  for (k in which(!is.na(pos))) {
+    if (rows$taxon_name[k] %in% unreviewed) next
+    .review_cache_write(
+      cache_paths[pos[k]], cache_keys[pos[k]],
+      rows[k, , drop = FALSE]
+    )
+  }
+  invisible(NULL)
+}
+
+# ------------------------------------------------------------------------------
 # .review_reviewer_id(): who answered, as a component of an LLM cache key
 #
 # An LLM review is a JUDGEMENT, so two models can answer the same question
