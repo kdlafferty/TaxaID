@@ -238,14 +238,26 @@ with the floor's concentration kept. Without this the unreferenced
 prior mass of a unit would grow with the number of candidate genera, with
 no regional evidence behind it. A unit with one floor-priced ring, and a
 ring priced by a clade budget, are unchanged.
+
+This holds whatever ranks \code{taxaexpect_priors} carries. A ring row never
+takes its clade's own occurrence prior, even when the table holds a row for
+that exact genus or family: the clade's record counts the referenced
+congeners, and each of those already competes as its own
+\code{specific_candidate} row, so pricing the ring with it would both contradict
+what the ring means and count those relatives twice in one unit. The rule
+applies to a ring row -- a complement hypothesis ABOVE the finest rank in
+\code{rank_system}. A \code{unreferenced_species} row AT the finest rank is a named
+unsequenced species, not a ring, and keeps its own occurrence prior.
 }
 
 \section{Coarse-rank expansion}{
 
 When a likelihood row has \code{taxon_name_rank} coarser than species (e.g.
-\code{"family"} or \code{"genus"}), the primary species-level join finds no match
-and the row would otherwise fall back to the global floor prior, ignoring
-all species-level prior information within that taxon.
+\code{"family"} or \code{"genus"}), the primary join finds no match -- it requires
+the row's rank to equal the prior row's, and a coarse-rank prior row is
+reserved for named hypotheses -- and the row would otherwise fall back to
+the global floor prior, ignoring all species-level prior information
+within that taxon.
 
 When \code{expansion_taxonomy} is supplied, \code{join_priors()} instead expands each
 coarse-rank row into one species-level hypothesis row per retained candidate:

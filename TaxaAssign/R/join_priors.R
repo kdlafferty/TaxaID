@@ -571,11 +571,23 @@ utils::globalVariables(c(
 #' no regional evidence behind it. A unit with one floor-priced ring, and a
 #' ring priced by a clade budget, are unchanged.
 #'
+#' This holds whatever ranks `taxaexpect_priors` carries. A ring row never
+#' takes its clade's own occurrence prior, even when the table holds a row for
+#' that exact genus or family: the clade's record counts the referenced
+#' congeners, and each of those already competes as its own
+#' `specific_candidate` row, so pricing the ring with it would both contradict
+#' what the ring means and count those relatives twice in one unit. The rule
+#' applies to a ring row -- a complement hypothesis ABOVE the finest rank in
+#' `rank_system`. A `unreferenced_species` row AT the finest rank is a named
+#' unsequenced species, not a ring, and keeps its own occurrence prior.
+#'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
-#' `"family"` or `"genus"`), the primary species-level join finds no match
-#' and the row would otherwise fall back to the global floor prior, ignoring
-#' all species-level prior information within that taxon.
+#' `"family"` or `"genus"`), the primary join finds no match -- it requires
+#' the row's rank to equal the prior row's, and a coarse-rank prior row is
+#' reserved for named hypotheses -- and the row would otherwise fall back to
+#' the global floor prior, ignoring all species-level prior information
+#' within that taxon.
 #'
 #' When `expansion_taxonomy` is supplied, `join_priors()` instead expands each
 #' coarse-rank row into one species-level hypothesis row per retained candidate:
@@ -965,15 +977,69 @@ join_priors <- function(likelihoods,
   # combine_multisite_priors(). Declaring this
   # explicitly silences dplyr's precautionary warning, which would otherwise
   # fire on every genuinely multi-site, multi-candidate observation.
-  result <- likelihoods |>
+  .jp_base <- likelihoods |>
     dplyr::left_join(event_meta,
       by = "observation_id",
       relationship = "many-to-many"
-    ) |>
+    )
+
+  # ---- A ring row takes no clade occurrence prior ----------------------------
+  # A ring row means "an UNREFERENCED member of this clade", so its prior is the
+  # floor plus the clade's unrecorded mass, which is what the ring-floor section
+  # of this function's documentation describes and what
+  # add_unreferenced_prior_mass() computes. The clade's OWN occurrence row
+  # counts the referenced congeners, and each of those is already present as its
+  # own specific_candidate row -- taking it here would price the ring with the
+  # evidence for the very relatives it is defined to exclude, and double-count
+  # them in the same unit.
+  #
+  # The join below matches on taxon_name_rank, so while taxaexpect_priors held
+  # species rows only, a genus- or family-rank ring could never match and this
+  # was true for free. A prior table carrying coarse-rank rows makes the clade
+  # row matchable, so the rule has to be enforced rather than assumed.
+  #
+  # The test is on RANK, not on hypothesis_type alone. `unreferenced_species`
+  # occurs at two ranks with two meanings: at a coarser rank it is the ring, but
+  # AT the finest rank it is a named unsequenced species, which legitimately has
+  # an occurrence prior of its own. Excluding by type alone would strip the
+  # prior from those named rows -- the opposite of the intent.
+  #
+  # Enforced by masking the rank key across the join, so a blocked row matches
+  # nothing and reaches the floor path exactly as a failed join does, rather
+  # than by clearing joined columns afterwards (which would have to guess which
+  # columns the join contributed, and guess wrong whenever dplyr suffixes a
+  # name that collides).
+  finest_rank <- rank_system[length(rank_system)]
+  blocked_ring <- if ("hypothesis_type" %in% names(.jp_base)) {
+    .is_complement_type(.jp_base$hypothesis_type) &
+      !is.na(.jp_base$taxon_name_rank) &
+      .jp_base$taxon_name_rank != finest_rank
+  } else {
+    rep(FALSE, nrow(.jp_base))
+  }
+
+  .jp_rank_keep <- .jp_base$taxon_name_rank
+  .jp_base$.jp_prior_row <- seq_len(nrow(.jp_base))
+  if (any(blocked_ring)) {
+    # A rank value no real taxonomy can carry, so no prior row can match it.
+    .jp_base$taxon_name_rank[blocked_ring] <- "\r.ring_takes_no_clade_prior"
+  }
+
+  result <- .jp_base |>
     dplyr::left_join(
       taxaexpect_priors,
       by = c("taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
     )
+
+  result$taxon_name_rank <- .jp_rank_keep[result$.jp_prior_row]
+  result$.jp_prior_row <- NULL
+
+  if (any(blocked_ring)) {
+    .br <- .jp_base[blocked_ring, , drop = FALSE]
+    cli::cli_inform(
+      "join_priors: {sum(blocked_ring)} ring row(s) at {paste(sort(unique(.jp_rank_keep[blocked_ring])), collapse = ', ')} rank kept the floor path rather than their clade's own occurrence prior ({length(unique(.br$taxon_name))} clade(s))."
+    )
+  }
 
   # ---- Habitat-agnostic named-species prior fallback --------------------------
   # A named prior row can legitimately have no habitat concept at all --

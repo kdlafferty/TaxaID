@@ -125,3 +125,128 @@ test_that("real GreatLakes _v104finalb: the split recovers all five grass-carp u
   message(sprintf("GL: %d of %d calls changed: %s", length(changed), nrow(m), paste(changed, collapse = ", ")))
   expect_setequal(changed, c(gc_units, "P1_ASV_1129", "P1_ASV_1609"))
 })
+
+
+# ==============================================================================
+# A ring row takes no clade occurrence prior, whatever ranks the table carries
+# ==============================================================================
+
+# The real CalIntertidal shape at 12S_ESV_024789@Carmel Point: a Sebastes genus
+# ring competing beside its own named congeners, with a prior table holding
+# rows at every rank.
+#
+# The named coarse hypothesis is a COTTID, deliberately in a different lineage
+# from the Sebastes candidates. A family-rank specific_candidate sitting above
+# finer candidates of its OWN family is a redundant coarser label for them, and
+# TaxaMatch::filter_redundant_hypotheses() removes it inside join_priors() --
+# correctly, and whether or not this fix is applied. Testing the coarse-named
+# path on such a row would measure the redundancy filter, not the prior join.
+.ring_lik <- function(with_coarse_named = TRUE) {
+  d <- data.frame(
+    observation_id = "u1",
+    taxon_name = c("Sebastes atrovirens", "Sebastes chrysomelas", "Sebastes"),
+    taxon_name_rank = c("species", "species", "genus"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_species"),
+    score_likelihood = c(0.8, 0.4, 0.2),
+    score_likelihood_mean = c(0.8, 0.4, 0.2),
+    score_likelihood_sd = c(0.05, 0.04, 0.02),
+    family = "Sebastidae",
+    genus = "Sebastes",
+    species = c("Sebastes atrovirens", "Sebastes chrysomelas", NA_character_),
+    stringsAsFactors = FALSE
+  )
+  if (with_coarse_named) {
+    d <- rbind(d, data.frame(
+      observation_id = "u1", taxon_name = "Cottidae", taxon_name_rank = "family",
+      hypothesis_type = "specific_candidate",
+      score_likelihood = 0.1, score_likelihood_mean = 0.1, score_likelihood_sd = 0.01,
+      family = "Cottidae", genus = NA_character_, species = NA_character_,
+      stringsAsFactors = FALSE
+    ))
+  }
+  d
+}
+
+.ring_priors <- function(all_ranks = TRUE) {
+  sp <- data.frame(
+    taxon_name = c("Sebastes atrovirens", "Sebastes chrysomelas", "global_floor"),
+    taxon_name_rank = "species",
+    grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = c(5, 4, 1), beta = c(5, 6, 6133),
+    undetected_type = c(NA, NA, "global_floor"),
+    stringsAsFactors = FALSE
+  )
+  if (!all_ranks) {
+    return(sp)
+  }
+  # The clades' own occurrence rows. The Sebastes row counts the referenced
+  # congeners already competing above, which is why a ring must not take it.
+  rbind(sp, data.frame(
+    taxon_name = c("Sebastes", "Cottidae"),
+    taxon_name_rank = c("genus", "family"),
+    grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = c(30, 40), beta = c(70, 60), undetected_type = NA_character_,
+    stringsAsFactors = FALSE
+  ))
+}
+
+.jp <- function(lik, pri) {
+  suppressMessages(suppressWarnings(join_priors(
+    lik, pri,
+    site = list(grid_id = "G1", main_habitat = "Rocky intertidal"),
+    rank_system = c("family", "genus", "species"),
+    backbone_id = 11L
+  )))
+}
+
+test_that("a genus-rank ring does NOT take its clade's own genus prior", {
+  # The defect: with a prior row for the exact genus, the ring joined it and was
+  # priced with the evidence for the very congeners it is defined to exclude --
+  # congeners that already compete as their own candidate rows. Measured on the
+  # unfixed function this row carries alpha 30 and prior_mean 0.3.
+  out <- .jp(.ring_lik(), .ring_priors(all_ranks = TRUE))
+  ring <- out$taxon_name == "Sebastes" & out$taxon_name_rank == "genus"
+  expect_equal(sum(ring), 1L)
+  expect_true(is.na(out$alpha[ring]))
+  # and it is priced by the floor instead, far below the clade prior it took
+  expect_lt(out$prior_mean[ring], 0.3)
+})
+
+test_that("a coarse-rank specific_candidate still takes its clade prior", {
+  # The other half of the rule: a NAMED coarse hypothesis is a coarse
+  # identification, and the clade's record is the right prior for it.
+  out <- .jp(.ring_lik(with_coarse_named = TRUE), .ring_priors(all_ranks = TRUE))
+  named <- out$taxon_name == "Cottidae" & out$hypothesis_type == "specific_candidate"
+  expect_equal(sum(named), 1L)
+  expect_false(is.na(out$alpha[named]))
+  expect_equal(out$alpha[named], 40)
+})
+
+test_that("a species-rank unreferenced_species still takes its own prior", {
+  # THE trap. unreferenced_species occurs at two ranks with two meanings: at a
+  # coarser rank it is the ring, but at the finest rank it is a named unsequenced
+  # species with a real occurrence record. Excluding by hypothesis_type alone
+  # would strip the prior from exactly the named rows the fix exists to restore.
+  out <- .jp(.ring_lik(), .ring_priors(all_ranks = TRUE))
+  named <- out$taxon_name == "Sebastes chrysomelas"
+  expect_equal(sum(named), 1L)
+  expect_identical(out$hypothesis_type[named], "unreferenced_species")
+  expect_false(is.na(out$alpha[named]))
+  expect_equal(out$alpha[named], 4)
+})
+
+test_that("the rank key is restored, not left masked, after the join", {
+  out <- .jp(.ring_lik(with_coarse_named = TRUE), .ring_priors(all_ranks = TRUE))
+  expect_setequal(unique(out$taxon_name_rank), c("species", "genus", "family"))
+  expect_false(any(grepl("ring_takes_no_clade_prior", out$taxon_name_rank, fixed = TRUE)))
+})
+
+test_that("coarse prior rows change nothing when no named coarse hypothesis competes", {
+  # The fix is a no-op on a species-only prior table: adding clade rows must not
+  # move a single value when every coarse row present is a ring.
+  lik <- .ring_lik(with_coarse_named = FALSE)
+  expect_identical(
+    .jp(lik, .ring_priors(all_ranks = FALSE)),
+    .jp(lik, .ring_priors(all_ranks = TRUE))
+  )
+})
