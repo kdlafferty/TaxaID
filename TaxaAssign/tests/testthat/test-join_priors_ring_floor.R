@@ -320,3 +320,78 @@ test_that("a floor row only at a coarse rank is still used rather than discarded
   expect_false(is.na(ring))
   expect_gt(ring, 0)
 })
+
+
+# ==============================================================================
+# Every undetected-row average reads one rank's pool
+# ==============================================================================
+
+# alpha/beta on an undetected row encode the pool at that row's OWN rank, so
+# averaging across ranks averages pool scales. This applies to the site and
+# global dark means and the singleton-mirror threshold exactly as it does to the
+# global floor -- and global_dark BECOMES the floor when no global_floor row is
+# present, which is what makes it live rather than cosmetic.
+.dark_priors <- function(ranks = "species", with_floor = TRUE) {
+  cand <- data.frame(
+    taxon_name = c("Sebastes atrovirens", "Sebastes chrysomelas"),
+    taxon_name_rank = "species", grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = c(5, 4), beta = c(5, 6), undetected_type = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  # Each rank's pool is smaller than the one below it, so beta rises with rank.
+  sing_beta <- c(species = 4000, genus = 9000, family = 15000)
+  sing <- data.frame(
+    taxon_name = paste0("singleton_", ranks), taxon_name_rank = ranks,
+    grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = 1, beta = unname(sing_beta[ranks]),
+    undetected_type = "singleton_mirror", stringsAsFactors = FALSE
+  )
+  out <- rbind(cand, sing)
+  if (with_floor) {
+    floor_beta <- c(species = 290063, genus = 307197, family = 318147)
+    out <- rbind(out, data.frame(
+      taxon_name = "global_floor", taxon_name_rank = ranks,
+      grid_id = "G1", main_habitat = "Rocky intertidal",
+      alpha = 1, beta = unname(floor_beta[ranks]),
+      undetected_type = "global_floor", stringsAsFactors = FALSE
+    ))
+  }
+  out
+}
+
+test_that("the dark and singleton means ignore coarse-rank rows", {
+  lik <- .ring_only_lik()
+  sp <- .jp(lik, .dark_priors("species"))
+  mx <- .jp(lik, .dark_priors(c("species", "genus", "family")))
+  for (cn in c("dark_alpha", "dark_beta", "singleton_alpha", "singleton_beta")) {
+    expect_true(cn %in% names(sp))
+    expect_equal(mx[[cn]], sp[[cn]], info = cn)
+  }
+})
+
+test_that("an r12-shaped single-rank table is byte-identical under the rank rule", {
+  lik <- .ring_only_lik()
+  expect_identical(
+    .jp(lik, .dark_priors("species")),
+    .jp(lik, .dark_priors("species"))
+  )
+})
+
+test_that("with no global_floor row the floor falls back to finest-rank dark rows", {
+  # The live path: gf_alpha/gf_beta come from global_dark here, so a mixed-rank
+  # dark mean would reach the floor itself even with the global_floor rule in
+  # place.
+  lik <- .ring_only_lik()
+  sp <- .jp(lik, .dark_priors("species", with_floor = FALSE))
+  mx <- .jp(lik, .dark_priors(c("species", "genus", "family"), with_floor = FALSE))
+  ring <- function(o) o$prior_mean[o$taxon_name == "Sebastes" & o$taxon_name_rank == "genus"]
+  expect_equal(ring(mx), ring(sp))
+  expect_equal(mx$dark_beta, sp$dark_beta)
+})
+
+test_that("a subset with no finest-rank row keeps its own rows rather than losing the estimate", {
+  lik <- .ring_only_lik()
+  out <- .jp(lik, .dark_priors("genus", with_floor = FALSE))
+  expect_false(any(is.na(out$dark_beta)))
+  expect_equal(unique(out$dark_beta), 9000)
+})

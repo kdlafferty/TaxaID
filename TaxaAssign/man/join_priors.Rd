@@ -257,7 +257,11 @@ carrying a \code{global_floor} row per rank therefore carries a different
 families than genera. The floor is read from the finest rank in
 \code{rank_system} alone, since it prices an unmodelled species and a ring that
 no clade budget priced; averaging the ranks' rows would price those against
-a pool that is no rank's pool.
+a pool that is no rank's pool. The site and global dark-diversity means and
+the singleton-mirror threshold read the finest rank for the same reason,
+each of them averaging \code{alpha}/\code{beta} over undetected rows whose values
+encode the pool at their own rank. Where a rank is not represented at all,
+the estimate is taken from the rows that are present rather than dropped.
 }
 
 \section{Coarse-rank expansion}{

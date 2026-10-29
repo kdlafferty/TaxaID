@@ -39,6 +39,30 @@ utils::globalVariables(c(
 #   - no coarse-rank rows are present
 #   - no matching species are found in taxaexpect_priors for a given constraint
 #     (those rows remain for the dark diversity fallback downstream)
+# .at_finest_rank()
+#
+# A prior row's alpha/beta encode the pool at the row's OWN rank: a genus-rank
+# undetected row is priced against the number of genera, a species-rank one
+# against the number of species. Every aggregation below averages alpha/beta
+# over a class of undetected rows, so averaging across ranks averages pool
+# scales and prices a species-scale quantity against a pool that is no rank's
+# pool. Each aggregation therefore reads the finest rank in rank_system.
+#
+# Falls back to every row of the subset it was handed when the finest rank is
+# not represented there at all: a coarse-scale estimate is wrong, but losing
+# the estimate entirely is worse, and the caller has no better source.
+#' @noRd
+.at_finest_rank <- function(rows, finest_rank) {
+  if (!"taxon_name_rank" %in% names(rows) || nrow(rows) == 0L) {
+    return(rows)
+  }
+  keep <- !is.na(rows$taxon_name_rank) & rows$taxon_name_rank == finest_rank
+  if (!any(keep)) {
+    return(rows)
+  }
+  rows[keep, , drop = FALSE]
+}
+
 #' @noRd
 .expand_coarse_rank_rows <- function(result,
                                      taxaexpect_priors,
@@ -589,7 +613,11 @@ utils::globalVariables(c(
 #' families than genera. The floor is read from the finest rank in
 #' `rank_system` alone, since it prices an unmodelled species and a ring that
 #' no clade budget priced; averaging the ranks' rows would price those against
-#' a pool that is no rank's pool.
+#' a pool that is no rank's pool. The site and global dark-diversity means and
+#' the singleton-mirror threshold read the finest rank for the same reason,
+#' each of them averaging `alpha`/`beta` over undetected rows whose values
+#' encode the pool at their own rank. Where a rank is not represented at all,
+#' the estimate is taken from the rows that are present rather than dropped.
 #'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
@@ -1164,9 +1192,17 @@ join_priors <- function(likelihoods,
   }
 
   # ---- Dark diversity fallback -----------------------------------------------
+  # Finest rank only -- see .at_finest_rank(). These means price a SPECIES that
+  # has no prior of its own, and global_dark also becomes the unmodelled floor
+  # when the table carries no global_floor row, so a mixed-rank mean here
+  # reaches the floor itself.
+  dark_rows <- .at_finest_rank(
+    taxaexpect_priors[!is.na(taxaexpect_priors$undetected_type), , drop = FALSE],
+    finest_rank
+  )
+
   # Site-level: mean alpha/beta from Tier 3 (undetected) rows per grid x habitat
-  dark_by_site <- taxaexpect_priors |>
-    dplyr::filter(!is.na(undetected_type)) |>
+  dark_by_site <- dark_rows |>
     dplyr::group_by(grid_id, main_habitat) |>
     dplyr::summarise(
       dark_alpha = mean(alpha, na.rm = TRUE),
@@ -1176,8 +1212,7 @@ join_priors <- function(likelihoods,
 
   # Global fallback: average across all Tier 3 rows (used to fill dark_alpha/beta
   # when a site has no Tier 3 rows, driving the modelled-species floor promotion).
-  global_dark <- taxaexpect_priors |>
-    dplyr::filter(!is.na(undetected_type)) |>
+  global_dark <- dark_rows |>
     dplyr::summarise(
       dark_alpha = mean(alpha, na.rm = TRUE),
       dark_beta  = mean(beta, na.rm = TRUE)
@@ -1193,8 +1228,15 @@ join_priors <- function(likelihoods,
   # down by the global floor, erasing the signal that the species was actually
   # detected. With singleton_mean as the threshold, only species whose model
   # estimate falls below the rarest-known detection rate are promoted.
-  singleton_by_site <- taxaexpect_priors |>
-    dplyr::filter(undetected_type == "singleton_mirror") |>
+  # Finest rank only, for the same reason: this threshold is compared against a
+  # modelled SPECIES' own estimate.
+  singleton_rows <- .at_finest_rank(
+    taxaexpect_priors[!is.na(taxaexpect_priors$undetected_type) &
+      taxaexpect_priors$undetected_type == "singleton_mirror", , drop = FALSE],
+    finest_rank
+  )
+
+  singleton_by_site <- singleton_rows |>
     dplyr::group_by(grid_id, main_habitat) |>
     dplyr::summarise(
       singleton_alpha = mean(alpha, na.rm = TRUE),
@@ -1202,8 +1244,7 @@ join_priors <- function(likelihoods,
       .groups = "drop"
     )
 
-  global_singleton <- taxaexpect_priors |>
-    dplyr::filter(undetected_type == "singleton_mirror") |>
+  global_singleton <- singleton_rows |>
     dplyr::summarise(
       singleton_alpha = mean(alpha, na.rm = TRUE),
       singleton_beta  = mean(beta, na.rm = TRUE)
@@ -1232,20 +1273,13 @@ join_priors <- function(likelihoods,
   # This floor is the fallback for an unmodelled SPECIES, and for a ring row
   # that no clade budget priced, so it reads the finest rank only. A table whose
   # floor rows are all at one rank is unaffected.
-  if ("taxon_name_rank" %in% names(gf_rows) && nrow(gf_rows) > 0L) {
-    gf_finest <- gf_rows[!is.na(gf_rows$taxon_name_rank) &
-      gf_rows$taxon_name_rank == finest_rank, , drop = FALSE]
-    if (nrow(gf_finest) > 0L) {
-      if (nrow(gf_finest) < nrow(gf_rows)) {
-        cli::cli_inform(
-          "join_priors: global floor read from {nrow(gf_finest)} {finest_rank}-rank row(s) rather than all {nrow(gf_rows)} ({paste(sort(unique(gf_rows$taxon_name_rank)), collapse = ', ')}); each rank's floor encodes the size of its own pool."
-        )
-      }
-      gf_rows <- gf_finest
-    }
-    # No finest-rank floor row at all: keep every floor row rather than lose the
-    # principled fallback entirely, which is what the branch below would do.
+  gf_finest <- .at_finest_rank(gf_rows, finest_rank)
+  if (nrow(gf_finest) < nrow(gf_rows)) {
+    cli::cli_inform(
+      "join_priors: global floor read from {nrow(gf_finest)} {finest_rank}-rank row(s) rather than all {nrow(gf_rows)} ({paste(sort(unique(gf_rows$taxon_name_rank)), collapse = ', ')}); each rank's floor encodes the size of its own pool."
+    )
   }
+  gf_rows <- gf_finest
 
   if (nrow(gf_rows) > 0 && !is.na(mean(gf_rows$alpha, na.rm = TRUE))) {
     gf_alpha <- mean(gf_rows$alpha, na.rm = TRUE)
