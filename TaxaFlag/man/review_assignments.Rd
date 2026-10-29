@@ -316,7 +316,11 @@ attached pipeline/weight/spatial notes, \code{context},
 candidate-set path -- so changing any of them is correctly a miss. Manage
 it with \code{\link[=taxaflag_clear_cache]{taxaflag_clear_cache()}}, which uses the same
 \code{\link[TaxaTools:list_cache_files]{TaxaTools::list_cache_files()}} engine as the other packages' cache
-helpers, so it does not accumulate unmanaged.}
+helpers, so it does not accumulate unmanaged.
+Each batch is written as soon as it returns, so a run stopped part-way
+through a marker -- an interrupt, a crash, a spend cap, a dropped
+connection -- keeps the verdicts it has already paid for, and the next run
+asks only for what is missing.}
 
 \item{on_unreviewed}{Character. What to do when taxa still have no verdict
 after the re-asks: \code{"warn"} (default) reports them and continues,
