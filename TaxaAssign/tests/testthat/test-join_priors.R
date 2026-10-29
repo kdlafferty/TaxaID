@@ -811,3 +811,79 @@ test_that("join_priors stamps the site's kernel record concentration on every ro
   expect_true("prior_site_records" %in% names(out))
   expect_equal(unname(out$prior_site_records), rep(1000, nrow(out)))
 })
+
+
+# ---- Taxa that matched no prior: the synonym case must be visible -----------
+# The join is an exact string match, so a call under a currently accepted name
+# cannot meet a prior row filed under the old one. The floored row is then
+# indistinguishable from an honest absence unless it is reported.
+
+.syn_lik <- function() {
+  tibble(
+    observation_id = rep("ESV_001", 2),
+    # Phanerodon vacca is the current name; the prior below is filed under the
+    # old Rhacochilus vacca, so this call cannot join.
+    taxon_name = c("Fundulus parvipinnis", "Phanerodon vacca"),
+    taxon_name_rank = c("species", "species"),
+    hypothesis_type = c("specific_candidate", "specific_candidate"),
+    score_likelihood = c(0.8, 0.5),
+    score_likelihood_mean = c(0.8, 0.5),
+    score_likelihood_sd = c(0.05, 0.04),
+    genus = c("Fundulus", "Phanerodon"),
+    family = c("Fundulidae", "Embiotocidae"),
+    species = c("Fundulus parvipinnis", "Phanerodon vacca")
+  )
+}
+
+.syn_priors <- function(name = "Rhacochilus vacca") {
+  p <- tibble(
+    taxon_name      = c("Fundulus parvipinnis", name, "undetected_placeholder"),
+    taxon_name_rank = c("species", "species", "species"),
+    grid_id         = "Grid_34p1_m119p1",
+    main_habitat    = "Estuarine Bay",
+    alpha           = c(5, 4, 0.5),
+    beta            = c(5, 6, 9.5),
+    undetected_type = c(NA, NA, "tier3")
+  )
+  attr(p, "search_center") <- list(lat = 34.1, lon = -119.1)
+  p
+}
+
+.fallthrough <- function(x) attr(x, "prior_floor_fallthrough")
+
+test_that("join_priors reports a taxon that matched no prior under its own name", {
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .syn_lik(), .syn_priors(),
+    site = list(main_habitat = "Estuarine Bay"), backbone_id = 11L
+  )))
+  ft <- .fallthrough(out)
+  expect_s3_class(ft, "data.frame")
+  expect_identical(names(ft), c("taxon_name", "taxon_name_rank"))
+  # the synonym-mismatched call is named; the one that joined is not
+  expect_true("Phanerodon vacca" %in% ft$taxon_name)
+  expect_false("Fundulus parvipinnis" %in% ft$taxon_name)
+})
+
+test_that("join_priors reports nothing when the prior is filed under the name used", {
+  # the detector has to be able to come back EMPTY, or it only ever confirms
+  # what we already believed
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .syn_lik(), .syn_priors(name = "Phanerodon vacca"),
+    site = list(main_habitat = "Estuarine Bay"), backbone_id = 11L
+  )))
+  ft <- .fallthrough(out)
+  expect_equal(nrow(ft), 0L)
+  expect_identical(names(ft), c("taxon_name", "taxon_name_rank"))
+})
+
+test_that("join_priors carries the fallthrough table on every return", {
+  # present-but-empty is part of the contract, so a caller can read it
+  # unconditionally
+  out <- suppressMessages(suppressWarnings(join_priors(
+    .make_likelihoods(), .make_priors(),
+    site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
+    backbone_id = 11L
+  )))
+  expect_false(is.null(.fallthrough(out)))
+  expect_s3_class(.fallthrough(out), "data.frame")
+})

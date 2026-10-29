@@ -611,6 +611,23 @@ utils::globalVariables(c(
 #'   when `taxaexpect_priors` has no `prior_branch` or the site has no
 #'   kernel-estimated rows.
 #'
+#' @section Taxa that matched no prior:
+#'   A row whose prior lookup failed at every tier takes the global floor. That
+#'   is right for a taxon genuinely absent from `taxaexpect_priors`, and it is
+#'   also what a NAME MISMATCH looks like: a call under a currently accepted
+#'   name cannot meet a prior row filed under a synonym, and the floored row is
+#'   indistinguishable from an honest absence. Every such named taxon is
+#'   counted in a message and listed in
+#'   `attr(result, "prior_floor_fallthrough")` (`taxon_name`,
+#'   `taxon_name_rank`), which is present, possibly with zero rows, on every
+#'   return.
+#'   It is REPORTED and never corrected here: this function cannot tell a
+#'   synonym from a real absence, and the join is an exact string match on
+#'   `(taxon_name, taxon_name_rank, grid_id, main_habitat)`. Resolving both the
+#'   likelihood side and the prior side to one backbone is the caller's job --
+#'   see [TaxaMatch::convert_taxonomy_backbone()] -- and this report is how a
+#'   caller finds out that it has not been done.
+#'
 #' @seealso [compute_posterior()], [TaxaLikely::expand_unreferenced_hypotheses()],
 #'   [TaxaLikely::apply_coverage_constraints()]
 #'
@@ -1687,6 +1704,44 @@ join_priors <- function(likelihoods,
       site_n <- tapply(kp$alpha + kp$beta, paste(kp$grid_id, kp$main_habitat, sep = "\r"), stats::median)
       result$prior_site_records <- as.numeric(site_n[paste(result$grid_id, result$main_habitat, sep = "\r")])
     }
+  }
+
+  # ---- Rows that reached the global floor at their OWN rank -----------------
+  # A row whose `alpha` is still NA after every tier matched no prior and took
+  # the global floor. That is correct for a species with genuinely no prior, and
+  # it is also what a NAME MISMATCH looks like: a call under the currently
+  # accepted name cannot meet a prior row filed under a synonym, so it is
+  # floored and nothing says so. The coarse-rank warning above covers only rows
+  # coarser than the finest rank, and only when `expansion_taxonomy` is absent,
+  # so a species-rank synonym miss had no report at all.
+  # Reported, never corrected here: this function cannot tell a synonym from a
+  # taxon that is truly absent from the prior, and guessing would be worse than
+  # naming it. The caller resolves both sides to one backbone; this says when
+  # that has not happened.
+  floored <- !is.na(result$taxon_name) &
+    (if ("alpha" %in% names(result)) is.na(result$alpha) else FALSE)
+  fallthrough <- if (any(floored)) {
+    d <- unique(data.frame(
+      taxon_name = result$taxon_name[floored],
+      taxon_name_rank = result$taxon_name_rank[floored],
+      stringsAsFactors = FALSE
+    ))
+    d[order(d$taxon_name_rank, d$taxon_name), , drop = FALSE]
+  } else {
+    data.frame(
+      taxon_name = character(0), taxon_name_rank = character(0),
+      stringsAsFactors = FALSE
+    )
+  }
+  attr(result, "prior_floor_fallthrough") <- fallthrough
+  if (nrow(fallthrough) > 0L) {
+    by_rank <- table(fallthrough$taxon_name_rank, useNA = "ifany")
+    cli::cli_inform(c(
+      "join_priors: {nrow(fallthrough)} named taxa matched no prior and took the global floor.",
+      "i" = "By rank: {paste(sprintf('%s %d', names(by_rank), as.integer(by_rank)), collapse = ', ')}.",
+      "i" = "First few: {paste(utils::head(fallthrough$taxon_name, 8L), collapse = ', ')}.",
+      "i" = "A taxon here is either genuinely absent from the priors, or filed under a different name than the call uses. The full table is {.code attr(x, \'prior_floor_fallthrough\')}."
+    ))
   }
 
   cli::cli_inform(

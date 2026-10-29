@@ -272,6 +272,25 @@ Rows whose coarse-rank constraint finds no matching species in
 unchanged and receive the dark diversity floor prior as before.
 }
 
+\section{Taxa that matched no prior}{
+
+A row whose prior lookup failed at every tier takes the global floor. That
+is right for a taxon genuinely absent from \code{taxaexpect_priors}, and it is
+also what a NAME MISMATCH looks like: a call under a currently accepted
+name cannot meet a prior row filed under a synonym, and the floored row is
+indistinguishable from an honest absence. Every such named taxon is
+counted in a message and listed in
+\code{attr(result, "prior_floor_fallthrough")} (\code{taxon_name},
+\code{taxon_name_rank}), which is present, possibly with zero rows, on every
+return.
+It is REPORTED and never corrected here: this function cannot tell a
+synonym from a real absence, and the join is an exact string match on
+\verb{(taxon_name, taxon_name_rank, grid_id, main_habitat)}. Resolving both the
+likelihood side and the prior side to one backbone is the caller's job --
+see \code{\link[TaxaMatch:convert_taxonomy_backbone]{TaxaMatch::convert_taxonomy_backbone()}} -- and this report is how a
+caller finds out that it has not been done.
+}
+
 \examples{
 likelihoods <- data.frame(
   observation_id = c("ASV_1", "ASV_1"),

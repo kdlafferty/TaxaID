@@ -42,6 +42,10 @@
 #'   it with [taxaflag_clear_cache()], which uses the same
 #'   [TaxaTools::list_cache_files()] engine as the other packages' cache
 #'   helpers, so it does not accumulate unmanaged.
+#'   Each batch is written as soon as it returns, so a run stopped part-way
+#'   through a marker -- an interrupt, a crash, a spend cap, a dropped
+#'   connection -- keeps the verdicts it has already paid for, and the next run
+#'   asks only for what is missing.
 #'
 #' @param taxon_rank_col Character or \code{NULL}. Column name for consensus
 #'   rank (e.g., "species", "genus"). When supplied, the rank is included in
