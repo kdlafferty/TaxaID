@@ -1475,6 +1475,16 @@ review_assignments <- function(input_df,
       prompt_log = prompt_log, sites = sites
     )
 
+    # Persist THIS batch before asking the next one. Every answer here is
+    # already paid for, so a stop between batches -- an interrupt, a crash, a
+    # spend cap, a lost connection -- must not discard the ones that came
+    # back. Writing after the loop instead means a run stopped mid-marker
+    # saves nothing and the whole marker is paid for again.
+    .review_cache_write_rows(
+      batch_results[[b]], taxa_info, cache_paths, cache_keys,
+      unreviewed = attr(batch_results[[b]], "missing_taxa")
+    )
+
     if (b < n_batches) Sys.sleep(pause_seconds)
   }
 
@@ -1490,20 +1500,8 @@ review_assignments <- function(input_df,
   ))
   unreviewed_taxa <- as.character(unreviewed_taxa %||% character(0))
 
-  # Persist the freshly obtained verdicts, then fold the cached ones back in.
-  # An unreviewed row is NEVER cached: caching a non-answer makes the omission
-  # permanent, since every later run is then a cache HIT on a row of NAs and
-  # the re-ask above never gets a chance to fire.
-  if (!is.null(cache_dir) && !is.null(review_df) && nrow(review_df) > 0L) {
-    pos <- match(review_df$taxon_name, taxa_info$taxon_name)
-    for (k in which(!is.na(pos))) {
-      if (review_df$taxon_name[k] %in% unreviewed_taxa) next
-      .review_cache_write(
-        cache_paths[pos[k]], cache_keys[pos[k]],
-        review_df[k, , drop = FALSE]
-      )
-    }
-  }
+  # The freshly obtained verdicts were already persisted batch by batch inside
+  # the loop above; what remains is to fold the cached ones back in.
   if (!is.null(cache_hits)) {
     review_df <- if (is.null(review_df) || nrow(review_df) == 0L) {
       cache_hits
