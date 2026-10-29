@@ -395,3 +395,91 @@ test_that("a subset with no finest-rank row keeps its own rows rather than losin
   expect_false(any(is.na(out$dark_beta)))
   expect_equal(unique(out$dark_beta), 9000)
 })
+
+
+# ==============================================================================
+# A ring and a named candidate for one clade are not duplicates of each other
+# ==============================================================================
+
+# The real COI shape: one observation carries BOTH "Chrysaora / genus /
+# specific_candidate" (a reference-sequenced Chrysaora resolved only to genus)
+# and "Chrysaora / genus / unreferenced_species" (an unsequenced species of
+# Chrysaora). The paired clade deliberately has no finer candidate of its own:
+# filter_redundant_hypotheses() would remove a coarse NAMED row that sits above
+# a congener of its own genus, which is what the 334 real cases do NOT look like.
+# They are meant to compete. A dedup key without hypothesis_type collapsed them
+# and kept whichever carried the larger prior.
+.pair_lik <- function(extra_dup = FALSE) {
+  d <- data.frame(
+    observation_id = "u1",
+    taxon_name = c("Aurelia aurita", "Chrysaora", "Chrysaora"),
+    taxon_name_rank = c("species", "genus", "genus"),
+    hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species"),
+    score_likelihood = c(0.8, 0.5, 0.2),
+    score_likelihood_mean = c(0.8, 0.5, 0.2),
+    score_likelihood_sd = c(0.05, 0.03, 0.02),
+    family = c("Ulmaridae", "Pelagiidae", "Pelagiidae"),
+    genus = c("Aurelia", "Chrysaora", "Chrysaora"),
+    species = c("Aurelia aurita", NA_character_, NA_character_),
+    stringsAsFactors = FALSE
+  )
+  if (extra_dup) {
+    # Two rows of the SAME hypothesis -- what the dedup exists to collapse.
+    d <- rbind(d, d[3, , drop = FALSE])
+  }
+  d
+}
+
+.pair_priors <- function() {
+  data.frame(
+    taxon_name = c("Aurelia aurita", "global_floor", "Chrysaora"),
+    taxon_name_rank = c("species", "species", "genus"),
+    grid_id = "G1", main_habitat = "Rocky intertidal",
+    alpha = c(5, 1, 30), beta = c(5, 6133, 70),
+    undetected_type = c(NA, "global_floor", NA),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("a ring survives beside a named candidate for the same clade", {
+  # The named candidate's prior (30/100) dwarfs the ring's floor, so under a key
+  # without hypothesis_type the ring lost the dedup and was deleted.
+  out <- .jp(.pair_lik(), .pair_priors())
+  g <- out$taxon_name == "Chrysaora" & out$taxon_name_rank == "genus"
+  expect_equal(sum(g), 2L)
+  expect_setequal(out$hypothesis_type[g], c("specific_candidate", "unreferenced_species"))
+  # and each keeps its own prior: the named one the clade record, the ring the floor
+  expect_false(is.na(out$alpha[g & out$hypothesis_type == "specific_candidate"]))
+  expect_true(is.na(out$alpha[g & out$hypothesis_type == "unreferenced_species"]))
+})
+
+test_that("duplicate rows of the SAME hypothesis still collapse to one", {
+  out <- .jp(.pair_lik(extra_dup = TRUE), .pair_priors())
+  ring <- out$taxon_name == "Chrysaora" & out$taxon_name_rank == "genus" &
+    out$hypothesis_type == "unreferenced_species"
+  expect_equal(sum(ring), 1L)
+  # the named row beside it is still there, so the collapse was of duplicates only
+  expect_equal(sum(out$taxon_name == "Chrysaora" & out$taxon_name_rank == "genus"), 2L)
+})
+
+test_that("the ring is kept however far the named candidate's prior exceeds it", {
+  # Deciding which hypothesis exists by comparing priors is the defect; the
+  # margin must not matter at all.
+  pri <- .pair_priors()
+  pri$alpha[pri$taxon_name == "Chrysaora"] <- 99999
+  pri$beta[pri$taxon_name == "Chrysaora"] <- 1
+  out <- .jp(.pair_lik(), pri)
+  ring <- out$taxon_name == "Chrysaora" & out$taxon_name_rank == "genus" &
+    out$hypothesis_type == "unreferenced_species"
+  expect_equal(sum(ring), 1L)
+})
+
+test_that("likelihoods with no hypothesis_type column still join", {
+  # hypothesis_type is optional throughout join_priors(), so the dedup key must
+  # not require it.
+  lik <- .pair_lik()
+  lik$hypothesis_type <- NULL
+  out <- .jp(lik, .pair_priors())
+  expect_s3_class(out, "data.frame")
+  expect_gt(nrow(out), 0L)
+})

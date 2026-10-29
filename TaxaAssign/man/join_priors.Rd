@@ -249,6 +249,12 @@ applies to a ring row -- a complement hypothesis ABOVE the finest rank in
 \code{rank_system}. A \code{unreferenced_species} row AT the finest rank is a named
 unsequenced species, not a ring, and keeps its own occurrence prior.
 
+A ring and a NAMED candidate for the same clade in the same unit are
+distinct hypotheses and both survive: one says the read is a
+reference-sequenced member of that clade resolved only to its rank, the
+other that it is an unsequenced species within it. Neither is a duplicate of
+the other and neither displaces the other, whatever their priors.
+
 The floor itself is \code{Beta(1, N_total - 1)}, the prior that the detected
 taxon is one arbitrary unrecorded taxon from the regional pool, and
 \code{N_total} is the size of that pool at ONE rank. A \code{taxaexpect_priors}

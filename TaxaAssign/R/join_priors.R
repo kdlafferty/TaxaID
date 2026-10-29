@@ -605,6 +605,12 @@ utils::globalVariables(c(
 #' `rank_system`. A `unreferenced_species` row AT the finest rank is a named
 #' unsequenced species, not a ring, and keeps its own occurrence prior.
 #'
+#' A ring and a NAMED candidate for the same clade in the same unit are
+#' distinct hypotheses and both survive: one says the read is a
+#' reference-sequenced member of that clade resolved only to its rank, the
+#' other that it is an unsequenced species within it. Neither is a duplicate of
+#' the other and neither displaces the other, whatever their priors.
+#'
 #' The floor itself is `Beta(1, N_total - 1)`, the prior that the detected
 #' taxon is one arbitrary unrecorded taxon from the regional pool, and
 #' `N_total` is the size of that pool at ONE rank. A `taxaexpect_priors`
@@ -1579,12 +1585,34 @@ join_priors <- function(likelihoods,
   # actually detected at (see combine_multisite_priors() roxygen for the full
   # empirical repro). This still dedupes same-site duplicates from coarse-rank
   # expansion as well.
+  # hypothesis_type is part of the key because a ring and a NAMED candidate for
+  # the same clade in the same unit are different hypotheses, not duplicates:
+  # "Aurelia / genus / specific_candidate" says the read IS a reference-sequenced
+  # Aurelia resolved only to genus, while "Aurelia / genus /
+  # unreferenced_species" says it is an UNSEQUENCED species of Aurelia. They are
+  # meant to compete, and that competition is what moves a call up a rank
+  # instead of naming the wrong relative. Without hypothesis_type the key
+  # collapsed them and arrange(desc(prior_mean)) kept whichever carried the
+  # larger prior -- deciding which hypothesis exists by its prior rather than by
+  # the evidence, and deleting the other. Measured on CalIntertidal COI at one
+  # site, 2,382 units held both rows and 504 ring rows were being removed, all
+  # of them by a named candidate whose prior was larger (median 1.17e-03 against
+  # 2.65e-07). The restore after the redundancy filter below exists for the same
+  # reason: a ring must not be deleted for being coarser than a named candidate.
+  #
+  # The deduplication this still performs is its stated purpose: same-site
+  # duplicates from coarse-rank expansion, which all carry hypothesis_type
+  # "rank_expanded" and so continue to collapse to one row.
+  # hypothesis_type is OPTIONAL in `likelihoods` -- guarded as such throughout
+  # this function -- so it joins the key only when the column is present.
+  dedup_keys <- c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    if ("hypothesis_type" %in% names(result)) "hypothesis_type",
+    "grid_id", "main_habitat"
+  )
   result <- result |>
     dplyr::arrange(dplyr::desc(prior_mean)) |>
-    dplyr::distinct(observation_id, taxon_name, taxon_name_rank, grid_id,
-      main_habitat,
-      .keep_all = TRUE
-    )
+    dplyr::distinct(dplyr::across(dplyr::all_of(dedup_keys)), .keep_all = TRUE)
 
   # Fill taxonomy from taxonomy_lookup (e.g. from match_df reference taxonomy)
   if (!is.null(taxonomy_lookup) && is.data.frame(taxonomy_lookup) &&
