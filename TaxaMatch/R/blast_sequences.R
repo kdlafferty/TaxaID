@@ -247,12 +247,26 @@ NULL
 #'
 #'   This output is ready for \code{\link{standardize_match_data}}.
 #'
-#'   An \code{attr(out, "report_params")} list (\code{method}, \code{database},
+#'   An \code{attr(out, "report_params")} list is also attached, consumed by
+#'   \code{\link{report_match}}: \code{method}, \code{database},
 #'   \code{min_query_coverage} -- the coverage floor, read by
 #'   \code{TaxaLikely::evaluate_likelihoods()} to check it against the model's
-#'   \code{min_pair_coverage} --
-#'   \code{min_score}, \code{n_samples}) is also attached, consumed by
-#'   \code{\link{report_match}}.
+#'   \code{min_pair_coverage} -- \code{min_score} and \code{n_samples},
+#'   followed by the search's provenance: \code{tool_version} (from
+#'   \code{blastn -version} for a local search, from NCBI's reported
+#'   \code{BlastOutput_version} for a remote one), \code{database_reported}
+#'   (remote only -- the database NCBI says it searched, which the
+#'   \code{database} argument only asked for), \code{database_date} (local
+#'   only -- the build date the consistency check read from the database
+#'   itself), and the \code{search_started} / \code{search_finished}
+#'   timestamps.
+#'
+#'   Every one of those keys is present on every return path, including each
+#'   early return on an empty or wholly filtered result, carrying \code{NA}
+#'   when this search could not record the field. A search that found nothing
+#'   still ran, and its tool, database and date are what explain the emptiness;
+#'   a key that appeared on some paths only could not be told apart from a
+#'   field the search genuinely could not record.
 #'
 #'   \code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
 #'   none) -- remote BLAST only: \code{asv_id}s whose
@@ -518,6 +532,7 @@ blast_sequences <- function(seq_df,
   }
 
   # --- Run BLAST --------------------------------------------------------------
+  search_started <- Sys.time()
   if (method == "remote") {
     if (is.null(email)) {
       warning(
@@ -538,6 +553,7 @@ blast_sequences <- function(seq_df,
       num_threads = num_threads, word_size = word_size
     )
   }
+  search_finished <- Sys.time()
 
   # Captured here, before raw_hits is filtered/rebuilt into an entirely new
   # data frame below (attr() does not survive that reconstruction) --
@@ -548,11 +564,42 @@ blast_sequences <- function(seq_df,
   failed_query_ids <- attr(raw_hits, "failed_query_ids")
   circuit_breaker_tripped <- isTRUE(attr(raw_hits, "circuit_breaker_tripped"))
 
+  # Captured here for the same reason, and attached on every return path below:
+  # a search that found nothing still happened, and the tool, the database and
+  # the date are exactly what explains the emptiness.
+  search_provenance <- if (method == "remote") {
+    rp <- attr(raw_hits, "remote_provenance")
+    list(
+      tool_version     = if (is.null(rp$tool_version)) NA_character_ else rp$tool_version,
+      database_reported = if (is.null(rp$database_reported)) NA_character_ else rp$database_reported,
+      database_date    = NA_character_,
+      search_started    = search_started,
+      search_finished   = search_finished
+    )
+  } else {
+    # .check_blastdb_consistency() has already read and memoised the build
+    # date(s) by the time the search returns. unname() because its
+    # multi-volume path carries the name "alias" from the alias-file date it
+    # compares the volumes against, and that name is not part of the value.
+    bd <- .blastdb_checked[[database]]
+    list(
+      tool_version     = .tool_version(),
+      database_reported = NA_character_,
+      database_date    = if (is.null(bd)) NA_character_ else unname(bd),
+      search_started    = search_started,
+      search_finished   = search_finished
+    )
+  }
+
   if (nrow(raw_hits) == 0L) {
     warning("BLAST returned no hits")
     empty <- .empty_blast_result(resolve_taxonomy)
     attr(empty, "failed_query_ids") <- failed_query_ids
     attr(empty, "circuit_breaker_tripped") <- circuit_breaker_tripped
+    attr(empty, "report_params") <- .match_report_params(
+      method, database, min_score, min_query_coverage,
+      n_samples = 0L, provenance = search_provenance
+    )
     return(empty)
   }
 
@@ -588,6 +635,10 @@ blast_sequences <- function(seq_df,
       empty <- .empty_blast_result(resolve_taxonomy)
       attr(empty, "failed_query_ids") <- failed_query_ids
       attr(empty, "circuit_breaker_tripped") <- circuit_breaker_tripped
+      attr(empty, "report_params") <- .match_report_params(
+        method, database, min_score, min_query_coverage,
+        n_samples = 0L, provenance = search_provenance
+      )
       return(empty)
     }
 
@@ -625,6 +676,10 @@ blast_sequences <- function(seq_df,
     empty <- .empty_blast_result(resolve_taxonomy)
     attr(empty, "failed_query_ids") <- failed_query_ids
     attr(empty, "circuit_breaker_tripped") <- circuit_breaker_tripped
+    attr(empty, "report_params") <- .match_report_params(
+      method, database, min_score, min_query_coverage,
+      n_samples = 0L, provenance = search_provenance
+    )
     return(empty)
   }
 
@@ -729,15 +784,10 @@ blast_sequences <- function(seq_df,
   }
 
   # --- Attach report_params for report_match() --------------------------------
-  attr(out, "report_params") <- list(
-    method    = if (method == "remote") "remote BLAST" else "local BLAST",
-    database  = database,
-    min_score = min_score,
-    # The coverage floor this match object was built under.
-    # TaxaLikely::train_likelihood_model(min_pair_coverage=) must match it
-    # (as a fraction), and evaluate_likelihoods() reads it from here to check.
-    min_query_coverage = min_query_coverage,
-    n_samples = length(unique(out$observation_id))
+  attr(out, "report_params") <- .match_report_params(
+    method, database, min_score, min_query_coverage,
+    n_samples = length(unique(out$observation_id)),
+    provenance = search_provenance
   )
   attr(out, "failed_query_ids") <- failed_query_ids
   attr(out, "circuit_breaker_tripped") <- circuit_breaker_tripped
@@ -847,6 +897,11 @@ blast_sequences <- function(seq_df,
   batches <- .split_batches_by_length(nchar(seq_df$sequence), batch_size, max_batch_bp)
 
   all_hits <- vector("list", length(batches))
+  # NCBI's reported engine version and database, captured from the FIRST
+  # response that carries them. Every batch of one search reports the same
+  # pair, and a batch that found no hits still reports it -- so this is taken
+  # from the response text, not from the parsed hits.
+  remote_prov <- NULL
   failed_batches <- integer(0)
   # Circuit breaker: weighted count of CONSECUTIVE batch failures (reset to
   # 0 on any batch that completes normally). A .blast_server_rejected()
@@ -912,6 +967,7 @@ blast_sequences <- function(seq_df,
         failure_weight <- 2
       } else {
         # --- Parse XML output -----------------------------------------------------
+        if (is.null(remote_prov)) remote_prov <- .blast_xml_provenance(result_text)
         hits <- .parse_blast_xml(result_text)
         if (!is.null(hits) && nrow(hits) > 0L) {
           all_hits[[i]] <- hits
@@ -1036,6 +1092,7 @@ blast_sequences <- function(seq_df,
           next
         }
 
+        if (is.null(remote_prov)) remote_prov <- .blast_xml_provenance(result_text)
         hits <- .parse_blast_xml(result_text)
         if (!is.null(hits) && nrow(hits) > 0L) {
           all_hits <- c(all_hits, list(hits))
@@ -1067,6 +1124,7 @@ blast_sequences <- function(seq_df,
 
   all_hits <- Filter(Negate(is.null), all_hits)
   result <- if (length(all_hits) == 0L) .empty_raw_hits() else do.call(rbind, all_hits)
+  attr(result, "remote_provenance") <- remote_prov
   attr(result, "failed_batches") <- if (length(failed_batches) > 0L) failed_batches else NULL
   attr(result, "failed_query_ids") <- if (length(failed_query_ids) > 0L) failed_query_ids else NULL
   attr(result, "circuit_breaker_tripped") <- breaker_tripped
@@ -1384,6 +1442,116 @@ blast_sequences <- function(seq_df,
 }
 
 # Databases already checked this session, so the per-volume scan runs once.
+# ==============================================================================
+# Internal: search provenance
+# ==============================================================================
+
+# The BLAST+ version string for a LOCAL search, from `blastn -version`.
+# NA_character_ -- never an error and never a guess -- when blastn is not on
+# PATH or does not answer, because a match object whose provenance is unknown
+# must say so rather than omit the field: see .match_report_params().
+#' @noRd
+.tool_version <- function(blastn = Sys.which("blastn")) {
+  if (!nzchar(blastn)) {
+    return(NA_character_)
+  }
+  out <- tryCatch(
+    suppressWarnings(system2(blastn, "-version", stdout = TRUE, stderr = TRUE)),
+    error = function(e) character(0L)
+  )
+  if (!length(out) || !any(nzchar(out))) {
+    return(NA_character_)
+  }
+  # First line is "blastn: 2.14.0+"; the second names the package build.
+  v <- regmatches(out[[1L]], regexpr("[0-9]+\\.[0-9]+\\.[0-9]+\\+?", out[[1L]]))
+  if (!length(v) || !nzchar(v)) NA_character_ else unname(v)
+}
+
+# A REMOTE search's engine version and database, read out of NCBI's own XML
+# (<BlastOutput_version>, <BlastOutput_db>) rather than assumed from the
+# `database` argument -- the argument says what was asked for, these say what
+# NCBI actually searched. Read from the response text directly, NOT from
+# .parse_blast_xml()'s data frame, so a batch that searched successfully and
+# genuinely found no hits still reports its provenance.
+#' @noRd
+.blast_xml_provenance <- function(xml_text) {
+  miss <- list(tool_version = NA_character_, database_reported = NA_character_)
+  if (!is.character(xml_text) || !length(xml_text) ||
+    !grepl("<BlastOutput", xml_text[[1L]], fixed = TRUE)) {
+    return(miss)
+  }
+  if (!requireNamespace("xml2", quietly = TRUE)) {
+    return(miss)
+  }
+  doc <- tryCatch(xml2::read_xml(xml_text[[1L]]), error = function(e) NULL)
+  if (is.null(doc)) {
+    return(miss)
+  }
+  one <- function(tag) {
+    n <- xml2::xml_find_first(doc, sprintf("/BlastOutput/%s", tag))
+    if (inherits(n, "xml_missing")) {
+      return(NA_character_)
+    }
+    v <- xml2::xml_text(n)
+    if (is.na(v) || !nzchar(v)) NA_character_ else trimws(v)
+  }
+  list(
+    tool_version     = one("BlastOutput_version"),
+    database_reported = one("BlastOutput_db")
+  )
+}
+
+# The report_params list EVERY return path of blast_sequences() carries, built
+# in one place so the key set cannot differ between the full-result path and an
+# early-empty one. Consumers read by name (report_match(),
+# TaxaLikely::evaluate_likelihoods()), and a key present on one path only is
+# indistinguishable from a field the search genuinely could not record -- so
+# every key is always present, carrying NA when unknown.
+# The ONE provenance vocabulary every match source fills, whatever produced the
+# hits: blast_sequences() fills it from the search it ran, and an imported hit
+# list fills it through standardize_match_data(provenance=). One vocabulary
+# means report_match() has one set of names to print and a downstream consumer
+# one set to read -- a BLAST-specific name (a "blastn version" field) is one an
+# imported vsearch or classifier result cannot fill honestly.
+#
+# The single source of truth for the field names: validation reads
+# names(.empty_provenance()) rather than repeating them.
+#' @noRd
+.empty_provenance <- function() {
+  list(
+    tool_version      = NA_character_,
+    database_reported = NA_character_,
+    database_date     = NA_character_,
+    search_started    = as.POSIXct(NA),
+    search_finished   = as.POSIXct(NA),
+    parameters        = NA_character_
+  )
+}
+
+#' @noRd
+.match_report_params <- function(method, database, min_score, min_query_coverage,
+                                 n_samples, provenance = NULL) {
+  prov <- .empty_provenance()
+  if (length(provenance)) {
+    keep <- intersect(names(provenance), names(prov))
+    prov[keep] <- provenance[keep]
+  }
+  c(
+    list(
+      method    = if (identical(method, "remote")) "remote BLAST" else "local BLAST",
+      database  = database,
+      min_score = min_score,
+      # The coverage floor this match object was built under.
+      # TaxaLikely::train_likelihood_model(min_pair_coverage=) must match it
+      # (as a fraction), and evaluate_likelihoods() reads it from here to check.
+      min_query_coverage = min_query_coverage,
+      n_samples = n_samples
+    ),
+    prov
+  )
+}
+
+
 .blastdb_checked <- new.env(parent = emptyenv())
 
 #' Refuse a local BLAST database whose volumes come from different builds

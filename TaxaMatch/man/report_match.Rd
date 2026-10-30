@@ -30,7 +30,12 @@ results text formats scores as a percentage (see \code{@return}'s
 \value{
 A \code{report_section} object with:
 \describe{
-\item{methods}{Template text describing matching approach.}
+\item{methods}{Template text describing matching approach, including
+whatever search provenance \code{attr(match_data, "report_params")}
+records -- tool version, the database the search server reported, the
+reference database's build date, and the search date. Each sentence
+appears only when the match object actually carries that field, so the
+methods text never states a version or a date on no evidence.}
 \item{results}{Template text summarizing match statistics, or
 \code{NULL} when \code{match_data} has neither \code{score_original}
 nor a taxon-name column to summarize. Scores are formatted as a
@@ -42,9 +47,9 @@ guessing a scale.}
 \item{params}{Named list of matching parameters (\code{method},
 \code{database}, \code{min_score}, \code{marker} when available). May
 contain additional fields passed through unchanged from
-\code{attr(match_data, "report_params")} (e.g. \code{n_samples} from
-\code{blast_sequences()}) whenever that attribute carries fields not
-already named above.}
+\code{attr(match_data, "report_params")} (e.g. \code{n_samples} and
+the provenance fields from \code{blast_sequences()}) whenever that
+attribute carries fields not already named above.}
 \item{statistics}{Named list of summary counts and scores.}
 }
 }
@@ -53,6 +58,19 @@ Summarizes the match data produced by TaxaMatch into a structured
 \code{report_section} object (from TaxaTools). Works standalone or feeds
 into \code{TaxaTools::assemble_report()} for a unified pipeline report.
 }
+\section{Match objects that record no method}{
+
+A match object built outside \code{\link{blast_sequences}} -- an imported
+hit list from another search tool, or a classifier export -- carries no
+\code{report_params} attribute, and this function cannot infer what
+produced it: such a table is indistinguishable here from a BLAST result.
+The methods text then reports the method as unrecorded and omits the BLAST
+citation, rather than naming a tool and citing a paper the search may have
+no connection to. To have a published methods section name the real tool,
+its version and its database, attach those fields as
+\code{attr(match_data, "report_params")} before calling this function.
+}
+
 \examples{
 # Self-contained example (no BLAST call needed)
 hits <- data.frame(

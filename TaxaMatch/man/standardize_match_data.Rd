@@ -11,7 +11,8 @@ standardize_match_data(
   rank_system = NULL,
   coverage_col = NULL,
   col_map = NULL,
-  lowercase_names = TRUE
+  lowercase_names = TRUE,
+  provenance = NULL
 )
 }
 \arguments{
@@ -52,6 +53,26 @@ the output are converted to lowercase as the final step. This produces a
 fully consistent canonical object (e.g. \code{kingdom}, \code{testid}, \code{accession})
 and avoids case-sensitivity surprises in downstream joins. Set to \code{FALSE}
 to preserve original column name casing.}
+
+\item{provenance}{Named list, or \code{NULL} (default). The search that produced
+these hits, for a match table imported from outside this package -- a
+vsearch or other hit list, a classifier export, a table supplied by a
+sequencing provider. \code{blast_sequences()} records the same fields itself
+from the search it ran, so a BLAST result needs nothing here.
+
+Five fields are required: \code{method} (the matching tool), \code{tool_version},
+\code{database} (the reference database), \code{database_date} (its build or
+retrieval date) and \code{search_started} (when the search ran). \code{parameters}
+(free text, for the settings that decide which hits are kept),
+\code{database_reported} and \code{search_finished} are optional.
+
+Each field must be named even when its value is \code{NA}: an explicit \code{NA}
+reports the field as unknown, which a reader can act on, while an absent
+field cannot be told apart from an oversight. An unrecognised field name
+is an error rather than a silently dropped value. Attached as
+\code{attr(out, "report_params")}, merged into any such attribute \code{data}
+already carries, with these values taking precedence, and read from there
+by \code{\link[=report_match]{report_match()}}.}
 }
 \value{
 A data frame with at minimum:
@@ -70,6 +91,11 @@ All other input columns are retained unchanged -- \strong{except} that when
 \code{lowercase_names = TRUE} (the default), every column name in the output,
 including retained ones, is converted to lowercase; the underlying data
 is untouched, only the names.
+
+When \code{provenance} is supplied, the result also carries an
+\code{attr(out, "report_params")} list recording the search, in the same fields
+\code{blast_sequences()} records, so that one vocabulary describes every match
+source whatever produced the hits.
 }
 \description{
 Reads raw match data (from a data frame or file), renames the observation

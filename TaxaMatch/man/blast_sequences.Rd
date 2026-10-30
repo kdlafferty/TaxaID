@@ -287,12 +287,26 @@ If \code{resolve_taxonomy = TRUE}, taxonomy columns (\code{kingdom},
 
 This output is ready for \code{\link{standardize_match_data}}.
 
-An \code{attr(out, "report_params")} list (\code{method}, \code{database},
+An \code{attr(out, "report_params")} list is also attached, consumed by
+\code{\link{report_match}}: \code{method}, \code{database},
 \code{min_query_coverage} -- the coverage floor, read by
 \code{TaxaLikely::evaluate_likelihoods()} to check it against the model's
-\code{min_pair_coverage} --
-\code{min_score}, \code{n_samples}) is also attached, consumed by
-\code{\link{report_match}}.
+\code{min_pair_coverage} -- \code{min_score} and \code{n_samples},
+followed by the search's provenance: \code{tool_version} (from
+\code{blastn -version} for a local search, from NCBI's reported
+\code{BlastOutput_version} for a remote one), \code{database_reported}
+(remote only -- the database NCBI says it searched, which the
+\code{database} argument only asked for), \code{database_date} (local
+only -- the build date the consistency check read from the database
+itself), and the \code{search_started} / \code{search_finished}
+timestamps.
+
+Every one of those keys is present on every return path, including each
+early return on an empty or wholly filtered result, carrying \code{NA}
+when this search could not record the field. A search that found nothing
+still ran, and its tool, database and date are what explain the emptiness;
+a key that appeared on some paths only could not be told apart from a
+field the search genuinely could not record.
 
 \code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
 none) -- remote BLAST only: \code{asv_id}s whose

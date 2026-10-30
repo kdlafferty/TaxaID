@@ -91,6 +91,25 @@
 #'   fully consistent canonical object (e.g. `kingdom`, `testid`, `accession`)
 #'   and avoids case-sensitivity surprises in downstream joins. Set to `FALSE`
 #'   to preserve original column name casing.
+#' @param provenance Named list, or `NULL` (default). The search that produced
+#'   these hits, for a match table imported from outside this package -- a
+#'   vsearch or other hit list, a classifier export, a table supplied by a
+#'   sequencing provider. `blast_sequences()` records the same fields itself
+#'   from the search it ran, so a BLAST result needs nothing here.
+#'
+#'   Five fields are required: `method` (the matching tool), `tool_version`,
+#'   `database` (the reference database), `database_date` (its build or
+#'   retrieval date) and `search_started` (when the search ran). `parameters`
+#'   (free text, for the settings that decide which hits are kept),
+#'   `database_reported` and `search_finished` are optional.
+#'
+#'   Each field must be named even when its value is `NA`: an explicit `NA`
+#'   reports the field as unknown, which a reader can act on, while an absent
+#'   field cannot be told apart from an oversight. An unrecognised field name
+#'   is an error rather than a silently dropped value. Attached as
+#'   `attr(out, "report_params")`, merged into any such attribute `data`
+#'   already carries, with these values taking precedence, and read from there
+#'   by [report_match()].
 #'
 #' @return A data frame with at minimum:
 #' \describe{
@@ -108,6 +127,11 @@
 #' `lowercase_names = TRUE` (the default), every column name in the output,
 #' including retained ones, is converted to lowercase; the underlying data
 #' is untouched, only the names.
+#'
+#' When `provenance` is supplied, the result also carries an
+#' `attr(out, "report_params")` list recording the search, in the same fields
+#' `blast_sequences()` records, so that one vocabulary describes every match
+#' source whatever produced the hits.
 #'
 #' @seealso [TaxaTools::create_taxon_names()], [TaxaTools::rename_cols()],
 #'   [filter_redundant_hypotheses()] (the natural next pipeline step, when
@@ -142,7 +166,8 @@ standardize_match_data <- function(data = NULL,
                                    rank_system = NULL,
                                    coverage_col = NULL,
                                    col_map = NULL,
-                                   lowercase_names = TRUE) {
+                                   lowercase_names = TRUE,
+                                   provenance = NULL) {
   # --- 1. Load data -----------------------------------------------------------
   if (is.null(data)) {
     if (!interactive()) {
@@ -259,7 +284,68 @@ standardize_match_data <- function(data = NULL,
   # --- 8. Optionally lowercase all column names (last step) -------------------
   if (lowercase_names) names(data) <- tolower(names(data))
 
+  # --- 9. Attach search provenance -------------------------------------------
+  # Last, because create_taxon_names() above rebuilds the frame and an
+  # attribute does not survive that.
+  if (!is.null(provenance)) {
+    .validate_provenance(provenance)
+    existing <- attr(data, "report_params")
+    merged <- if (is.null(existing)) list() else existing
+    merged[names(provenance)] <- provenance
+    attr(data, "report_params") <- merged
+  }
+
   data
+}
+
+# Checks a caller-supplied provenance record before it reaches a published
+# methods section. Every required field must be NAMED, though its value may be
+# NA: an analyst who does not know the reference database's build date should
+# record that it is unknown, which is a fact a reader can act on, rather than
+# leave the field out, which a reader cannot tell apart from an oversight.
+# An unrecognised name is an error, not a silently dropped field -- a typo that
+# vanished would read as a recorded provenance that nothing actually carries.
+#' @noRd
+.validate_provenance <- function(provenance) {
+  if (!is.list(provenance) || !length(provenance) ||
+    is.null(names(provenance)) || any(!nzchar(names(provenance)))) {
+    stop("`provenance` must be a named list.", call. = FALSE)
+  }
+  required <- c("method", "tool_version", "database", "database_date", "search_started")
+  allowed <- union(required, names(.empty_provenance()))
+
+  extra <- setdiff(names(provenance), allowed)
+  if (length(extra)) {
+    stop(sprintf(
+      "`provenance` has unrecognised field(s): %s. Allowed fields: %s.",
+      paste(extra, collapse = ", "), paste(allowed, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  missing <- setdiff(required, names(provenance))
+  if (length(missing)) {
+    stop(sprintf(
+      paste0(
+        "`provenance` is missing required field(s): %s. These are what let a ",
+        "published methods section state what searched these sequences, ",
+        "against which reference database, built when, and on what date -- so ",
+        "each must be named. Record NA for any you genuinely do not know; ",
+        "an explicit NA is reportable, an absent field is indistinguishable ",
+        "from an oversight."
+      ),
+      paste(missing, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  bad_len <- names(provenance)[lengths(provenance) != 1L]
+  if (length(bad_len)) {
+    stop(sprintf(
+      "Each `provenance` field must be a single value; these are not: %s.",
+      paste(bad_len, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  invisible(TRUE)
 }
 
 # ==============================================================================

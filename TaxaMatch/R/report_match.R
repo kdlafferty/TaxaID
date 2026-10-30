@@ -34,7 +34,12 @@
 #'
 #' @return A \code{report_section} object with:
 #' \describe{
-#'   \item{methods}{Template text describing matching approach.}
+#'   \item{methods}{Template text describing matching approach, including
+#'     whatever search provenance \code{attr(match_data, "report_params")}
+#'     records -- tool version, the database the search server reported, the
+#'     reference database's build date, and the search date. Each sentence
+#'     appears only when the match object actually carries that field, so the
+#'     methods text never states a version or a date on no evidence.}
 #'   \item{results}{Template text summarizing match statistics, or
 #'     \code{NULL} when \code{match_data} has neither \code{score_original}
 #'     nor a taxon-name column to summarize. Scores are formatted as a
@@ -46,11 +51,22 @@
 #'   \item{params}{Named list of matching parameters (\code{method},
 #'     \code{database}, \code{min_score}, \code{marker} when available). May
 #'     contain additional fields passed through unchanged from
-#'     \code{attr(match_data, "report_params")} (e.g. \code{n_samples} from
-#'     \code{blast_sequences()}) whenever that attribute carries fields not
-#'     already named above.}
+#'     \code{attr(match_data, "report_params")} (e.g. \code{n_samples} and
+#'     the provenance fields from \code{blast_sequences()}) whenever that
+#'     attribute carries fields not already named above.}
 #'   \item{statistics}{Named list of summary counts and scores.}
 #' }
+#'
+#' @section Match objects that record no method:
+#' A match object built outside \code{\link{blast_sequences}} -- an imported
+#' hit list from another search tool, or a classifier export -- carries no
+#' \code{report_params} attribute, and this function cannot infer what
+#' produced it: such a table is indistinguishable here from a BLAST result.
+#' The methods text then reports the method as unrecorded and omits the BLAST
+#' citation, rather than naming a tool and citing a paper the search may have
+#' no connection to. To have a published methods section name the real tool,
+#' its version and its database, attach those fields as
+#' \code{attr(match_data, "report_params")} before calling this function.
 #'
 #' @seealso \code{\link{blast_sequences}}, \code{\link{standardize_match_data}}
 #'
@@ -146,11 +162,17 @@ report_match <- function(match_data,
   if (!is.null(score_stats)) statistics <- c(statistics, score_stats)
 
   # --- Params from report_params or defaults ----------------------------------
-  method <- if (!is.null(rp$method)) rp$method else "BLAST"
+  # A match object with no report_params records no method, and this function
+  # cannot infer one: an imported hit list (vsearch, a classifier export) is
+  # indistinguishable here from a BLAST result. Saying "BLAST" would put a
+  # method -- and, below, a BLAST citation -- into a published methods section
+  # on no evidence, so an unrecorded method is reported as unrecorded.
+  method_recorded <- !is.null(rp$method)
+  method <- if (method_recorded) rp$method else NA_character_
   database <- if (!is.null(rp$database)) rp$database else NULL
   min_score <- if (!is.null(rp$min_score)) rp$min_score else NULL
 
-  params <- list(method = method)
+  params <- list(method = if (method_recorded) method else "not recorded in the match object")
   if (!is.null(database)) params$database <- database
   if (!is.null(min_score)) params$min_score <- min_score
   if (!is.null(marker)) params$marker <- marker
@@ -173,7 +195,11 @@ report_match <- function(match_data,
   # asserting a scale this function cannot verify from match_data alone.
   is_pct_scale <- is.null(data_type) || identical(data_type, "eDNA")
 
-  match_desc <- sprintf("were matched using %s", method)
+  match_desc <- if (method_recorded) {
+    sprintf("were matched using %s", method)
+  } else {
+    "were matched by a method not recorded in the match object"
+  }
   if (!is.null(database)) {
     match_desc <- paste0(match_desc, sprintf(" against %s", database))
   }
@@ -200,7 +226,36 @@ report_match <- function(match_data,
     )
   }
 
-  methods_text <- paste(sample_desc, match_desc)
+  # --- Search provenance ------------------------------------------------------
+  # Each field prints only when the match object actually recorded it. A
+  # methods section that omits the search date is a gap; one that prints a date
+  # the match object never carried is worse than the gap.
+  .recorded <- function(x) !is.null(x) && length(x) >= 1L && !all(is.na(x))
+  prov_parts <- character(0L)
+  if (.recorded(rp$tool_version)) {
+    prov_parts <- c(prov_parts, sprintf("Search tool version: %s.", rp$tool_version))
+  }
+  if (.recorded(rp$database_reported)) {
+    prov_parts <- c(prov_parts, sprintf(
+      "Database as reported by the search server: %s.", rp$database_reported
+    ))
+  }
+  if (.recorded(rp$database_date)) {
+    prov_parts <- c(prov_parts, sprintf(
+      "Reference database build date: %s.",
+      paste(unique(stats::na.omit(rp$database_date)), collapse = ", ")
+    ))
+  }
+  if (.recorded(rp$search_started)) {
+    prov_parts <- c(prov_parts, sprintf(
+      "Search run: %s.", format(as.POSIXct(rp$search_started), "%Y-%m-%d")
+    ))
+  }
+  if (.recorded(rp$parameters)) {
+    prov_parts <- c(prov_parts, sprintf("Search parameters: %s.", rp$parameters))
+  }
+
+  methods_text <- paste(c(sample_desc, match_desc, prov_parts), collapse = " ")
 
   # --- Results text -----------------------------------------------------------
   results_parts <- character(0L)
@@ -250,8 +305,9 @@ report_match <- function(match_data,
   # for; image/acoustic classifier citations depend on which specific tool
   # produced match_data, which this function cannot determine from the data
   # alone.
-  citations <- if (identical(method, "BLAST") || identical(method, "remote BLAST") ||
-    identical(method, "local BLAST")) {
+  citations <- if (method_recorded &&
+    (identical(method, "BLAST") || identical(method, "remote BLAST") ||
+      identical(method, "local BLAST"))) {
     paste0(
       "Altschul SF, Gish W, Miller W, Myers EW, Lipman DJ (1990). Basic ",
       "local alignment search tool. Journal of Molecular Biology, 215(3), 403-410."

@@ -89,3 +89,78 @@ test_that("report_match handles missing score column gracefully", {
   expect_s3_class(sec, "report_section")
   expect_null(sec$statistics$median_top_score)
 })
+
+# ==============================================================================
+# Search provenance and an unrecorded method
+# ==============================================================================
+
+test_that("report_match does not claim BLAST for a match object that records no method", {
+  # An imported hit list (vsearch, a classifier export) carries no
+  # report_params. Naming BLAST here would put a tool into a published methods
+  # section on no evidence -- and, below, cite a paper for a search that may
+  # have no connection to it.
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
+  expect_null(attr(df, "report_params"))
+
+  sec <- report_match(df)
+  expect_false(grepl("BLAST", sec$methods, fixed = TRUE))
+  expect_true(grepl("not recorded", sec$methods, fixed = TRUE))
+  expect_true(grepl("not recorded", sec$params$method, fixed = TRUE))
+})
+
+test_that("report_match omits the BLAST citation when no method is recorded", {
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
+  sec <- report_match(df)
+  expect_false(any(grepl("Altschul", unlist(sec$citations), fixed = TRUE)))
+})
+
+test_that("report_match still cites BLAST when the match object records it", {
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
+  attr(df, "report_params") <- list(method = "local BLAST", database = "nt")
+  sec <- report_match(df)
+  expect_true(any(grepl("Altschul", unlist(sec$citations), fixed = TRUE)))
+})
+
+test_that("report_match prints every provenance field the match object records", {
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
+  attr(df, "report_params") <- list(
+    method = "local BLAST", database = "core_nt", min_score = 90,
+    tool_version = "2.14.0+",
+    database_date = "Jan 5, 2026",
+    search_started = as.POSIXct("2026-10-29 09:00:00", tz = "UTC"),
+    search_finished = as.POSIXct("2026-10-29 09:10:00", tz = "UTC")
+  )
+
+  sec <- report_match(df)
+  expect_true(grepl("2.14.0+", sec$methods, fixed = TRUE))
+  expect_true(grepl("Jan 5, 2026", sec$methods, fixed = TRUE))
+  expect_true(grepl("2026-10-29", sec$methods, fixed = TRUE))
+})
+
+test_that("report_match prints no provenance sentence for an NA field", {
+  # NA means "this search could not record it". Printing "NA" into a methods
+  # section would be worse than the gap it fills.
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
+  attr(df, "report_params") <- list(
+    method = "local BLAST", database = "core_nt",
+    tool_version = NA_character_,
+    database_date = NA_character_,
+    search_started = as.POSIXct(NA),
+    search_finished = as.POSIXct(NA)
+  )
+
+  sec <- report_match(df)
+  expect_false(grepl("NA", sec$methods, fixed = TRUE))
+  expect_false(grepl("Search tool version", sec$methods, fixed = TRUE))
+  expect_false(grepl("Search run", sec$methods, fixed = TRUE))
+})
+
+test_that("report_match reports the remote database the server named", {
+  df <- data.frame(observation_id = "S1", score_original = 99, stringsAsFactors = FALSE)
+  attr(df, "report_params") <- list(
+    method = "remote BLAST", database = "nt",
+    database_reported = "nt v5 2026-10-01"
+  )
+  sec <- report_match(df)
+  expect_true(grepl("nt v5 2026-10-01", sec$methods, fixed = TRUE))
+})

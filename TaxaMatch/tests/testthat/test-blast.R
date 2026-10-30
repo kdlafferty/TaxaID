@@ -15,6 +15,10 @@
 .parse_lat_lon <- function(...) get(".parse_lat_lon", envir = asNamespace("TaxaMatch"))(...)
 .resolve_locations_by_acc <- function(...) get(".resolve_locations_by_acc", envir = asNamespace("TaxaMatch"))(...)
 .split_batches_by_length <- function(...) get(".split_batches_by_length", envir = asNamespace("TaxaMatch"))(...)
+.tool_version <- function(...) get(".tool_version", envir = asNamespace("TaxaMatch"))(...)
+.blast_xml_provenance <- function(...) get(".blast_xml_provenance", envir = asNamespace("TaxaMatch"))(...)
+.match_report_params <- function(...) get(".match_report_params", envir = asNamespace("TaxaMatch"))(...)
+.empty_provenance <- function(...) get(".empty_provenance", envir = asNamespace("TaxaMatch"))(...)
 
 # --- Helpers ------------------------------------------------------------------
 
@@ -1218,4 +1222,172 @@ test_that(".blast_remote() announces an empty poll result as it happens", {
     )),
     "No results retrieved"
   )
+})
+
+
+# ==============================================================================
+# Search provenance in report_params
+# ==============================================================================
+
+# The contract these tests defend: a published methods section must be able to
+# state WHEN the search ran, WITH WHAT, and AGAINST WHAT. Every key is present
+# on every return path, carrying NA when unknown, because a key that appears on
+# some paths only cannot be told apart from a field the search could not record.
+PROVENANCE_KEYS <- c(
+  "method", "database", "min_score", "min_query_coverage", "n_samples",
+  "tool_version", "database_reported", "database_date",
+  "search_started", "search_finished", "parameters"
+)
+
+test_that("one provenance vocabulary serves every match source", {
+  # blast_sequences() fills these from the search it ran; an imported hit list
+  # fills the same names through standardize_match_data(provenance=). A field
+  # one source records and the other rejects cannot arise from one definition.
+  expect_setequal(names(.empty_provenance()), setdiff(PROVENANCE_KEYS, c(
+    "method", "database", "min_score", "min_query_coverage", "n_samples"
+  )))
+  expect_true(all(names(.empty_provenance()) %in%
+    names(.match_report_params("local", "db", 70, 80, n_samples = 0L))))
+})
+
+test_that(".match_report_params always carries the full key set", {
+  bare <- .match_report_params("local", "db", 70, 80, n_samples = 0L)
+  expect_setequal(names(bare), PROVENANCE_KEYS)
+
+  full <- .match_report_params(
+    "local", "db", 70, 80,
+    n_samples = 3L,
+    provenance = list(
+      tool_version = "2.14.0+", database_date = "Jan 5, 2026",
+      search_started = as.POSIXct("2026-10-29 09:00:00", tz = "UTC"),
+      search_finished = as.POSIXct("2026-10-29 09:10:00", tz = "UTC")
+    )
+  )
+  # Same keys, same order -- the only difference is the values.
+  expect_identical(names(full), names(bare))
+  expect_identical(full$tool_version, "2.14.0+")
+  expect_identical(full$database_date, "Jan 5, 2026")
+})
+
+test_that(".match_report_params NA-fills what a search could not record", {
+  rp <- .match_report_params("local", "db", 70, 80, n_samples = 0L)
+  expect_true(is.na(rp$tool_version))
+  expect_true(is.na(rp$database_reported))
+  expect_true(is.na(rp$database_date))
+  expect_true(is.na(rp$search_started))
+  expect_true(is.na(rp$search_finished))
+})
+
+test_that(".match_report_params ignores a provenance field it does not define", {
+  # A typo'd or renamed field must not silently become a new report_params key
+  # that no consumer reads and no test covers.
+  rp <- .match_report_params(
+    "local", "db", 70, 80, n_samples = 0L,
+    provenance = list(blast_versoin = "typo", tool_version = "2.14.0+")
+  )
+  expect_setequal(names(rp), PROVENANCE_KEYS)
+  expect_identical(rp$tool_version, "2.14.0+")
+})
+
+test_that(".match_report_params labels remote and local searches distinctly", {
+  expect_identical(.match_report_params("remote", "nt", 70, 80, 1L)$method, "remote BLAST")
+  expect_identical(.match_report_params("local", "nt", 70, 80, 1L)$method, "local BLAST")
+})
+
+test_that(".tool_version returns NA when blastn is not available", {
+  # The NA branch, not a guess and not an error: a match object whose tool
+  # version is unknown has to say so.
+  expect_true(is.na(.tool_version(blastn = "")))
+})
+
+test_that(".blast_xml_provenance reads version and database from NCBI XML", {
+  skip_if_not_installed("xml2")
+  xml <- paste(
+    '<?xml version="1.0"?>',
+    "<BlastOutput>",
+    "  <BlastOutput_program>blastn</BlastOutput_program>",
+    "  <BlastOutput_version>BLASTN 2.14.0+</BlastOutput_version>",
+    "  <BlastOutput_db>nt</BlastOutput_db>",
+    "</BlastOutput>",
+    sep = "\n"
+  )
+  prov <- .blast_xml_provenance(xml)
+  expect_identical(prov$tool_version, "BLASTN 2.14.0+")
+  expect_identical(prov$database_reported, "nt")
+})
+
+test_that(".blast_xml_provenance returns NAs for a status page or malformed XML", {
+  for (bad in list(
+    "QBlastInfoBegin\nStatus=WAITING\nQBlastInfoEnd",
+    "<BlastOutput><unclosed>",
+    character(0),
+    NULL
+  )) {
+    prov <- .blast_xml_provenance(bad)
+    expect_true(is.na(prov$tool_version))
+    expect_true(is.na(prov$database_reported))
+  }
+})
+
+test_that("blast_sequences records provenance on a result with hits", {
+  seq_df <- make_seq_df(2)
+  testthat::local_mocked_bindings(
+    .blast_local = function(...) make_raw_hits(),
+    .package = "TaxaMatch"
+  )
+  out <- blast_sequences(
+    seq_df, method = "local", database = "fake_db",
+    resolve_taxonomy = FALSE, resolve_location = FALSE, verbose = FALSE
+  )
+  rp <- attr(out, "report_params")
+  expect_setequal(names(rp), PROVENANCE_KEYS)
+  expect_identical(rp$method, "local BLAST")
+  expect_identical(rp$database, "fake_db")
+  # The timestamps are real: the search bracket is recorded, in order.
+  expect_s3_class(rp$search_started, "POSIXct")
+  expect_s3_class(rp$search_finished, "POSIXct")
+  expect_true(rp$search_finished >= rp$search_started)
+})
+
+test_that("blast_sequences records provenance when the search found no hits", {
+  # THE case this whole record exists for: an empty result still has to say
+  # when it ran and against what, because that is what explains the emptiness.
+  seq_df <- make_seq_df(2)
+  testthat::local_mocked_bindings(
+    .blast_local = function(...) .empty_raw_hits(),
+    .package = "TaxaMatch"
+  )
+  out <- NULL
+  expect_warning(
+    out <- blast_sequences(
+      seq_df, method = "local", database = "fake_db",
+      resolve_taxonomy = FALSE, resolve_location = FALSE, verbose = FALSE
+    ),
+    "no hits"
+  )
+  rp <- attr(out, "report_params")
+  expect_setequal(names(rp), PROVENANCE_KEYS)
+  expect_identical(rp$database, "fake_db")
+  expect_identical(rp$n_samples, 0L)
+  expect_s3_class(rp$search_started, "POSIXct")
+})
+
+test_that("blast_sequences records provenance when filtering removes every hit", {
+  seq_df <- make_seq_df(2)
+  testthat::local_mocked_bindings(
+    .blast_local = function(...) make_raw_hits(),
+    .package = "TaxaMatch"
+  )
+  out <- NULL
+  expect_warning(
+    out <- blast_sequences(
+      seq_df, method = "local", database = "fake_db",
+      min_score = 100, resolve_taxonomy = FALSE, resolve_location = FALSE,
+      verbose = FALSE
+    ),
+    "filtering"
+  )
+  rp <- attr(out, "report_params")
+  expect_setequal(names(rp), PROVENANCE_KEYS)
+  expect_identical(rp$min_score, 100)
 })
