@@ -238,14 +238,46 @@ with the floor's concentration kept. Without this the unreferenced
 prior mass of a unit would grow with the number of candidate genera, with
 no regional evidence behind it. A unit with one floor-priced ring, and a
 ring priced by a clade budget, are unchanged.
+
+This holds whatever ranks \code{taxaexpect_priors} carries. A ring row never
+takes its clade's own occurrence prior, even when the table holds a row for
+that exact genus or family: the clade's record counts the referenced
+congeners, and each of those already competes as its own
+\code{specific_candidate} row, so pricing the ring with it would both contradict
+what the ring means and count those relatives twice in one unit. The rule
+applies to a ring row -- a complement hypothesis ABOVE the finest rank in
+\code{rank_system}. An \code{unreferenced_species} row AT the finest rank is a named
+unsequenced species, not a ring, and keeps its own occurrence prior.
+
+A ring and a NAMED candidate for the same clade in the same unit are
+distinct hypotheses and both survive: one says the read is a
+reference-sequenced member of that clade resolved only to its rank, the
+other that it is an unsequenced species within it. Neither is a duplicate of
+the other and neither displaces the other, whatever their priors.
+
+The floor itself is \code{Beta(1, N_total - 1)}, the prior that the detected
+taxon is one arbitrary unrecorded taxon from the regional pool, and
+\code{N_total} is the size of that pool at ONE rank. A \code{taxaexpect_priors}
+carrying a \code{global_floor} row per rank therefore carries a different
+\code{N_total} per rank, there being fewer genera than species and fewer
+families than genera. The floor is read from the finest rank in
+\code{rank_system} alone, since it prices an unmodelled species and a ring that
+no clade budget priced; averaging the ranks' rows would price those against
+a pool that is no rank's pool. The site and global dark-diversity means and
+the singleton-mirror threshold read the finest rank for the same reason,
+each of them averaging \code{alpha}/\code{beta} over undetected rows whose values
+encode the pool at their own rank. Where a rank is not represented at all,
+the estimate is taken from the rows that are present rather than dropped.
 }
 
 \section{Coarse-rank expansion}{
 
 When a likelihood row has \code{taxon_name_rank} coarser than species (e.g.
-\code{"family"} or \code{"genus"}), the primary species-level join finds no match
-and the row would otherwise fall back to the global floor prior, ignoring
-all species-level prior information within that taxon.
+\code{"family"} or \code{"genus"}), the primary join finds no match -- it requires
+the row's rank to equal the prior row's, and a coarse-rank prior row is
+reserved for named hypotheses -- and the row would otherwise fall back to
+the global floor prior, ignoring all species-level prior information
+within that taxon.
 
 When \code{expansion_taxonomy} is supplied, \code{join_priors()} instead expands each
 coarse-rank row into one species-level hypothesis row per retained candidate:

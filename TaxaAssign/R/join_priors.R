@@ -39,6 +39,30 @@ utils::globalVariables(c(
 #   - no coarse-rank rows are present
 #   - no matching species are found in taxaexpect_priors for a given constraint
 #     (those rows remain for the dark diversity fallback downstream)
+# .at_finest_rank()
+#
+# A prior row's alpha/beta encode the pool at the row's OWN rank: a genus-rank
+# undetected row is priced against the number of genera, a species-rank one
+# against the number of species. Every aggregation below averages alpha/beta
+# over a class of undetected rows, so averaging across ranks averages pool
+# scales and prices a species-scale quantity against a pool that is no rank's
+# pool. Each aggregation therefore reads the finest rank in rank_system.
+#
+# Falls back to every row of the subset it was handed when the finest rank is
+# not represented there at all: a coarse-scale estimate is wrong, but losing
+# the estimate entirely is worse, and the caller has no better source.
+#' @noRd
+.at_finest_rank <- function(rows, finest_rank) {
+  if (!"taxon_name_rank" %in% names(rows) || nrow(rows) == 0L) {
+    return(rows)
+  }
+  keep <- !is.na(rows$taxon_name_rank) & rows$taxon_name_rank == finest_rank
+  if (!any(keep)) {
+    return(rows)
+  }
+  rows[keep, , drop = FALSE]
+}
+
 #' @noRd
 .expand_coarse_rank_rows <- function(result,
                                      taxaexpect_priors,
@@ -571,11 +595,43 @@ utils::globalVariables(c(
 #' no regional evidence behind it. A unit with one floor-priced ring, and a
 #' ring priced by a clade budget, are unchanged.
 #'
+#' This holds whatever ranks `taxaexpect_priors` carries. A ring row never
+#' takes its clade's own occurrence prior, even when the table holds a row for
+#' that exact genus or family: the clade's record counts the referenced
+#' congeners, and each of those already competes as its own
+#' `specific_candidate` row, so pricing the ring with it would both contradict
+#' what the ring means and count those relatives twice in one unit. The rule
+#' applies to a ring row -- a complement hypothesis ABOVE the finest rank in
+#' `rank_system`. An `unreferenced_species` row AT the finest rank is a named
+#' unsequenced species, not a ring, and keeps its own occurrence prior.
+#'
+#' A ring and a NAMED candidate for the same clade in the same unit are
+#' distinct hypotheses and both survive: one says the read is a
+#' reference-sequenced member of that clade resolved only to its rank, the
+#' other that it is an unsequenced species within it. Neither is a duplicate of
+#' the other and neither displaces the other, whatever their priors.
+#'
+#' The floor itself is `Beta(1, N_total - 1)`, the prior that the detected
+#' taxon is one arbitrary unrecorded taxon from the regional pool, and
+#' `N_total` is the size of that pool at ONE rank. A `taxaexpect_priors`
+#' carrying a `global_floor` row per rank therefore carries a different
+#' `N_total` per rank, there being fewer genera than species and fewer
+#' families than genera. The floor is read from the finest rank in
+#' `rank_system` alone, since it prices an unmodelled species and a ring that
+#' no clade budget priced; averaging the ranks' rows would price those against
+#' a pool that is no rank's pool. The site and global dark-diversity means and
+#' the singleton-mirror threshold read the finest rank for the same reason,
+#' each of them averaging `alpha`/`beta` over undetected rows whose values
+#' encode the pool at their own rank. Where a rank is not represented at all,
+#' the estimate is taken from the rows that are present rather than dropped.
+#'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
-#' `"family"` or `"genus"`), the primary species-level join finds no match
-#' and the row would otherwise fall back to the global floor prior, ignoring
-#' all species-level prior information within that taxon.
+#' `"family"` or `"genus"`), the primary join finds no match -- it requires
+#' the row's rank to equal the prior row's, and a coarse-rank prior row is
+#' reserved for named hypotheses -- and the row would otherwise fall back to
+#' the global floor prior, ignoring all species-level prior information
+#' within that taxon.
 #'
 #' When `expansion_taxonomy` is supplied, `join_priors()` instead expands each
 #' coarse-rank row into one species-level hypothesis row per retained candidate:
@@ -965,15 +1021,69 @@ join_priors <- function(likelihoods,
   # combine_multisite_priors(). Declaring this
   # explicitly silences dplyr's precautionary warning, which would otherwise
   # fire on every genuinely multi-site, multi-candidate observation.
-  result <- likelihoods |>
+  .jp_base <- likelihoods |>
     dplyr::left_join(event_meta,
       by = "observation_id",
       relationship = "many-to-many"
-    ) |>
+    )
+
+  # ---- A ring row takes no clade occurrence prior ----------------------------
+  # A ring row means "an UNREFERENCED member of this clade", so its prior is the
+  # floor plus the clade's unrecorded mass, which is what the ring-floor section
+  # of this function's documentation describes and what
+  # add_unreferenced_prior_mass() computes. The clade's OWN occurrence row
+  # counts the referenced congeners, and each of those is already present as its
+  # own specific_candidate row -- taking it here would price the ring with the
+  # evidence for the very relatives it is defined to exclude, and double-count
+  # them in the same unit.
+  #
+  # The join below matches on taxon_name_rank, so while taxaexpect_priors held
+  # species rows only, a genus- or family-rank ring could never match and this
+  # was true for free. A prior table carrying coarse-rank rows makes the clade
+  # row matchable, so the rule has to be enforced rather than assumed.
+  #
+  # The test is on RANK, not on hypothesis_type alone. `unreferenced_species`
+  # occurs at two ranks with two meanings: at a coarser rank it is the ring, but
+  # AT the finest rank it is a named unsequenced species, which legitimately has
+  # an occurrence prior of its own. Excluding by type alone would strip the
+  # prior from those named rows -- the opposite of the intent.
+  #
+  # Enforced by masking the rank key across the join, so a blocked row matches
+  # nothing and reaches the floor path exactly as a failed join does, rather
+  # than by clearing joined columns afterwards (which would have to guess which
+  # columns the join contributed, and guess wrong whenever dplyr suffixes a
+  # name that collides).
+  finest_rank <- rank_system[length(rank_system)]
+  blocked_ring <- if ("hypothesis_type" %in% names(.jp_base)) {
+    .is_complement_type(.jp_base$hypothesis_type) &
+      !is.na(.jp_base$taxon_name_rank) &
+      .jp_base$taxon_name_rank != finest_rank
+  } else {
+    rep(FALSE, nrow(.jp_base))
+  }
+
+  .jp_rank_keep <- .jp_base$taxon_name_rank
+  .jp_base$.jp_prior_row <- seq_len(nrow(.jp_base))
+  if (any(blocked_ring)) {
+    # A rank value no real taxonomy can carry, so no prior row can match it.
+    .jp_base$taxon_name_rank[blocked_ring] <- "\r.ring_takes_no_clade_prior"
+  }
+
+  result <- .jp_base |>
     dplyr::left_join(
       taxaexpect_priors,
       by = c("taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
     )
+
+  result$taxon_name_rank <- .jp_rank_keep[result$.jp_prior_row]
+  result$.jp_prior_row <- NULL
+
+  if (any(blocked_ring)) {
+    .br <- .jp_base[blocked_ring, , drop = FALSE]
+    cli::cli_inform(
+      "join_priors: {sum(blocked_ring)} ring row(s) at {paste(sort(unique(.jp_rank_keep[blocked_ring])), collapse = ', ')} rank kept the floor path rather than their clade's own occurrence prior ({length(unique(.br$taxon_name))} clade(s))."
+    )
+  }
 
   # ---- Habitat-agnostic named-species prior fallback --------------------------
   # A named prior row can legitimately have no habitat concept at all --
@@ -1088,9 +1198,17 @@ join_priors <- function(likelihoods,
   }
 
   # ---- Dark diversity fallback -----------------------------------------------
+  # Finest rank only -- see .at_finest_rank(). These means price a SPECIES that
+  # has no prior of its own, and global_dark also becomes the unmodelled floor
+  # when the table carries no global_floor row, so a mixed-rank mean here
+  # reaches the floor itself.
+  dark_rows <- .at_finest_rank(
+    taxaexpect_priors[!is.na(taxaexpect_priors$undetected_type), , drop = FALSE],
+    finest_rank
+  )
+
   # Site-level: mean alpha/beta from Tier 3 (undetected) rows per grid x habitat
-  dark_by_site <- taxaexpect_priors |>
-    dplyr::filter(!is.na(undetected_type)) |>
+  dark_by_site <- dark_rows |>
     dplyr::group_by(grid_id, main_habitat) |>
     dplyr::summarise(
       dark_alpha = mean(alpha, na.rm = TRUE),
@@ -1100,8 +1218,7 @@ join_priors <- function(likelihoods,
 
   # Global fallback: average across all Tier 3 rows (used to fill dark_alpha/beta
   # when a site has no Tier 3 rows, driving the modelled-species floor promotion).
-  global_dark <- taxaexpect_priors |>
-    dplyr::filter(!is.na(undetected_type)) |>
+  global_dark <- dark_rows |>
     dplyr::summarise(
       dark_alpha = mean(alpha, na.rm = TRUE),
       dark_beta  = mean(beta, na.rm = TRUE)
@@ -1117,8 +1234,15 @@ join_priors <- function(likelihoods,
   # down by the global floor, erasing the signal that the species was actually
   # detected. With singleton_mean as the threshold, only species whose model
   # estimate falls below the rarest-known detection rate are promoted.
-  singleton_by_site <- taxaexpect_priors |>
-    dplyr::filter(undetected_type == "singleton_mirror") |>
+  # Finest rank only, for the same reason: this threshold is compared against a
+  # modelled SPECIES' own estimate.
+  singleton_rows <- .at_finest_rank(
+    taxaexpect_priors[!is.na(taxaexpect_priors$undetected_type) &
+      taxaexpect_priors$undetected_type == "singleton_mirror", , drop = FALSE],
+    finest_rank
+  )
+
+  singleton_by_site <- singleton_rows |>
     dplyr::group_by(grid_id, main_habitat) |>
     dplyr::summarise(
       singleton_alpha = mean(alpha, na.rm = TRUE),
@@ -1126,8 +1250,7 @@ join_priors <- function(likelihoods,
       .groups = "drop"
     )
 
-  global_singleton <- taxaexpect_priors |>
-    dplyr::filter(undetected_type == "singleton_mirror") |>
+  global_singleton <- singleton_rows |>
     dplyr::summarise(
       singleton_alpha = mean(alpha, na.rm = TRUE),
       singleton_beta  = mean(beta, na.rm = TRUE)
@@ -1143,6 +1266,27 @@ join_priors <- function(likelihoods,
   # species from the regional pool that have zero detections -- appropriate here.
   gf_rows <- taxaexpect_priors |>
     dplyr::filter(undetected_type == "global_floor")
+
+  # The floor is Beta(1, N_total - 1): the prior that the detected taxon is one
+  # arbitrary unrecorded taxon drawn from the regional pool. N_total is the size
+  # of that pool AT ONE RANK, so a prior table carrying a global_floor row per
+  # rank carries one N_total per rank -- measured on CalIntertidal, beta is
+  # 290,064 at species, 307,198 at genus and 318,147 at family, because there
+  # are fewer genera than species and fewer families than genera. Averaging
+  # them averages three different pool sizes and prices a species-scale
+  # fallback off a mixed-rank denominator.
+  #
+  # This floor is the fallback for an unmodelled SPECIES, and for a ring row
+  # that no clade budget priced, so it reads the finest rank only. A table whose
+  # floor rows are all at one rank is unaffected.
+  gf_finest <- .at_finest_rank(gf_rows, finest_rank)
+  if (nrow(gf_finest) < nrow(gf_rows)) {
+    cli::cli_inform(
+      "join_priors: global floor read from {nrow(gf_finest)} {finest_rank}-rank row(s) rather than all {nrow(gf_rows)} ({paste(sort(unique(gf_rows$taxon_name_rank)), collapse = ', ')}); each rank's floor encodes the size of its own pool."
+    )
+  }
+  gf_rows <- gf_finest
+
   if (nrow(gf_rows) > 0 && !is.na(mean(gf_rows$alpha, na.rm = TRUE))) {
     gf_alpha <- mean(gf_rows$alpha, na.rm = TRUE)
     gf_beta <- mean(gf_rows$beta, na.rm = TRUE)
@@ -1441,12 +1585,34 @@ join_priors <- function(likelihoods,
   # actually detected at (see combine_multisite_priors() roxygen for the full
   # empirical repro). This still dedupes same-site duplicates from coarse-rank
   # expansion as well.
+  # hypothesis_type is part of the key because a ring and a NAMED candidate for
+  # the same clade in the same unit are different hypotheses, not duplicates:
+  # "Aurelia / genus / specific_candidate" says the read IS a reference-sequenced
+  # Aurelia resolved only to genus, while "Aurelia / genus /
+  # unreferenced_species" says it is an UNSEQUENCED species of Aurelia. They are
+  # meant to compete, and that competition is what moves a call up a rank
+  # instead of naming the wrong relative. Without hypothesis_type the key
+  # collapsed them and arrange(desc(prior_mean)) kept whichever carried the
+  # larger prior -- deciding which hypothesis exists by its prior rather than by
+  # the evidence, and deleting the other. Measured on CalIntertidal COI at one
+  # site, 2,382 units held both rows and 504 ring rows were being removed, all
+  # of them by a named candidate whose prior was larger (median 1.17e-03 against
+  # 2.65e-07). The restore after the redundancy filter below exists for the same
+  # reason: a ring must not be deleted for being coarser than a named candidate.
+  #
+  # The deduplication this still performs is its stated purpose: same-site
+  # duplicates from coarse-rank expansion, which all carry hypothesis_type
+  # "rank_expanded" and so continue to collapse to one row.
+  # hypothesis_type is OPTIONAL in `likelihoods` -- guarded as such throughout
+  # this function -- so it joins the key only when the column is present.
+  dedup_keys <- c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    if ("hypothesis_type" %in% names(result)) "hypothesis_type",
+    "grid_id", "main_habitat"
+  )
   result <- result |>
     dplyr::arrange(dplyr::desc(prior_mean)) |>
-    dplyr::distinct(observation_id, taxon_name, taxon_name_rank, grid_id,
-      main_habitat,
-      .keep_all = TRUE
-    )
+    dplyr::distinct(dplyr::across(dplyr::all_of(dedup_keys)), .keep_all = TRUE)
 
   # Fill taxonomy from taxonomy_lookup (e.g. from match_df reference taxonomy)
   if (!is.null(taxonomy_lookup) && is.data.frame(taxonomy_lookup) &&
