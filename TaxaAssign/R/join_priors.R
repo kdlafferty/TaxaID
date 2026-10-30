@@ -602,7 +602,7 @@ utils::globalVariables(c(
 #' `specific_candidate` row, so pricing the ring with it would both contradict
 #' what the ring means and count those relatives twice in one unit. The rule
 #' applies to a ring row -- a complement hypothesis ABOVE the finest rank in
-#' `rank_system`. A `unreferenced_species` row AT the finest rank is a named
+#' `rank_system`. An `unreferenced_species` row AT the finest rank is a named
 #' unsequenced species, not a ring, and keeps its own occurrence prior.
 #'
 #' A ring and a NAMED candidate for the same clade in the same unit are
