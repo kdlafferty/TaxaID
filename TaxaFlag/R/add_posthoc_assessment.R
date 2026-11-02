@@ -466,9 +466,15 @@ add_posthoc_assessment <- function(
   .plausibility <- function(theta, has_record, rank_vec) {
     out <- rep("not_modeled", length(theta))
     known <- !is.na(has_record)
-    out[known & !has_record] <- "unprecedented"
+    # Rank coverage gates EVERY verdict, "unprecedented" included. A rank with
+    # no `expected_theta_threshold` entry is a rank this screen does not
+    # model, so it cannot return the strongest verdict there either. Gating
+    # only expected/unexpected on `!is.na(thr)` let a coarse call be reported
+    # unprecedented at a rank the screen does not cover.
     thr <- unname(expected_theta_threshold[rank_vec])
-    ok <- known & has_record & !is.na(theta) & !is.na(thr)
+    covered <- !is.na(thr)
+    out[covered & known & !has_record] <- "unprecedented"
+    ok <- covered & known & has_record & !is.na(theta)
     out[ok & theta >= thr] <- "expected"
     out[ok & theta < thr] <- "unexpected"
     out

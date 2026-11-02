@@ -370,6 +370,35 @@ test_that("consensus_plausibility is never unprecedented when consensus_prior is
   expect_false(any(out$consensus_plausibility == "unprecedented"))
 })
 
+# A rank with no `expected_theta_threshold` entry is a rank the analyst did not
+# model for this screen, so nothing about it can be called unprecedented. The
+# value gate (`!is.na(thr)`) already withholds "expected"/"unexpected" there;
+# "unprecedented" has to be withheld on the same condition, or a coarse call
+# gets the screen's strongest verdict at a rank the screen does not cover.
+# Defence in depth: upstream, `posterior_consensus()` now reports `NA` rather
+# than `FALSE` for a rank absent from `group_priors`, so `known` is already
+# FALSE for those rows -- this gate also covers a hand-built column or an older
+# TaxaAssign.
+
+test_that("consensus_plausibility is not_modeled at a rank with no expected_theta_threshold entry", {
+  cons <- .make_plaus_cons()
+  cons$consensus_rank <- c("species", "species", "order")
+  cons$consensus_has_occurrence_record <- c(TRUE, TRUE, FALSE)
+  out <- .add_posthoc(cons) # thresholds cover species/genus/family only
+  expect_equal(out$consensus_plausibility[[3]], "not_modeled")
+  expect_false(any(out$consensus_plausibility == "unprecedented"))
+})
+
+test_that("consensus_plausibility stays unprecedented at a THRESHOLDED rank with no record", {
+  # The companion case: withholding the verdict must depend on rank coverage,
+  # not on has_record being FALSE, or the fix would silence the real screen.
+  cons <- .make_plaus_cons()
+  cons$consensus_rank <- rep("species", 3)
+  cons$consensus_has_occurrence_record <- c(TRUE, TRUE, FALSE)
+  out <- .add_posthoc(cons)
+  expect_equal(out$consensus_plausibility[[3]], "unprecedented")
+})
+
 test_that("the two scopes can disagree", {
   # Winner itself has no record, but a recorded member of the consensus taxon
   # does -- primary unprecedented, consensus unexpected.
