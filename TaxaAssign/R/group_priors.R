@@ -28,11 +28,13 @@
 #' \strong{species} rank -- but a species has no "group" to sum over in the
 #' usual genus/family sense, it IS the row. Without a `rank == "species"`
 #' entry, every species-level `consensus_taxon` finds nothing in
-#' `group_priors`, and `consensus_has_occurrence_record` reads `FALSE` (not
-#' `NA` -- `group_priors` was genuinely supplied, just missing this rank) for
-#' the vast majority of real observations, purely from this gap -- confirmed
-#' on real production data (504 of 616 real Mugu observations misread
-#' "unprecedented"). `rank_cols` therefore defaults to
+#' `group_priors`, and `consensus_has_occurrence_record` reads `NA` -- the
+#' rank is not covered, so no taxon at it was ever checked -- for the vast
+#' majority of real observations. Those calls are reported `"not_modeled"`,
+#' which means the occurrence-plausibility axis falls silent exactly where
+#' most calls land and the screen has no prior-based channel to flag
+#' anything through (measured on real production data: 504 of 616 real Mugu
+#' observations resolve at species rank). `rank_cols` therefore defaults to
 #' `c("species", "genus", "family", "order", "class")`; when `taxonomy_map` has no explicit
 #' `"species"` column, one is auto-derived as `taxon_col`'s own values
 #' (identity: a species' "group sum" is just its own `theta_col`, `n_members`
@@ -42,18 +44,18 @@
 #'
 #' \strong{The same gap exists at every rank the map does not cover.}
 #' A default that stopped at `"family"` would mean a consensus resolving at
-#' ORDER rank finds nothing, reads `consensus_has_occurrence_record = FALSE`,
-#' and is reported `"unprecedented"` -- identically to the species-rank bug
-#' above, just coarser, and for the same reason. Real example, from the
-#' PtConception 12S run: the `Scorpaenichthys marmoratus + Hexagrammos
-#' lagocephalus/decagrammus` unit (20 observations) resolves at order rank as
-#' `Perciformes`, was auto-flagged unprecedented, and
-#' `TaxaFlag::review_assignments()`'s consensus-scope skepticism gate then
-#' required the reviewer to rate it geographically `"unlikely"` -- which it
-#' did, while its own `review_comment` called the candidates "very common at
-#' Pt. Conception". The export filters then dropped all 20 rows. Cabezon and
-#' kelp greenling are Point Conception natives; nothing about the science was
-#' in doubt, only the rank coverage of this lookup.
+#' ORDER rank finds nothing, reads `consensus_has_occurrence_record = NA`,
+#' and is reported `"not_modeled"` -- no occurrence evidence in either
+#' direction, identically to the species-rank gap above and for the same
+#' reason. Real example, from the PtConception 12S run: the
+#' `Scorpaenichthys marmoratus + Hexagrammos lagocephalus/decagrammus` unit
+#' (20 observations) resolves at order rank as `Perciformes`. Cabezon and
+#' kelp greenling are Point Conception natives carrying local records, so an
+#' order-rank entry would have supplied real support for that call; without
+#' one the axis has nothing to say about 20 observations and
+#' `TaxaFlag::review_assignments()`'s consensus-scope skepticism gate
+#' decides on the remaining axes alone. Rank coverage is the whole of the
+#' difference.
 #'
 #' The default reaches `"order"` and `"class"`. Ranks in the DEFAULT that
 #' `taxonomy_map` does not carry are skipped with a message rather than an
@@ -183,9 +185,10 @@ compute_group_priors <- function(taxaexpect_priors,
         "i" = "Default {.arg rank_cols} not in {.arg taxonomy_map}, skipped: \\
         {.field {missing_rank_cols}}.",
         "!" = "A consensus resolving at a skipped rank reads \\
-        {.code consensus_has_occurrence_record = FALSE} and is reported \\
-        {.val unprecedented}, from this gap alone -- add the column to \\
-        {.arg taxonomy_map} if that rank occurs in your consensus."
+        {.code consensus_has_occurrence_record = NA} and is reported \\
+        {.val not_modeled}, so that rank goes unscreened on the occurrence \\
+        axis -- add the column to {.arg taxonomy_map} if that rank occurs \\
+        in your consensus."
       ))
     } else {
       cli::cli_abort(

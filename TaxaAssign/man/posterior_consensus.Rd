@@ -644,13 +644,18 @@ silently.
 \code{consensus_has_occurrence_record} is the
 consensus-scope presence signal that \code{consensus_prior}'s \code{NA} cannot
 safely double as: \code{consensus_prior} is
-\code{NA} for two DIFFERENT reasons -- \code{group_priors} genuinely found no
-local member, OR \code{group_priors} was never supplied at all -- and a
-downstream consumer inferring "never reported" from \code{NA} alone
-could not tell them apart, misreading "not checked" as "confirmed
-absent". \code{TRUE}/\code{FALSE} mean a real lookup against \code{group_priors}
-was performed and found/didn't find a matching group; \code{NA} means
-\code{group_priors} was not supplied (not checked at all).}
+\code{NA} for THREE different reasons -- \code{group_priors} genuinely found
+no local member, \code{group_priors} was never supplied at all, or
+\code{group_priors} was supplied but carries no row at the consensus
+rank -- and a downstream consumer inferring "never reported" from
+\code{NA} alone could not tell them apart, misreading "not checked" as
+"confirmed absent". \code{TRUE}/\code{FALSE} mean a real lookup against a rank
+\code{group_priors} COVERS was performed and found/didn't find a matching
+group. \code{NA} means not checked: \code{group_priors} was not supplied, or
+the consensus rank is absent from \code{group_priors$rank}, in which case
+there is no row to find for any taxon and absence would be an
+artefact of the table's rank coverage. Cover a rank by naming it in
+\code{\link[=compute_group_priors]{compute_group_priors()}}'s \code{rank_cols}.}
 }
 
 Attribute \code{consensus_settings}: a named list of the arguments this call

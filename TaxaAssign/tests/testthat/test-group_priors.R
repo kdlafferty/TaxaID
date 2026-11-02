@@ -115,11 +115,12 @@ test_that("a DEFAULT rank absent from taxonomy_map is skipped, not an error", {
 })
 
 test_that("order-rank groups are produced when taxonomy_map carries them", {
-  # The real defect this closes: a consensus resolving at ORDER rank found no
-  # group row, read consensus_has_occurrence_record = FALSE and was reported
-  # "unprecedented" from the rank gap alone. Real case, PtConception 12S --
-  # the Perciformes unit (Scorpaenichthys + Hexagrammos), 20 observations,
-  # dropped from the export after the skepticism gate acted on that flag.
+  # Why rank coverage matters: a consensus resolving at ORDER rank finds no
+  # group row, so consensus_has_occurrence_record reads NA and the call is
+  # reported "not_modeled" -- unscreened on the occurrence axis, from the
+  # rank gap alone. Real case, PtConception 12S -- the Perciformes unit
+  # (Scorpaenichthys + Hexagrammos), 20 observations, both genera Point
+  # Conception natives whose local records an order-rank entry would supply.
   t <- .taxonomy()
   t$order <- "Perciformes"
   gp <- suppressMessages(compute_group_priors(.priors(), t))

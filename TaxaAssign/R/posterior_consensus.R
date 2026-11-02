@@ -760,13 +760,18 @@
 #'       `consensus_has_occurrence_record` is the
 #'       consensus-scope presence signal that `consensus_prior`'s `NA` cannot
 #'       safely double as: `consensus_prior` is
-#'       `NA` for two DIFFERENT reasons -- `group_priors` genuinely found no
-#'       local member, OR `group_priors` was never supplied at all -- and a
-#'       downstream consumer inferring "never reported" from `NA` alone
-#'       could not tell them apart, misreading "not checked" as "confirmed
-#'       absent". `TRUE`/`FALSE` mean a real lookup against `group_priors`
-#'       was performed and found/didn't find a matching group; `NA` means
-#'       `group_priors` was not supplied (not checked at all).}
+#'       `NA` for THREE different reasons -- `group_priors` genuinely found
+#'       no local member, `group_priors` was never supplied at all, or
+#'       `group_priors` was supplied but carries no row at the consensus
+#'       rank -- and a downstream consumer inferring "never reported" from
+#'       `NA` alone could not tell them apart, misreading "not checked" as
+#'       "confirmed absent". `TRUE`/`FALSE` mean a real lookup against a rank
+#'       `group_priors` COVERS was performed and found/didn't find a matching
+#'       group. `NA` means not checked: `group_priors` was not supplied, or
+#'       the consensus rank is absent from `group_priors$rank`, in which case
+#'       there is no row to find for any taxon and absence would be an
+#'       artefact of the table's rank coverage. Cover a rank by naming it in
+#'       [compute_group_priors()]'s `rank_cols`.}
 #'   }
 #'
 #'   Attribute `consensus_settings`: a named list of the arguments this call
@@ -2182,9 +2187,23 @@ posterior_consensus <- function(posterior_df,
   # `NA` here means "not checked" (matches `winner_has_occurrence_record`'s
   # own `NA`-when-`prior_branch`-absent convention); `TRUE`/`FALSE` mean a
   # real lookup was performed and found/didn't find a matching group.
+  # There is a THIRD way to be unchecked, and it is why the rank guard below
+  # exists: `group_priors` covers some ranks and not others, so a consensus
+  # resolving at a rank with NO rows in `group_priors$rank` has nothing to
+  # find for ANY taxon. `nrow(gp_row) > 0L` on its own cannot tell that from
+  # "this rank was searched and this taxon is genuinely absent", and reads
+  # both as `FALSE`. The rank is therefore tested for coverage BEFORE the
+  # taxon is looked up: uncovered rank is `NA`, and `TRUE`/`FALSE` are
+  # reserved for a rank the table actually spans. Measured on CalIntertidal,
+  # whose `group_priors` is built with
+  # `rank_cols = c("species", "genus", "family")`: without this guard 20,958
+  # of 21,718 `"unprecedented"` calls came from the rank coverage alone --
+  # every consensus at order, class or phylum -- and not from any evidence
+  # about the taxon.
   consensus_prior <- NA_real_
   consensus_has_occurrence_record <- NA
-  if (!is.null(group_priors) && !is.na(lca$rank) && !is.na(lca$taxon)) {
+  if (!is.null(group_priors) && !is.na(lca$rank) && !is.na(lca$taxon) &&
+    lca$rank %in% group_priors$rank) {
     gp_row <- group_priors[group_priors$rank == lca$rank & group_priors$taxon == lca$taxon, , drop = FALSE]
     consensus_has_occurrence_record <- nrow(gp_row) > 0L
     if (nrow(gp_row) > 0L) consensus_prior <- gp_row$theta_sum[[1L]]
