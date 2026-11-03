@@ -106,11 +106,13 @@ aggregation once, up front, over the full \code{taxaexpect_priors} table, so
 \strong{species} rank -- but a species has no "group" to sum over in the
 usual genus/family sense, it IS the row. Without a \code{rank == "species"}
 entry, every species-level \code{consensus_taxon} finds nothing in
-\code{group_priors}, and \code{consensus_has_occurrence_record} reads \code{FALSE} (not
-\code{NA} -- \code{group_priors} was genuinely supplied, just missing this rank) for
-the vast majority of real observations, purely from this gap -- confirmed
-on real production data (504 of 616 real Mugu observations misread
-"unprecedented"). \code{rank_cols} therefore defaults to
+\code{group_priors}, and \code{consensus_has_occurrence_record} reads \code{NA} -- the
+rank is not covered, so no taxon at it was ever checked -- for the vast
+majority of real observations. Those calls are reported \code{"not_modeled"},
+which means the occurrence-plausibility axis falls silent exactly where
+most calls land and the screen has no prior-based channel to flag
+anything through (measured on real production data: 504 of 616 real Mugu
+observations resolve at species rank). \code{rank_cols} therefore defaults to
 \code{c("species", "genus", "family", "order", "class")}; when \code{taxonomy_map} has no explicit
 \code{"species"} column, one is auto-derived as \code{taxon_col}'s own values
 (identity: a species' "group sum" is just its own \code{theta_col}, \code{n_members}
@@ -120,17 +122,18 @@ this (e.g. a backbone-resolved name differing from \code{taxon_col}), or omit
 
 \strong{The same gap exists at every rank the map does not cover.}
 A default that stopped at \code{"family"} would mean a consensus resolving at
-ORDER rank finds nothing, reads \code{consensus_has_occurrence_record = FALSE},
-and is reported \code{"unprecedented"} -- identically to the species-rank bug
-above, just coarser, and for the same reason. Real example, from the
-PtConception 12S run: the \verb{Scorpaenichthys marmoratus + Hexagrammos lagocephalus/decagrammus} unit (20 observations) resolves at order rank as
-\code{Perciformes}, was auto-flagged unprecedented, and
-\code{TaxaFlag::review_assignments()}'s consensus-scope skepticism gate then
-required the reviewer to rate it geographically \code{"unlikely"} -- which it
-did, while its own \code{review_comment} called the candidates "very common at
-Pt. Conception". The export filters then dropped all 20 rows. Cabezon and
-kelp greenling are Point Conception natives; nothing about the science was
-in doubt, only the rank coverage of this lookup.
+ORDER rank finds nothing, reads \code{consensus_has_occurrence_record = NA},
+and is reported \code{"not_modeled"} -- no occurrence evidence in either
+direction, identically to the species-rank gap above and for the same
+reason. Real example, from the PtConception 12S run: the
+\verb{Scorpaenichthys marmoratus + Hexagrammos lagocephalus/decagrammus} unit
+(20 observations) resolves at order rank as \code{Perciformes}. Cabezon and
+kelp greenling are Point Conception natives carrying local records, so an
+order-rank entry would have supplied real support for that call; without
+one the axis has nothing to say about 20 observations and
+\code{TaxaFlag::review_assignments()}'s consensus-scope skepticism gate
+decides on the remaining axes alone. Rank coverage is the whole of the
+difference.
 
 The default reaches \code{"order"} and \code{"class"}. Ranks in the DEFAULT that
 \code{taxonomy_map} does not carry are skipped with a message rather than an

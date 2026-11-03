@@ -13,7 +13,9 @@
 #' `n_local_records = 0` here is, by construction, exactly the situation that
 #' produces `TaxaAssign::compute_group_priors()`'s
 #' `consensus_has_occurrence_record = FALSE` (an "unprecedented" call from
-#' [add_posthoc_assessment()]), so this answers *why* that flag fired using
+#' [add_posthoc_assessment()]) at a rank `group_priors` covers -- where the
+#' rank is not covered the flag reads `NA` and the call is `"not_modeled"`,
+#' with nothing to explain -- so this answers *why* that flag fired using
 #' data the pipeline already paid for, rather than re-querying GBIF. Because
 #' `occurrence_data` is whatever bounding box a study's own GBIF fetch used,
 #' this function can only speak to that regional extent -- a taxon absent

@@ -1000,6 +1000,64 @@ test_that("consensus_has_occurrence_record is FALSE (confirmed absent) when grou
   expect_true(is.na(out$consensus_prior))
 })
 
+# A `group_priors` table covers SOME ranks and not others, which makes
+# `consensus_has_occurrence_record` carry three states, not two: not checked,
+# checked and found, checked and absent. `nrow(gp_row) > 0L` alone cannot tell
+# the first from the third. CalIntertidal builds `group_priors` with
+# `rank_cols = c("species", "genus", "family")`, so every consensus resolving
+# at order, class or phylum finds no row for ANY taxon -- 20,958 of its 21,718
+# "unprecedented" calls came from that rank coverage alone, not from evidence.
+
+test_that("consensus_has_occurrence_record is NA when the consensus rank is absent from group_priors", {
+  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
+  gp <- data.frame(
+    rank = "species", taxon = "Aa one", theta_sum = 0.07,
+    n_members = 1L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
+  expect_equal(out$consensus_rank, "genus") # the lookup rank, absent from gp
+  expect_true(is.na(out$consensus_has_occurrence_record))
+  expect_true(is.na(out$consensus_prior))
+})
+
+test_that("an uncovered COARSER rank is NA too, not confirmed-absent", {
+  # Spread the posterior across both genera so the LCA climbs to family.
+  df <- make_theta_df(posterior_mean = c(0.25, 0.25, 0.25, 0.25))
+  gp <- data.frame(
+    rank = c("species", "genus"), taxon = c("Aa one", "Aa"),
+    theta_sum = c(0.07, 0.07), n_members = c(1L, 2L), stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
+  expect_equal(out$consensus_rank, "family")
+  expect_true(is.na(out$consensus_has_occurrence_record))
+  expect_true(is.na(out$consensus_prior))
+})
+
+test_that("a COVERED rank whose taxon is missing is still FALSE (confirmed absent)", {
+  # The distinction has to cut both ways or the fix would just suppress the
+  # screen: where `group_priors` does cover the rank, a missing taxon is real
+  # evidence of absence and must stay FALSE.
+  df <- make_theta_df(posterior_mean = c(0.25, 0.25, 0.25, 0.25))
+  gp <- data.frame(
+    rank = "family", taxon = "SomeOtherFamily", theta_sum = 0.5,
+    n_members = 4L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
+  expect_equal(out$consensus_rank, "family")
+  expect_false(out$consensus_has_occurrence_record)
+  expect_true(is.na(out$consensus_prior))
+})
+
+
 test_that("errors clearly (not a cryptic subscript-out-of-bounds) when no rank columns can be detected and rank_system is NULL", {
   # Reproduces TaxaLikely::evaluate_likelihoods()'s own output shape -- only
   # taxon_name/taxon_name_rank, no kingdom..species rank columns at all --
