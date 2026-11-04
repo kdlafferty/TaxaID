@@ -16,6 +16,12 @@
 # sees post-taxonomy-merge; only `kingdom` and the row count matter to it.
 .km <- function(..., acc_prefix = "X") {
   k <- unlist(list(...), use.names = FALSE)
+  # paste0("m3", integer(0)) is "m3", not character(0), so the empty case needs
+  # saying explicitly or a zero-row fixture comes out one row wide.
+  if (length(k) == 0L) {
+    return(data.frame(acc = character(0), kingdom = character(0),
+                      stringsAsFactors = FALSE))
+  }
   data.frame(
     acc = paste0(acc_prefix, seq_along(k)),
     kingdom = k,
@@ -41,8 +47,8 @@
 
 test_that("the Clevelandia split drops the 26 plants and KEEPS the 2 gobies", {
   f <- .ci_fetch()
-  out <- expect_message(
-    TaxaLikely:::.resolve_kingdom_contamination(f$meta, f$taxa),
+  expect_message(
+    out <- TaxaLikely:::.resolve_kingdom_contamination(f$meta, f$taxa),
     "Clevelandia: dropping 26 of 28 record\\(s\\).*Viridiplantae.*against Metazoa"
   )
   got <- out[[8]]
@@ -103,8 +109,8 @@ test_that("a genuinely multi-kingdom fetch (18S-like) drops nothing", {
     .km(rep("Viridiplantae", 4L), acc_prefix = "f"),
     .km(rep("Viridiplantae", 26L), rep("Metazoa", 2L), acc_prefix = "g")
   )
-  out <- expect_message(
-    TaxaLikely:::.resolve_kingdom_contamination(meta, taxa),
+  expect_message(
+    out <- TaxaLikely:::.resolve_kingdom_contamination(meta, taxa),
     "CROSS-KINGDOM SPLIT KEPT \\(Clevelandia\\): no reference kingdom.*under the 90% needed"
   )
   expect_identical(out, meta)
@@ -131,8 +137,8 @@ test_that("the dominance threshold can fail: 90% acts, 80% does not", {
 
   # 8 of 10 == 80%: declines, and says so.
   under <- build(8L, 2L)
-  out_under <- expect_message(
-    TaxaLikely:::.resolve_kingdom_contamination(under$meta, under$taxa),
+  expect_message(
+    out_under <- TaxaLikely:::.resolve_kingdom_contamination(under$meta, under$taxa),
     "no reference kingdom.*holds 80% of them"
   )
   expect_identical(out_under[[11]], split_one)
@@ -148,8 +154,8 @@ test_that("too little context cannot establish a reference kingdom", {
     .km(rep("Metazoa", 3L), acc_prefix = "m2"),
     .km(rep("Viridiplantae", 26L), rep("Metazoa", 2L), acc_prefix = "c")
   )
-  out <- expect_message(
-    TaxaLikely:::.resolve_kingdom_contamination(meta, taxa),
+  expect_message(
+    out <- TaxaLikely:::.resolve_kingdom_contamination(meta, taxa),
     "no reference kingdom -- 2 unambiguous taxon/taxa.*fewer than the 3 needed"
   )
   expect_identical(out, meta)
@@ -203,8 +209,8 @@ test_that("a taxon losing every record is named as such", {
     .km(rep("Metazoa", 3L), acc_prefix = "m3"),
     .km(rep("Viridiplantae", 4L), rep("Fungi", 1L), acc_prefix = "c")
   )
-  out <- expect_message(
-    TaxaLikely:::.resolve_kingdom_contamination(meta, taxa),
+  expect_message(
+    out <- TaxaLikely:::.resolve_kingdom_contamination(meta, taxa),
     "EVERY record went; this taxon now contributes none"
   )
   expect_identical(nrow(out[[4]]), 0L)
@@ -230,8 +236,8 @@ test_that("no kingdom column, empty and NULL entries are all handled", {
   )
   # Only one voting taxon survives the NULL and the empty frame, so there is
   # too little context and nothing is dropped.
-  out <- expect_message(
-    TaxaLikely:::.resolve_kingdom_contamination(mixed, taxa),
+  expect_message(
+    out <- TaxaLikely:::.resolve_kingdom_contamination(mixed, taxa),
     "fewer than the 3 needed"
   )
   expect_identical(nrow(out[[4]]), 28L)

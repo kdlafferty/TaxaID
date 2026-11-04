@@ -251,8 +251,15 @@ qualifiers; \code{NA} when absent or unparseable.}
 \item{\code{kingdom}, \code{phylum}}{Always present. Resolved on every fetch in
 addition to whatever \code{rank_system} itself requests, at no extra
 taxonomy call -- both ranks already sit in the XML the bridge
-returns. A queried name whose rows span more than one kingdom is
-reported as a homonym and the rows are kept for review.}
+returns. A queried name whose rows span more than one kingdom is a
+homonym: the name matched some other organism too. Such rows are
+reported, and dropped only when the rest of the fetch says which
+kingdom is the intruder -- that is, when at least 90\\% of the other
+queried names resolved unambiguously to one kingdom, counted one
+vote per name. Failing that, nothing is dropped and the split is
+reported for review. A name resolving to a single kingdom is never
+filtered, however much it differs from the rest of the fetch, and a
+row whose kingdom did not resolve is always kept.}
 \item{\code{queried_taxon}}{Only when \code{taxa_lineage} was supplied; records
 which \code{taxa} entry a row was fetched under, so the lineage-agreement
 guard has data to check without a second taxonomy fetch.}
@@ -315,6 +322,13 @@ are kept in a separate per-accession store under \code{cache_dir/fasta}.
 assembled, so changing either re-uses the cached metadata and downloads
 only sequences not already in the store. A per-taxon file written under a
 cap holds only a sample, cannot serve a larger cap, and is re-fetched once.
+
+The key records the QUERY a \code{barcode_term} builds, not merely the term
+string, because the term is the question's label and the query is the
+question. Any change to how a term becomes an NCBI search therefore makes
+that term's existing cache files unhittable, and each affected taxon is
+re-fetched once; the superseded files are collectable by
+\code{evict_unreachable_cache}.
 }
 
 \section{Choosing max_per_species and max_per_genus}{

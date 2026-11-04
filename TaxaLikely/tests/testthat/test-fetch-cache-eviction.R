@@ -184,7 +184,7 @@ test_that(".ref_cache_unreachable() ignores the fasta store and checkpoints", {
 
 test_that(".ref_cache_evict() deletes the dead, keeps the live, and says so", {
   d <- .cache_tmpdir()
-  live <- file.path(d, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds")
+  live <- file.path(d, "Abudefduf_12S_q0123abcd_l100_5000_d_rk-family-genus-species_meta.rds")
   dead <- file.path(d, "Abudefduf_12S_l100_5000_d_meta.rds")
   other <- file.path(d, "Sebastes_12S_l100_5000_d_meta.rds")
   file.create(c(live, dead, other))
@@ -217,7 +217,7 @@ test_that("taxalikely_clear_cache() now reaches the fasta/ store", {
   d <- .cache_tmpdir()
   dir.create(file.path(d, "fasta"))
   file.create(file.path(d, "fasta", "AB000667_seq.rds"))
-  file.create(file.path(d, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds"))
+  file.create(file.path(d, "Abudefduf_12S_q0123abcd_l100_5000_d_rk-family-genus-species_meta.rds"))
 
   out <- suppressMessages(taxalikely_clear_cache(cache_dir = d, dry_run = TRUE))
   expect_true("AB000667_seq.rds" %in% basename(out$path))
