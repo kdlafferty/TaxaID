@@ -1709,8 +1709,18 @@ review_assignments <- function(input_df,
   attr(result, "n_unreviewed_rows") <- n_unreviewed_rows
 
   if (length(unreviewed_taxa) > 0L && !identical(on_unreviewed, "ignore")) {
+    # `max_retries` is the BUDGET, and this sentence is about what HAPPENED.
+    # Naming it here read as a count of attempts made, which contradicted the
+    # per-batch messages above: "10 still unreviewed after 1 re-ask attempt(s)"
+    # beside "max_retries = 2" looks like an off-by-one and is not one. A batch
+    # stops early when a re-ask recovers nothing, so attempts made is per
+    # batch and often fewer than the budget -- there is no single run-level
+    # count to report here, which is why this names the budget as a budget and
+    # points at the per-batch messages for what was actually spent.
     what_happened <- sprintf(paste0(
-      "%d %s have NO LLM verdict, after re-asking (max_retries = %d):\n  %s\n",
+      "%d %s have NO LLM verdict after re-asking (budget: up to %d re-ask(s) ",
+      "per batch; a batch stops early when a re-ask recovers nothing, so the ",
+      "per-batch messages above report what each actually spent):\n  %s\n",
       "%d input row(s) carry NA in every llm_ column as a result."
     ),
     length(unreviewed_taxa),

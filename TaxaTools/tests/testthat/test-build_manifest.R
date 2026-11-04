@@ -95,9 +95,22 @@ test_that("on_mismatch controls severity without changing the verdict", {
   m <- suppressMessages(write_taxaid_manifest(p, packages = "TaxaTools"))
   m$code_hash <- "deadbeefdeadbeefdeadbeefdeadbeef"
   saveRDS(m, p)
-  expect_error(check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "error"))
-  expect_warning(check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "warning"))
-  expect_message(check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "message"))
+  # The handler TYPE is what proves severity routing, but each still has to be
+  # the MISMATCH condition and not some incidental failure of the fixture --
+  # a missing file or an unreadable manifest would also error, warn or message
+  # here. The rest of this file already pins its messages; these now match.
+  expect_error(
+    check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "error"),
+    "does not match"
+  )
+  expect_warning(
+    check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "warning"),
+    "does not match"
+  )
+  expect_message(
+    check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "message"),
+    "does not match"
+  )
   r <- check_taxaid_manifest(p, packages = "TaxaTools", on_mismatch = "silent")
   expect_false(r$ok)   # the verdict is the same; only the noise differs
 })

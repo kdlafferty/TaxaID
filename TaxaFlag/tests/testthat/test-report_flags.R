@@ -80,8 +80,12 @@ test_that("report_flags handles data with no flag columns", {
 })
 
 test_that("report_flags errors on empty data", {
-  expect_error(report_flags(data.frame()))
-  expect_error(report_flags(NULL))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_flags(data.frame()), "must be a non-empty data frame")
+  expect_error(report_flags(NULL), "must be a non-empty data frame")
 })
 
 test_that("report_flags percentage is correct", {

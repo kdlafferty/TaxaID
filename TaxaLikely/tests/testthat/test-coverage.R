@@ -8,12 +8,17 @@ test_that(".first_two_words: truncates to Genus + epithet", {
 })
 
 test_that(".coverage_checkpoint_path: errors on malformed len_range instead of silently recycling to NA", {
+  # The name's whole claim is about WHICH failure: a bare expect_error() would
+  # pass if the call died for any unrelated reason -- a renamed argument, an
+  # unwritable cache_dir -- and would go on passing if the length check were
+  # removed and something downstream happened to error instead.
   expect_error(
     .coverage_checkpoint_path("Cottus", "12S",
       len_range = 150L,
       max_date = NULL, target_rank = "genus",
       cache_dir = tempdir()
-    )
+    ),
+    "length\\(len_range\\) == 2L"
   )
 })
 

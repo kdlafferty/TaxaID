@@ -432,6 +432,14 @@ test_that("a retained build reports the unretained ceiling and does not refuse t
 })
 
 test_that("an unretained build over budget is refused", {
+  # DECIPHER as well as Biostrings: with pair_retention = "all" the guard runs
+  # .pilot_cross_genus_retention() -> .decipher_align_pairs(). Every other test
+  # in this file that reaches that path guards both; this one did not, and with
+  # a bare expect_error() the omission was invisible -- on a machine without
+  # DECIPHER the call raised packageNotFoundError and the bare handler accepted
+  # it, so the budget refusal was never actually exercised there. Found when
+  # pinning the message turned that silent pass into a CI failure.
+  skip_if_not_installed("DECIPHER")
   skip_if_not_installed("Biostrings")
   ref <- data.frame(
     composite_id = sprintf("ACC%04d", 1:400),
@@ -442,11 +450,15 @@ test_that("an unretained build over budget is refused", {
   dna <- Biostrings::DNAStringSet(setNames(rep(strrep("ACGT", 40), 400), ref$composite_id))
   local_mocked_bindings(.available_memory_gb = function() 0.001)
 
+  # Pinned so the refusal has to be the BUDGET refusal: with the memory probe
+  # mocked this low, several unrelated failures would also error here, and a
+  # bare handler would accept any of them as "refused".
   expect_error(
     TaxaLikely:::.matrix_memory_guard(
       ref, dna, n_ranks = 2L, by_genus = TRUE, max_foreign_reps_per_genus = 20L,
       max_dist = 0.25, memory_budget_fraction = 0.7, max_seqs_per_taxon = 20L,
       pair_retention = "all"
-    )
+    ),
+    "more than the .* budget"
   )
 })

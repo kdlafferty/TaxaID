@@ -455,8 +455,12 @@ thresholds) on this model's own real H1 training scores, so a saved
 \code{lik_model} carries the evidence whether or not \code{calibrate_query_noise()}
 is ever called on it. Percent identity is discrete, not continuous, and
 every reference-based dataset has a structural spike at or near 100\%
-identity (each reference matching itself or an identical duplicate
-deposit); that spike alone is not evidence of a second population.
+identity (identical or near-identical duplicate deposits of the same
+sequence under different accessions); that spike alone is not evidence of
+a second population. A reference cannot match ITSELF here --
+\code{.decipher_align_pairs()} drops the diagonal unconditionally, so no
+\code{id_x == id_y} row ever reaches training -- so duplicate deposits are the
+whole of this effect, not one cause among two.
 \code{.bimodality_check()} therefore estimates the identity quantum from the
 data and smooths over it before fitting, requires the minority component
 to hold real mass, and requires the two fitted means to be separated by

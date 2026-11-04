@@ -87,9 +87,13 @@ test_that("report_fetch includes bbox when no study_area", {
 })
 
 test_that("report_fetch errors on empty or non-df input", {
-  expect_error(report_fetch(data.frame()))
-  expect_error(report_fetch(NULL))
-  expect_error(report_fetch("not a df"))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_fetch(data.frame()), "must be a non-empty data frame")
+  expect_error(report_fetch(NULL), "must be a non-empty data frame")
+  expect_error(report_fetch("not a df"), "must be a non-empty data frame")
 })
 
 test_that("report_fetch reads report_params attribute", {
