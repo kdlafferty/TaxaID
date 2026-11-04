@@ -92,8 +92,12 @@ test_that("report_assign reports resolution rate correctly", {
 })
 
 test_that("report_assign errors on empty consensus", {
-  expect_error(report_assign(NULL, data.frame()))
-  expect_error(report_assign(NULL, NULL))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_assign(NULL, data.frame()), "must be a non-empty data frame")
+  expect_error(report_assign(NULL, NULL), "must be a non-empty data frame")
 })
 
 test_that("report_assign reports median posterior", {

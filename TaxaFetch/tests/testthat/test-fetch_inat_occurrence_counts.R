@@ -56,8 +56,12 @@ test_that("stops when radius_km is not positive", {
 })
 
 test_that("match.arg errors on an invalid captive value", {
+  # The name says match.arg specifically, so pin match.arg's own wording: a bare
+  # handler would equally accept the api_token or lat/lng validation firing
+  # first, and would then no longer be testing `captive` at all.
   expect_error(
-    fetch_inat_occurrence_counts("Felis catus", lat = 34.1, lng = -119.1, captive = "bogus", api_token = "tok")
+    fetch_inat_occurrence_counts("Felis catus", lat = 34.1, lng = -119.1, captive = "bogus", api_token = "tok"),
+    "should be one of"
   )
 })
 

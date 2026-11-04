@@ -241,10 +241,13 @@ test_that("a headerless single-taxon response is parsed when the prompt's layout
   expect_equal(nrow(parsed), 1L)
   expect_equal(parsed$taxon_name, "Gadus morhua")
   expect_true(all(c("Marine", "Terrestrial") %in% names(parsed)))
-  # a field count that matches no layout is left alone (and still errors clearly)
+  # A field count matching no layout is left alone and still errors CLEARLY --
+  # the comment claimed "clearly" while the bare expect_error() checked only
+  # THAT it errored, so the adverb was unverified. Pinned on the message.
   expect_error(
     suppressMessages(parse_hierarchical_habitat_response("Gadus morhua,0.95", taxon_list = "Gadus morhua",
-                                                         habitat_scheme = prompt))
+                                                         habitat_scheme = prompt)),
+    "contains no data rows"
   )
 })
 

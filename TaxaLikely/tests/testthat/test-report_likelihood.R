@@ -64,9 +64,13 @@ test_that("report_likelihood results mentions AIC", {
 })
 
 test_that("report_likelihood errors on non-model input", {
-  expect_error(report_likelihood(data.frame(x = 1)))
-  expect_error(report_likelihood(list(a = 1)))
-  expect_error(report_likelihood(NULL))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_likelihood(data.frame(x = 1)), "taxa_model_params")
+  expect_error(report_likelihood(list(a = 1)), "taxa_model_params")
+  expect_error(report_likelihood(NULL), "taxa_model_params")
 })
 
 test_that("report_likelihood handles model without AIC", {
