@@ -784,6 +784,13 @@ test_that("a persistently omitted taxon is reported, not silently dropped", {
     )
   )
   expect_match(warns, "NO LLM verdict", all = FALSE)
+  # The number in that sentence is the BUDGET, and the sentence is about what
+  # HAPPENED. Printed bare as "max_retries = 2" it read as attempts made, and
+  # contradicted the per-batch "after 1 re-ask attempt(s)" above it. There is
+  # no single run-level attempts-made number to print -- a batch stops early
+  # when a re-ask recovers nothing -- so the summary must label it a budget.
+  expect_match(warns, "budget: up to", all = FALSE, fixed = TRUE)
+  expect_false(any(grepl("after re-asking (max_retries", warns, fixed = TRUE)))
 
   expect_equal(attr(result, "unreviewed_taxa"), "Bos taurus")
   expect_equal(attr(result, "n_unreviewed_rows"), 1L)

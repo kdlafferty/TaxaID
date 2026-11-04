@@ -32,6 +32,7 @@ test_that("I2 without posterior_df is always review", {
   expect_equal(r$identity_action, "review")
   expect_equal(r$suggested_action, "exclude")
   expect_equal(r$identity_taxon_after, "Fundulus parvipinnis")
+  expect_match(r$identity_reason, "suggested_action reads exclude as the conservative default", fixed = TRUE)
 })
 
 test_that("I2 moves up to genus for a qualifying local referenced congener", {
