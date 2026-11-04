@@ -74,15 +74,25 @@ test_that("the grammar rejects the superseded generations it is meant to", {
   expect_false(grepl(g, "Abietinaria_18S_l100_2000_d_meta.rds"))
   expect_false(grepl(g, "Delftia_12S_l100_5000_d_meta.rds"))
   expect_false(grepl(g, "Abudefduf_12S_meta.rds"))
+  # A name from before the search-term digest: the generation this change
+  # supersedes, and the reason the digest is its own UNCONDITIONAL component
+  # rather than part of the stem. Inside the stem it would still have matched
+  # (the stem is free text), so nothing could ever have collected it.
+  expect_false(grepl(g, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds"))
   # ...and accepts the current shape, including the seven-rank system.
-  expect_true(grepl(g, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds"))
+  # The literal digests below are placeholders: the grammar constrains the
+  # SHAPE, and the grid test above is what pins it to real output.
+  expect_true(grepl(g, "Abudefduf_12S_q0123abcd_l100_5000_d_rk-family-genus-species_meta.rds"))
   expect_true(grepl(
     g,
     paste0(
-      "Macrhybopsis_MiFishU_l130_210_d_oor1000000_l200000",
+      "Macrhybopsis_MiFishU_q0123abcd_l130_210_d_oor1000000_l200000",
       "_rk-kingdom-phylum-class-order-family-genus-species_meta.rds"
     )
   ))
+  # A malformed digest is not a digest.
+  expect_false(grepl(g, "Abudefduf_12S_qZZZZZZZZ_l100_5000_d_rk-family-genus-species_meta.rds"))
+  expect_false(grepl(g, "Abudefduf_12S_q0123ab_l100_5000_d_rk-family-genus-species_meta.rds"))
 })
 
 test_that(".ref_cache_stem_of() inverts .ref_cache_stem() through the key", {
@@ -106,9 +116,9 @@ test_that("a different length window or rank system is NOT unreachable", {
   d <- .cache_tmpdir()
   # Two genuinely different QUERIES for one taxon. A caller may want both.
   file.create(file.path(d, c(
-    "Abudefduf_12S_l100_600_d_rk-family-genus-species_meta.rds",
-    "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds",
-    "Abudefduf_12S_l100_5000_d_rk-genus-species_meta.rds"
+    "Abudefduf_12S_q0123abcd_l100_600_d_rk-family-genus-species_meta.rds",
+    "Abudefduf_12S_q0123abcd_l100_5000_d_rk-family-genus-species_meta.rds",
+    "Abudefduf_12S_q0123abcd_l100_5000_d_rk-genus-species_meta.rds"
   )))
   expect_identical(TaxaLikely:::.ref_cache_unreachable(d), character(0L))
 })
@@ -119,8 +129,8 @@ test_that("a taxid-scoped and a name-scoped cache for the same taxon are both re
   # neither one orphans the other.
   d <- .cache_tmpdir()
   file.create(file.path(d, c(
-    "Vertebrata_12S_l100_5000_d_rk-family-genus-species_meta.rds",
-    "Vertebrata_12S_l100_5000_d_rk-family-genus-species_txid1261581_meta.rds"
+    "Vertebrata_12S_q0123abcd_l100_5000_d_rk-family-genus-species_meta.rds",
+    "Vertebrata_12S_q0123abcd_l100_5000_d_rk-family-genus-species_txid1261581_meta.rds"
   )))
   expect_identical(TaxaLikely:::.ref_cache_unreachable(d), character(0L))
 })
@@ -142,7 +152,7 @@ test_that(".ref_cache_stem_of() strips the taxid suffix, keeping the two files o
 
 test_that(".ref_cache_unreachable() finds orphans and scopes them by stem", {
   d <- .cache_tmpdir()
-  live <- "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds"
+  live <- "Abudefduf_12S_q0123abcd_l100_5000_d_rk-family-genus-species_meta.rds"
   dead_same <- "Abudefduf_12S_l100_5000_d_meta.rds"
   dead_other <- "Sebastes_12S_l100_5000_d_meta.rds"
   # A taxon whose name PREFIX-matches the first -- prefix matching would

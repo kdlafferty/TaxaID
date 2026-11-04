@@ -119,7 +119,7 @@ Correction to the request: the reference-sequence fetch is
 TaxaLikely. TaxaFetch owns occurrence acquisition, not reference sequences.
 
 A real cache metadata file
-(`Aaptos_COI_Leray_l300_900_d_oor2_l200000_rk-family-genus-species_meta.rds`)
+(`Aaptos_COI_Leray_q3f8c21a4_l300_900_d_oor2_l200000_rk-family-genus-species_meta.rds`)
 holds 11 columns: `taxid`, `acc`, `acc_version`, `title`, `slen`, `organism`,
 `create_date`, `in_barcode_range`, `family`, `genus`, `species`. There is no
 fetch date, no query date, and no database or release. `create_date` is the

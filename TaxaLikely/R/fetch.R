@@ -530,13 +530,15 @@ utils::globalVariables(c(
 #' for it returns 26 \emph{Castilleja} (Orobanchaceae) records against 2 real
 #' \emph{Clevelandia ios} ones.
 #'
-#' This function REPORTS and does not drop, deliberately. Dropping needs a
-#' reference kingdom, and the within-taxon majority cannot serve as one: in
-#' the \code{Clevelandia} case the contaminant is 93\% of the rows, so a
-#' majority rule would discard both genuine records and keep all 26 plants --
-#' it inverts exactly where it is needed. Choosing the reference kingdom is a
-#' design decision, so until it is made the honest action is to make the split
-#' visible rather than to guess which side to delete.
+#' This function REPORTS and never drops. The within-taxon majority cannot
+#' decide which side to delete: in the \code{Clevelandia} case the contaminant
+#' is 93\% of the rows, so a majority rule would discard both genuine records
+#' and keep all 26 plants -- it inverts exactly where it is needed.
+#'
+#' The reference kingdom comes from the OTHER taxa in the same fetch, which is
+#' only known once every taxon is assembled, so the verdict is pronounced
+#' later by \code{.resolve_kingdom_contamination()}. This message says only
+#' that a split was seen.
 #'
 #' @param meta Data frame of fetched metadata, post-taxonomy-merge.
 #' @param taxon Character scalar: the name this batch was queried under.
@@ -562,12 +564,146 @@ utils::globalVariables(c(
     paste0(
       "  %s: CROSS-KINGDOM SPLIT -- %d of %d record(s) carry a kingdom, and ",
       "they span %d kingdoms (%s). One queried name returning more than one ",
-      "kingdom is a homonym, not a revision; these rows are KEPT and need review."
+      "kingdom is a homonym, not a revision; resolved against the rest of ",
+      "this fetch once every taxon is assembled."
     ),
     taxon, length(k), nrow(meta), length(tab),
     paste(sprintf("%s %d", names(tab), as.integer(tab)), collapse = ", ")
   ))
   invisible(meta)
+}
+
+
+#' Drop cross-kingdom contaminants from the taxa that are internally split
+#'
+#' A queried name that comes back carrying two kingdoms is a homonym: one of
+#' the two is some other organism that happens to share the name. Which one is
+#' the intruder cannot be read off that taxon alone -- see
+#' \code{.report_kingdom_split()} for why its own majority gets it exactly
+#' backwards -- so it is read off the REST OF THE FETCH. A fetch of fish
+#' genera that returns 26 \emph{Castilleja} (Orobanchaceae) rows under
+#' \emph{Clevelandia} is a fetch whose every other taxon is unambiguously
+#' Metazoa, and that is the evidence the split taxon lacks.
+#'
+#' The rule, as decided by the maintainer:
+#' \enumerate{
+#'   \item Only taxa that are internally split are ever touched. A taxon
+#'     returning one kingdom is never filtered, however much it disagrees with
+#'     the fetch -- disagreeing with its neighbours is not evidence of
+#'     contamination, it is what a genuinely cross-kingdom reference set looks
+#'     like.
+#'   \item The reference kingdom is the dominant kingdom of the OTHER taxa, and
+#'     only when it holds at least \code{dominance} (0.90) of them. Otherwise
+#'     nothing is dropped and the split is reported, as before.
+#'   \item Votes are counted per TAXON, not per row, and a split taxon casts
+#'     none. Per-row counting would let one heavily contaminated taxon outvote
+#'     a dozen clean ones, and letting a split taxon vote would let a
+#'     contaminant help choose the kingdom it is judged against.
+#'   \item A row whose kingdom is \code{NA} is KEPT. Having no kingdom
+#'     resolved is not evidence of belonging to another one.
+#' }
+#'
+#' \code{min_context} (3) is this function's own addition, not part of the
+#' stated rule, and it is there because a share is meaningless on one or two
+#' taxa: a single clean neighbour makes any kingdom 100\% dominant and would
+#' license a drop on no evidence at all. Three is the same floor
+#' \code{train_likelihood_model()} already applies before it will fit a ring
+#' from grouped data (\code{n_grp < 3L}), so it is the house minimum for
+#' "enough groups to say anything" rather than a number invented here.
+#'
+#' \strong{Why this runs after the per-taxon loop, not inside it.} The
+#' reference kingdom is a property of the whole fetch, so it is not knowable
+#' while the fetch is still in progress. Running it per taxon would make the
+#' context depend on how many taxa happened to be processed first and on which
+#' were served from cache -- the same call would filter differently on a warm
+#' and a cold cache. Here it sees every taxon, cached ones included, so the
+#' result depends only on the inputs. It also means the per-taxon cache files
+#' keep the unfiltered rows and the filter is re-derived on each call, so no
+#' cache records a verdict reached with partial context.
+#'
+#' @param all_meta List of per-taxon metadata data frames, parallel to
+#'   \code{taxa}. Entries may be \code{NULL} (taxon failed or returned
+#'   nothing).
+#' @param taxa Character vector of queried names, parallel to \code{all_meta}.
+#' @param dominance Numeric in (0.5, 1]. Share of the other taxa the dominant
+#'   kingdom must hold before it may be used as a reference.
+#' @param min_context Integer. Fewest voting taxa that can establish a
+#'   reference kingdom.
+#' @return \code{all_meta}, with contaminant rows removed from internally
+#'   split taxa. Messages what it did, including when it declined to act.
+#' @noRd
+.resolve_kingdom_contamination <- function(all_meta, taxa, dominance = 0.90,
+                                           min_context = 3L) {
+  if (length(all_meta) == 0L) {
+    return(all_meta)
+  }
+  kingdoms_of <- function(m) {
+    if (is.null(m) || !is.data.frame(m) || nrow(m) == 0L ||
+      !"kingdom" %in% names(m)) {
+      return(character(0L))
+    }
+    k <- as.character(m$kingdom)
+    k[!is.na(k) & nzchar(k)]
+  }
+  ks <- lapply(all_meta, kingdoms_of)
+  split_i <- which(vapply(ks, function(k) length(unique(k)) >= 2L, logical(1L)))
+  if (length(split_i) == 0L) {
+    return(all_meta)
+  }
+
+  # One vote per taxon. A taxon with no resolved kingdom and a taxon that is
+  # itself split both vote NA, so dropping the NAs leaves exactly the clean,
+  # classified taxa as the context.
+  votes <- vapply(ks, function(k) {
+    u <- unique(k)
+    if (length(u) == 1L) u else NA_character_
+  }, character(1L))
+  ctx <- votes[!is.na(votes)]
+  tab <- sort(table(ctx), decreasing = TRUE)
+  ref_k <- if (length(tab) > 0L) names(tab)[1L] else NA_character_
+  share <- if (length(ctx) > 0L) as.integer(tab[1L]) / length(ctx) else 0
+
+  split_names <- paste(taxa[split_i], collapse = ", ")
+  if (length(ctx) < min_context || is.na(ref_k) || share < dominance) {
+    message(sprintf(
+      paste0(
+        "  CROSS-KINGDOM SPLIT KEPT (%s): no reference kingdom -- %d ",
+        "unambiguous taxon/taxa in this fetch%s. Nothing dropped; these rows ",
+        "need review."
+      ),
+      split_names, length(ctx),
+      if (length(ctx) < min_context) {
+        sprintf(", fewer than the %d needed", min_context)
+      } else {
+        sprintf(
+          ", and the commonest kingdom holds %.0f%% of them, under the %.0f%% needed",
+          100 * share, 100 * dominance
+        )
+      }
+    ))
+    return(all_meta)
+  }
+
+  for (i in split_i) {
+    m <- all_meta[[i]]
+    k <- as.character(m$kingdom)
+    # Not named `drop`: that would shadow base::drop() one line from a
+    # `drop = FALSE` argument, which is a trap for the next reader.
+    bad <- !is.na(k) & nzchar(k) & k != ref_k
+    if (!any(bad)) next
+    message(sprintf(
+      paste0(
+        "  %s: dropping %d of %d record(s) -- kingdom %s, against %s from ",
+        "%.0f%% of the %d unambiguous taxa in this fetch.%s"
+      ),
+      taxa[i], sum(bad), nrow(m),
+      paste(sort(unique(k[bad])), collapse = "/"), ref_k,
+      100 * share, length(ctx),
+      if (all(bad)) " EVERY record went; this taxon now contributes none." else ""
+    ))
+    all_meta[[i]] <- m[!bad, , drop = FALSE]
+  }
+  all_meta
 }
 
 
@@ -622,41 +758,79 @@ utils::globalVariables(c(
 #' successive cache generations for the SAME taxon and the SAME barcode, so
 #' this is what scopes eviction to one taxon rather than prefix-matching,
 #' which would let \code{Abudefduf_} also match \code{Abudefduf_saxatilis_}.
+#'
+#' The term digest is deliberately NOT part of the stem, even though it is
+#' derived from the barcode term. A stem is what identifies two files as
+#' successive generations of the same question; putting the digest here would
+#' give each query generation its own stem, and stem-scoped eviction would
+#' then stop recognising the generation it is meant to replace. It is appended
+#' by \code{.ref_cache_file()} as its own key component instead.
 #' @noRd
 .ref_cache_stem <- function(name, barcode_term, prefix = "") {
   paste0(
     prefix,
     gsub("[^A-Za-z0-9]", "_", name), "_",
-    gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_")),
-    .ref_cache_syn_suffix(barcode_term)
+    gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
   )
 }
 
-#' Key suffix for a barcode term whose search gained its marker's synonyms
+#' Key suffix: a digest of the search term the barcode term actually builds
 #'
-#' A primer-set term (MiFish-U) used to search only "<primer> OR 12S"; it now
-#' also searches the 12S synonyms. The cache is keyed on the term STRING, so a
-#' cache written under the old, narrower query would otherwise be served under
-#' the new one. Such a term's key gains "_syn", read off the query the term now
-#' builds, so the key follows the question actually asked. Bare "12S"/"16S"
-#' always had the synonyms and keep their key; every production workflow
-#' fetches with "12S", so none re-fetches. Stale pre-change "<term>" files are
-#' merely unreferenced (the grammar's stem is free text, so eviction still
-#' recognises both forms).
+#' The reference cache is keyed on the barcode term STRING. That is the
+#' question's LABEL, not the question: two calls passing the same
+#' \code{barcode_term} ask different NCBI queries whenever the code that turns
+#' a term into a query changes, and the cache serves the older answer to the
+#' newer question. A cached object is written post-taxonomy-merge, so a hit
+#' bypasses the taxonomy bridge entirely and the stale rows are never
+#' re-examined.
+#'
+#' This suffix is a digest of the query \code{.build_search_term()} now
+#' produces for this term, so the key follows the question asked rather than
+#' the label it was asked under. Change a synonym list, add a filter clause,
+#' re-order the clause assembly -- the digest moves and the old file is simply
+#' not hit.
+#'
+#' Two details make it a key rather than a heuristic.
+#'
+#' The term is built against a FIXED probe name, not the taxon being fetched,
+#' so one marker yields one digest across every taxon in a fetch. The taxon is
+#' already in the stem, and the date bounds and \code{taxid} are already their
+#' own key components, so they are left at their defaults here and the digest
+#' carries only what the barcode term itself decides.
+#'
+#' It replaces an earlier suffix that grepped the built query for one phrase
+#' and emitted \code{"_syn"}. That proxy covered exactly the one change it was
+#' written for: any OTHER change to the query -- including restricting a
+#' synonym to \code{mitochondrion[FILTER]} -- moved the query without moving
+#' the key. A digest cannot have that gap, because it is derived from the whole
+#' term and not from a phrase someone remembered to look for.
+#'
+#' It is appended by \code{.ref_cache_file()} as its own key component rather
+#' than inside the stem, and UNCONDITIONALLY, which is what makes the previous
+#' generation collectable instead of immortal. \code{.ref_cache_grammar()}
+#' requires \code{_q} + 8 hex digits, so every file written before this
+#' existed fails the grammar and \code{.ref_cache_unreachable()} can prove it
+#' unhittable -- the same proof \code{rank_sfx} supplies. Had the digest gone
+#' in the stem it would instead have given each query generation its own stem:
+#' the old files would still MATCH the grammar, so nothing could ever delete
+#' them, and stem-scoped eviction would no longer recognise the generation it
+#' is replacing.
+#'
+#' \strong{Every existing reference-cache file changes name}, including bare
+#' \code{"12S"}/\code{"16S"} ones that previously took no suffix. That is the
+#' point -- those are the files written before the query changed -- but it
+#' means the next run re-fetches.
 #' @noRd
-.ref_cache_syn_suffix <- function(barcode_term) {
-  # The phrase this greps for is not a loose guess: .build_search_term()'s own
-  # tests assert that a MiFish term's query contains "small subunit ribosomal
-  # RNA" and a 16S term's contains "large subunit ribosomal RNA". Reword the
-  # synonym lists and those tests fail before this suffix can quietly stop
-  # applying, which is what keeps a query change from being served from a key
-  # that did not move.
-  gains <- vapply(barcode_term, function(bt) {
-    !tolower(trimws(bt)) %in% c("12s", "16s") &&
-      grepl("subunit ribosomal RNA", .build_search_term("x", bt), fixed = TRUE)
-  }, logical(1L))
-  if (any(gains)) "_syn" else ""
+.ref_cache_term_sfx <- function(barcode_term) {
+  # Built against a fixed probe so the digest is per-marker, not per-taxon.
+  probe <- .build_search_term(.REF_CACHE_TERM_PROBE, barcode_term)
+  sprintf("_q%s", substr(rlang::hash(probe), 1L, 8L))
 }
+
+# The probe name the term digest is built against. A sentinel, not a real
+# taxon: it must never resolve to anything, so that no real fetch can collide
+# with it and so a reader cannot mistake it for a tested genus.
+.REF_CACHE_TERM_PROBE <- "Cacheprobe placeholder"
 
 
 #' Build the cache-file path for one taxon's reference metadata
@@ -673,7 +847,9 @@ utils::globalVariables(c(
 #' narrower rank_system's cache hard-crashes a wider call at the
 #' \code{keep_cols} subset), \code{keep_out_of_range} (the cached object is
 #' fully post-filter, so a cache built with FALSE genuinely lacks
-#' out-of-range rows), the length and date bounds, and \code{taxid} (a
+#' out-of-range rows), a digest of the QUERY that barcode term now builds
+#' (\code{.ref_cache_term_sfx()} -- the term string alone is the question's
+#' label, not the question), the length and date bounds, and \code{taxid} (a
 #' taxid-scoped query and a name-scoped query for the same taxon can return
 #' genuinely different sequences -- see the homonym-detection note on
 #' \code{.build_search_term()} -- so a cache built under one must never be
@@ -688,6 +864,10 @@ utils::globalVariables(c(
     return(NULL)
   }
   stem <- .ref_cache_stem(name, barcode_term, prefix)
+  # Unconditional, like rank_sfx below and for the same reason: a file name
+  # lacking it cannot be produced by this function for ANY arguments, so the
+  # grammar can prove the previous generation unreachable and evict it.
+  q_sfx <- .ref_cache_term_sfx(barcode_term)
   date_sfx <- gsub("[^0-9]", "", paste0(
     if (is.null(min_date)) "X" else min_date, "_",
     if (is.null(max_date)) "X" else max_date
@@ -706,7 +886,7 @@ utils::globalVariables(c(
   file.path(
     cache_dir,
     paste0(
-      stem,
+      stem, q_sfx,
       "_l", min_len, "_", max_len,
       "_d", date_sfx, oor_sfx, rank_sfx, txid_sfx, "_meta.rds"
     )
@@ -747,6 +927,7 @@ utils::globalVariables(c(
 .ref_cache_grammar <- function() {
   paste0(
     "^.+", # stem: prefix + sanitised taxon + sanitised barcode
+    "_q[0-9a-f]{8}", # search-term digest -- UNCONDITIONAL, see below
     "_l[0-9]+_[0-9]+", # length window
     "_d[0-9]*", # date bounds; digits only, empty when both are NULL
     "(_oor[0-9]+_l[0-9]+)?", # out-of-range settings, only when kept
@@ -798,7 +979,8 @@ utils::globalVariables(c(
   x <- sub("_rk-[a-z0-9-]*$", "", x)
   x <- sub("_oor[0-9]+_l[0-9]+$", "", x)
   x <- sub("_d[0-9]*$", "", x)
-  sub("_l[0-9]+_[0-9]+$", "", x)
+  x <- sub("_l[0-9]+_[0-9]+$", "", x)
+  sub("_q[0-9a-f]{8}$", "", x)
 }
 
 
@@ -1227,6 +1409,13 @@ utils::globalVariables(c(
 #' only sequences not already in the store. A per-taxon file written under a
 #' cap holds only a sample, cannot serve a larger cap, and is re-fetched once.
 #'
+#' The key records the QUERY a `barcode_term` builds, not merely the term
+#' string, because the term is the question's label and the query is the
+#' question. Any change to how a term becomes an NCBI search therefore makes
+#' that term's existing cache files unhittable, and each affected taxon is
+#' re-fetched once; the superseded files are collectable by
+#' `evict_unreachable_cache`.
+#'
 #' @section Choosing max_per_species and max_per_genus:
 #' The memory [build_sequence_matrix()] and [train_likelihood_model()] need
 #' grows with the square of the number of sequences in each genus, so a few
@@ -1446,8 +1635,15 @@ utils::globalVariables(c(
 #'     \item{`kingdom`, `phylum`}{Always present. Resolved on every fetch in
 #'       addition to whatever `rank_system` itself requests, at no extra
 #'       taxonomy call -- both ranks already sit in the XML the bridge
-#'       returns. A queried name whose rows span more than one kingdom is
-#'       reported as a homonym and the rows are kept for review.}
+#'       returns. A queried name whose rows span more than one kingdom is a
+#'       homonym: the name matched some other organism too. Such rows are
+#'       reported, and dropped only when the rest of the fetch says which
+#'       kingdom is the intruder -- that is, when at least 90\% of the other
+#'       queried names resolved unambiguously to one kingdom, counted one
+#'       vote per name. Failing that, nothing is dropped and the split is
+#'       reported for review. A name resolving to a single kingdom is never
+#'       filtered, however much it differs from the rest of the fetch, and a
+#'       row whose kingdom did not resolve is always kept.}
 #'     \item{`queried_taxon`}{Only when `taxa_lineage` was supplied; records
 #'       which `taxa` entry a row was fetched under, so the lineage-agreement
 #'       guard has data to check without a second taxonomy fetch.}
@@ -2339,6 +2535,13 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # .fetch_taxonomy_map()'s own note above) -- any one genus with a
   # slightly different resolved column set was enough to hard-error the
   # WHOLE fetch, discarding every other genus's already-completed work.
+  # Cross-kingdom homonym cleanup, here and not inside the loop above: the
+  # reference kingdom is a property of the whole fetch, so it is not knowable
+  # until every taxon -- cached ones included -- is in hand. See
+  # .resolve_kingdom_contamination() for why per-taxon context would make the
+  # same call filter differently on a warm and a cold cache.
+  all_meta <- .resolve_kingdom_contamination(all_meta, taxa)
+
   family_meta <- dplyr::bind_rows(all_meta)
 
   # Priority species get their full allocation by design: exempt from the

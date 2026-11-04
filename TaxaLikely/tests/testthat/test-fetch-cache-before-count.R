@@ -47,9 +47,14 @@ write_cached_taxon <- function(cache_dir, taxon, accs,
     species = paste(taxon, "sp."), stringsAsFactors = FALSE
   )
   if (!is.null(sel_params)) attr(meta, "sel_params") <- sel_params
-  f <- file.path(cache_dir, sprintf(
-    "%s_12S_l100_5000_d_rk-family-genus-species_meta.rds", taxon
-  ))
+  # Built by the key function, not spelled out: a hand-written name is a
+  # second copy of the key that goes stale the moment the key gains a
+  # component, and then this fixture silently stops being a cache HIT --
+  # which is the only thing these tests measure.
+  f <- TaxaLikely:::.ref_cache_file(
+    cache_dir, taxon, "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
+    c("family", "genus", "species")
+  )
   saveRDS(meta, f)
   f
 }

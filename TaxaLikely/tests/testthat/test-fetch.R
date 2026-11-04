@@ -506,16 +506,93 @@ test_that("fetch_bold_reference_sequences: the no-records early return carries t
   ) %in% names(out)))
 })
 
-test_that("a MiFish term's cache key changes with its broader query; 12S keys do not", {
+test_that("the stem is taxon + barcode only -- the term digest is NOT in it", {
   stem <- TaxaLikely:::.ref_cache_stem
+  # A per-generation stem would stop stem-scoped eviction recognising the
+  # generation it replaces, and would make every pre-change file immortal
+  # (the grammar's stem is free text, so such a file still MATCHES). So the
+  # stem must stay free of the digest.
   expect_identical(stem("Girella", "12S"), "Girella_12S")
   expect_identical(stem("Girella", "COI"), "Girella_COI")
-  expect_identical(stem("Girella", "MiFishU"), "Girella_MiFishU_syn")
-  expect_identical(stem("Girella", c("MiFish", "U")), "Girella_MiFish_U_syn")
-  # new names still satisfy the eviction grammar, so eviction never deletes them
-  f <- basename(TaxaLikely:::.ref_cache_file(tempdir(), "Girella", "MiFishU", 130, 210,
-    NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
-  expect_match(f, TaxaLikely:::.ref_cache_grammar())
+  expect_identical(stem("Girella", "MiFishU"), "Girella_MiFishU")
+  expect_identical(stem("Girella", c("MiFish", "U")), "Girella_MiFish_U")
+  expect_false(grepl("_q[0-9a-f]{8}", stem("Girella", "MiFishU")))
+})
+
+test_that("the cache key carries a digest of the query, not just the term string", {
+  key <- function(bt, name = "Girella") {
+    basename(TaxaLikely:::.ref_cache_file(tempdir(), name, bt, 130, 210,
+      NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
+  }
+  # Shape, and the grammar must accept it -- the eviction proof depends on
+  # .ref_cache_file() and .ref_cache_grammar() agreeing.
+  expect_match(key("12S"), "_q[0-9a-f]{8}_l130_210")
+  expect_match(key("12S"), TaxaLikely:::.ref_cache_grammar())
+
+  # Different question, different key.
+  expect_false(identical(key("12S"), key("16S")))
+  expect_false(identical(key("12S"), key("COI")))
+  # Same question, same key (so a re-run hits its own cache).
+  expect_identical(key("12S"), key("12S"))
+
+  # The digest is per MARKER, not per taxon: the taxon is already in the stem,
+  # so two taxa fetched with one term must share one digest.
+  d <- function(k) sub("^.*(_q[0-9a-f]{8}).*$", "\\1", k)
+  expect_identical(d(key("12S", "Girella")), d(key("12S", "Sebastes")))
+})
+
+test_that("the key moves when the QUERY changes even though the term string does not", {
+  # This is the test the old "_syn" suffix could not pass, and the reason the
+  # digest exists. That suffix grepped the built query for one phrase, so any
+  # other change to the query -- restricting a synonym to
+  # mitochondrion[FILTER], re-ordering clauses, adding a filter -- moved the
+  # question without moving the key, and the stale cache was served. A cached
+  # object is written post-taxonomy-merge, so such a hit bypasses the taxonomy
+  # bridge entirely and the stale rows are never looked at again.
+  sfx <- TaxaLikely:::.ref_cache_term_sfx
+  before <- sfx("12S")
+  after <- testthat::with_mocked_bindings(
+    .build_search_term = function(taxon, barcode_term, ...) {
+      "a deliberately different query for the same term"
+    },
+    .package = "TaxaLikely",
+    code = sfx("12S")
+  )
+  expect_false(identical(before, after))
+  expect_match(after, "^_q[0-9a-f]{8}$")
+})
+
+test_that("a cache file written before the digest existed is evictable, not immortal", {
+  d <- tempfile("taxalikely_q_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+
+  live <- TaxaLikely:::.ref_cache_file(d, "Girella", "12S", 130, 210,
+    NULL, NULL, FALSE, 0, 0, c("family", "genus", "species"))
+  # The same name as the key used to produce: everything except the digest.
+  old <- file.path(d, sub("_q[0-9a-f]{8}", "", basename(live)))
+  file.create(live, old)
+
+  unreachable <- TaxaLikely:::.ref_cache_unreachable(d)
+  expect_true(old %in% unreachable)
+  expect_false(live %in% unreachable)
+
+  # And it is recognised as a previous generation OF THAT TAXON, which is what
+  # scopes the automatic write-path eviction.
+  scoped <- TaxaLikely:::.ref_cache_unreachable(
+    d, TaxaLikely:::.ref_cache_stem("Girella", "12S")
+  )
+  expect_identical(scoped, old)
+})
+
+test_that(".ref_cache_stem_of() strips the digest along with the other components", {
+  live <- basename(TaxaLikely:::.ref_cache_file(tempdir(), "Sebastes miniatus",
+    "MiFishU", 130, 210, "2000/01/01", NULL, TRUE, 3, 900,
+    c("family", "genus", "species"), taxid = "1261581"))
+  expect_identical(
+    TaxaLikely:::.ref_cache_stem_of(live),
+    TaxaLikely:::.ref_cache_stem("Sebastes miniatus", "MiFishU")
+  )
 })
 
 # ---- network abort rules (2026-10-05) ---------------------------------------
