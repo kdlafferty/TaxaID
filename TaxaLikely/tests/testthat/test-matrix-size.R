@@ -432,6 +432,14 @@ test_that("a retained build reports the unretained ceiling and does not refuse t
 })
 
 test_that("an unretained build over budget is refused", {
+  # DECIPHER as well as Biostrings: with pair_retention = "all" the guard runs
+  # .pilot_cross_genus_retention() -> .decipher_align_pairs(). Every other test
+  # in this file that reaches that path guards both; this one did not, and with
+  # a bare expect_error() the omission was invisible -- on a machine without
+  # DECIPHER the call raised packageNotFoundError and the bare handler accepted
+  # it, so the budget refusal was never actually exercised there. Found when
+  # pinning the message turned that silent pass into a CI failure.
+  skip_if_not_installed("DECIPHER")
   skip_if_not_installed("Biostrings")
   ref <- data.frame(
     composite_id = sprintf("ACC%04d", 1:400),
