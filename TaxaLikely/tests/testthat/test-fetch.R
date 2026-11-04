@@ -296,10 +296,11 @@ test_that(".build_search_term ORs in ribosomal-subunit synonyms for bare 12S/16S
 })
 
 test_that(".build_search_term does NOT apply ribosomal-subunit synonyms to 18S", {
-  # Deliberate scope limit: "small subunit ribosomal RNA" is ambiguous between
-  # mitochondrial 12S and nuclear 18S -- reusing it for 18S would trade missed
-  # true positives for new false positives, a different tradeoff needing its
-  # own design (not attempted here).
+  # Deliberate scope limit: "small subunit ribosomal RNA" names both
+  # mitochondrial 12S and nuclear 18S, so it cannot identify an 18S record.
+  # For 12S and 16S the same ambiguity is handled by searching the phrase only
+  # within mitochondrion[FILTER]; that cannot help 18S, whose target IS the
+  # nuclear subunit, so 18S still gets no subunit synonym at all.
   bst <- TaxaLikely:::.build_search_term
   out18 <- bst("Gadidae", "18S")
   expect_false(grepl("subunit ribosomal RNA", out18))
@@ -314,7 +315,7 @@ test_that(".build_search_term leaves GENE-tagged and primer-name terms unaffecte
     paste0(
       "Gadidae[Organism] AND (MiFishU[All Fields] OR 12S[All Fields] OR ",
       "\"12S ribosomal RNA\"[All Fields] OR \"12S rRNA\"[All Fields] OR ",
-      "\"small subunit ribosomal RNA\"[All Fields])"
+      "(\"small subunit ribosomal RNA\"[All Fields] AND mitochondrion[FILTER]))"
     )
   )
 })
@@ -588,4 +589,107 @@ test_that("a connection that never answers is aborted quickly, and the retry fir
   r <- TaxaLikely:::.retry_fetch(function() { n <<- n + 1L; httr::GET(url, cfg) }, max_attempts = 2L)
   expect_false(r$success)
   expect_equal(n, 2L) # a stalled call now errors, so the retry runs
+})
+
+test_that("the SSU/LSU synonyms are searched only within mitochondrion[FILTER]", {
+  # The two phrases also name the NUCLEAR rRNA operon's subunits, so searched
+  # unrestricted they return 28S/18S/ITS records for the right organism.
+  # Measured live: 45 nuclear Cottus records via LSU, 10 via SSU, and 23
+  # Castilleja (plant) records for the goby genus Clevelandia.
+  t16 <- TaxaLikely:::.build_search_term("Clevelandia", "16S")
+  t12 <- TaxaLikely:::.build_search_term("Clevelandia", "12S")
+
+  expect_true(grepl(
+    '("large subunit ribosomal RNA"[All Fields] AND mitochondrion[FILTER])',
+    t16, fixed = TRUE
+  ))
+  expect_true(grepl(
+    '("small subunit ribosomal RNA"[All Fields] AND mitochondrion[FILTER])',
+    t12, fixed = TRUE
+  ))
+
+  # The restriction is gone the moment the phrase appears OUTSIDE the
+  # parenthesised AND -- which is what a revert, or a move back into
+  # marker_synonyms, would produce. Without this the test above still passes
+  # while the clause also searches the phrase unrestricted.
+  expect_false(grepl('OR "large subunit ribosomal RNA"[All Fields] OR', t16, fixed = TRUE))
+  expect_false(grepl('OR "large subunit ribosomal RNA"[All Fields])', t16, fixed = TRUE))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields] OR', t12, fixed = TRUE))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields])', t12, fixed = TRUE))
+
+  # Each marker's own unambiguous names stay UNRESTRICTED. Filtering the whole
+  # clause instead drops genuine untagged records (LC342688/LC342689,
+  # "Cottus pollux / Cottus reinii gene for 12S ribosomal RNA").
+  expect_true(grepl('"16S ribosomal RNA"[All Fields] OR', t16, fixed = TRUE))
+  expect_true(grepl('"12S ribosomal RNA"[All Fields] OR', t12, fixed = TRUE))
+  expect_false(grepl("AND mitochondrion[FILTER])) AND", t16, fixed = TRUE))
+
+  # Pinned in full, so any reordering or requoting is visible rather than
+  # silently equivalent-looking.
+  expect_identical(
+    t16,
+    paste0(
+      'Clevelandia[Organism] AND (16S[All Fields] OR "16S ribosomal RNA"[All Fields]',
+      ' OR "16S rRNA"[All Fields] OR ("large subunit ribosomal RNA"[All Fields]',
+      " AND mitochondrion[FILTER]))"
+    )
+  )
+})
+
+test_that("a primer-set term inherits its marker's RESTRICTED synonym too", {
+  # MiFish-U resolves to 12S through primer_to_locus, a second lookup path.
+  # Fixing only the direct marker_synonyms path leaves this one unrestricted.
+  tm <- TaxaLikely:::.build_search_term("Fundulus", "MiFish-U")
+  expect_true(grepl(
+    '("small subunit ribosomal RNA"[All Fields] AND mitochondrion[FILTER])',
+    tm, fixed = TRUE
+  ))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields] OR', tm, fixed = TRUE))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields])', tm, fixed = TRUE))
+})
+
+test_that(".report_kingdom_split names every kingdom and drops nothing", {
+  meta <- data.frame(
+    taxid = as.character(1:28),
+    kingdom = c(rep("Viridiplantae", 26), rep("Metazoa", 2)),
+    species = c(paste0("Castilleja sp", 1:26), "Clevelandia ios", "Clevelandia ios"),
+    stringsAsFactors = FALSE
+  )
+  # Pinned: both kingdoms AND both counts. A bare expect_message() would pass
+  # on any message at all, including one that named only the majority.
+  expect_message(
+    TaxaLikely:::.report_kingdom_split(meta, "Clevelandia"),
+    "CROSS-KINGDOM SPLIT.*Viridiplantae 26.*Metazoa 2"
+  )
+  expect_message(
+    TaxaLikely:::.report_kingdom_split(meta, "Clevelandia"),
+    "Clevelandia"
+  )
+  # It reports; it must not delete. The within-taxon majority here is the
+  # CONTAMINANT (26 of 28), so a majority-based drop would discard both real
+  # records and keep all 26 plants.
+  out <- suppressMessages(TaxaLikely:::.report_kingdom_split(meta, "Clevelandia"))
+  expect_identical(nrow(out), 28L)
+  expect_identical(sum(out$kingdom == "Metazoa"), 2L)
+})
+
+test_that(".report_kingdom_split stays silent when there is nothing to report", {
+  one <- data.frame(
+    taxid = c("1", "2"), kingdom = c("Metazoa", "Metazoa"),
+    stringsAsFactors = FALSE
+  )
+  expect_silent(TaxaLikely:::.report_kingdom_split(one, "Gillichthys"))
+  # No kingdom column at all (a cache written without one) must not error.
+  expect_silent(TaxaLikely:::.report_kingdom_split(
+    data.frame(taxid = "1", stringsAsFactors = FALSE), "Gillichthys"
+  ))
+  expect_silent(TaxaLikely:::.report_kingdom_split(
+    data.frame(taxid = character(0), kingdom = character(0),
+               stringsAsFactors = FALSE), "Gillichthys"
+  ))
+  # All-NA kingdoms carry no information, so there is no split to claim.
+  expect_silent(TaxaLikely:::.report_kingdom_split(
+    data.frame(taxid = c("1", "2"), kingdom = c(NA_character_, NA_character_),
+               stringsAsFactors = FALSE), "Gillichthys"
+  ))
 })

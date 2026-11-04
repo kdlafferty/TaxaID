@@ -78,17 +78,40 @@ utils::globalVariables(c(
   # citation was titled "12S barcoding of Texas fishes". Whether a genuine
   # 12S/16S sequence is found was effectively down to incidental bibliographic
   # metadata, not the sequence's own real content. "Small/large subunit
-  # ribosomal RNA" (SSU/LSU rRNA) are the standard, unambiguous synonyms for
-  # mitochondrial 12S/16S rRNA specifically (confirmed empirically too: this
-  # phrasing recovers 1 additional real Fundulus 12S record and 3 additional
-  # real Fundulus 16S records beyond what a bare marker-name search finds).
-  # Deliberately NOT extended to 18S: "small subunit ribosomal RNA" is
-  # ambiguous between mitochondrial 12S and NUCLEAR 18S, so reusing it there
-  # would trade missed true positives for new false positives -- a different
-  # risk profile needing its own design, not a copy of this fix.
+  # ribosomal RNA" (SSU/LSU rRNA) are the standard synonyms for mitochondrial
+  # 12S/16S rRNA, and they recover real records a bare marker-name search
+  # misses (1 additional Fundulus 12S and 3 additional Fundulus 16S). They are
+  # NOT unambiguous, however: the identical phrases also name the NUCLEAR rRNA
+  # operon's small and large subunits (18S, and 26S/28S), so they are kept in
+  # a separate list below and searched only within mitochondrion[FILTER].
   marker_synonyms <- list(
-    "12s" = c('"12S ribosomal RNA"', '"12S rRNA"', '"small subunit ribosomal RNA"'),
-    "16s" = c('"16S ribosomal RNA"', '"16S rRNA"', '"large subunit ribosomal RNA"')
+    "12s" = c('"12S ribosomal RNA"', '"12S rRNA"'),
+    "16s" = c('"16S ribosomal RNA"', '"16S rRNA"')
+  )
+
+  # SSU/LSU phrases, searched ONLY inside mitochondrion[FILTER].
+  # Unrestricted they pull the nuclear rRNA operon into a mitochondrial
+  # reference set. Measured live against NCBI: "large subunit ribosomal RNA"
+  # alone returns 45 nuclear records for Cottus (ITS1/5.8S operons at ~4,525
+  # bp, and MN812580+ "haplotype N_LSU large subunit ribosomal RNA") and
+  # AY655692 for Fundulus, whose own title is "28S large subunit ribosomal
+  # RNA"; "small subunit ribosomal RNA" alone returns 10 nuclear 18S records
+  # for Cottus. For the goby genus Clevelandia -- a homonym of a plant genus --
+  # it returns 23 Castilleja (Orobanchaceae) records, 93% of that genus's 16S
+  # hits. Restricting these two phrases removes every one of those.
+  # The restriction is deliberately NOT applied to the whole barcode clause:
+  # that also drops genuine records whose metadata simply lacks the filter flag
+  # (LC342688/LC342689, "Cottus pollux / Cottus reinii gene for 12S ribosomal
+  # RNA, partial sequence"). Nor are the phrases dropped outright, which costs
+  # far more than it saves: 102 Cottus 12S, 74 Cottus 16S, 24 Mugil 16S and 24
+  # Parablennius 16S records.
+  # This is the same 12S-vs-nuclear-18S ambiguity that previously argued
+  # against extending SSU to 18S; it applies to BOTH phrases against the
+  # nuclear operon, so both are restricted the same way rather than one being
+  # treated as safe.
+  marker_synonyms_mito_only <- list(
+    "12s" = '"small subunit ribosomal RNA"',
+    "16s" = '"large subunit ribosomal RNA"'
   )
 
   # A registered PRIMER-VARIANT name (TaxaTools::barcode_primer_defaults) is the
@@ -136,9 +159,22 @@ utils::globalVariables(c(
       # RNA" / "small subunit ribosomal RNA" (e.g. Fundulus OQ846298 above).
       synonyms <- marker_synonyms[[key]]
       if (is.null(synonyms) && !is.na(locus)) synonyms <- marker_synonyms[[tolower(locus)]]
+      # Same key-then-locus fallback as the unrestricted synonyms above, so a
+      # primer-set term (MiFish-U -> 12S) carries the restricted phrase too
+      # rather than searching it unrestricted or not at all.
+      syn_mito <- marker_synonyms_mito_only[[key]]
+      if (is.null(syn_mito) && !is.na(locus)) {
+        syn_mito <- marker_synonyms_mito_only[[tolower(locus)]]
+      }
       clauses <- primer_clause
       if (!is.na(locus)) clauses <- c(clauses, paste0(locus, "[All Fields]"))
       if (!is.null(synonyms)) clauses <- c(clauses, paste0(synonyms, "[All Fields]"))
+      if (!is.null(syn_mito)) {
+        clauses <- c(
+          clauses,
+          paste0("(", syn_mito, "[All Fields] AND mitochondrion[FILTER])")
+        )
+      }
       if (length(clauses) > 1L) {
         paste0("(", paste(clauses, collapse = " OR "), ")")
       } else {
@@ -482,6 +518,53 @@ utils::globalVariables(c(
   }
 
   dplyr::bind_rows(res)
+}
+
+
+#' Report a queried name whose fetched records span more than one kingdom
+#'
+#' One queried name returning two kingdoms is the signature of a homonym --
+#' the same genus name used independently in two codes of nomenclature -- and
+#' not of a taxonomic revision, which stays inside a shared higher clade. The
+#' goby genus \code{Clevelandia} is also a plant genus: a bare-name 16S fetch
+#' for it returns 26 \emph{Castilleja} (Orobanchaceae) records against 2 real
+#' \emph{Clevelandia ios} ones.
+#'
+#' This function REPORTS and does not drop, deliberately. Dropping needs a
+#' reference kingdom, and the within-taxon majority cannot serve as one: in
+#' the \code{Clevelandia} case the contaminant is 93\% of the rows, so a
+#' majority rule would discard both genuine records and keep all 26 plants --
+#' it inverts exactly where it is needed. Choosing the reference kingdom is a
+#' design decision, so until it is made the honest action is to make the split
+#' visible rather than to guess which side to delete.
+#'
+#' @param meta Data frame of fetched metadata, post-taxonomy-merge.
+#' @param taxon Character scalar: the name this batch was queried under.
+#' @return \code{meta}, unchanged. Called for its message.
+#' @noRd
+.report_kingdom_split <- function(meta, taxon) {
+  if (!"kingdom" %in% names(meta) || nrow(meta) == 0L) {
+    return(invisible(meta))
+  }
+  k <- as.character(meta$kingdom)
+  k <- k[!is.na(k) & nzchar(k)]
+  if (length(k) == 0L) {
+    return(invisible(meta))
+  }
+  tab <- sort(table(k), decreasing = TRUE)
+  if (length(tab) < 2L) {
+    return(invisible(meta))
+  }
+  message(sprintf(
+    paste0(
+      "  %s: CROSS-KINGDOM SPLIT -- %d record(s) across %d kingdoms (%s). ",
+      "One queried name returning more than one kingdom is a homonym, not a ",
+      "revision; these rows are KEPT and need review."
+    ),
+    taxon, length(k), length(tab),
+    paste(sprintf("%s %d", names(tab), as.integer(tab)), collapse = ", ")
+  ))
+  invisible(meta)
 }
 
 
@@ -1357,10 +1440,13 @@ utils::globalVariables(c(
 #'     \item{`lat`, `lon`, `country`}{Only when `include_location = TRUE`.
 #'       Collection location parsed from GenBank's `lat_lon`/`country`
 #'       qualifiers; `NA` when absent or unparseable.}
-#'     \item{`queried_taxon`, `kingdom`, `phylum`}{Only when `taxa_lineage`
-#'       was supplied. `queried_taxon` records which `taxa` entry a row was
-#'       fetched under; `kingdom`/`phylum` are always resolved (in addition
-#'       to whatever `rank_system` itself requests) so the lineage-agreement
+#'     \item{`kingdom`, `phylum`}{Always present. Resolved on every fetch in
+#'       addition to whatever `rank_system` itself requests, at no extra
+#'       taxonomy call -- both ranks already sit in the XML the bridge
+#'       returns. A queried name whose rows span more than one kingdom is
+#'       reported as a homonym and the rows are kept for review.}
+#'     \item{`queried_taxon`}{Only when `taxa_lineage` was supplied; records
+#'       which `taxa` entry a row was fetched under, so the lineage-agreement
 #'       guard has data to check without a second taxonomy fetch.}
 #'   }
 #'   Carries a `taxa_without_sequences` attribute: the requested taxa for
@@ -2056,11 +2142,13 @@ fetch_ncbi_reference_sequences <- function(taxa,
           "  %s: resolving taxonomy for %d unique taxids...",
           taxa[i], length(unique_taxids)
         ))
-        desired_ranks <- if (!is.null(taxa_lineage)) {
-          union(tolower(rank_system), c("kingdom", "phylum"))
-        } else {
-          tolower(rank_system)
-        }
+        # kingdom/phylum are requested on EVERY fetch, not only alongside
+        # taxa_lineage: the comment above records that these ranks already sit
+        # in the XML this call returns, so they cost no extra round trip, and a
+        # kingdom column is the only thing that lets a homonym be seen at all.
+        # Gating them on an opt-in argument meant a fetch that did not opt in
+        # could not detect a cross-kingdom split even in principle.
+        desired_ranks <- union(tolower(rank_system), c("kingdom", "phylum"))
         tax_map <- .fetch_taxonomy_map(unique_taxids, desired_ranks)
 
         if (is.null(tax_map) || nrow(tax_map) == 0L) {
@@ -2072,6 +2160,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
         }
 
         meta <- merge(meta, tax_map, by = "taxid", all.x = TRUE)
+
+        .report_kingdom_split(meta, taxa[i])
 
         # Drop rows with missing finest-rank taxonomy
         finest_rank <- tolower(rank_system[length(rank_system)])
