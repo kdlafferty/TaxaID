@@ -83,8 +83,12 @@ test_that("report_habitat reads report_params attribute", {
 })
 
 test_that("report_habitat errors on empty data", {
-  expect_error(report_habitat(data.frame()))
-  expect_error(report_habitat(NULL))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_habitat(data.frame()), "must be a non-empty data frame")
+  expect_error(report_habitat(NULL), "must be a non-empty data frame")
 })
 
 test_that("dominant pct survives an all-NA habitat column (2026-09-01 real crash)", {

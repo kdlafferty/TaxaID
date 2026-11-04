@@ -514,11 +514,16 @@ test_that("an HTTP 400 'temperature is deprecated' reply surfaces as a named bat
     "temperature. is deprecated"
   )
   expect_true(all(is.na(res$llm_geographic_plausibility)))
+  # Pinned on "NO LLM verdict" rather than on the "max_retries = 2" clause in
+  # the same message: that clause prints the configured BUDGET inside a sentence
+  # about what was DONE, and is item 1 on the 1.1 wording board. Pinning the
+  # part that is scheduled to change would make this test fail on that fix.
   expect_error(
     suppressWarnings(review_assignments(
       data_type = "eDNA", input_df = df, taxon_col = "consensus_taxon",
       context = list(geography = "Mugu Lagoon, California", habitat = "estuary"),
       llm_fn = fn, verbose = FALSE, on_unreviewed = "error"
-    ))
+    )),
+    "NO LLM verdict"
   )
 })

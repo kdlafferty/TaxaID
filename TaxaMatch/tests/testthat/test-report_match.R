@@ -75,8 +75,12 @@ test_that("report_match reads report_params attribute", {
 })
 
 test_that("report_match errors on empty input", {
-  expect_error(report_match(data.frame()))
-  expect_error(report_match(NULL))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_match(data.frame()), "must be a non-empty data frame")
+  expect_error(report_match(NULL), "must be a non-empty data frame")
 })
 
 test_that("report_match handles missing score column gracefully", {

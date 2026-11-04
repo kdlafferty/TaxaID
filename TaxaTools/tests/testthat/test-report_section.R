@@ -35,25 +35,49 @@ test_that("new_report_section works with NULL optional fields", {
 })
 
 test_that("new_report_section validates inputs", {
-  expect_error(new_report_section(package = "", section = "s", methods = "M"))
-  expect_error(new_report_section(package = "P", section = "", methods = "M"))
-  expect_error(new_report_section(package = "P", section = "s", methods = c("a", "b")))
-  expect_error(new_report_section(
-    package = "P", section = "s", methods = "M",
-    results = c("a", "b")
-  ))
-  expect_error(new_report_section(
-    package = "P", section = "s", methods = "M",
-    citations = 123
-  ))
-  expect_error(new_report_section(
-    package = "P", section = "s", methods = "M",
-    params = "not a list"
-  ))
-  expect_error(new_report_section(
-    package = "P", section = "s", methods = "M",
-    statistics = "not a list"
-  ))
+  # Pinned per argument: these seven checks produce seven DIFFERENT messages,
+  # so a bare expect_error() could not tell which one fired -- a check that
+  # validated 'package' twice and 'section' never would have passed.
+  expect_error(
+    new_report_section(package = "", section = "s", methods = "M"),
+    "'package' must be a non-empty single string"
+  )
+  expect_error(
+    new_report_section(package = "P", section = "", methods = "M"),
+    "'section' must be a non-empty single string"
+  )
+  expect_error(
+    new_report_section(package = "P", section = "s", methods = c("a", "b")),
+    "'methods' must be a single character string"
+  )
+  expect_error(
+    new_report_section(
+      package = "P", section = "s", methods = "M",
+      results = c("a", "b")
+    ),
+    "'results' must be a single character string or NULL"
+  )
+  expect_error(
+    new_report_section(
+      package = "P", section = "s", methods = "M",
+      citations = 123
+    ),
+    "'citations' must be a character vector or NULL"
+  )
+  expect_error(
+    new_report_section(
+      package = "P", section = "s", methods = "M",
+      params = "not a list"
+    ),
+    "'params' must be a named list or NULL"
+  )
+  expect_error(
+    new_report_section(
+      package = "P", section = "s", methods = "M",
+      statistics = "not a list"
+    ),
+    "'statistics' must be a named list or NULL"
+  )
 })
 
 test_that("print.report_section outputs markdown", {
@@ -143,8 +167,14 @@ test_that("assemble_report includes title and study_description", {
 })
 
 test_that("assemble_report errors on non-section objects", {
-  expect_error(assemble_report(data.frame(x = 1)))
-  expect_error(assemble_report())
+  expect_error(
+    assemble_report(data.frame(x = 1)),
+    "all arguments must be report_section objects"
+  )
+  expect_error(
+    assemble_report(),
+    "at least one report_section object required"
+  )
 })
 
 test_that("assemble_report separates Methods from Results", {

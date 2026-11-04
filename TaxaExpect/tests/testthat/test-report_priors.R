@@ -98,9 +98,13 @@ test_that("report_priors includes occurrence count from list output", {
 })
 
 test_that("report_priors errors on invalid input", {
-  expect_error(report_priors(NULL))
-  expect_error(report_priors(data.frame()))
-  expect_error(report_priors("not valid"))
+  # Each of these pinned on the validation it is actually meant to trip.
+  # A bare expect_error() passes on ANY condition, so it would keep passing
+  # if the check were removed and something incidental errored instead --
+  # verified today that every one of these does raise its own validation.
+  expect_error(report_priors(NULL), "must be a non-empty data frame")
+  expect_error(report_priors(data.frame()), "must be a non-empty data frame")
+  expect_error(report_priors("not valid"), "must be a non-empty data frame")
 })
 
 test_that("kernel tables report by prior_branch including resident rows (2026-09-01)", {
