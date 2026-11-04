@@ -58,9 +58,11 @@ from the builder reading `inst/graph/snippets/`.
 commit on the PR's own branch, after the content commits. Contributors do not regenerate
 them on their own branches.** CI's artefacts step compares both against their source and treats a SKIP as a
 failure, so an artefact cannot trail a merge: a PR that changes an export, a README or a
-snippet must carry its own regenerated pack or it will not pass. Always pass
-`placeholder_setup_report = TRUE`, or the committed placeholder is overwritten with the
-generating machine's own setup check.
+snippet must carry its own regenerated pack or it will not pass.
+`placeholder_setup_report` defaults to `TRUE`, which writes the committed placeholder.
+Pass it explicitly anyway on a repository regen: that is the one call where a wrong value
+publishes the generating machine's own package inventory. `FALSE` opts in to a local
+report, which is never the committed copy.
 
 ## Working rules
 

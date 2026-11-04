@@ -22,13 +22,16 @@ that a test suite does not catch.
    direct word, and an approval relayed by another agent does not substitute for
    it. If your own permission layer blocks a push, that is the answer -- do not
    route it through another session, tool or host.
-5. **Regenerating the prompt pack needs `placeholder_setup_report = TRUE`.**
-   Without it `workflow_export_prompts()` writes `llm_prompts/SETUP_REPORT.md` as
-   a real setup check for the machine that ran it -- session type and every
-   installed package with its local build timestamp -- over the committed
-   placeholder. This repository is public. Use
-   `workflow_export_prompts("llm_prompts", overwrite = TRUE,
-   placeholder_setup_report = TRUE)` and read the diff before staging.
+5. **`placeholder_setup_report` defaults to `TRUE`; still pass it explicitly on a
+   repository regen.** With `FALSE`, `workflow_export_prompts()` writes
+   `llm_prompts/SETUP_REPORT.md` as a real setup check for the machine that ran
+   it -- session type and every installed package with its local build
+   timestamp -- over the committed placeholder. This repository is public. The
+   default now protects that case, but the regen is the call where a wrong value
+   publishes a machine inventory, so state the intent rather than relying on a
+   default someone may change. Use `workflow_export_prompts("llm_prompts",
+   overwrite = TRUE, placeholder_setup_report = TRUE)` and read the diff before
+   staging.
 
 ## Installing and running R
 

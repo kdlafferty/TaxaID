@@ -417,7 +417,7 @@
   if (isTRUE(placeholder_setup_report)) {
     return(c(
       header,
-      "Run `TaxaWizard::workflow_export_prompts()` (without `placeholder_setup_report = TRUE`) to generate a report for your machine."
+      "Run `TaxaWizard::workflow_export_prompts(placeholder_setup_report = FALSE)` to generate a report for your machine."
     ))
   }
 
@@ -587,9 +587,10 @@
 #'     subsections at five), and its README's
 #'     Quick Start section when one exists and the source repo is reachable
 #'     (see \code{TAXAID_ROOT} in Details).}
-#'   \item{\code{SETUP_REPORT.md}}{\code{\link{workflow_check}}'s report for
-#'     the machine that generated the pack, or a placeholder (see
-#'     \code{placeholder_setup_report}).}
+#'   \item{\code{SETUP_REPORT.md}}{A placeholder pointing the reader at
+#'     \code{\link{workflow_check}}, or -- with
+#'     \code{placeholder_setup_report = FALSE} -- that check's report for the
+#'     machine which generated the pack.}
 #'   \item{\code{tasks/classify.md}, \code{tasks/path_select.md},
 #'     \code{tasks/parameterize.md}, \code{tasks/error_fix.md}}{The
 #'     corresponding \code{inst/prompts/phase_*.md} template, with
@@ -606,11 +607,19 @@
 #' @param overwrite Logical. When \code{FALSE} (default), errors if any file
 #'   this function would write already exists at that path. \code{TRUE}
 #'   replaces it.
-#' @param placeholder_setup_report Logical. When \code{TRUE}, writes
-#'   \code{SETUP_REPORT.md} as a placeholder pointing the reader at
+#' @param placeholder_setup_report Logical. When \code{TRUE} (default),
+#'   writes \code{SETUP_REPORT.md} as a placeholder pointing the reader at
 #'   \code{workflow_check()} instead of running the check on this machine.
-#'   Default \code{FALSE}. Used for the copy committed to the repository
-#'   (\code{llm_prompts/}), which is not any one contributor's machine.
+#'   \code{FALSE} opts in to a report for the machine that runs it: the R
+#'   session type, and every installed package with its local build
+#'   timestamp.
+#'
+#'   The default is \code{TRUE} because the costly direction is the one that
+#'   needs the deliberate act. \code{llm_prompts/} is committed to a public
+#'   repository, so a regeneration that quietly substituted the generating
+#'   machine's own inventory would publish it; a regeneration that writes the
+#'   placeholder when a local report was wanted costs one re-run. Pass
+#'   \code{FALSE} when you want the local report and nothing is committed.
 #'
 #' @return Character vector of the full paths written, invisibly.
 #'
@@ -631,11 +640,16 @@
 #' \dontrun{
 #' workflow_export_prompts("taxaid_prompts")
 #'
-#' # The committed repository copy is regenerated with:
+#' # The committed repository copy is regenerated with (the placeholder is the
+#' # default, and is passed explicitly here because the regen is the case where
+#' # getting it wrong publishes a machine inventory):
 #' workflow_export_prompts("llm_prompts", overwrite = TRUE, placeholder_setup_report = TRUE)
+#'
+#' # A report for THIS machine, which is never the committed copy:
+#' workflow_export_prompts("my_prompts", placeholder_setup_report = FALSE)
 #' }
 workflow_export_prompts <- function(dir = "taxaid_prompts", overwrite = FALSE,
-                                     placeholder_setup_report = FALSE) {
+                                     placeholder_setup_report = TRUE) {
   if (!is.character(dir) || length(dir) != 1L || is.na(dir) || !nzchar(dir)) {
     stop("workflow_export_prompts: 'dir' must be a single non-empty path.", call. = FALSE)
   }

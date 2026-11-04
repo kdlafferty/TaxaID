@@ -14,6 +14,34 @@ skip_if_not(length(TaxaWizard:::TAXAID_PACKAGES[
 # File list
 # ==============================================================================
 
+test_that("placeholder_setup_report defaults to TRUE, so a forgotten flag cannot publish a machine inventory", {
+  # The costly direction is the one that needs the deliberate act. `llm_prompts/`
+  # is committed to a public repository, so with a default of FALSE a regen that
+  # forgot the flag replaced the committed placeholder with the generating
+  # machine's own inventory -- R session type, and every installed package with
+  # its local build timestamp. Caught on PR #16 (2026-10-16) by reading the regen
+  # diff, and the flag was discoverable only from the signature. Getting it wrong
+  # the other way costs one re-run.
+  expect_true(isTRUE(formals(workflow_export_prompts)$placeholder_setup_report))
+
+  # The behaviour, not just the formal: a call with NO explicit value writes the
+  # placeholder, and the placeholder names the argument that opts out of it.
+  dir <- file.path(tempdir(), "pack_default_setup_report")
+  unlink(dir, recursive = TRUE)
+  written <- workflow_export_prompts(dir, overwrite = TRUE)
+  on.exit(unlink(dir, recursive = TRUE, force = TRUE), add = TRUE)
+  txt <- paste(readLines(file.path(dir, "SETUP_REPORT.md"), warn = FALSE),
+               collapse = "\n")
+  expect_match(txt, "placeholder_setup_report = FALSE", fixed = TRUE)
+  # A real report prints workflow_check()'s table; the placeholder must not.
+  expect_false(grepl("Installed packages", txt, fixed = TRUE))
+
+  # The FALSE path is deliberately NOT exercised here: it runs workflow_check()'s
+  # live network probes, which is why every other call in this file passes TRUE
+  # explicitly (see the header). A happy side effect of this default is that a
+  # bare call is now offline too.
+})
+
 test_that("workflow_export_prompts() writes the documented file list", {
   dir <- tempdir()
   written <- workflow_export_prompts(dir, placeholder_setup_report = TRUE, overwrite = TRUE)
@@ -173,7 +201,13 @@ test_that("SETUP_REPORT.md placeholder never runs workflow_check() or claims mac
   on.exit(unlink(dir, recursive = TRUE), add = TRUE)
 
   text <- paste(readLines(file.path(dir, "SETUP_REPORT.md"), warn = FALSE), collapse = "\n")
-  expect_true(grepl("workflow_export_prompts()", text, fixed = TRUE))
+  # Matched on the function NAME, not on "workflow_export_prompts()" with empty
+  # parens: the placeholder now names the argument that opts out of it, which is
+  # strictly more useful to a reader and was invisible to the old assertion.
+  expect_true(grepl("workflow_export_prompts", text, fixed = TRUE))
+  # It must also say HOW to get a real report, so a future edit cannot quietly
+  # drop the instruction and leave a placeholder that explains nothing.
+  expect_match(text, "placeholder_setup_report = FALSE", fixed = TRUE)
   expect_false(grepl("TaxaWizard setup check", text, fixed = TRUE)) # print.taxaid_check()'s own header
 })
 
