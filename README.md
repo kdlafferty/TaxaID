@@ -354,7 +354,7 @@ Table 1. Comparison of TaxaID with related taxonomic assignment tools.
 | BayesANT (Zito et al. 2023) | Bayesian nonparametric (kmer) | Yes | No | Yes (Pitman-Yor) | No (DNA only) |
 | Anacapa Toolkit (Curd et al. 2019) with BLCA (Gao et al. 2017) | Bowtie2 alignment + Bayesian LCA | Bootstrap confidence | No | No | No (DNA only) |
 | IdTaxa / DECIPHER (Murali et al. 2018) | Phylogenetic ML | Bootstrap confidence | No | No | No (DNA only) |
-| insect (Wilkinson et al. 2018) | Profile HMM + classification tree | Akaike weights | No | No | No (DNA only) |
+| insect (Wilkinson et al., *PeerJ Preprints* 2018, e26812v1, preprint) | Profile HMM + classification tree | Akaike weights | No | No | No (DNA only) |
 | SINTAX (Edgar 2016) | Kmer + bootstrap | Bootstrap confidence | No | No | No (DNA only) |
 | RDP Classifier (Wang et al. 2007) | Naive Bayes (8-mer) | Bootstrap confidence | No | No | No (DNA only) |
 | DADA2 `assignTaxonomy` (Callahan et al. 2016) | Naive Bayes (kmer) | Bootstrap confidence | No | No | No (DNA only) |
@@ -1153,11 +1153,6 @@ Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naive
 Bayesian classifier for rapid assignment of rRNA sequences into the new
 bacterial taxonomy. *Applied and Environmental Microbiology*, 73(16),
 5261--5267.
-
-Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018). Taxonomic
-identification of environmental DNA with informatic sequence
-classification trees. *PeerJ Preprints*, 6, e26812v1.
-<https://doi.org/10.7287/peerj.preprints.26812v1>
 
 Wood, D.E., Lu, J. and Langmead, B. (2019). Improved metagenomic
 analysis with Kraken 2. *Genome Biology*, 20, 257.
