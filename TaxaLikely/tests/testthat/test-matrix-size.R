@@ -442,11 +442,15 @@ test_that("an unretained build over budget is refused", {
   dna <- Biostrings::DNAStringSet(setNames(rep(strrep("ACGT", 40), 400), ref$composite_id))
   local_mocked_bindings(.available_memory_gb = function() 0.001)
 
+  # Pinned so the refusal has to be the BUDGET refusal: with the memory probe
+  # mocked this low, several unrelated failures would also error here, and a
+  # bare handler would accept any of them as "refused".
   expect_error(
     TaxaLikely:::.matrix_memory_guard(
       ref, dna, n_ranks = 2L, by_genus = TRUE, max_foreign_reps_per_genus = 20L,
       max_dist = 0.25, memory_budget_fraction = 0.7, max_seqs_per_taxon = 20L,
       pair_retention = "all"
-    )
+    ),
+    "more than the .* budget"
   )
 })
