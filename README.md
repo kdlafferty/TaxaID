@@ -359,6 +359,9 @@ Table 1. Comparison of TaxaID with related taxonomic assignment tools.
 | RDP Classifier (Wang et al. 2007) | Naive Bayes (8-mer) | Bootstrap confidence | No | No | No (DNA only) |
 | DADA2 `assignTaxonomy` (Callahan et al. 2016) | Naive Bayes (kmer) | Bootstrap confidence | No | No | No (DNA only) |
 | galaxy-tool-lca (Beentjes et al. 2019) | Score-threshold + LCA (deterministic) | No | No | No (upranked) | No (BLAST/DNA only) |
+| Tourmaline 2 (Thompson et al. 2022) | QIIME 2 workflow: naive Bayes, consensus BLAST/VSEARCH, BLCA, or BLAST LCA with fixed per-rank identity cutoffs | Classifier confidence or percent identity (method-dependent) | No | No | No (DNA only) |
+| Kraken 2 (Wood et al. 2019) | k-mer (minimizer) LCA over a taxonomy tree, built for shotgun reads | Fraction of k-mers supporting a clade | No | No | No (DNA only) |
+| Galapagos_Menu (Wisely; GitHub) | Local (regional-checklist) and global reference databases, reconciled by percent identity, LCA and a checklist fallback | No | Regional checklist (hard rule) | No (checklist relative) | No (DNA only) |
 
 TaxaID is complementary to several of these tools. DADA2 or OBITools
 handle upstream sequence processing and TaxaMatch ingests their output;
@@ -409,6 +412,42 @@ hit from that set even for a taxon with no reference at all, the
 missing-reference redirect TaxaID models as its own hypothesis (H3).
 TaxaID has no counterpart to BIOWATCH's multi-year detection ledger; its
 scope ends at the assignment.
+
+Galapagos_Menu (<https://github.com/EWisely/GitHub_Galapagos_Menu>)
+addresses the same reference-gap problem with fixed rules: a local
+database built from a regional checklist wins identity ties against a
+global one, and an unresolved global call falls back to the nearest
+checklist relative. TaxaID expresses the same trade-offs as
+probabilities rather than rules: a prior from regional occurrence
+records, and unreferenced-taxon hypotheses for species the reference
+lacks.
+
+Other tools sit beside TaxaID rather than in its place:
+
+-   **Benchmarking.** tax-credit (Bokulich et al. 2018;
+    <https://github.com/caporaso-lab/tax-credit>), and the benchmarking
+    step built on it in Tourmaline 2
+    (<https://github.com/aomlomics/tourmaline>), score classifiers on
+    mock communities, cross-validated reference sets and held-out
+    ("novel") taxa. They report correct, too-shallow, too-deep and wrong
+    assignments per rank, which suits testing any classifier's output,
+    TaxaID's included.
+-   **Reference gaps across loci.** OMISSION
+    (<https://github.com/McAllister-NOAA/OMISSION>) starts from a species
+    list, reconciles names across WoRMS, NCBI and BOLD, and counts
+    mitochondrial, SRA and BOLD records per species across several loci.
+    `TaxaLikely::audit_barcode_coverage()` asks the same question for
+    one marker at assignment time; OMISSION's census also points to
+    whole-genome reads that could supply missing barcodes.
+-   **Publishing detections.** edna2obis
+    (<https://github.com/aomlomics/edna2obis>) converts ASV tables and
+    FAIRe metadata into Darwin Core archives for OBIS and GBIF;
+    `TaxaTools::to_faire()` formats TaxaID's assignment tables to the
+    FAIRe checklist.
+-   **Protocols and metadata standards.** BeBOP
+    (<https://bebop-obon.github.io/>) collects marine biomolecular
+    protocols and points to the MIOP and FAIRe checklists and the NOAA
+    'Omics metabarcoding-assay vocabulary.
 
 Table 1b. Comparison of TaxaID (image path) with standalone image
 classifiers, which produce the raw scores TaxaMatch and TaxaLikely
@@ -961,6 +1000,11 @@ Pastoor, R. and van der Hoorn, B.B. (2019). Increased performance of DNA
 metabarcoding of macroinvertebrates by taxonomic sorting. *PLOS ONE*,
 14(12), e0226527.
 
+Bokulich, N.A., Kaehler, B.D., Rideout, J.R., Dillon, M., Bolyen, E.,
+Knight, R., Huttley, G.A. and Caporaso, J.G. (2018). Optimizing
+taxonomic classification of marker-gene amplicon sequences with QIIME
+2's q2-feature-classifier plugin. *Microbiome*, 6, 90.
+
 Callahan, B.J., McMurdie, P.J., Rosen, M.J., Han, A.W., Johnson, A.J.A.
 and Holmes, S.P. (2016). DADA2: High-resolution sample inference from
 Illumina amplicon data. *Nature Methods*, 13(7), 581--583.
@@ -1095,6 +1139,12 @@ and Miller, R.S. (2019). Machine learning to classify animal species in
 camera trap images: applications in ecology. *Methods in Ecology and
 Evolution*, 10(4), 585--590.
 
+Thompson, L.R., Anderson, S.R., Den Uyl, P.A., Patin, N.V., Lim, S.J.,
+Sanderson, G. and Goodwin, K.D. (2022). Tourmaline: A containerized
+workflow for rapid and iterable amplicon sequence analysis using QIIME 2
+and Snakemake. *GigaScience*, 11, giac066.
+<https://doi.org/10.1093/gigascience/giac066>
+
 Thompson, M.C., Ducey, M.J., Gunn, J.S. and Rowe, R.J. (2025). A
 post-processing framework for assessing BirdNET identification accuracy
 and community composition. *Ibis*, 167(2), 530--542.
@@ -1108,6 +1158,9 @@ Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018). Taxonomic
 identification of environmental DNA with informatic sequence
 classification trees. *PeerJ Preprints*, 6, e26812v1.
 <https://doi.org/10.7287/peerj.preprints.26812v1>
+
+Wood, D.E., Lu, J. and Langmead, B. (2019). Improved metagenomic
+analysis with Kraken 2. *Genome Biology*, 20, 257.
 
 Zaiko, A., Greenfield, P., Abbott, C., von Ammon, U., Bilewitch, J.,
 Bunce, M., Cristescu, M.E., Chariton, A., Dowle, E., Geller, J., Ardura
