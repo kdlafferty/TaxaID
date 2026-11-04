@@ -12,7 +12,7 @@ review_assignments(
   irreducible_only = TRUE,
   consensus_posterior_col = NULL,
   winner_prior_col = NULL,
-  winner_rank_expanded_col = "winner_rank_expanded",
+  seq_not_species_col = "winner_rank_expanded",
   consensus_provenance = TRUE,
   plausible_posteriors_col = NULL,
   consensus_plausibility_col = "consensus_plausibility",
@@ -39,7 +39,8 @@ review_assignments(
   poor_absolute_fit_col = "poor_absolute_fit",
   best_identity_col = "best_identity",
   sites = NULL,
-  site_col = "site"
+  site_col = "site",
+  winner_rank_expanded_col = NULL
 )
 }
 \arguments{
@@ -88,9 +89,12 @@ database prior for the winning taxon. Same treatment as
 \code{"occurrence prior=0.42"}), silently skipped when absent.
 Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"winner_prior"} to show it.}
 
-\item{winner_rank_expanded_col}{Character or \code{NULL}. Column name for
+\item{seq_not_species_col}{Character or \code{NULL}. Column name for
 ANY logical column meaning \emph{the sequence does not resolve this call
-to species}. It is read PER ROW while the note is per taxon, so the
+to species}. Named for that contract rather than for one column that
+happens to satisfy it: the default is still
+\code{"winner_rank_expanded"}, but nothing about the argument requires a
+rank-expansion column, and the old name understated what it accepts. It is read PER ROW while the note is per taxon, so the
 wording follows the taxon's own detections: flagged on all of them, the
 bracket says "the sequence does not resolve this call to species";
 flagged on some, "... on some of its detections"; flagged on none, there
@@ -371,6 +375,12 @@ the column is absent then); non-\code{NA} values not found in
 \code{sites$site} are named in a warning and those rows get the
 study-wide verdict. Not part of the cache key, since it does not change
 the prompt. Default \code{"site"}.}
+
+\item{winner_rank_expanded_col}{Deprecated. The former name of
+\code{seq_not_species_col}, accepted so existing callers keep working.
+Supplying both is an error rather than a silent precedence rule. The new
+name took this argument's original POSITION, so positional callers are
+unaffected; this alias sits last in the formals.}
 }
 \value{
 The input data frame with the review columns appended:
@@ -832,7 +842,7 @@ confusable relative could match as well (\code{consensus_discrimination_col}),
 whether any reference sequence exists for the name at all
 (\code{consensus_provenance}), and, where it did not, that the sequence did
 not resolve the call to species -- on all of a taxon's detections or only
-some (\code{winner_rank_expanded_col}). The
+some (\code{seq_not_species_col}). The
 guideline that explains the bracket is assembled from the notes the batch
 actually carries, and says that a missing note means nothing: naming a note
 that is absent would turn its absence into a claim. And the study's own
@@ -852,7 +862,7 @@ set because the occurrence prior supplied a species name where the sequence
 could not, so its existence is occurrence-derived -- but what the prompt
 says about it is only what the sequence did, and a reviewer judging that
 name needs to know the sequence did not reach it. Set
-\code{winner_rank_expanded_col = NULL} to take the other view.
+\code{seq_not_species_col = NULL} to take the other view.
 
 The UNPRECEDENTED flag is the one that is READ but never SHOWN: it means "no
 local occurrence record at all", so it stays out of the prompt, while
@@ -898,7 +908,7 @@ confidence and the model's ecological judgment.}
 \item{\code{plausible_posteriors_col} is \code{NULL} by default.
 Passed, it adds each candidate's averaged posterior weight, for
 multi-candidate sets only.}
-\item{\code{winner_rank_expanded_col} defaults to
+\item{\code{seq_not_species_col} defaults to
 \code{"winner_rank_expanded"} and IS sent, as one sequence fact: that
 the sequence did not resolve the call to species. It says nothing about
 what supplied the name instead, and takes any logical column that means
