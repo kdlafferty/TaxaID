@@ -1714,14 +1714,35 @@ join_priors <- function(likelihoods,
   }
 
   # Fallback: fill remaining taxonomy holes via TaxaTools backbone query.
-  # Only fires when sibling propagation left gaps (e.g. no species-level
-  # row existed for a genus). Queries are batched on unique taxon_names.
+  # Fires only for a rank COARSER than the row's own, which is the only kind of
+  # hole a backbone query can fill. A family-rank row has NA genus and NA
+  # species STRUCTURALLY, not as a gap -- a family has no single genus -- so the
+  # old condition (any NA in any rank column) fired on every coarse-rank row of
+  # every run AND could never be satisfied by its own answer, because the NA
+  # that triggered it is still NA after a fully successful lookup. Queries are
+  # batched on unique taxon_names.
   if (length(rank_cols_in_df) >= 2L &&
     requireNamespace("TaxaTools", quietly = TRUE)) {
-    still_missing <- which(
-      rowSums(is.na(result[, rank_cols_in_df, drop = FALSE])) > 0L &
-        !is.na(result$taxon_name)
-    )
+    if ("taxon_name_rank" %in% names(result)) {
+      # rank_system runs coarsest to finest, so "above the row's own rank" is a
+      # strictly smaller position in it. Positions come from rank_system rather
+      # than rank_cols_in_df so that a row whose own rank is absent from the
+      # data's columns is still placed correctly against the columns present.
+      own <- match(as.character(result$taxon_name_rank), rank_system)
+      col_pos <- match(rank_cols_in_df, rank_system)
+      above_na <- rep(FALSE, nrow(result))
+      for (k in seq_along(rank_cols_in_df)) {
+        above_na <- above_na |
+          (!is.na(own) & !is.na(col_pos[k]) & col_pos[k] < own &
+            is.na(result[[rank_cols_in_df[k]]]))
+      }
+    } else {
+      # Without taxon_name_rank a structural NA cannot be told from a gap, so
+      # the older, broader condition stands rather than silently narrowing for
+      # a caller that does not supply the column.
+      above_na <- rowSums(is.na(result[, rank_cols_in_df, drop = FALSE])) > 0L
+    }
+    still_missing <- which(above_na & !is.na(result$taxon_name))
     if (length(still_missing) > 0L) {
       names_to_query <- unique(result$taxon_name[still_missing])
       backbone_fill <- tryCatch(
@@ -1740,6 +1761,15 @@ join_priors <- function(likelihoods,
           )
         },
         error = function(e) {
+          # cli_warn ALONE is not enough: Rscript defers warnings to exit, so a
+          # run whose taxonomy went unfilled finishes before anyone sees why.
+          # Say it immediately as well; the warning stays for interactive use
+          # and for anything collecting conditions.
+          cli::cli_inform(
+            "join_priors: taxonomy fallback via TaxaTools FAILED, so taxonomy \\
+            holes coarser than a row's own rank are left unfilled: \\
+            {conditionMessage(e)}"
+          )
           cli::cli_warn(
             "Taxonomy fallback via TaxaTools failed: {conditionMessage(e)}"
           )

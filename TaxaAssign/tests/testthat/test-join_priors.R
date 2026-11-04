@@ -240,6 +240,71 @@ test_that("coarse-rank family row is expanded to species-level hypotheses", {
   expect_true(all(out$prior_mean > 0))
 })
 
+test_that("the backbone fallback does not fire for NA ranks BELOW a row's own rank", {
+  # A family-rank row has NA genus and NA species STRUCTURALLY -- a family has
+  # no single genus -- so those are not holes a backbone query can fill. The
+  # old trigger was `rowSums(is.na(rank cols)) > 0`, which fired on every
+  # coarse-rank row of every run AND could never be satisfied by its own
+  # answer, because the NA that triggered it is still NA after a fully
+  # successful lookup. Measured consequence: three live workflows made a live
+  # name-service call per coarse row per run, and in a no-network run the
+  # failure was a warning Rscript defers to exit.
+  calls <- 0L
+  local_mocked_bindings(
+    verify_taxon_names = function(...) {
+      calls <<- calls + 1L
+      stop("verify_taxon_names must not be called for a structural NA")
+    },
+    .package = "TaxaTools"
+  )
+  lik <- .make_lik_family_only()
+  pri <- .make_pri_gobiidae()
+  # NO expansion_taxonomy, deliberately. With it, the family row is expanded
+  # into species rows carrying full taxonomy and the coarse row no longer
+  # reaches the fallback at all -- measured: the old code makes 0 calls with
+  # expansion_taxonomy and 1 without. Adding it here would disarm this test
+  # while leaving it green, so it stays out.
+  out <- suppressMessages(suppressWarnings(join_priors(
+    lik, pri,
+    site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine"),
+    rank_system = c("family", "genus", "species"),
+    backbone_id = 11L
+  )))
+  expect_equal(calls, 0L)
+  # and the structural NAs are still NA: the fix withholds a lookup, it does
+  # not invent a genus for a family-rank row.
+  fam <- out[out$taxon_name == "Gobiidae" & out$taxon_name_rank == "family", ]
+  if (nrow(fam)) expect_true(all(is.na(fam$genus)))
+})
+
+test_that("the backbone fallback DOES still fire for an NA rank above a row's own rank", {
+  # The companion: withholding must key on the rank relationship, not on
+  # "coarse rows never ask". A species-rank row missing its family has a hole
+  # a backbone query can fill, and must still ask.
+  calls <- 0L
+  local_mocked_bindings(
+    verify_taxon_names = function(name_list, ...) {
+      calls <<- calls + 1L
+      stop("asked, as it should be")
+    },
+    .package = "TaxaTools"
+  )
+  lik <- .make_lik_family_only()
+  lik$taxon_name <- "Gillichthys mirabilis"
+  lik$taxon_name_rank <- "species"
+  lik$species <- "Gillichthys mirabilis"
+  lik$genus <- "Gillichthys"
+  lik$family <- NA_character_          # the hole, ABOVE the row's own rank
+  pri <- .make_pri_gobiidae()
+  suppressMessages(suppressWarnings(join_priors(
+    lik, pri,
+    site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine"),
+    rank_system = c("family", "genus", "species"),
+    backbone_id = 11L
+  )))
+  expect_gt(calls, 0L)
+})
+
 test_that("expansion_cumulative_prior limits the number of species retained", {
   lik <- .make_lik_family_only()
   pri <- .make_pri_gobiidae()

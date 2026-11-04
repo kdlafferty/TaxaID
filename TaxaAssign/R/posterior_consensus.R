@@ -1314,7 +1314,21 @@ posterior_consensus <- function(posterior_df,
     if (is.na(path) || !nzchar(path)) next
     out[[j]] <- trimws(strsplit(path, "|", fixed = TRUE)[[1L]])
   }
-  out[!vapply(out, is.null, logical(1))]
+  placed <- !vapply(out, is.null, logical(1))
+  if (any(!placed)) {
+    # A PARTIAL failure used to be silent. The caller's guard only fires when
+    # the map is entirely empty, so nine phyla placing and one not left that
+    # one comparing by NAME with nothing said anywhere -- and the output cannot
+    # show it, because an unplaced phylum behaves exactly as a placed one does
+    # when no two names are in a lineage relationship. Name them here, which is
+    # the only point at which the information exists.
+    cli::cli_inform(sprintf(
+      "posterior_consensus: %d of %d phylum name(s) could not be placed on backbone %s; those compare by NAME, as the name-keyed version did: %s",
+      sum(!placed), length(placed), as.character(backbone_id),
+      paste(names(out)[!placed], collapse = ", ")
+    ))
+  }
+  out[placed]
 }
 
 # TRUE only when the backbone PLACES both names and one lies on the other's
