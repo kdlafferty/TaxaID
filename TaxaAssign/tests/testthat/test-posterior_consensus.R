@@ -2043,6 +2043,37 @@ test_that("an NA observation_id still runs (original chunking path)", {
   expect_no_error(suppressWarnings(suppressMessages(posterior_consensus(d, rank_system = c("family", "genus", "species")))))
 })
 
+test_that("a PARTIAL phylum placement failure names the phyla it could not place", {
+  # The caller's guard only fires when the map is ENTIRELY empty
+  # (`!length(lineage_map)`), and .phylum_lineage_map() drops unplaced phyla
+  # with `out[!vapply(out, is.null, ...)]`. So nine placing and one not left
+  # that one comparing by NAME with nothing said anywhere -- and the OUTPUT
+  # cannot reveal it, because an unplaced phylum behaves exactly as a placed
+  # one does whenever no two names are in a lineage relationship. The message
+  # is the only possible observable, which is why it is the thing tested.
+  local_mocked_bindings(
+    verify_taxon_names = function(name_list, ...) {
+      data.frame(
+        user_supplied_name = name_list,
+        classification_path = ifelse(name_list == "Amoebozoa",
+          "Eukaryota|Amoebozoa", NA_character_
+        ),
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaTools"
+  )
+  expect_message(
+    m <- TaxaAssign:::.phylum_lineage_map(c("Amoebozoa", "Sipuncula"),
+      backbone_id = 11L
+    ),
+    "Sipuncula",
+    fixed = TRUE
+  )
+  # the placed one is still returned, so the fix reports without withholding
+  expect_named(m, "Amoebozoa")
+})
+
 # --- cross_phylum_eps -------------------------------------------------------
 .xp_df <- function(post, phylum = c("Ochrophyta", "Oomycota"), kingdom = c("Chromista", "Chromista")) {
   data.frame(observation_id = "E1", taxon_name = c("Macrocystis pyrifera", "Phytophthora polonica"),
