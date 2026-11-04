@@ -307,8 +307,18 @@ test_that("the floor ignores coarse-rank global_floor rows", {
 })
 
 test_that("an r12-shaped prior table is byte-identical under the floor rule", {
+  # "byte-identical" means here what it means everywhere else in this file: the
+  # whole joined frame is the same frame some reference configuration produces.
+  # A species-only (r12-shaped) floor table must give the identical frame to a
+  # table that also carries genus and family floor rows, because the floor rule
+  # selects the finest rank either way. The sibling test above asserts that on
+  # the ring's own prior_mean; this asserts it on every column, which is what
+  # "byte-identical" claims.
   lik <- .ring_only_lik()
-  expect_identical(.jp(lik, .floor_priors("species")), .jp(lik, .floor_priors("species")))
+  expect_identical(
+    .jp(lik, .floor_priors("species")),
+    .jp(lik, .floor_priors(c("species", "genus", "family")))
+  )
 })
 
 test_that("a floor row only at a coarse rank is still used rather than discarded", {
@@ -370,10 +380,13 @@ test_that("the dark and singleton means ignore coarse-rank rows", {
 })
 
 test_that("an r12-shaped single-rank table is byte-identical under the rank rule", {
+  # Same contract for the dark/singleton table: a species-only table must give
+  # the identical frame to the multi-rank one. The sibling above compares the
+  # four dark_/singleton_ columns; this compares the whole frame.
   lik <- .ring_only_lik()
   expect_identical(
     .jp(lik, .dark_priors("species")),
-    .jp(lik, .dark_priors("species"))
+    .jp(lik, .dark_priors(c("species", "genus", "family")))
   )
 })
 

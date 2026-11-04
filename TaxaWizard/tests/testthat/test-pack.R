@@ -243,9 +243,20 @@ test_that("generated pack equals the committed llm_prompts/ copy, date stamp asi
   }
 })
 
-test_that("the committed pack still carries a generation date, and it is today's", {
+test_that("the committed pack still carries a generation date", {
   # The other half: excusing the stamp from the comparison must not let it
-  # vanish or go stale unnoticed. If this fails, regenerate the pack.
+  # VANISH unnoticed. It deliberately does not check that the date is today's,
+  # and the name no longer claims it does -- asserting that would fail on the
+  # clock alone every day after a regen, which is the same defect that made the
+  # bytewise comparison above untenable on 2026-09-20.
+  #
+  # Staleness is therefore not checked here, and does not need to be: the test
+  # above compares the committed pack against a freshly generated one with ISO
+  # dates normalised out, so stale CONTENT cannot survive. What this one cannot
+  # catch is correct content carrying an older stamp, which understates the
+  # pack's freshness and misleads nobody about what it says. A real staleness
+  # check would have to compare the stamp against the last commit touching any
+  # package's R/ or man/, which needs git and is a larger change than this.
   root <- TaxaWizard:::.pack_find_repo_root()
   skip_if(is.null(root), "repo root not found")
   f <- file.path(root, "llm_prompts", "CONTEXT_TaxaID.md")

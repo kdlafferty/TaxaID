@@ -54,12 +54,23 @@ test_that("census_genus_species rejects bad rank", {
   )
 })
 
-test_that("census_genus_species requires rgbif", {
-  # Can't easily test without rgbif installed, so just validate the path
-  skip_if_not_installed("rgbif")
-  # If rgbif IS installed, the function should not error on this check
-  # (it will proceed to the API call which we test below)
-  expect_true(TRUE)
+test_that("census_genus_species requires rgbif, and says how to install it", {
+  # This asserted expect_true(TRUE) behind skip_if_not_installed("rgbif"), so it
+  # could not fail either way round: with rgbif present it asserted nothing, and
+  # with rgbif absent it skipped. The contract IS reachable -- the function gates
+  # on requireNamespace() before any API call -- by making that call report the
+  # package as missing, which is also the only way to exercise this on a machine
+  # that HAS rgbif.
+  local_mocked_bindings(
+    requireNamespace = function(package, ...) !identical(package, "rgbif"),
+    .package = "base"
+  )
+  expect_error(
+    census_genus_species(c(Fundulus = 123L)),
+    "Package 'rgbif' is required"
+  )
+  # The message must carry the remedy, not just the diagnosis.
+  expect_error(census_genus_species(c(Fundulus = 123L)), "install\\.packages")
 })
 
 
