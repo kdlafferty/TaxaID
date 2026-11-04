@@ -113,8 +113,14 @@
 #'   \item{identity_rank_after}{Rank of `identity_taxon_after`; NA when
 #'     excluded.}
 #'   \item{identity_reason}{Plain-words reason naming the rule.}
-#'   \item{suggested_action}{"keep", "move_up" or "exclude". "review" rows
-#'     and blank-flagged rows suggest "exclude".}
+#'   \item{suggested_action}{"keep", "move_up", "verify_range" or "exclude".
+#'     An identity_action of "review" maps to "verify_range" -- the check to
+#'     settle is the one its reason names, range expansion versus error -- and
+#'     NOT to "exclude": a consumer that drops rows on "exclude" would
+#'     otherwise discard a row the screen asked to have looked at.
+#'     Blank-flagged rows DO suggest "exclude", and that override still applies
+#'     to a "verify_range" row: contamination evidence is positive evidence,
+#'     unlike an unsettled range question.}
 #'   \item{presence}{"resident", "off_habitat" or "out_of_scope"; NA for
 #'     identity-excluded rows and where habitat is missing.}
 #'   \item{poor_fit_flag}{TRUE for poor-fit calls kept at a rank coarser than
@@ -292,7 +298,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       } else {
         rule[i] <- "I2_review"
         act[i] <- "review"
-        reason[i] <- "I2: good fit but geography unlikely and no relative scores reasonably: kept, flagged for review (range expansion vs error); suggested_action reads exclude as the conservative default and is not applied here"
+        reason[i] <- "I2: good fit but geography unlikely and no relative scores reasonably: kept, flagged for review (range expansion vs error); suggested_action is verify_range -- settle the range question, do not drop the detection"
       }
       next
     }
@@ -318,7 +324,18 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       reason[i] <- "I4: poor fit and geography unlikely: exclude"
     }
   }
-  sugg <- ifelse(act == "review", "exclude", act)
+  # Only I2_review produces "review", so this maps exactly one rule. It used to
+  # map it to "exclude", which was not inert: the CalIntertidal reporting layer
+  # drops rows on suggested_action == "exclude"
+  # (reporting/archive_reports/_setup.R:156-159), so a row the screen wanted
+  # LOOKED AT was dropped as though it had been excluded on evidence. Measured
+  # on the r12c archive: 132 of the 191 rows suggested "exclude" were relabelled
+  # reviews, against 55 genuine identity excludes and 4 from blank evidence.
+  # "verify_range" names the check the reason text already states -- range
+  # expansion versus error -- so the suggestion is an instruction rather than a
+  # verdict. I4 and the habitat rule are untouched: both carry two independent
+  # negatives, which is the nearest thing here to positive evidence of error.
+  sugg <- ifelse(act == "review", "verify_range", act)
 
   # ---- blank evidence ------------------------------------------------------
   bl <- rep(FALSE, n)

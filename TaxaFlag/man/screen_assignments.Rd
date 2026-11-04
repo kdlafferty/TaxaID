@@ -82,8 +82,14 @@ NA when excluded.}
 \item{identity_rank_after}{Rank of \code{identity_taxon_after}; NA when
 excluded.}
 \item{identity_reason}{Plain-words reason naming the rule.}
-\item{suggested_action}{"keep", "move_up" or "exclude". "review" rows
-and blank-flagged rows suggest "exclude".}
+\item{suggested_action}{"keep", "move_up", "verify_range" or "exclude".
+An identity_action of "review" maps to "verify_range" -- the check to
+settle is the one its reason names, range expansion versus error -- and
+NOT to "exclude": a consumer that drops rows on "exclude" would
+otherwise discard a row the screen asked to have looked at.
+Blank-flagged rows DO suggest "exclude", and that override still applies
+to a "verify_range" row: contamination evidence is positive evidence,
+unlike an unsettled range question.}
 \item{presence}{"resident", "off_habitat" or "out_of_scope"; NA for
 identity-excluded rows and where habitat is missing.}
 \item{poor_fit_flag}{TRUE for poor-fit calls kept at a rank coarser than

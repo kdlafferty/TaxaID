@@ -82,9 +82,12 @@
 #'   \code{consensus_posterior_col}: shown as median context (e.g.
 #'   \code{"occurrence prior=0.42"}), silently skipped when absent.
 #'   Default \code{NULL}: the review is not shown this, see \emph{What the review is shown, and what it is not}. Pass \code{"winner_prior"} to show it.
-#' @param winner_rank_expanded_col Character or \code{NULL}. Column name for
+#' @param seq_not_species_col Character or \code{NULL}. Column name for
 #'   ANY logical column meaning \emph{the sequence does not resolve this call
-#'   to species}. It is read PER ROW while the note is per taxon, so the
+#'   to species}. Named for that contract rather than for one column that
+#'   happens to satisfy it: the default is still
+#'   \code{"winner_rank_expanded"}, but nothing about the argument requires a
+#'   rank-expansion column, and the old name understated what it accepts. It is read PER ROW while the note is per taxon, so the
 #'   wording follows the taxon's own detections: flagged on all of them, the
 #'   bracket says "the sequence does not resolve this call to species";
 #'   flagged on some, "... on some of its detections"; flagged on none, there
@@ -738,7 +741,7 @@
 #' whether any reference sequence exists for the name at all
 #' (\code{consensus_provenance}), and, where it did not, that the sequence did
 #' not resolve the call to species -- on all of a taxon's detections or only
-#' some (\code{winner_rank_expanded_col}). The
+#' some (\code{seq_not_species_col}). The
 #' guideline that explains the bracket is assembled from the notes the batch
 #' actually carries, and says that a missing note means nothing: naming a note
 #' that is absent would turn its absence into a claim. And the study's own
@@ -758,7 +761,7 @@
 #' could not, so its existence is occurrence-derived -- but what the prompt
 #' says about it is only what the sequence did, and a reviewer judging that
 #' name needs to know the sequence did not reach it. Set
-#' \code{winner_rank_expanded_col = NULL} to take the other view.
+#' \code{seq_not_species_col = NULL} to take the other view.
 #'
 #' The UNPRECEDENTED flag is the one that is READ but never SHOWN: it means "no
 #' local occurrence record at all", so it stays out of the prompt, while
@@ -802,7 +805,7 @@
 #'   \item{\code{plausible_posteriors_col} is \code{NULL} by default.
 #'     Passed, it adds each candidate's averaged posterior weight, for
 #'     multi-candidate sets only.}
-#'   \item{\code{winner_rank_expanded_col} defaults to
+#'   \item{\code{seq_not_species_col} defaults to
 #'     \code{"winner_rank_expanded"} and IS sent, as one sequence fact: that
 #'     the sequence did not resolve the call to species. It says nothing about
 #'     what supplied the name instead, and takes any logical column that means
@@ -850,6 +853,12 @@
 #' \code{NULL} to disable; all six are silently skipped when the named column
 #' is absent from \code{input_df}.
 #'
+#' @param winner_rank_expanded_col Deprecated. The former name of
+#'   \code{seq_not_species_col}, accepted so existing callers keep working.
+#'   Supplying both is an error rather than a silent precedence rule. The new
+#'   name took this argument's original POSITION, so positional callers are
+#'   unaffected; this alias sits last in the formals.
+#'
 #' @seealso \code{\link{flag_contaminant}} for data-driven contaminant
 #'   detection, \code{\link{flag_handler}} for temporal proximity flagging,
 #'   \code{TaxaAssign::add_slash_taxon()} to add \code{irreducible_consensus}
@@ -886,7 +895,7 @@ review_assignments <- function(input_df,
                                irreducible_only = TRUE,
                                consensus_posterior_col = NULL,
                                winner_prior_col = NULL,
-                               winner_rank_expanded_col = "winner_rank_expanded",
+                               seq_not_species_col = "winner_rank_expanded",
                                consensus_provenance = TRUE,
                                plausible_posteriors_col = NULL,
                                consensus_plausibility_col = "consensus_plausibility",
@@ -913,7 +922,21 @@ review_assignments <- function(input_df,
                                poor_absolute_fit_col = "poor_absolute_fit",
                                best_identity_col = "best_identity",
                                sites = NULL,
-                               site_col = "site") {
+                               site_col = "site",
+                               winner_rank_expanded_col = NULL) {
+  # Deprecated alias for `seq_not_species_col`, kept so existing callers keep
+  # working. It sits LAST because new arguments go at the end of the formals,
+  # and the new name took the old POSITION so positional callers are unaffected.
+  if (!is.null(winner_rank_expanded_col)) {
+    if (!missing(seq_not_species_col)) {
+      stop(
+        "review_assignments: supply `seq_not_species_col` or its deprecated ",
+        "alias `winner_rank_expanded_col`, not both.",
+        call. = FALSE
+      )
+    }
+    seq_not_species_col <- winner_rank_expanded_col
+  }
   on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -945,7 +968,7 @@ review_assignments <- function(input_df,
   }
   for (col_param in list(
     consensus_posterior_col, winner_prior_col,
-    winner_rank_expanded_col, plausible_posteriors_col,
+    seq_not_species_col, plausible_posteriors_col,
     dist_nearest_occupied_km_col, patch_diameter_km_col,
     beyond_buffer_col, inat_in_range_col,
     inat_n_observations_col, inat_matched_name_col,
@@ -955,7 +978,7 @@ review_assignments <- function(input_df,
     if (!is.null(col_param) && (!is.character(col_param) || length(col_param) != 1L)) {
       stop(paste(
         "'consensus_posterior_col', 'winner_prior_col',",
-        "'winner_rank_expanded_col', 'plausible_posteriors_col',",
+        "'seq_not_species_col', 'plausible_posteriors_col',",
         "'dist_nearest_occupied_km_col', 'patch_diameter_km_col',",
         "'beyond_buffer_col', 'inat_in_range_col',",
         "'inat_n_observations_col', 'inat_matched_name_col',",
@@ -1135,7 +1158,7 @@ review_assignments <- function(input_df,
 
   pipeline_ctx <- .summarise_pipeline_context(
     label_vec_full, input_df, consensus_posterior_col, winner_prior_col,
-    winner_rank_expanded_col, consensus_plausibility_col, consensus_discrimination_col,
+    seq_not_species_col, consensus_plausibility_col, consensus_discrimination_col,
     consensus_provenance = consensus_provenance,
     poor_absolute_fit_col = poor_absolute_fit_col,
     best_identity_col = best_identity_col
@@ -1868,7 +1891,7 @@ review_assignments <- function(input_df,
 #' "some" said as "all" would overstate it.
 #' @noRd
 .summarise_pipeline_context <- function(label_vec, input_df, consensus_posterior_col,
-                                        winner_prior_col, winner_rank_expanded_col,
+                                        winner_prior_col, seq_not_species_col,
                                         consensus_plausibility_col = NULL,
                                         consensus_discrimination_col = NULL,
                                         consensus_provenance = TRUE,
@@ -1876,7 +1899,7 @@ review_assignments <- function(input_df,
                                         best_identity_col = NULL) {
   has_post <- !is.null(consensus_posterior_col) && consensus_posterior_col %in% names(input_df)
   has_prior <- !is.null(winner_prior_col) && winner_prior_col %in% names(input_df)
-  has_rexp <- !is.null(winner_rank_expanded_col) && winner_rank_expanded_col %in% names(input_df)
+  has_rexp <- !is.null(seq_not_species_col) && seq_not_species_col %in% names(input_df)
   has_plaus <- !is.null(consensus_plausibility_col) && consensus_plausibility_col %in% names(input_df)
   has_disc <- !is.null(consensus_discrimination_col) && consensus_discrimination_col %in% names(input_df)
   has_poorfit <- !is.null(poor_absolute_fit_col) && poor_absolute_fit_col %in% names(input_df)
@@ -1934,7 +1957,7 @@ review_assignments <- function(input_df,
     # touched, not on an edge case. NA counts as unflagged, so a column that
     # is NA where it was never computed does not manufacture a note.
     if (has_rexp) {
-      rexp_flagged <- input_df[[winner_rank_expanded_col]][rows] %in% TRUE
+      rexp_flagged <- input_df[[seq_not_species_col]][rows] %in% TRUE
       if (any(rexp_flagged)) {
         parts <- c(parts, if (all(rexp_flagged)) {
           "the sequence does not resolve this call to species"

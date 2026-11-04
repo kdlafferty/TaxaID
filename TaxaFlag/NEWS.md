@@ -53,7 +53,7 @@
   batch actually carries and says that a missing note means nothing, so it can
   never turn an absence into a claim. That note's wording names only what the
   sequence did, and
-  `winner_rank_expanded_col` defaults to sending it, which changes the prompt
+  `seq_not_species_col` defaults to sending it, which changes the prompt
   for a caller who previously relied on the default. The
   `consensus_posterior_col`, `winner_prior_col`,
   `plausible_posteriors_col`,

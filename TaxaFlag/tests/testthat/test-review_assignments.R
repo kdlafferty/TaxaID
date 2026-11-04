@@ -1357,8 +1357,8 @@ test_that("the rank-expansion note is sent, and says only what the sequence did"
   expect_false(grepl("could score equally well", p, fixed = TRUE))
 })
 
-test_that("winner_rank_expanded_col = NULL suppresses it", {
-  p <- .prompt_sent(winner_rank_expanded_col = NULL)
+test_that("seq_not_species_col = NULL suppresses it", {
+  p <- .prompt_sent(seq_not_species_col = NULL)
   expect_false(grepl("the sequence does not resolve", p, fixed = TRUE))
 })
 
@@ -1676,6 +1676,31 @@ test_that("the numeric piece names only the numbers the batch carries", {
   expect_false(grepl('"candidate weights"', p, fixed = TRUE))
 })
 
+test_that("the deprecated winner_rank_expanded_col alias works, and both at once is an error", {
+  # Renamed because the argument accepts ANY logical column meaning "the
+  # sequence does not resolve this call to species" -- CalIntertidal passes its
+  # own `seq_not_species` -- so the old name understated the contract. The alias
+  # keeps existing callers working; supplying both is an error rather than a
+  # silent precedence rule, because a caller who sets both has two different
+  # intentions and guessing which one wins would be the wrong kind of helpful.
+  df <- data.frame(
+    observation_id = "S1", consensus_taxon = "Bos taurus",
+    consensus_rank = "species", seq_not_species = TRUE,
+    stringsAsFactors = FALSE
+  )
+  via_new <- .seq_clause_of(df, seq_not_species_col = "seq_not_species")
+  via_old <- .seq_clause_of(df, winner_rank_expanded_col = "seq_not_species")
+  expect_match(via_new, "did not resolve the call to species", fixed = TRUE)
+  expect_identical(via_old, via_new)
+
+  expect_error(
+    .seq_clause_of(df, seq_not_species_col = "seq_not_species",
+                   winner_rank_expanded_col = "seq_not_species"),
+    "not both",
+    fixed = TRUE
+  )
+})
+
 test_that("any logical column meaning it drives the not-resolved note", {
   # The argument's contract is the MEANING, not join_priors()'s column name:
   # a caller deriving its own flag -- say, consensus at species while the
@@ -1685,7 +1710,7 @@ test_that("any logical column meaning it drives the not-resolved note", {
     consensus_rank = "species", seq_not_species = TRUE,
     stringsAsFactors = FALSE
   )
-  g <- .seq_clause_of(df, winner_rank_expanded_col = "seq_not_species")
+  g <- .seq_clause_of(df, seq_not_species_col = "seq_not_species")
   expect_match(g, "did not resolve the call to species", fixed = TRUE)
   # And the default name being absent from the frame is a silent skip, not an
   # error, so the same frame reviewed without the argument says nothing.
@@ -1716,6 +1741,8 @@ test_that("the not-resolved note follows the taxon's own detections", {
       data_type = "eDNA", input_df = two_rows(flag),
       taxon_col = "consensus_taxon", context = mock_context, llm_fn = fn,
       verbose = FALSE, on_unreviewed = "ignore",
+      # Deliberately the DEPRECATED name: this keeps the alias exercised on a
+      # real call path, not only in the dedicated alias test below.
       winner_rank_expanded_col = "seq_not_species"
     )))
     ln <- strsplit(paste(seen, collapse = "\n"), "\n", fixed = TRUE)[[1]]

@@ -216,6 +216,48 @@ evidence also suggest exclude. `relative_score_gap = 0.25`, the margin
 for rule I2, is a chosen value, not calibrated; the screen reports how
 many rows each rule acted on.
 
+#### Running the screen on a vendor or non-TaxaID table
+
+`screen_assignments()` has no TaxaID-only dependency: it reads named columns,
+so any table whose key columns carry those names can be screened, including a
+vendor's own result table (JV, Wilderlabs). What it checks for is exact, and
+there is no "similar column" fallback. `reviewed_df` must contain:
+
+| column | from argument | default name |
+|---|---|---|
+| observation id | *fixed* | `observation_id` |
+| the called name | `taxon_col` | `consensus_taxon` |
+| the call's rank | `rank_col` | `consensus_rank` |
+| geographic verdict | `geography_col` | `llm_geographic_plausibility` |
+| absolute-fit flag | `poor_fit_col` | `poor_absolute_fit` |
+| best match's rank | `best_identity_rank_col` | `best_identity_rank` |
+
+Those six must be present or the call stops with
+`` `reviewed_df` is missing required column(s): ``. Pass a different name to
+the matching argument if your table spells it differently.
+`habitat_col`, `scope_col` and `blank_flag_col` are *not* required: a missing
+one simply disables the rules that use it.
+
+**Leaving the fit and geography columns `NA` is not neutral, and this is the
+part worth reading twice.** The screen does not skip a rule whose input is
+missing -- it takes the permissive reading. `poor_absolute_fit` is tested as
+`%in% TRUE`, so `NA` means **not a poor fit**, i.e. a good one; and an `NA`
+geographic verdict is treated as **plausible**. A table whose fit and
+geography columns are present but all `NA` therefore returns
+`I1: good fit, geography plausible: keep name` for every row. That output is a
+report of *no evidence*, and it reads exactly like an endorsement. If your
+table has no absolute-fit flag, the identity rules cannot do the work they
+describe, and the screen's `keep` means only "nothing contradicted this".
+
+**Do not put vendor quantities in TaxaID's columns.** A vendor's percent
+identity or classifier confidence is not a posterior, a likelihood, or
+TaxaLikely's absolute fit, and the rules that read those columns assume the
+TaxaID quantity with its scale and meaning. Put a vendor's identity in
+`best_identity_col` on the review side, where it is reported rather than
+thresholded, and leave TaxaID's own quantity columns absent rather than
+filling them with a lookalike -- but see the paragraph above before deciding
+that absent is harmless.
+
 ### Overriding a per-site verdict with local records
 
 A per-taxon geographic rule can name one latitude bound, and the bound can
