@@ -248,10 +248,13 @@ reference alongside \code{in_barcode_range}.}
 \item{\code{lat}, \code{lon}, \code{country}}{Only when \code{include_location = TRUE}.
 Collection location parsed from GenBank's \code{lat_lon}/\code{country}
 qualifiers; \code{NA} when absent or unparseable.}
-\item{\code{queried_taxon}, \code{kingdom}, \code{phylum}}{Only when \code{taxa_lineage}
-was supplied. \code{queried_taxon} records which \code{taxa} entry a row was
-fetched under; \code{kingdom}/\code{phylum} are always resolved (in addition
-to whatever \code{rank_system} itself requests) so the lineage-agreement
+\item{\code{kingdom}, \code{phylum}}{Always present. Resolved on every fetch in
+addition to whatever \code{rank_system} itself requests, at no extra
+taxonomy call -- both ranks already sit in the XML the bridge
+returns. A queried name whose rows span more than one kingdom is
+reported as a homonym and the rows are kept for review.}
+\item{\code{queried_taxon}}{Only when \code{taxa_lineage} was supplied; records
+which \code{taxa} entry a row was fetched under, so the lineage-agreement
 guard has data to check without a second taxonomy fetch.}
 }
 Carries a \code{taxa_without_sequences} attribute: the requested taxa for

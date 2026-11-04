@@ -555,13 +555,16 @@ utils::globalVariables(c(
   if (length(tab) < 2L) {
     return(invisible(meta))
   }
+  # Reports the classified count AGAINST the batch total, not the classified
+  # count alone: the per-kingdom figures sum to the former, so quoting only
+  # that reads as the batch size whenever some rows have an NA kingdom.
   message(sprintf(
     paste0(
-      "  %s: CROSS-KINGDOM SPLIT -- %d record(s) across %d kingdoms (%s). ",
-      "One queried name returning more than one kingdom is a homonym, not a ",
-      "revision; these rows are KEPT and need review."
+      "  %s: CROSS-KINGDOM SPLIT -- %d of %d record(s) carry a kingdom, and ",
+      "they span %d kingdoms (%s). One queried name returning more than one ",
+      "kingdom is a homonym, not a revision; these rows are KEPT and need review."
     ),
-    taxon, length(k), length(tab),
+    taxon, length(k), nrow(meta), length(tab),
     paste(sprintf("%s %d", names(tab), as.integer(tab)), collapse = ", ")
   ))
   invisible(meta)
