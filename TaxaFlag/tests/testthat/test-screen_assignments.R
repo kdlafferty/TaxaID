@@ -27,12 +27,29 @@ test_that("I1 keeps good fit with plausible geography", {
   expect_match(r$identity_reason, "I1")
 })
 
-test_that("I2 without posterior_df is always review", {
+test_that("I2 without posterior_df is always review, and suggests verify_range not exclude", {
   r <- scr(mk(geo = "unlikely"))
   expect_equal(r$identity_action, "review")
-  expect_equal(r$suggested_action, "exclude")
+  # NOT "exclude". The CalIntertidal reporting layer drops rows on
+  # suggested_action == "exclude" (_setup.R:156-159), so the old mapping dropped
+  # a row the screen wanted looked at -- 132 of 191 such rows in the r12c
+  # archive. The detection must survive a review.
+  expect_equal(r$suggested_action, "verify_range")
+  expect_false(r$suggested_action %in% "exclude")
   expect_equal(r$identity_taxon_after, "Fundulus parvipinnis")
-  expect_match(r$identity_reason, "suggested_action reads exclude as the conservative default", fixed = TRUE)
+  expect_match(r$identity_reason, "suggested_action is verify_range", fixed = TRUE)
+})
+
+test_that("blank evidence still overrides a verify_range row to exclude", {
+  # The override survives the new value on purpose: contamination evidence is
+  # POSITIVE evidence of a problem, unlike an unsettled range question. Without
+  # this, "verify_range" would have quietly rescued blank-flagged rows.
+  d <- mk(geo = "unlikely")
+  d$blank_flag <- TRUE
+  r <- scr(d, blank_flag_col = "blank_flag")
+  expect_equal(r$identity_action, "review")
+  expect_equal(r$suggested_action, "exclude")
+  expect_match(r$identity_reason, "blank evidence", fixed = TRUE)
 })
 
 test_that("I2 moves up to genus for a qualifying local referenced congener", {
@@ -167,7 +184,9 @@ test_that("isolated_geography_unlikely is TRUE, FALSE or NA", {
   d2 <- d; d2$n_tubes[3] <- NA
   expect_true(is.na(scr(d2)$isolated_geography_unlikely[3]))
   expect_true(all(is.na(scr(mk(geo = "unlikely"))$isolated_geography_unlikely)))
-  expect_equal(scr(d)$suggested_action[1], "exclude") # review row; flag itself never acts
+  # A review row: the point is that isolated_geography_unlikely never ACTS, so
+  # the suggestion is whatever the identity layer decided -- now verify_range.
+  expect_equal(scr(d)$suggested_action[1], "verify_range")
   e <- scr(mk(geo = "likely", n_tubes = 1))
   expect_equal(e$suggested_action, "keep")
 })
