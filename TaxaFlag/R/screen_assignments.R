@@ -292,7 +292,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       } else {
         rule[i] <- "I2_review"
         act[i] <- "review"
-        reason[i] <- "I2: good fit but geography unlikely and no relative scores reasonably: kept, flagged for review (range expansion vs error)"
+        reason[i] <- "I2: good fit but geography unlikely and no relative scores reasonably: kept, flagged for review (range expansion vs error); suggested_action reads exclude as the conservative default and is not applied here"
       }
       next
     }

@@ -685,6 +685,44 @@ test_that("unplaceable-habitat records count at the taxon's site-habitat weight,
   expect_identical(names(kp$params$habitat_weights), c("taxon_name", "Marine"))
 })
 
+test_that("an explicit habitat weight of exactly 0 is REPORTED, not silently dropped", {
+  # A weight of exactly 0 fell in neither reported bucket: not "no weight" (the
+  # weight is present, so it is not NA) and not "counted" (that needs h > 0).
+  # `keep` (w > 0) drops the record either way, so the arithmetic honoured the
+  # 0 and the report never mentioned it. An analyst who sets a weight to 0
+  # deliberately got no confirmation it took effect, and one whose lookup
+  # returned 0 by accident got no warning -- both read "0 record(s) ... with no
+  # weight left out".
+  occ <- .mk_occ(c("A", "A", "A", "E", "E"),
+    lat = 34 + (1:5) * 1e-6, lon = -120 + (1:5) * 1e-6,
+    habitat = c("Marine", "Marine", "Marine", "Uncertain", NA)
+  )
+  hw <- data.frame(taxon_name = c("A", "E"), Marine = c(1, 0), Freshwater = c(0, 1))
+  expect_message(
+    kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                                 habitat_levels = c("Marine", "Freshwater"),
+                                 habitat_weights = hw),
+    "2 record\\(s\\) of 1 taxa at weight 0 contribute nothing"
+  )
+  # Behaviour is unchanged -- the record is still dropped. Only the report moved.
+  expect_false("E" %in% kp$priors$taxon_name)
+  # And it must NOT be miscounted as a missing-weight taxon, which is the
+  # distinct failure an analyst would act on differently.
+  expect_match(
+    utils::capture.output(
+      suppressMessages(withCallingHandlers(
+        estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
+                               habitat_levels = c("Marine", "Freshwater"),
+                               habitat_weights = hw),
+        message = function(m) cat(conditionMessage(m))
+      )),
+      type = "output"
+    ),
+    "0 record\\(s\\) of 0 taxa with no weight left out",
+    all = FALSE
+  )
+})
+
 test_that("a fractional record is not a singleton: f1 counts whole detections", {
   f <- .hab_fix()
   kp <- suppressMessages(estimate_kernel_priors(f$occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,

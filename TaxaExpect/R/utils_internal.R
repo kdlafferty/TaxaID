@@ -82,8 +82,15 @@
 #' `TaxaHabitat::assign_habitat_biological()` emits as a PLACED verdict
 #' (none of the scheme's habitats). A label that is none of these is
 #' excluded too and named in a warning, because exclusion is the direction
-#' that cannot add weight by mistake. A taxon with no weight contributes
-#' nothing and is counted in `$n_no_weight`.
+#' that cannot add weight by mistake.
+#'
+#' Two different things stop a taxon contributing, and they are counted
+#' separately because an analyst can act on one and not the other. A taxon
+#' with NO weight -- absent from `habitat_weights[[site_habitat]]`, so its
+#' weight reads `NA` -- is counted in `$n_no_weight`: that is a gap in the
+#' lookup. A taxon whose weight is present and EXACTLY 0 is counted in
+#' `$n_zero_weight`: that is the lookup answering, and the answer is zero.
+#' Both are dropped by `keep` (`w > 0`), so neither reaches the kernel.
 #'
 #' @param hab Character vector of habitat labels, one per record.
 #' @param taxa Character vector of taxon names, one per record.
@@ -94,7 +101,9 @@
 #'   record; 1 for stratum records, the taxon weight for unplaceable ones,
 #'   0 otherwise), `lookup` (the two-column weight table actually used, or
 #'   `NULL`), `n_unplaceable` (records counted), `n_no_weight` (unplaceable
-#'   records left out for want of a weight), `n_taxa_no_weight`.
+#'   records left out for want of a weight), `n_taxa_no_weight`,
+#'   `n_zero_weight` (unplaceable records whose taxon carries an explicit
+#'   weight of 0) and `n_taxa_zero_weight`.
 #' @noRd
 .habitat_record_weights <- function(hab, taxa, site_habitat, habitat_levels,
                                     habitat_weights, caller) {
@@ -102,7 +111,8 @@
   in_stratum <- !is.na(hab) & hab == site_habitat
   if (is.null(habitat_levels) && is.null(habitat_weights)) {
     return(list(keep = in_stratum, weight = as.numeric(in_stratum), lookup = NULL,
-                n_unplaceable = 0L, n_no_weight = 0L, n_taxa_no_weight = 0L))
+                n_unplaceable = 0L, n_no_weight = 0L, n_taxa_no_weight = 0L,
+                n_zero_weight = 0L, n_taxa_zero_weight = 0L))
   }
   if (is.null(habitat_levels) || is.null(habitat_weights)) {
     stop(sprintf(
@@ -144,7 +154,13 @@
   h <- hv[match(as.character(taxa), lk$taxon_name)]
   w <- ifelse(in_stratum, 1, ifelse(unplaceable & !is.na(h), h, 0))
   no_w <- unplaceable & is.na(h)
+  # An explicit weight of exactly 0 fell in NEITHER bucket: not `no_w` (the
+  # weight is present), and not `n_unplaceable` (that requires h > 0). `keep`
+  # drops it, so it was honoured in the arithmetic and invisible in the report.
+  zero_w <- unplaceable & !is.na(h) & h == 0
   list(keep = w > 0, weight = w, lookup = lk,
        n_unplaceable = sum(unplaceable & !is.na(h) & h > 0),
-       n_no_weight = sum(no_w), n_taxa_no_weight = length(unique(taxa[no_w])))
+       n_no_weight = sum(no_w), n_taxa_no_weight = length(unique(taxa[no_w])),
+       n_zero_weight = sum(zero_w),
+       n_taxa_zero_weight = length(unique(taxa[zero_w])))
 }

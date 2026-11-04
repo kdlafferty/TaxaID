@@ -371,10 +371,16 @@ estimate_kernel_priors <- function(occurrence_data,
   n_rec <- n_rec * hw$weight[keep]
   if (!is.null(habitat_levels)) {
     message(sprintf(
-      "estimate_kernel_priors: %s unplaceable-habitat record(s) count at their taxon's '%s' weight (%.1f records in all); %s record(s) of %d taxa with no weight left out.",
+      paste0(
+        "estimate_kernel_priors: %s unplaceable-habitat record(s) count at ",
+        "their taxon's '%s' weight (%.1f records in all); %s record(s) of %d ",
+        "taxa with no weight left out; %s record(s) of %d taxa at weight 0 ",
+        "contribute nothing."
+      ),
       format(hw$n_unplaceable, big.mark = ","), site_habitat,
       sum(n_rec[!(as.character(rec[[habitat_col]]) %in% site_habitat)]),
-      format(hw$n_no_weight, big.mark = ","), hw$n_taxa_no_weight
+      format(hw$n_no_weight, big.mark = ","), hw$n_taxa_no_weight,
+      format(hw$n_zero_weight, big.mark = ","), hw$n_taxa_zero_weight
     ))
   }
 
