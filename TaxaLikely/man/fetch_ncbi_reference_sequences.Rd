@@ -254,7 +254,7 @@ taxonomy call -- both ranks already sit in the XML the bridge
 returns. A queried name whose rows span more than one kingdom is a
 homonym: the name matched some other organism too. Such rows are
 reported, and dropped only when the rest of the fetch says which
-kingdom is the intruder -- that is, when at least 90\\% of the other
+kingdom is the intruder -- that is, when at least 90\% of the other
 queried names resolved unambiguously to one kingdom, counted one
 vote per name. Failing that, nothing is dropped and the split is
 reported for review. A name resolving to a single kingdom is never

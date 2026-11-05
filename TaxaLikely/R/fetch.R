@@ -532,7 +532,7 @@ utils::globalVariables(c(
 #'
 #' This function REPORTS and never drops. The within-taxon majority cannot
 #' decide which side to delete: in the \code{Clevelandia} case the contaminant
-#' is 93\% of the rows, so a majority rule would discard both genuine records
+#' is 93% of the rows, so a majority rule would discard both genuine records
 #' and keep all 26 plants -- it inverts exactly where it is needed.
 #'
 #' The reference kingdom comes from the OTHER taxa in the same fetch, which is
@@ -605,7 +605,7 @@ utils::globalVariables(c(
 #'
 #' \code{min_context} (3) is this function's own addition, not part of the
 #' stated rule, and it is there because a share is meaningless on one or two
-#' taxa: a single clean neighbour makes any kingdom 100\% dominant and would
+#' taxa: a single clean neighbour makes any kingdom 100% dominant and would
 #' license a drop on no evidence at all. Three is the same floor
 #' \code{train_likelihood_model()} already applies before it will fit a ring
 #' from grouped data (\code{n_grp < 3L}), so it is the house minimum for
@@ -1638,7 +1638,7 @@ utils::globalVariables(c(
 #'       returns. A queried name whose rows span more than one kingdom is a
 #'       homonym: the name matched some other organism too. Such rows are
 #'       reported, and dropped only when the rest of the fetch says which
-#'       kingdom is the intruder -- that is, when at least 90\% of the other
+#'       kingdom is the intruder -- that is, when at least 90% of the other
 #'       queried names resolved unambiguously to one kingdom, counted one
 #'       vote per name. Failing that, nothing is dropped and the split is
 #'       reported for review. A name resolving to a single kingdom is never
