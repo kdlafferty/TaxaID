@@ -185,11 +185,16 @@ test_that("score_type='similarity_softmax': score_norm and score_softmax added",
   expect_true("score_softmax" %in% names(h1))
 })
 
-# ---- H4 (unreferenced_family) fixed weight ----------------------------------
+# ---- a hand-built "unreferenced_family" row gets no special weight -----------
 
-test_that("H4 rows get fixed 0.05 weight", {
+test_that("an unreferenced_family row is not specially weighted", {
+  # No hypothesis type carries a fixed constant. The string is what a trained
+  # model names the ring anchored at order (train.R: paste0("unreferenced_",
+  # child_rk)), so weighting it here by a constant would overwrite a trained
+  # ring's own likelihood with 0.05. A caller can still hand-build such a row,
+  # which is why this is asserted rather than assumed unreachable.
   df <- .make_hyp_df(n_obs = 1L)
-  df_h4 <- data.frame(
+  df_extra <- data.frame(
     observation_id = "ESV_001",
     score_original = NA_real_,
     taxon_name = NA_character_,
@@ -200,10 +205,15 @@ test_that("H4 rows get fixed 0.05 weight", {
     hypothesis_type = "unreferenced_family",
     stringsAsFactors = FALSE
   )
-  df_all <- rbind(df, df_h4)
-  out <- assign_scores(df_all, score_type = "probability")
-  h4 <- out[out$hypothesis_type == "unreferenced_family", ]
-  expect_equal(h4$score_likelihood, 0.05)
+  out <- assign_scores(rbind(df, df_extra), score_type = "probability")
+  got <- out[out$hypothesis_type %in% "unreferenced_family", ]
+  # assign_scores() scores four named groups and drops any other type -- its own
+  # comment says an unknown hypothesis_type "belongs to none of the four
+  # groups". So the row does not reappear carrying a constant.
+  expect_identical(nrow(got), 0L)
+  # And the rows it does score are untouched by its presence.
+  expect_true(all(out$hypothesis_type %in%
+    c("specific_candidate", "unreferenced_species", "unreferenced_genus")))
 })
 
 # ---- aggregation: multiple accessions per taxon ----------------------------
@@ -303,8 +313,9 @@ test_that("assign_scores direct errors when score_col missing", {
 
 test_that("assign_scores: an NA hypothesis_type does not manufacture phantom rows", {
   # `==` yields NA for an NA hypothesis_type and df[NA, ] INSERTS an all-NA
-  # row, so one such row previously produced four fully-NA output rows --
-  # including a phantom H4 at the fixed 0.05 weight and phantom H2/H3 at 1.0.
+  # row, so one such row manufactures a fully-NA output row in every hypothesis
+  # group it is matched against, two of which would carry a likelihood of 1.0.
+  # `%in%` is what stops it.
   hd <- data.frame(
     observation_id = c("o1", "o1", "o1"),
     hypothesis_type = c("specific_candidate", NA, "unreferenced_species"),

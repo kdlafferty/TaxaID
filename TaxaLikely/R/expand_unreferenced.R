@@ -106,9 +106,9 @@ utils::globalVariables(c("hypothesis_type"))
 #'
 #' @return `likelihood_df` with named species rows added under each genus
 #'   ring where matches are found; generic rows are kept.  Only the H2 and H3
-#'   rows are rebuilt: `specific_candidate` rows, the `"unreferenced_family"`
-#'   catch-all and any coarser catch-all pass through unchanged, so the
-#'   posterior still sees every hypothesis the caller supplied.
+#'   rows are rebuilt: `specific_candidate` rows and any coarser hypothesis a
+#'   caller supplies pass through unchanged, so the posterior still sees every
+#'   hypothesis the caller supplied.
 #'   Column set is unchanged; new rows carry `NA` for most extra
 #'   columns in the input (e.g. `constraint_applied`, which is genuinely
 #'   row-specific), except `score_likelihood_cov`, `score_likelihood_evidence`,
@@ -222,8 +222,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   h3_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_genus")
   # Only H2 and H3 are consumed here: each generic row is replaced below by its
   # named expansions plus the generic row itself.  Every other hypothesis passes
-  # through untouched -- H1 candidates, the `"unreferenced_family"` catch-all
-  # from [unreferenced_candidates()], and any coarser catch-all a caller
+  # through untouched -- H1 candidates and any coarser hypothesis a caller
   # supplies.  Selecting the pass-through rows by what is NOT consumed, rather
   # than by listing the types to keep, is what stops a hypothesis type this
   # function does not model from being dropped from the posterior.

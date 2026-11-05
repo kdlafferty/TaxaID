@@ -8,13 +8,6 @@ utils::globalVariables(c(
   "score_likelihood_sd", "score_method"
 ))
 
-# Fixed likelihood weight for unreferenced_family rows.
-# Not fit from data -- a deliberately conservative, low-but-nonzero nominal
-# constant, so an unreferenced_family hypothesis gets non-degenerate
-# treatment. Kept as one shared nominal value across the ecosystem rather
-# than independently tuned per package.
-.unreferenced_family_weight <- 0.05
-
 #' Assign score_likelihood values to a hypotheses data frame
 #'
 #' Converts raw match scores (or absence of scores) into the
@@ -61,7 +54,7 @@ utils::globalVariables(c(
 #'
 #' \strong{Normalization convention:} all \code{score_likelihood} values are
 #' likelihood \emph{ratios} (divided by the maximum H1 likelihood), not
-#' probabilities.  H2/H3/H4 rows are added after H1 normalization so that H1
+#' probabilities.  H2/H3 rows are added after H1 normalization so that H1
 #' values are unaffected by the number of unreferenced hypotheses.
 #' \code{TaxaAssign::compute_posterior()} normalizes posteriors, so the
 #' absolute scale of likelihoods does not matter.
@@ -89,7 +82,7 @@ utils::globalVariables(c(
 #'
 #'   For all other \code{score_type} values: a data frame with one row per
 #'   \code{observation_id} x hypothesis (H1 aggregated to one row per
-#'   \code{taxon_name}, H2/H3/H4 unchanged), with columns
+#'   \code{taxon_name}, H2/H3 unchanged), with columns
 #'   \code{score_likelihood}, \code{score_likelihood_mean} (= point estimate),
 #'   \code{score_likelihood_sd} (= 0), and \code{score_method} added.
 #'
@@ -283,8 +276,8 @@ assign_scores <- function(hypotheses_df,
     # %in%, not ==: `==` yields NA (not FALSE) for a row whose
     # hypothesis_type is NA, and `df[NA, ]` INSERTS an all-NA phantom row
     # rather than dropping it -- so a single NA hypothesis_type manufactured
-    # four fully-NA output rows, one of which carried the fixed H4 likelihood
-    # of 0.05 and two of which carried a likelihood of 1.0. A NA
+    # one fully-NA output row per hypothesis group, two of which carried a
+    # likelihood of 1.0. A NA
     # hypothesis_type is reachable (a caller-supplied hypotheses_df can
     # legitimately carry one), and a row with an unknown hypothesis type
     # belongs to none of the four
@@ -292,12 +285,10 @@ assign_scores <- function(hypotheses_df,
     h1_mask <- obs_rows$hypothesis_type %in% "specific_candidate"
     h2_mask <- obs_rows$hypothesis_type %in% "unreferenced_species"
     h3_mask <- obs_rows$hypothesis_type %in% "unreferenced_genus"
-    h4_mask <- obs_rows$hypothesis_type %in% "unreferenced_family"
 
     h1_rows <- obs_rows[h1_mask, , drop = FALSE]
     h2_rows <- obs_rows[h2_mask, , drop = FALSE]
     h3_rows <- obs_rows[h3_mask, , drop = FALSE]
-    h4_rows <- obs_rows[h4_mask, , drop = FALSE]
 
     if (nrow(h1_rows) == 0L) {
       # No H1 -- pass through unchanged (will have NA score_likelihood).
@@ -410,19 +401,7 @@ assign_scores <- function(hypotheses_df,
       }
     }
 
-    # ---- H4: fixed small weight (unreferenced_family) ------------------------
-    if (nrow(h4_rows) > 0L) {
-      h4_rows$score_likelihood <- .unreferenced_family_weight
-      h4_rows$score_likelihood_mean <- .unreferenced_family_weight
-      h4_rows$score_likelihood_sd <- 0.0
-      h4_rows$score_method <- score_type
-      if (score_type == "similarity_softmax") {
-        h4_rows$score_norm <- NA_real_
-        h4_rows$score_softmax <- NA_real_
-      }
-    }
-
-    result_list[[oi]] <- dplyr::bind_rows(h1_agg, h2_rows, h3_rows, h4_rows)
+    result_list[[oi]] <- dplyr::bind_rows(h1_agg, h2_rows, h3_rows)
   }
 
   dplyr::bind_rows(result_list)

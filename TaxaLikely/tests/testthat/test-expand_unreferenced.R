@@ -483,10 +483,13 @@ test_that("expand: two genus rings copy each onto its own genus; family rings na
 })
 
 # ---- hypotheses this function does not model must survive --------------------
-# unreferenced_candidates(include_unreferenced_family = TRUE) adds an
-# "unreferenced_family" catch-all row (all rank columns NA).  Only H2 and H3 are
-# rebuilt here; anything else has to reach compute_posterior() untouched, or the
-# catch-all silently stops competing and the argument that adds it is a no-op.
+# Only H2 and H3 are rebuilt here; any other hypothesis has to reach
+# compute_posterior() untouched, or it silently stops competing.
+#
+# The fixture's "unreferenced_family" row is a realistic CALLER-SUPPLIED one: a
+# trained model's order ring carries exactly that hypothesis_type (train.R
+# builds it as paste0("unreferenced_", child_rk)), and such rows reach this
+# function from evaluate_likelihoods(), not from unreferenced_candidates().
 .make_expand_lik_h4 <- function() {
   data.frame(
     observation_id = "ESV_001",
@@ -515,8 +518,8 @@ test_that("expand_unreferenced_hypotheses: unreferenced_family rows pass through
 })
 
 test_that("expand_unreferenced_hypotheses: the family catch-all is not a no-op", {
-  # Without the pass-through, dropping the H4 row left the output identical with
-  # and without it, so include_unreferenced_family had no effect on any call.
+  # Without the pass-through, dropping the row leaves the output identical with
+  # and without it, so the hypothesis silently never competes.
   unref <- .make_unref_df()
   with_h4 <- suppressMessages(expand_unreferenced_hypotheses(.make_expand_lik_h4(), unref))
   without_h4 <- suppressMessages(expand_unreferenced_hypotheses(.make_expand_lik(), unref))

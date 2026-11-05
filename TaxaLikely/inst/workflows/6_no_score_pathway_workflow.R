@@ -106,15 +106,13 @@ if (!all(c("family", "genus", "species") %in% names(consensus_df))) {
 #   "unreferenced_species" row -- genus represented but species unknown
 #   "unreferenced_genus"   row -- family represented but genus unknown
 #
-# include_unreferenced_family = FALSE (default) is appropriate when using
-# TaxaExpect priors — the prior distribution already covers unrepresented
-# families. Set to TRUE only when running without TaxaExpect priors, to add
-# an additional catch-all row.
+# Mass for taxa outside every represented family comes from the TaxaExpect
+# prior, whose distribution already covers them -- not from a catch-all
+# hypothesis row.
 
 hyp_df <- unreferenced_candidates(
   match_df = consensus_df,
-  rank_system = c("family", "genus", "species"), # adjust to match your data
-  include_unreferenced_family = FALSE
+  rank_system = c("family", "genus", "species") # adjust to match your data
 )
 
 cat("\nHypothesis rows after expansion:", nrow(hyp_df), "\n")

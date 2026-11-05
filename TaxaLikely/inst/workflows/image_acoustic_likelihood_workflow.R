@@ -65,9 +65,9 @@ message(
 # ==============================================================================
 # rank_system supplied explicitly (family, genus, species) rather than relying
 # on auto-detection -- TaxaMatch's script already populated exactly these
-# three columns in Step 2 for this purpose. include_unreferenced_family = FALSE
-# (default): this tutorial does not continue to TaxaAssign/join_priors(), so
-# there is no occurrence-based prior to cover unrepresented families; adding
+# three columns in Step 2 for this purpose. This tutorial does not continue to
+# TaxaAssign/join_priors(), so there is no occurrence-based prior to cover
+# unrepresented families; adding
 # an unreferenced_family catch-all here would have nothing downstream to
 # absorb its posterior mass meaningfully.
 # ==============================================================================

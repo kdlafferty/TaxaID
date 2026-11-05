@@ -1,6 +1,19 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `unreferenced_candidates()` takes `match_df` and `rank_system`, and adds two
+  hypothesis rows per observation: `"unreferenced_species"` and
+  `"unreferenced_genus"`. It offers no coarser catch-all row and no argument to
+  request one. A catch-all would carry `hypothesis_type =
+  "unreferenced_family"`, which is the name a trained model gives the ring
+  anchored at order (`train.R` builds it as `paste0("unreferenced_", child_rk)`),
+  so one string would stand for two different hypotheses: a trained,
+  order-anchored ring, and an unnamed row weighted by a fixed constant. The
+  constant is gone with it. Mass for taxa outside every represented family comes
+  from the TaxaExpect occurrence prior, whose distribution already covers them.
+  `expand_unreferenced_hypotheses()` still passes any hypothesis type it does
+  not model through to the posterior untouched, which is how a trained order
+  ring reaches it.
 * `fetch_ncbi_reference_sequences()` resolves `class` on every fetch, alongside
   `kingdom` and `phylum`, at no extra taxonomy call -- all three already sit in
   the XML the taxonomy bridge returns. A single definition decides which ranks a

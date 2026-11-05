@@ -4,11 +4,7 @@
 \alias{unreferenced_candidates}
 \title{Add unreferenced taxon placeholder rows to a match object}
 \usage{
-unreferenced_candidates(
-  match_df,
-  rank_system = NULL,
-  include_unreferenced_family = FALSE
-)
+unreferenced_candidates(match_df, rank_system = NULL)
 }
 \arguments{
 \item{match_df}{Data frame. Canonical match object from
@@ -23,21 +19,12 @@ the best anchor candidate.}
 (e.g., \code{c("family", "genus", "species")}).  When \code{NULL}
 (default), auto-detected from column names using
 \code{TaxaTools::extended_ranks}.  At least two ranks are required.}
-
-\item{include_unreferenced_family}{Logical (default \code{FALSE}).  When
-\code{TRUE}, one \code{"unreferenced_family"} catch-all row is added per
-observation with all taxonomy columns set to \code{NA}.  Use when
-running \code{\link[=assign_scores]{assign_scores()}} without TaxaExpect priors (e.g. under a flat
-prior) to absorb posterior mass from taxa outside all
-represented families.  Do \strong{not} set to \code{TRUE} when using
-TaxaExpect priors -- the prior distribution already covers unrepresented
-families.}
 }
 \value{
 A data frame with the same columns as \code{match_df}, plus
 \code{hypothesis_type} (\code{"specific_candidate"} for original rows;
-\code{"unreferenced_species"}, \code{"unreferenced_genus"}, or
-\code{"unreferenced_family"} for added rows).  Added rows have
+\code{"unreferenced_species"} or \code{"unreferenced_genus"} for added
+rows).  Added rows have
 \code{score_original = NA} (and any other score columns set to \code{NA}).
 }
 \description{
@@ -49,8 +36,6 @@ reference database:
 reference but the species is not.
 \item \code{"unreferenced_genus"} -- family is represented but the genus
 is not.
-\item \code{"unreferenced_family"} -- optional catch-all (see
-\code{include_unreferenced_family}).
 }
 }
 \details{
