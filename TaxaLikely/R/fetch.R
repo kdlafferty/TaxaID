@@ -537,7 +537,7 @@ utils::globalVariables(c(
 #'
 #' The reference kingdom comes from the OTHER taxa in the same fetch, which is
 #' only known once every taxon is assembled, so the verdict is pronounced
-#' later by \code{.resolve_kingdom_contamination()}. This message says only
+#' later by \code{.resolve_cross_lineage_contamination()}. This message says only
 #' that a split was seen.
 #'
 #' @param meta Data frame of fetched metadata, post-taxonomy-merge.
@@ -704,42 +704,139 @@ utils::globalVariables(c(
   !identical(av[[finest]], bv[[finest]])
 }
 
-.resolve_kingdom_contamination <- function(all_meta, taxa, dominance = 0.90,
-                                           min_context = 3L) {
-  if (length(all_meta) == 0L) {
-    return(all_meta)
+#' The rank at which a comparison between two rows is decided, or NA
+#'
+#' The finest rank both rows declare. Factored out of .different_organisms() so
+#' a message can name the rank that actually decided a drop instead of always
+#' saying "kingdom".
+#' @noRd
+.organism_decider_rank <- function(a, b, ranks = .ORGANISM_RANKS) {
+  av <- vapply(ranks, function(r) .organism_rank_value(a, r), character(1L))
+  bv <- vapply(ranks, function(r) .organism_rank_value(b, r), character(1L))
+  comparable <- which(!is.na(av) & nzchar(av) & !is.na(bv) & nzchar(bv))
+  if (length(comparable) == 0L) return(NA_character_)
+  # `ranks` MUST be ordered coarsest to finest: the LAST comparable entry is
+  # the finest declared rank, so reordering this vector silently changes
+  # verdicts instead of failing. .ORGANISM_RANKS is kingdom, phylum, class for
+  # exactly that reason, and a test pins both the constant and the dependency.
+  ranks[[comparable[[length(comparable)]]]]
+}
+
+#' The organism signature a set of rows agrees on: one value per comparison
+#' rank, NA where the rows carry no known value or disagree
+#'
+#' A group whose rows disagree at a rank has NA there, so it cannot be compared
+#' at that rank and abstains from the vote at it. That is the same rule as a row
+#' with no resolved value being kept.
+#' @noRd
+.organism_signature <- function(m, ranks = .ORGANISM_RANKS) {
+  out <- stats::setNames(rep(NA_character_, length(ranks)), ranks)
+  for (r in ranks) {
+    if (!r %in% names(m)) next
+    v <- as.character(m[[r]])
+    v <- unique(v[!is.na(v) & nzchar(v)])
+    if (length(v) == 1L) out[[r]] <- v
   }
-  kingdoms_of <- function(m) {
-    if (is.null(m) || !is.data.frame(m) || nrow(m) == 0L ||
-      !"kingdom" %in% names(m)) {
-      return(character(0L))
+  out
+}
+
+#' Does a set of rows describe more than one organism?
+#' @noRd
+.rows_span_organisms <- function(m, ranks = .ORGANISM_RANKS) {
+  cmp <- intersect(ranks, names(m))
+  if (length(cmp) == 0L || nrow(m) < 2L) return(FALSE)
+  u <- unique(m[, cmp, drop = FALSE])
+  if (nrow(u) < 2L) return(FALSE)
+  for (i in seq_len(nrow(u) - 1L)) {
+    for (j in seq(i + 1L, nrow(u))) {
+      if (.different_organisms(as.list(u[i, , drop = FALSE]),
+                               as.list(u[j, , drop = FALSE]), ranks)) {
+        return(TRUE)
+      }
     }
-    k <- as.character(m$kingdom)
-    k[!is.na(k) & nzchar(k)]
   }
-  ks <- lapply(all_meta, kingdoms_of)
-  split_i <- which(vapply(ks, function(k) length(unique(k)) >= 2L, logical(1L)))
-  if (length(split_i) == 0L) {
-    return(all_meta)
+  FALSE
+}
+
+#' Drop rows that describe a different organism from the fetch's own reference
+#'
+#' Replaces the kingdom-only rule. The arithmetic, the guards, the one-vote-per-
+#' taxon context and the ordering are unchanged -- only the comparison is, from
+#' "same kingdom string" to \code{.different_organisms()}, and the messages name
+#' the rank that decided rather than always saying kingdom.
+#'
+#' Runs on the ASSEMBLED frame rather than the per-taxon list, so priority-species
+#' rows are judged and vote like any other (Kevin's decision). Grouping is by
+#' \code{group_col}, which is why \code{queried_taxon} is now unconditional.
+#'
+#' Returns both the filtered frame and the accessions dropped: the dry run
+#' reports per-taxon counts from a different object, and it would otherwise
+#' report counts that include rows the real run removes.
+#' @noRd
+#' Is `queried_taxon` present, and say so loudly when it is not
+#'
+#' \code{queried_taxon} is stamped at assembly on every fetch, so its absence is
+#' an internal inconsistency rather than a data condition. It is still checked,
+#' because without the column \code{setdiff(taxa, NULL)} returns every taxon and
+#' the \code{taxa_without_sequences} attribute would quietly claim that nothing
+#' came back at all. A silent wrong answer is worse than the conditional this
+#' replaces.
+#'
+#' It warns rather than stopping on purpose: a hard error here would discard a
+#' whole fetch's completed work, which this file avoids everywhere else.
+#'
+#' Extracted from the caller so a test can actually trigger it. Left inline it
+#' was unreachable through the public interface, which makes it a guard that
+#' cannot fail.
+#' @noRd
+.warn_if_no_queried_taxon <- function(reference_df) {
+  ok <- is.data.frame(reference_df) && "queried_taxon" %in% names(reference_df)
+  if (!ok) {
+    warning(
+      "queried_taxon is absent from the assembled reference, so the ",
+      "taxa_without_sequences and lineage-disagreement checks were skipped. ",
+      "This is an internal inconsistency, not a data problem.",
+      call. = FALSE
+    )
+  }
+  ok
+}
+
+.resolve_cross_lineage_contamination <- function(meta, group_col = "queried_taxon",
+                                                 dominance = 0.90, min_context = 3L,
+                                                 ranks = .ORGANISM_RANKS) {
+  none <- list(meta = meta, dropped_acc = character(0L))
+  if (is.null(meta) || !is.data.frame(meta) || nrow(meta) == 0L ||
+    !group_col %in% names(meta) || length(intersect(ranks, names(meta))) == 0L) {
+    return(none)
   }
 
-  # One vote per taxon. A taxon with no resolved kingdom and a taxon that is
-  # itself split both vote NA, so dropping the NAs leaves exactly the clean,
-  # classified taxa as the context.
-  votes <- vapply(ks, function(k) {
-    u <- unique(k)
-    if (length(u) == 1L) u else NA_character_
+  idx <- split(seq_len(nrow(meta)), as.character(meta[[group_col]]))
+  sigs <- lapply(idx, function(ii) .organism_signature(meta[ii, , drop = FALSE], ranks))
+  spans <- vapply(idx, function(ii) {
+    .rows_span_organisms(meta[ii, , drop = FALSE], ranks)
+  }, logical(1L))
+
+  split_groups <- names(idx)[spans]
+  if (length(split_groups) == 0L) return(none)
+
+  # One vote per group. A group that is itself split, or that declares nothing,
+  # votes NA, so dropping the NAs leaves exactly the unambiguous groups as
+  # context -- the same rule the kingdom version used.
+  vote_key <- function(s) if (all(is.na(s))) NA_character_ else paste(s, collapse = "\r")
+  votes <- vapply(seq_along(idx), function(k) {
+    if (spans[[k]]) NA_character_ else vote_key(sigs[[k]])
   }, character(1L))
   ctx <- votes[!is.na(votes)]
   tab <- sort(table(ctx), decreasing = TRUE)
-  ref_k <- if (length(tab) > 0L) names(tab)[1L] else NA_character_
+  ref_key <- if (length(tab) > 0L) names(tab)[1L] else NA_character_
   share <- if (length(ctx) > 0L) as.integer(tab[1L]) / length(ctx) else 0
 
-  split_names <- paste(taxa[split_i], collapse = ", ")
-  if (length(ctx) < min_context || is.na(ref_k) || share < dominance) {
+  split_names <- paste(split_groups, collapse = ", ")
+  if (length(ctx) < min_context || is.na(ref_key) || share < dominance) {
     message(sprintf(
       paste0(
-        "  CROSS-KINGDOM SPLIT KEPT (%s): no reference kingdom -- %d ",
+        "  CROSS-LINEAGE SPLIT KEPT (%s): no reference organism -- %d ",
         "unambiguous taxon/taxa in this fetch%s. Nothing dropped; these rows ",
         "need review."
       ),
@@ -748,34 +845,52 @@ utils::globalVariables(c(
         sprintf(", fewer than the %d needed", min_context)
       } else {
         sprintf(
-          ", and the commonest kingdom holds %.0f%% of them, under the %.0f%% needed",
+          ", and the commonest organism holds %.0f%% of them, under the %.0f%% needed",
           100 * share, 100 * dominance
         )
       }
     ))
-    return(all_meta)
+    return(none)
   }
 
-  for (i in split_i) {
-    m <- all_meta[[i]]
-    k <- as.character(m$kingdom)
+  ref_sig <- stats::setNames(strsplit(ref_key, "\r", fixed = TRUE)[[1L]], ranks)
+  ref_sig[ref_sig == "NA"] <- NA_character_
+  ref_label <- paste(ref_sig[!is.na(ref_sig)], collapse = "/")
+
+  dropped <- integer(0L)
+  for (g in split_groups) {
+    ii <- idx[[g]]
+    rows <- meta[ii, , drop = FALSE]
     # Not named `drop`: that would shadow base::drop() one line from a
     # `drop = FALSE` argument, which is a trap for the next reader.
-    bad <- !is.na(k) & nzchar(k) & k != ref_k
+    bad <- vapply(seq_len(nrow(rows)), function(r) {
+      .different_organisms(as.list(rows[r, , drop = FALSE]), ref_sig, ranks)
+    }, logical(1L))
     if (!any(bad)) next
+    deciders <- vapply(which(bad), function(r) {
+      .organism_decider_rank(as.list(rows[r, , drop = FALSE]), ref_sig, ranks)
+    }, character(1L))
+    labels <- vapply(which(bad), function(r) {
+      dr <- .organism_decider_rank(as.list(rows[r, , drop = FALSE]), ref_sig, ranks)
+      if (is.na(dr)) NA_character_ else .organism_rank_value(rows[r, , drop = FALSE], dr)
+    }, character(1L))
     message(sprintf(
       paste0(
-        "  %s: dropping %d of %d record(s) -- kingdom %s, against %s from ",
+        "  %s: dropping %d of %d record(s) -- %s %s, against %s from ",
         "%.0f%% of the %d unambiguous taxa in this fetch.%s"
       ),
-      taxa[i], sum(bad), nrow(m),
-      paste(sort(unique(k[bad])), collapse = "/"), ref_k,
-      100 * share, length(ctx),
+      g, sum(bad), nrow(rows),
+      paste(sort(unique(stats::na.omit(deciders))), collapse = "/"),
+      paste(sort(unique(stats::na.omit(labels))), collapse = "/"),
+      ref_label, 100 * share, length(ctx),
       if (all(bad)) " EVERY record went; this taxon now contributes none." else ""
     ))
-    all_meta[[i]] <- m[!bad, , drop = FALSE]
+    dropped <- c(dropped, ii[bad])
   }
-  all_meta
+
+  if (length(dropped) == 0L) return(none)
+  acc <- if ("acc" %in% names(meta)) as.character(meta$acc[dropped]) else character(0L)
+  list(meta = meta[-dropped, , drop = FALSE], dropped_acc = unique(acc))
 }
 
 
@@ -1708,21 +1823,33 @@ utils::globalVariables(c(
 #'     \item{`lat`, `lon`, `country`}{Only when `include_location = TRUE`.
 #'       Collection location parsed from GenBank's `lat_lon`/`country`
 #'       qualifiers; `NA` when absent or unparseable.}
-#'     \item{`kingdom`, `phylum`}{Always present. Resolved on every fetch in
-#'       addition to whatever `rank_system` itself requests, at no extra
-#'       taxonomy call -- both ranks already sit in the XML the bridge
-#'       returns. A queried name whose rows span more than one kingdom is a
-#'       homonym: the name matched some other organism too. Such rows are
-#'       reported, and dropped only when the rest of the fetch says which
-#'       kingdom is the intruder -- that is, when at least 90% of the other
-#'       queried names resolved unambiguously to one kingdom, counted one
-#'       vote per name. Failing that, nothing is dropped and the split is
-#'       reported for review. A name resolving to a single kingdom is never
-#'       filtered, however much it differs from the rest of the fetch, and a
-#'       row whose kingdom did not resolve is always kept.}
-#'     \item{`queried_taxon`}{Only when `taxa_lineage` was supplied; records
-#'       which `taxa` entry a row was fetched under, so the lineage-agreement
-#'       guard has data to check without a second taxonomy fetch.}
+#'     \item{`kingdom`, `phylum`, `class`}{Columns always present; VALUES may
+#'       be `NA`. These ranks are requested on every fetch in addition to
+#'       whatever `rank_system` asks for, at no extra taxonomy call -- they
+#'       already sit in the XML the bridge returns. NCBI assigns no `kingdom`
+#'       to several groups (Rhodophyta, Ochrophyta, Bacillariophyta,
+#'       Ciliophora, Chrysophyceae), so an `NA` kingdom is ordinary and not a
+#'       failure; every one of those groups does have a `class`, which is why
+#'       `class` is requested and why it is the rank the filter compares at.
+#'       A queried name whose rows describe more than one organism is a
+#'       homonym: the name matched some other organism too. Two rows describe
+#'       different organisms when they differ at the finest of these ranks
+#'       both declare -- `class` when both know it, else `phylum`, else
+#'       `kingdom`. A within-class split is a taxonomic revision, not a
+#'       homonym, and is never filtered. Such rows are reported, and dropped
+#'       only when the rest of the fetch says which organism is the intruder:
+#'       when at least 90% of the other queried names resolved unambiguously
+#'       to one organism, counted one vote per name. Failing that, nothing is
+#'       dropped and the split is reported for review. A name resolving to a
+#'       single organism is never filtered, however much it differs from the
+#'       rest of the fetch, and a row that declares none of these ranks is
+#'       always kept. Priority species are filtered, and vote, like any other
+#'       name.}
+#'     \item{`queried_taxon`}{Always present. Records which `taxa` entry a row
+#'       was fetched under. It is provenance, not an observation: it says which
+#'       query returned the row, never anything about the organism. The
+#'       cross-lineage filter groups by it, and the lineage-agreement guard
+#'       checks against it without a second taxonomy fetch.}
 #'   }
 #'   Carries a `taxa_without_sequences` attribute: the requested taxa for
 #'   which nothing came back. Check it after every fetch: a name that
@@ -2406,11 +2533,6 @@ fetch_ncbi_reference_sequences <- function(taxa,
           next
         }
 
-        # Records which taxon this row was QUERIED under, for the post-fetch
-        # lineage-agreement guard below -- only meaningful (and only kept)
-        # when taxa_lineage was supplied to check it against.
-        if (!is.null(taxa_lineage)) meta$queried_taxon <- taxa[i]
-
         # Taxonomy bridge: taxid -> full lineage. Widened to also request
         # kingdom/phylum (beyond rank_system's own ranks) when taxa_lineage
         # was supplied -- these ranks are already present in the XML this
@@ -2525,6 +2647,14 @@ fetch_ncbi_reference_sequences <- function(taxa,
   if (length(priority_meta) > 0L) {
     # dplyr::bind_rows(), not do.call(rbind, ...) -- same real-data column-
     # mismatch risk as the per-taxon combining above.
+    # The same assembly-time stamp as the broad path, taken from the list
+    # names: priority_meta is keyed by species name. Priority rows need it for
+    # the same reason -- under Kevin's decision they are judged by, and vote
+    # in, the cross-lineage filter like any other row.
+    priority_meta <- Map(function(m, sp) {
+      if (!is.null(m) && nrow(m) > 0L) m$queried_taxon <- sp
+      m
+    }, priority_meta, names(priority_meta))
     priority_combined <- dplyr::bind_rows(priority_meta)
     if (!is.null(priority_combined) && nrow(priority_combined) > 0L) {
       # Length filter (see the family/genus path's identical comment above for
@@ -2619,12 +2749,19 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # .fetch_taxonomy_map()'s own note above) -- any one genus with a
   # slightly different resolved column set was enough to hard-error the
   # WHOLE fetch, discarding every other genus's already-completed work.
-  # Cross-kingdom homonym cleanup, here and not inside the loop above: the
-  # reference kingdom is a property of the whole fetch, so it is not knowable
-  # until every taxon -- cached ones included -- is in hand. See
-  # .resolve_kingdom_contamination() for why per-taxon context would make the
-  # same call filter differently on a warm and a cold cache.
-  all_meta <- .resolve_kingdom_contamination(all_meta, taxa)
+  # queried_taxon records which taxon each row was QUERIED under. Stamped HERE,
+  # at assembly, and never inside the per-taxon loop above: there it lands
+  # before saveRDS() and so enters the cached object, changing the cached shape
+  # and needing a key move of its own. Set from the list index and the caches
+  # are untouched.
+  #
+  # It is provenance, not an observation. Nothing downstream may read it as
+  # evidence about the organism -- only about which query returned the row.
+  for (i in seq_along(all_meta)) {
+    if (!is.null(all_meta[[i]]) && nrow(all_meta[[i]]) > 0L) {
+      all_meta[[i]]$queried_taxon <- taxa[[i]]
+    }
+  }
 
   family_meta <- dplyr::bind_rows(all_meta)
 
@@ -2662,6 +2799,61 @@ fetch_ncbi_reference_sequences <- function(taxa,
   combined_meta <- combined_meta[!duplicated(combined_meta$acc), , drop = FALSE]
   if (!"cap_exempt" %in% names(combined_meta)) combined_meta$cap_exempt <- FALSE
   combined_meta$cap_exempt <- combined_meta$cap_exempt %in% TRUE
+
+  # --- Cross-lineage contamination ---------------------------------------------
+  # Placed here, and the position is load-bearing in three ways:
+  #
+  #   AFTER the accession dedup, so each accession casts exactly one vote and a
+  #   contaminant arriving under two names cannot be counted twice. The dedup
+  #   keeps the first occurrence and meta_parts lists priority_combined first,
+  #   so where an accession arrives by both routes the surviving row carries the
+  #   priority name -- the right vote under Kevin's decision that priority
+  #   species are filtered like any other.
+  #
+  #   BEFORE the dry-run return, so a dry run predicts the filtered reference
+  #   set rather than an unfiltered one.
+  #
+  #   BEFORE the caps, so the caps apportion a clean reference set.
+  #
+  # cap_exempt is set three lines up and does NOT carry over: priority rows are
+  # exempt from max_per_species/max_per_genus, but a contamination drop is not a
+  # cap and the exemption must not be read as covering it.
+  #
+  # The reference organism is a property of the whole fetch, so it is not
+  # knowable until every taxon -- cached ones included -- is in hand. That is
+  # also why this cannot move into the per-taxon loop: the same call would
+  # filter differently on a warm and a cold cache.
+  cross_lineage <- .resolve_cross_lineage_contamination(combined_meta)
+  combined_meta <- cross_lineage$meta
+  if (length(cross_lineage$dropped_acc) > 0L) {
+    # all_meta feeds .reference_dry_run()'s PER-TAXON counts while combined_meta
+    # feeds its sequence table, so leaving all_meta unfiltered would make the
+    # two halves of one dry-run report disagree -- the per-taxon counts would
+    # include rows the real run removes. Prune by accession rather than
+    # re-deriving the counts from the deduped frame: the existing counts are
+    # "rows this taxon contributed", counted before the dedup, and re-deriving
+    # them would change reported numbers even for a fetch with no contamination.
+    all_meta <- lapply(all_meta, function(m) {
+      if (is.null(m) || !is.data.frame(m) || nrow(m) == 0L ||
+        !"acc" %in% names(m)) {
+        return(m)
+      }
+      m[!as.character(m$acc) %in% cross_lineage$dropped_acc, , drop = FALSE]
+    })
+  }
+
+  if (is.null(combined_meta) || nrow(combined_meta) == 0L) {
+    message("No sequences remained after cross-lineage filtering.")
+    if (isTRUE(dry_run)) {
+      return(.reference_dry_run(
+        NULL, taxa, counts, is_cached, all_meta, failed_taxa,
+        rank_system, max_per_species, max_per_genus
+      ))
+    }
+    return(.with_count_failures(
+      .empty_reference_df(rank_system, include_location), failed_taxa
+    ))
+  }
 
   # --- Dry run: stop before any sequence is downloaded ------------------------
   # Everything above is metadata the real run needs anyway, and it is now
@@ -2748,11 +2940,13 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # unchanged) would lack it, and this keeps that stale-cache case a graceful
   # NA-column omission rather than a hard "undefined columns selected" crash.
   if ("create_date" %in% names(combined_meta)) keep_cols <- c(keep_cols, "create_date")
-  # queried_taxon/kingdom/phylum only exist when taxa_lineage was supplied
-  # (see the taxonomy-bridge widening above) -- carried through the same
-  # way, for the post-fetch lineage-agreement guard below.
+  # queried_taxon and the organism ranks are resolved on every fetch now, so
+  # these are no longer conditional on taxa_lineage. intersect() is kept rather
+  # than a bare index: a taxon whose taxonomy call failed contributes no rank
+  # columns at all, and that must stay an omission rather than an "undefined
+  # columns selected" crash, exactly as the create_date line above.
   keep_cols <- c(keep_cols, intersect(
-    c("queried_taxon", "kingdom", "phylum"), names(combined_meta)
+    c("queried_taxon", .ORGANISM_RANKS), names(combined_meta)
   ))
   lookup <- combined_meta[!duplicated(combined_meta$composite_id), keep_cols,
     drop = FALSE
@@ -2784,7 +2978,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # barcode" rather than "this query went to the wrong organism". No lineage
   # check can see it, because there is nothing to compare. So the absent
   # taxa are named here, once, and carried on the result.
-  if ("queried_taxon" %in% names(reference_df)) {
+  has_queried_taxon <- .warn_if_no_queried_taxon(reference_df)
+  if (has_queried_taxon) {
     taxa_without <- setdiff(taxa, unique(reference_df$queried_taxon))
     attr(reference_df, "taxa_without_sequences") <- taxa_without
     if (length(taxa_without) > 0L) {
@@ -2811,7 +3006,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # so still agrees). See ecosystem_docs/REENTRY_PROMPT_homonym_detection.md,
   # proposal 4 -- this is exactly the sweep that found the defect in the
   # first place, now run automatically on every taxa_lineage-aware fetch.
-  if (!is.null(taxa_lineage) && "queried_taxon" %in% names(reference_df)) {
+  if (!is.null(taxa_lineage) && has_queried_taxon) {
     disagreements <- .compute_lineage_disagreements(reference_df, taxa_lineage)
     attr(reference_df, "lineage_disagreements") <- disagreements
     n_dis <- nrow(disagreements)
