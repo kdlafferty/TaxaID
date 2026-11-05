@@ -813,37 +813,6 @@ blast_sequences <- function(seq_df,
 # Internal: Remote NCBI BLAST via URL API
 # ==============================================================================
 
-#' Thin wrapper around Sys.sleep() for NCBI rate-limit pauses
-#'
-#' Exists purely so tests can mock this one call (via
-#' \code{testthat::local_mocked_bindings()}) to a no-op instead of actually
-#' waiting out real 11-second NCBI rate-limit pauses -- a circuit-breaker
-#' test exercising several consecutive batches would otherwise cost real
-#' wall-clock minutes for no real verification benefit. Production behavior
-#' is unchanged: a real \code{Sys.sleep()} call, same duration, every time.
-#' @noRd
-#' Keep the top \code{max_n} hits by identity, plus every hit tied with the last
-#' one kept
-#'
-#' A row-count cut cannot do this: \code{order()} is stable, so hits tied at the
-#' boundary are kept or dropped by their position in the BLAST output, and the
-#' retained set then depends on input row order. Cutting at the boundary SCORE
-#' makes it a property of the data instead.
-#'
-#' \code{max_n} is therefore a floor, not a hard cap: the result can exceed it
-#' when the \code{max_n}-th identity is tied. The overshoot is bounded by what
-#' BLAST returned, hence by \code{max_target_seqs}; a tie BLAST itself truncated
-#' cannot be recovered here.
-#'
-#' One definition for both the per-taxon and the per-query cap, which had the
-#' same rule written out twice.
-#'
-#' Measured on Mugu's saved hits (622 ASVs, one read, no network): of the 93 ASVs
-#' the per-query cap acted on, 89 had the cut land inside a run of equal
-#' identities and 48 had all twenty kept hits at a single identity, median
-#' lowest-kept identity 98.99. The row-count cut was splitting ties among
-#' near-perfect matches in almost every case where it fired.
-#' @noRd
 #' Keep each taxon's top \code{max_n} hits, breaking ties deterministically
 #'
 #' A HARD count, unlike \code{.cap_hits_keeping_ties()}, and the difference is
@@ -875,6 +844,28 @@ blast_sequences <- function(seq_df,
   utils::head(df, max_n)
 }
 
+#' Keep the top \code{max_n} hits by identity, plus every hit tied with the last
+#' one kept
+#'
+#' A row-count cut cannot do this: \code{order()} is stable, so hits tied at the
+#' boundary are kept or dropped by their position in the BLAST output, and the
+#' retained set then depends on input row order. Cutting at the boundary SCORE
+#' makes it a property of the data instead.
+#'
+#' \code{max_n} is therefore a floor, not a hard cap: the result can exceed it
+#' when the \code{max_n}-th identity is tied. The overshoot is bounded by what
+#' BLAST returned, hence by \code{max_target_seqs}; a tie BLAST itself truncated
+#' cannot be recovered here.
+#'
+#' One definition for both the per-taxon and the per-query cap, which had the
+#' same rule written out twice.
+#'
+#' Measured on Mugu's saved hits (622 ASVs, one read, no network): of the 93 ASVs
+#' the per-query cap acted on, 89 had the cut land inside a run of equal
+#' identities and 48 had all twenty kept hits at a single identity, median
+#' lowest-kept identity 98.99. The row-count cut was splitting ties among
+#' near-perfect matches in almost every case where it fired.
+#' @noRd
 .cap_hits_keeping_ties <- function(df, max_n) {
   if (is.null(max_n) || is.na(max_n) || nrow(df) == 0L) {
     return(df)
@@ -886,6 +877,15 @@ blast_sequences <- function(seq_df,
   df[df$pident >= df$pident[max_n], , drop = FALSE]
 }
 
+#' Thin wrapper around Sys.sleep() for NCBI rate-limit pauses
+#'
+#' Exists purely so tests can mock this one call (via
+#' \code{testthat::local_mocked_bindings()}) to a no-op instead of actually
+#' waiting out real 11-second NCBI rate-limit pauses -- a circuit-breaker
+#' test exercising several consecutive batches would otherwise cost real
+#' wall-clock minutes for no real verification benefit. Production behavior
+#' is unchanged: a real \code{Sys.sleep()} call, same duration, every time.
+#' @noRd
 .blast_rate_limit_sleep <- function(seconds) {
   Sys.sleep(seconds)
 }
