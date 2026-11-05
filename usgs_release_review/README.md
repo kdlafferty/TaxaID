@@ -97,8 +97,23 @@ external data (`readRDS`, `unserialize`, `load`).
 
 **File writes.** Every cache is opt-in through a caller-supplied `cache_dir`, except
 TaxaWizard's workflow registry and TaxaTools' model registry, both of which use a
-fixed path documented in the root README's caching table. Cache filenames are built
-from numeric hashes (`%010.0f-%010.0f-%06d`), so a taxon name cannot influence a path.
+fixed path documented in the root README's caching table.
+
+Cache filenames fall into two groups, and the protection differs. The
+grid/kernel caches build their names from numeric hashes
+(`%010.0f-%010.0f-%06d`), so no caller-supplied text reaches the path at all.
+The reference-metadata cache does put the queried taxon name in the filename
+(`TaxaLikely:::.ref_cache_stem()`), and what makes that safe is sanitisation
+rather than hashing: `gsub("[^A-Za-z0-9]", "_", name)` admits only letters,
+digits and underscore, so a name cannot contribute `/`, `.` or `..` and cannot
+traverse out of `cache_dir`. The rest of that filename is generated -- length
+and date bounds as integers, the rank system lower-cased and hyphen-joined, a
+resolved numeric taxid, and an eight-character hexadecimal digest of the search
+term -- and `.ref_cache_grammar()` asserts the whole shape, with a test that
+generates names over a grid of argument combinations and requires every one to
+match. A path this function cannot produce is also the definition of an
+evictable file, so the grammar does double duty as a filename invariant and as
+the eviction proof.
 
 **Dependencies and licences.** No package's `DESCRIPTION` gained an `Imports`,
 `Depends` or `Suggests` entry during the 1.0 cycle, so there is no new third-party

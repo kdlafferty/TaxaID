@@ -47,6 +47,46 @@
 
 ## Changed behaviour
 
+* `fetch_ncbi_reference_sequences()` searches the SSU/LSU synonyms only within
+  `mitochondrion[FILTER]`. `"small subunit ribosomal RNA"` and `"large subunit
+  ribosomal RNA"` are the standard synonyms for mitochondrial 12S and 16S and
+  recover real records a bare marker-name search misses, but they are equally
+  the names of the nuclear rRNA operon's subunits, so unrestricted they return
+  nuclear rRNA from any organism. Measured against live NCBI across eight
+  genera and two markers, with the title of every removed record read:
+  restricting the synonym is a precision gain rather than a trade-off, removing
+  nuclear ITS/5.8S, 18S and 28S records while keeping the mitochondrial
+  barcodes. Two alternatives were measured and rejected: dropping the synonym
+  clause entirely loses more than a hundred genuine records in a single genus,
+  and restricting the whole barcode clause loses genuine 12S barcodes whose
+  records lack the filter flag.
+* `fetch_ncbi_reference_sequences()` resolves `kingdom` and `phylum` on every
+  fetch, not only when `taxa_lineage` is supplied. Both ranks already sit in
+  the XML the taxonomy bridge returns, so this costs no extra request, and a
+  kingdom column is what lets a cross-kingdom homonym be seen at all.
+* `fetch_ncbi_reference_sequences()` drops cross-kingdom contaminant rows from
+  a queried name that returns more than one kingdom, and only when the rest of
+  the fetch says which kingdom is the intruder: at least 90% of the other
+  queried names must have resolved unambiguously to one kingdom, counted one
+  vote per name. A name resolving to a single kingdom is never filtered however
+  much it differs from the fetch; a split name casts no vote; a row whose
+  kingdom did not resolve is kept; and fewer than three unambiguous names
+  establish nothing. Failing those conditions nothing is dropped and the split
+  is reported for review. The within-name majority is deliberately not used:
+  for a
+  real case in this ecosystem the contaminant was 93% of that name's rows, so a
+  majority rule would have discarded both genuine records and kept every
+  contaminant.
+* The reference-metadata cache key records the QUERY a `barcode_term` builds
+  rather than the term string, which is the question's label and not the
+  question. Any change to how a term becomes an NCBI search now makes that
+  term's existing cache files unhittable. **Every reference-cache file changes
+  name, including those written under a bare `"12S"` or `"16S"`, so the next
+  run re-fetches metadata once per taxon.** Sequences already in the
+  per-accession FASTA store are not re-downloaded. The superseded files are
+  collectable by `evict_unreachable_cache`, because the new key component is
+  unconditional and so provably cannot be produced for any arguments.
+
 * `expand_unreferenced_hypotheses()` copies each genus ring onto the species of
   its own genus only. No family-level ring names a species. A species whose
   genus has references for the marker (a `specific_candidate` row anywhere in
