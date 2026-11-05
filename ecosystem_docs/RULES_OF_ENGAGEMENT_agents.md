@@ -70,10 +70,19 @@ that a test suite does not catch.
 ## How to report
 
 16. **Verify against the generated artefact, not the source you edited.** A
-    roxygen claim is not visible until you check the `.Rd`, and the prompt pack
-    shows only `\title`, the FIRST PARAGRAPH of `\description` truncated at 600
-    characters, `\arguments` and `\value` -- `@details` and `@section` are
-    dropped entirely. Regenerate and grep before saying a caveat is visible.
+    roxygen claim is not visible until you check the `.Rd`, and a pack claim is
+    not visible until you grep the pack. Per function the pack carries the
+    signature, `\title`, `\description` **as its first paragraph only and at
+    most 600 characters** (`TaxaWizard/R/registry.R:466`), then the
+    `\arguments` table, `\value`, `@details` and **every titled `@section`,
+    all four in full** (`R/pack.R:374-390`; `\value` is deliberately uncapped,
+    and `registry.R:468-481` records why -- a prefix of an enumeration is not a
+    shorter version of it but a wrong one). So the only thing shortened is the
+    description, and a
+    measurement buried in `@details` DOES reach the pack, and thence any model
+    advising a user: there are 132 `#### Details` sections in the committed pack
+    and `"Measured on"` appears in seven of the nine `CONTEXT_*.md` files.
+    Regenerate and grep before saying a caveat is visible -- or that one is not.
 17. **Measure at the published unit.** A defect that consensus absorbs before the
     output is not a defect in the output; a defect that only appears there is
     still real. Check that your proxy *can* fire before comparing groups.
@@ -88,3 +97,14 @@ that a test suite does not catch.
     loaded -- an install carries no commit, so a namespace code digest or a
     recorded commit is the only provenance there is. Pin to a commit, never to a
     directory, and only to a commit that is reachable on the remote.
+
+21. **A change to user-visible behaviour adds a NEWS line, in the same pull
+    request.** `<pkg>/NEWS.md`, under the heading that matches the change. CI
+    does not check this -- the pack and the README inventory are the only
+    generated artefacts it guards -- so nothing will stop a behaviour change
+    shipping unrecorded, and one already did: a reference-cache key change
+    meant every cached taxon re-fetched on the next run, with no entry saying
+    why. User-visible means a caller can observe it: returned columns or rows,
+    messages, file names, defaults, or work the user must redo. Write each entry
+    as a description of current behaviour, because rule 12 bars "previously",
+    "no longer" and "as before" from NEWS as from everything else.

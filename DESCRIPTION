@@ -9,6 +9,8 @@ Description: Meta-package that installs the full TaxaID ecosystem.
     posterior probability for eDNA metabarcoding, acoustic detection, and
     image classification data.
 License: CC0
+URL: https://github.com/kdlafferty/TaxaID
+BugReports: https://github.com/kdlafferty/TaxaID/issues
 Encoding: UTF-8
 Imports:
     TaxaTools,
@@ -30,4 +32,4 @@ Remotes:
     kdlafferty/TaxaID/TaxaAssign,
     kdlafferty/TaxaID/TaxaFlag,
     kdlafferty/TaxaID/TaxaWizard
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.0.0

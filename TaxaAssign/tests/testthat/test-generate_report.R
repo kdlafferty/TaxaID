@@ -208,6 +208,83 @@ test_that("generate_report works with Bayesian result and NULL llm_fn", {
   expect_true(grepl("hierarchical statistical model", report))
 })
 
+
+# --- the posterior's scope reaches the manuscript -----------------------------
+# This paragraph is what a reader of the user's manuscript sees INSTEAD of the
+# package documentation, so an unstated scope here is the one that reaches a
+# journal. The Methods text has two branches (Monte Carlo and point estimate)
+# and nothing else pinned either of them, so a branch could have shipped
+# stating the posterior without saying what it is a posterior over.
+test_that("the Methods text says the posterior is relative to the hypotheses offered", {
+  consensus <- .mock_consensus()
+  pin <- "relative to the hypotheses evaluated for each observation"
+  not_calibrated <- "not[[:space:]]+calibrated probabilities that an assignment is correct"
+
+  mc_marker <- "Monte Carlo simulations were performed"
+
+  for (nm in c("point estimate", "Monte Carlo")) {
+    result <- .mock_bayesian_result()
+    if (identical(nm, "point estimate")) {
+      # Both mocks ship n_sims = 1000L and generate_report() branches on
+      # `n_sims > 0`, so without this override BOTH iterations took the Monte
+      # Carlo path and the loop proved one branch twice.
+      attr(result, "report_params")$n_sims <- 0L
+    }
+    report <- generate_report(result, consensus, llm_fn = NULL)
+
+    # Prove which branch ran, so neither iteration can silently become the
+    # other one again.
+    if (identical(nm, "point estimate")) {
+      expect_false(grepl(mc_marker, report, fixed = TRUE), info = nm)
+    } else {
+      expect_true(grepl(mc_marker, report, fixed = TRUE), info = nm)
+    }
+
+    expect_true(grepl(pin, report, fixed = TRUE), info = nm)
+    expect_true(grepl(not_calibrated, report), info = nm)
+    # The scope sentence must sit WITH the Bayes sentence it qualifies, not in
+    # some later section a reader may not reach.
+    expect_true(
+      grepl("Bayes", report, fixed = TRUE) &&
+        regexpr(pin, report, fixed = TRUE) > regexpr("Bayes", report, fixed = TRUE),
+      info = nm
+    )
+  }
+})
+
+test_that("the Methods text does not claim unreferenced hypotheses a run did not use", {
+  # .build_methods_text() takes has_unreferenced, and an existing test asserts
+  # the word is absent when it is FALSE. The scope sentence must respect that:
+  # naming unreferenced-lineage hypotheses in a run that evaluated none would be
+  # a claim about THIS analysis that is not true of it.
+  params <- list(n_sims = 0L, cumulative_threshold = 0.9, min_posterior = 0.05)
+  off <- .build_methods_text("bayesian", params, "eDNA", NULL,
+    has_unreferenced = FALSE, has_family_expansion = FALSE,
+    has_empirical_bayes = TRUE)
+  on <- .build_methods_text("bayesian", params, "eDNA", NULL,
+    has_unreferenced = TRUE, has_family_expansion = FALSE,
+    has_empirical_bayes = TRUE)
+
+  # The scope caveat applies either way -- a posterior over referenced
+  # candidates alone is still relative to that set.
+  for (txt in list(off, on)) {
+    expect_true(grepl("relative to the hypotheses evaluated", txt, fixed = TRUE))
+  }
+  expect_false(grepl("unreferenced", off))
+  expect_true(grepl("unreferenced-lineage hypotheses", on, fixed = TRUE))
+  expect_true(grepl("candidates with reference sequences for the marker", off, fixed = TRUE))
+})
+
+test_that("the posterior's scope is not described as calibrated anywhere in the report", {
+  # The rule the wording follows: "calibrated" belongs to the per-marker
+  # likelihood training and never to the posterior. This fails if a future edit
+  # reintroduces "calibrated posterior" in any casing.
+  report <- generate_report(.mock_bayesian_result(), .mock_consensus(), llm_fn = NULL)
+  expect_false(grepl("calibrated posterior", report, ignore.case = TRUE))
+  expect_false(grepl("posterior probabilities were calibrated", report, ignore.case = TRUE))
+  expect_true(grepl("calibration refers only to the per-marker training", report, fixed = TRUE))
+})
+
 test_that("generate_report includes unreferenced stats when provided", {
   result <- .mock_posterior_result()
   consensus <- .mock_consensus()

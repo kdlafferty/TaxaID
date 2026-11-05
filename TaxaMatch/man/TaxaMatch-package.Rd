@@ -110,6 +110,13 @@ and \code{\link{read_speciesnet_output}} for the specific
 endpoints/formats each function targets.
 }
 \seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/kdlafferty/TaxaID}
+  \item Report bugs at \url{https://github.com/kdlafferty/TaxaID/issues}
+}
+
+
 The TaxaID ecosystem's downstream consumer of this package's
 output is TaxaLikely, which converts match scores to likelihoods.
 }

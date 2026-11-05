@@ -20,9 +20,11 @@ TaxaLikely also models the expected likelihoods of species that are
 plausible at the site, but absent from the reference library, helping to
 reduce false negatives. By replacing arbitrary score thresholds with
 continuous likelihoods, TaxaLikely avoids both overconfident assignments
-and unnecessary loss of taxonomic resolution. Calibrated likelihoods can
-then be multiplied by priors (see TaxaExpect) to generate Bayesian
-posterior probabilities for each hypothesized assignment. Part of the
+and unnecessary loss of taxonomic resolution. Those likelihoods, calibrated
+against reference-to-reference comparisons, can then be multiplied by priors
+(see TaxaExpect) to generate Bayesian posterior probabilities for each
+hypothesized assignment -- probabilities relative to the hypotheses offered,
+not calibrated probabilities that an assignment is correct. Part of the
 [TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem.
 
 ## Overview
@@ -864,8 +866,8 @@ See `inst/workflows/6_no_score_pathway_workflow.R` for a full example.
 
 ## Part of TaxaID
 
-TaxaLikely receives match data from TaxaMatch and produces calibrated
-likelihoods for TaxaAssign (posterior computation).
+TaxaLikely receives match data from TaxaMatch and produces likelihoods
+calibrated against reference-to-reference comparisons for TaxaAssign (posterior computation).
 
 Ecosystem: TaxaMatch -\> TaxaLikely -\> TaxaAssign
 

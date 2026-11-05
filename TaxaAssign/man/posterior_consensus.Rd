@@ -364,6 +364,15 @@ of the consensus taxon without requiring a denominator.  Computed over
 \code{cumulative_threshold} filtering, so it is independent of threshold
 settings and suitable for post-hoc confidence filtering (e.g. keep
 only assignments with \code{consensus_posterior >= 0.95}).
+It is relative to the hypotheses offered for the observation (the
+referenced candidates and the unreferenced-lineage rings the trained
+model could fit), not a calibrated probability that the call is right:
+where the reference set lacks taxonomic breadth there may be no
+hypothesis for "another order" or "another class", and a sequence from
+an unreferenced lineage is then called confidently to the nearest
+referenced one. \code{poor_absolute_fit} and \code{best_identity_rank} flag that
+case and do not change the call. "Calibrated" applies only to the
+per-marker likelihood training.
 \code{NA} when \code{consensus_taxon} is \code{NA}. When \code{downranked = TRUE} this is
 the mass of the coarser rank that was actually resolved, not a
 re-estimate at the finer reported rank; gate any confidence-threshold

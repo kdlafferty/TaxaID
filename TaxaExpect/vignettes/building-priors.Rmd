@@ -484,7 +484,8 @@ light. For the full derivation (the exact kernel formula, how the
 Good-Turing/Chao budget for undetected species is priced, the validation
 results on real datasets, and the assumptions and limitations that
 apply), see
-[`inst/TaxaExpect_supplemental_methods.md`](../inst/TaxaExpect_supplemental_methods.md),
+`TaxaExpect_supplemental_methods.md`, which an installed copy exposes at
+`system.file("TaxaExpect_supplemental_methods.md", package = "TaxaExpect")`,
 and the function help pages (`?estimate_kernel_priors`,
 `?calibrate_kernel_bandwidth`, `?apply_undetected_evidence`) for full
 argument documentation.

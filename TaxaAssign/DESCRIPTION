@@ -12,6 +12,8 @@ Description: Estimates the posterior probability that a biological sample
     empirical Bayes prior refinement, score-based consensus for comparison,
     and automated report generation. Part of the TaxaID ecosystem.
 License: CC0
+URL: https://github.com/kdlafferty/TaxaID
+BugReports: https://github.com/kdlafferty/TaxaID/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Suggests:
