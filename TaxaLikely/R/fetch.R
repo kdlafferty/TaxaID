@@ -655,6 +655,55 @@ utils::globalVariables(c(
   union(tolower(rank_system), .ORGANISM_RANKS)
 }
 
+#' One comparison rank's value from a row, or NA when the row has no such column
+#' @noRd
+.organism_rank_value <- function(x, rank) {
+  if (!rank %in% names(x)) return(NA_character_)
+  v <- as.character(x[[rank]])
+  if (length(v) == 0L) NA_character_ else v[[1L]]
+}
+
+#' Do two rows describe different organisms?
+#'
+#' Compares at the FINEST rank both rows declare: `class` when both know it,
+#' else `phylum`, else `kingdom`. Different organisms when the values there
+#' differ. When the rows share no rank with both values known, FALSE -- the
+#' fetch is not split on no evidence.
+#'
+#' Why the finest declared rank, and not "disagree at every comparable rank":
+#' the coarse alternative can never separate two animals, because every animal
+#' shares kingdom = Metazoa, so it would miss an animal-vs-animal homonym such
+#' as Ctenophora -- the crane-fly genus against the comb-jelly phylum. It would
+#' also disagree with the intake check this predicate is meant to match:
+#' jv_genus_lineage_check.R's own header treats a within-class split as a
+#' revision and a cross-class or cross-phylum split as a homonym candidate,
+#' which is a judgement at the finest declared rank. Agreeing with that check by
+#' construction is worth more than either rule's score on the 18 measured
+#' homonyms, which both reach.
+#'
+#' A within-class split -- Mytilidae against Modiolidae, both Bivalvia -- is
+#' therefore NOT a difference, and that is the 23-case population this has to
+#' leave alone. The predicate stops at class and never looks at family.
+#'
+#' Pairwise and context-free. Whether a fetch-wide dominance vote wraps it is
+#' the caller's decision: the contamination filter takes one, the homonym/taxid
+#' call site takes the bare pairwise answer.
+#'
+#' An unknown value never establishes a difference, and "" is as unknown as NA.
+#' @noRd
+.different_organisms <- function(a, b, ranks = .ORGANISM_RANKS) {
+  # `ranks` MUST be ordered coarsest to finest: the LAST comparable entry is
+  # taken as the finest declared rank, so reordering this vector silently
+  # changes the verdict instead of failing. .ORGANISM_RANKS is
+  # kingdom, phylum, class for exactly that reason, and a test pins it.
+  av <- vapply(ranks, function(r) .organism_rank_value(a, r), character(1L))
+  bv <- vapply(ranks, function(r) .organism_rank_value(b, r), character(1L))
+  comparable <- which(!is.na(av) & nzchar(av) & !is.na(bv) & nzchar(bv))
+  if (length(comparable) == 0L) return(FALSE)
+  finest <- comparable[[length(comparable)]]
+  !identical(av[[finest]], bv[[finest]])
+}
+
 .resolve_kingdom_contamination <- function(all_meta, taxa, dominance = 0.90,
                                            min_context = 3L) {
   if (length(all_meta) == 0L) {
