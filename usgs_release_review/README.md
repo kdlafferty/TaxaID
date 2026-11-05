@@ -54,10 +54,19 @@ the reviewer before anything is deleted.
 
 ## Notes for the technical reviewer: security posture
 
-Checked against the WERC criteria at `0387e93a`, which is the commit this
-statement was verified against and the one a reviewer can check out to reproduce
-every count below. Scope: the nine package `R/` trees, plus the test placeholders
-and process calls noted where they fall outside it.
+Checked against the WERC criteria at `0387e93a`. Every **count** below was
+verified there, and a reviewer can check out that commit to reproduce each one.
+
+**One claim below is deliberately not true at `0387e93a`, and it is said twice
+so nobody has to reconcile it:** the OpenAlex redaction (URL case 3) does not
+exist at `0387e93a` -- a reviewer who greps `REDACTED` in
+`TaxaFetch/R/literature_search.R` there finds nothing. It arrives with the same
+change that carries this statement, so it is present at the commit this file
+merges as, and at every commit after. The counts are unaffected: a redaction
+adds no credential site.
+
+Scope: the nine package `R/` trees, plus the test placeholders and process calls
+noted where they fall outside it.
 
 **This statement must be re-verified at each release commit, and that is part of
 the release process rather than a courtesy.** Its predecessor named a commit,
@@ -148,8 +157,9 @@ worth saying because it is how this case was missed twice.
 
 3. `TaxaFetch/R/literature_search.R:84` -- OpenAlex. Its handler re-raised
    `conditionMessage(e)` verbatim, so a connection error could have carried the
-   key into a `stop()` message. **This check found that and it is fixed at this
-   commit** (`:88-103`), by the same value-matching redaction as case 1.
+   key into a `stop()` message. **This check found that, and the change carrying
+   this statement fixes it** (`:88-103`), by the same value-matching redaction as
+   case 1. Not present at `0387e93a`; see the note under the heading.
 
 4. `TaxaLikely/R/coverage.R:1506-1509` -- xeno-canto, `key = xc_key` inside a
    multi-line `req_url_query()`. Handled as case 2: `tryCatch(..., error =
@@ -182,15 +192,19 @@ same greps:
   `R/matrix_size.R:147,150` (`vm_stat`, `powershell`),
   `TaxaMatch/R/blast_sequences.R:1459,1588` (`blastn -version`,
   `blastdbcmd -info`; the database path goes through `shQuote()`),
-  `R/investigate_flagged_accession.R:241,250` (`blastdbcmd`, `makeblastdb`),
-  `TaxaWizard/R/setup.R:449` (a registered binary's version flag).
+  `R/investigate_flagged_accession.R:241,250` (`blastdbcmd`, `makeblastdb`).
+  The eighth, `TaxaWizard/R/setup.R:449`, is the one whose binary name is not a
+  literal: it and its version flag are read from the package's own shipped
+  `inst/setup/requirements.json` (`system.file("setup", ...)`, hand-kept), and
+  the binary must already resolve through `Sys.which()` before it is run. Still
+  no user-supplied text, but "fixed binary" would overstate it.
 * `eval(parse(text = ))` -- four, all in `TaxaWizard/R/shiny.R:285,291,318,1476`,
   acting on the app's own parameter fields as its `:1866` comment records, not on
   anything a remote client supplies.
 * **Bare `eval()`** -- on this software's own formals defaults, never on supplied
   text: `TaxaAssign/R/generate_report.R:246` evaluates its own `default_model`
   default, falling back to `as.character()` on error; and
-  `TaxaMatch/R/evaluate_reference_accessions.R:89,93,94` evaluate this function's
+  `TaxaMatch/R/evaluate_reference_accessions.R:89,93-99` evaluate this function's
   own `formals()` to report the defaults it ran under. Listed because a reviewer
   grepping `eval(` rather than `eval(parse(` finds these, and a statement that
   mentions only the latter reads as incomplete.
