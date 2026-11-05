@@ -137,7 +137,7 @@ test_that(".build_search_term/.ref_cache_file/.ref_cache_grammar agree on the ta
 
   f <- basename(TaxaLikely:::.ref_cache_file(
     "/tmp/c", "Vertebrata", "COI", 100L, 900L, NULL, NULL, FALSE, 2L, 200000L,
-    c("family", "genus", "species"), taxid = "1261581"
+    TaxaLikely:::.fetch_ranks(c("family", "genus", "species")), taxid = "1261581"
   ))
   expect_true(grepl("_txid1261581_meta\\.rds$", f))
   expect_true(grepl(TaxaLikely:::.ref_cache_grammar(), f))

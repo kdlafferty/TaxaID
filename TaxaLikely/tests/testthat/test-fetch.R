@@ -522,7 +522,7 @@ test_that("the stem is taxon + barcode only -- the term digest is NOT in it", {
 test_that("the cache key carries a digest of the query, not just the term string", {
   key <- function(bt, name = "Girella") {
     basename(TaxaLikely:::.ref_cache_file(tempdir(), name, bt, 130, 210,
-      NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
+      NULL, NULL, FALSE, 0, 0, TaxaLikely:::.fetch_ranks(c("family", "genus", "species"))))
   }
   # Shape, and the grammar must accept it -- the eviction proof depends on
   # .ref_cache_file() and .ref_cache_grammar() agreeing.
@@ -568,7 +568,7 @@ test_that("a cache file written before the digest existed is evictable, not immo
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
 
   live <- TaxaLikely:::.ref_cache_file(d, "Girella", "12S", 130, 210,
-    NULL, NULL, FALSE, 0, 0, c("family", "genus", "species"))
+    NULL, NULL, FALSE, 0, 0, TaxaLikely:::.fetch_ranks(c("family", "genus", "species")))
   # The same name as the key used to produce: everything except the digest.
   old <- file.path(d, sub("_q[0-9a-f]{8}", "", basename(live)))
   file.create(live, old)
@@ -588,7 +588,7 @@ test_that("a cache file written before the digest existed is evictable, not immo
 test_that(".ref_cache_stem_of() strips the digest along with the other components", {
   live <- basename(TaxaLikely:::.ref_cache_file(tempdir(), "Sebastes miniatus",
     "MiFishU", 130, 210, "2000/01/01", NULL, TRUE, 3, 900,
-    c("family", "genus", "species"), taxid = "1261581"))
+    TaxaLikely:::.fetch_ranks(c("family", "genus", "species")), taxid = "1261581"))
   expect_identical(
     TaxaLikely:::.ref_cache_stem_of(live),
     TaxaLikely:::.ref_cache_stem("Sebastes miniatus", "MiFishU")

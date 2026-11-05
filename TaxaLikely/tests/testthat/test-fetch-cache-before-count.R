@@ -53,7 +53,7 @@ write_cached_taxon <- function(cache_dir, taxon, accs,
   # which is the only thing these tests measure.
   f <- TaxaLikely:::.ref_cache_file(
     cache_dir, taxon, "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
-    c("family", "genus", "species")
+    TaxaLikely:::.fetch_ranks(c("family", "genus", "species"))
   )
   saveRDS(meta, f)
   f

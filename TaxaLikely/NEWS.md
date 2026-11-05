@@ -1,6 +1,39 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `fetch_ncbi_reference_sequences()` resolves `class` on every fetch, alongside
+  `kingdom` and `phylum`, at no extra taxonomy call -- all three already sit in
+  the XML the taxonomy bridge returns. A single definition decides which ranks a
+  fetch resolves, so the priority-species path resolves the same set as the
+  broad-search path and priority rows arrive with their organism ranks
+  populated.
+* A queried name whose rows describe more than one organism is filtered against
+  the dominant organism of the rest of the fetch. Two rows describe different
+  organisms when they differ at the finest of `class`, `phylum` and `kingdom`
+  that both declare. This reaches cases a kingdom comparison cannot: NCBI
+  assigns no `kingdom` to Rhodophyta, Ochrophyta, Bacillariophyta, Ciliophora
+  or Chrysophyceae, and two animals share one. In the reference oracle, `class`
+  separates 18 of 18 genuine genus homonyms where `kingdom` separates 8. A
+  within-class split is a taxonomic revision rather than a homonym and is never
+  filtered.
+* Priority species are filtered, and vote, like any other queried name: the
+  filter runs on the assembled reference after accession de-duplication, so each
+  accession casts one vote and a dry run predicts the filtered result. Exemption
+  from `max_per_species`/`max_per_genus` does not extend to this filter, which
+  is not a cap.
+* `queried_taxon` is present on every returned reference, recording which `taxa`
+  entry produced each row. It is provenance: it says which query returned the
+  row, not anything about the organism.
+* The `@return` for `fetch_ncbi_reference_sequences()` distinguishes columns
+  from values for `kingdom`, `phylum` and `class`. The columns are always
+  present; the values can be `NA`, and an `NA` kingdom is an ordinary NCBI
+  result rather than a failure.
+* The reference-metadata cache key encodes the ranks a fetch resolves, so a
+  cached file is served only to a call whose rank set it can answer. A study
+  whose `rank_system` already spans `kingdom` through `species` keys to the same
+  name and reuses its files; a study requesting fewer ranks keys to a new name
+  and refetches its metadata once. Sequences are unaffected: the FASTA store is
+  keyed on accession version alone.
 * `annotate_reference_support()` adds four information-only columns saying how
   much per-species reference data the trained model had for a call's taxon:
   `n_references` (`H1_Lookup$n_obs_species`), `reference_weight` (the

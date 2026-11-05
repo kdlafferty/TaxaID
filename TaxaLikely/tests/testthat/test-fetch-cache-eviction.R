@@ -46,7 +46,10 @@ test_that("the grammar accepts every name .ref_cache_file() can produce", {
       keep_out_of_range = r$oor,
       max_out_of_range_per_species = 2L,
       max_out_of_range_len = 200000L,
-      rank_system = if (r$ranks == "short") {
+      fetched_ranks = if (r$ranks == "short") {
+        # A SHORT rank set, deliberately not .fetch_ranks(): this test proves the
+        # grammar accepts every name .ref_cache_file() can produce for ANY ranks,
+        # so it must keep exercising a short suffix as well as a long one.
         c("family", "genus", "species")
       } else {
         c("kingdom", "phylum", "class", "order", "family", "genus", "species")
@@ -101,7 +104,7 @@ test_that(".ref_cache_stem_of() inverts .ref_cache_stem() through the key", {
       for (oor in c(FALSE, TRUE)) {
         f <- basename(TaxaLikely:::.ref_cache_file(
           "/tmp/c", nm, bc, 100L, 600L, NULL, NULL, oor, 2L, 200000L,
-          c("family", "genus", "species")
+          TaxaLikely:::.fetch_ranks(c("family", "genus", "species"))
         ))
         expect_identical(
           TaxaLikely:::.ref_cache_stem_of(f),
@@ -138,11 +141,11 @@ test_that("a taxid-scoped and a name-scoped cache for the same taxon are both re
 test_that(".ref_cache_stem_of() strips the taxid suffix, keeping the two files one stem", {
   f_name <- basename(TaxaLikely:::.ref_cache_file(
     "/tmp/c", "Vertebrata", "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
-    c("family", "genus", "species")
+    TaxaLikely:::.fetch_ranks(c("family", "genus", "species"))
   ))
   f_taxid <- basename(TaxaLikely:::.ref_cache_file(
     "/tmp/c", "Vertebrata", "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
-    c("family", "genus", "species"), taxid = "1261581"
+    TaxaLikely:::.fetch_ranks(c("family", "genus", "species")), taxid = "1261581"
   ))
   expect_identical(
     TaxaLikely:::.ref_cache_stem_of(f_name),

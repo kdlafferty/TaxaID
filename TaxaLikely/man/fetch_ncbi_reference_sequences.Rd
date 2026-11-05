@@ -248,21 +248,33 @@ reference alongside \code{in_barcode_range}.}
 \item{\code{lat}, \code{lon}, \code{country}}{Only when \code{include_location = TRUE}.
 Collection location parsed from GenBank's \code{lat_lon}/\code{country}
 qualifiers; \code{NA} when absent or unparseable.}
-\item{\code{kingdom}, \code{phylum}}{Always present. Resolved on every fetch in
-addition to whatever \code{rank_system} itself requests, at no extra
-taxonomy call -- both ranks already sit in the XML the bridge
-returns. A queried name whose rows span more than one kingdom is a
-homonym: the name matched some other organism too. Such rows are
-reported, and dropped only when the rest of the fetch says which
-kingdom is the intruder -- that is, when at least 90\% of the other
-queried names resolved unambiguously to one kingdom, counted one
-vote per name. Failing that, nothing is dropped and the split is
-reported for review. A name resolving to a single kingdom is never
-filtered, however much it differs from the rest of the fetch, and a
-row whose kingdom did not resolve is always kept.}
-\item{\code{queried_taxon}}{Only when \code{taxa_lineage} was supplied; records
-which \code{taxa} entry a row was fetched under, so the lineage-agreement
-guard has data to check without a second taxonomy fetch.}
+\item{\code{kingdom}, \code{phylum}, \code{class}}{Columns always present; VALUES may
+be \code{NA}. These ranks are requested on every fetch in addition to
+whatever \code{rank_system} asks for, at no extra taxonomy call -- they
+already sit in the XML the bridge returns. NCBI assigns no \code{kingdom}
+to several groups (Rhodophyta, Ochrophyta, Bacillariophyta,
+Ciliophora, Chrysophyceae), so an \code{NA} kingdom is ordinary and not a
+failure; every one of those groups does have a \code{class}, which is why
+\code{class} is requested and why it is the rank the filter compares at.
+A queried name whose rows describe more than one organism is a
+homonym: the name matched some other organism too. Two rows describe
+different organisms when they differ at the finest of these ranks
+both declare -- \code{class} when both know it, else \code{phylum}, else
+\code{kingdom}. A within-class split is a taxonomic revision, not a
+homonym, and is never filtered. Such rows are reported, and dropped
+only when the rest of the fetch says which organism is the intruder:
+when at least 90\% of the other queried names resolved unambiguously
+to one organism, counted one vote per name. Failing that, nothing is
+dropped and the split is reported for review. A name resolving to a
+single organism is never filtered, however much it differs from the
+rest of the fetch, and a row that declares none of these ranks is
+always kept. Priority species are filtered, and vote, like any other
+name.}
+\item{\code{queried_taxon}}{Always present. Records which \code{taxa} entry a row
+was fetched under. It is provenance, not an observation: it says which
+query returned the row, never anything about the organism. The
+cross-lineage filter groups by it, and the lineage-agreement guard
+checks against it without a second taxonomy fetch.}
 }
 Carries a \code{taxa_without_sequences} attribute: the requested taxa for
 which nothing came back. Check it after every fetch: a name that
