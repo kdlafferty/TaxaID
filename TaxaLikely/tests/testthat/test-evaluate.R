@@ -341,6 +341,111 @@ test_that("evaluate_likelihoods: processes multiple observation_ids", {
   expect_true(all(c("ESV_001", "ESV_002") %in% liks$observation_id))
 })
 
+# A model can express an unreferenced hypothesis at a rank only where it holds a
+# RING, and a ring exists only at a rank coarser than the three finest AND only
+# where at least 3 groups supplied matches. So "trained at this rank" and "has a
+# ring at this rank" are different questions, and the second is the one that
+# decides what the evaluation can say. `.ring_params()` builds a model whose
+# ring set is stated explicitly so both can be exercised apart.
+
+.ring_params <- function(rank_system, ring_ranks = character(0)) {
+  p <- .make_model_params()
+  p$Rank_System <- rank_system
+  p$Rings <- stats::setNames(
+    lapply(ring_ranks, function(rk) list(
+      rank = rk, hypothesis_type = paste0("unreferenced_", rk),
+      delta = 5.0, sigma = diag(2), n = 10L, n_groups = 4L
+    )),
+    ring_ranks
+  )
+  p
+}
+
+.order_match_df <- function() {
+  df <- .make_match_df()
+  df$order <- "Cypriniformes"
+  df
+}
+
+test_that("evaluate_likelihoods: a 4-rank model whose order ring was SKIPPED still warns", {
+  skip_if_not_installed("TaxaTools")
+  # The case that motivates checking Rings rather than Rank_System: the model
+  # was trained on order, so the rank systems match exactly and a trained-set
+  # comparison is silent -- but train.R skipped the ring for want of 3 groups,
+  # so no unreferenced hypothesis can be expressed at order after all.
+  params <- .ring_params(c("order", "family", "genus", "species"))
+  w <- expect_warning(
+    evaluate_likelihoods(.order_match_df(), params, c("order", "family", "genus", "species")),
+    "holds no ring at order"
+  )
+  expect_match(conditionMessage(w), "the data decide", fixed = TRUE)
+  # It must not blame the rank system, which matches.
+  expect_false(grepl("was not trained on", conditionMessage(w)))
+})
+
+test_that("evaluate_likelihoods: a rank the model was never trained on warns through the same ring check", {
+  skip_if_not_installed("TaxaTools")
+  params <- .ring_params(c("family", "genus", "species"))
+  w <- expect_warning(
+    evaluate_likelihoods(.order_match_df(), params, c("order", "family", "genus", "species")),
+    "holds no ring at order"
+  )
+  expect_match(conditionMessage(w), "Trained on: family/genus/species", fixed = TRUE)
+})
+
+test_that("evaluate_likelihoods: a model holding a ring at every ring-eligible rank is silent", {
+  skip_if_not_installed("TaxaTools")
+  params <- .ring_params(c("order", "family", "genus", "species"), ring_ranks = "order")
+  expect_no_warning(
+    evaluate_likelihoods(.order_match_df(), params, c("order", "family", "genus", "species"))
+  )
+})
+
+test_that("evaluate_likelihoods: the trained rank system, a case variant, and a SUBSET of it are all silent", {
+  skip_if_not_installed("TaxaTools")
+  # A three-rank call has no ring-eligible rank at all, so a model that holds
+  # rings this call does not reach is not a problem: the ring loop skips a ring
+  # whose rank rank_system does not carry, and the call gets the ladder it asked
+  # for. Warning here would fire on correct calls and train callers to suppress
+  # the one case that matters.
+  params <- .ring_params(c("order", "family", "genus", "species"), ring_ranks = "order")
+  expect_no_warning(
+    evaluate_likelihoods(.make_match_df(), params, c("family", "genus", "species"))
+  )
+  params <- .ring_params(c("family", "genus", "species"))
+  expect_no_warning(
+    evaluate_likelihoods(.make_match_df(), params, c("family", "genus", "species"))
+  )
+  # Case is not a mismatch.
+  expect_no_warning(
+    evaluate_likelihoods(.make_match_df(), params, c("Family", "Genus", "Species"))
+  )
+})
+
+test_that("evaluate_likelihoods: an untrained rank that could carry no ring is reported separately", {
+  skip_if_not_installed("TaxaTools")
+  # family is among the three finest ranks of this call, so no ring could ever
+  # be fitted there and the ring check cannot speak to it. The trained-set
+  # comparison is what catches it, and it says retraining is the only remedy.
+  params <- .ring_params(c("genus", "species"))
+  w <- expect_warning(
+    evaluate_likelihoods(.make_match_df(), params, c("family", "genus", "species")),
+    "was not trained on"
+  )
+  expect_match(conditionMessage(w), "retraining is the only way", fixed = TRUE)
+})
+
+test_that("evaluate_likelihoods: a model carrying no Rank_System messages instead of warning", {
+  skip_if_not_installed("TaxaTools")
+  unrecorded <- .make_model_params() # no Rank_System field at all
+  expect_message(
+    expect_no_warning(
+      evaluate_likelihoods(.make_match_df(), unrecorded, c("family", "genus", "species"))
+    ),
+    "records no Rank_System"
+  )
+})
+
 test_that("evaluate_likelihoods: non-taxa_model_params errors", {
   expect_error(
     evaluate_likelihoods(.make_match_df(), list(), "species"),

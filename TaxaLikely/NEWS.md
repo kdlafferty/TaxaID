@@ -1,6 +1,22 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `evaluate_likelihoods()` warns when the model holds no ring at a rank the
+  call asks for, naming that rank and the rank the ladder stops at. A model can
+  express an unreferenced hypothesis only where it holds a ring, and a ring is
+  fitted only at a rank coarser than the three finest and only where at least
+  three groups supply matches -- so a rank can be trained and still have none.
+  The check reads the model's own `Rings`, which answers that question
+  directly; the rank system it was fitted on does not. A rank the model holds
+  and the call omits is not reported, since the ring loop skips it and the call
+  gets the ladder it asked for.
+* `train_likelihood_model()` returns `Rank_System`, the rank system the model
+  was fitted on. `evaluate_likelihoods()` names it in the warning above, and
+  reports separately when the call asks for a rank the model never saw that is
+  among the three finest, where no ring could be fitted and retraining is the
+  only remedy. Evaluating with a model that carries no `Rank_System` reports a
+  message and proceeds; the ring check is unaffected, since it does not depend
+  on the field.
 * `unreferenced_candidates()` takes `match_df` and `rank_system`, and adds two
   hypothesis rows per observation: `"unreferenced_species"` and
   `"unreferenced_genus"`. It offers no coarser catch-all row and no argument to
