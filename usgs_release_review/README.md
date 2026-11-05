@@ -54,13 +54,29 @@ the reviewer before anything is deleted.
 
 ## Notes for the technical reviewer: security posture
 
-Checked against the WERC criteria at the release commit. Scope: the nine package
-`R/` trees. It is written down so the review does not have to rediscover it; where
-a check found something to change, this says so rather than claiming nothing did.
+Checked against the WERC criteria at `0387e93a`, which is the commit this
+statement was verified against and the one a reviewer can check out to reproduce
+every count below. Scope: the nine package `R/` trees, plus the test placeholders
+and process calls noted where they fall outside it.
+
+**This statement must be re-verified at each release commit, and that is part of
+the release process rather than a courtesy.** Its predecessor named a commit,
+was never re-stated across 31 merged pull requests, and ended up contradicted by
+its own reader's first grep. Naming the commit is what makes the staleness
+visible; removing the name would only hide it.
+
+It is written down so the review does not have to rediscover it; where a check
+found something to change, this says so rather than claiming nothing did.
 
 **Where credentials come from.** Every credential is read through `Sys.getenv()`
-and none is committed: each key-shaped string in the repository is a documentation
-placeholder (`sk-ant-your-key-here`, `AIza...`) or `"fake-key"` in a test.
+and none is committed. Every key-shaped string in the repository is one of three
+things: a documentation placeholder (`sk-ant-your-key-here`, `AIza...`),
+`"fake-key"` in a test, or a deliberately distinctive test marker whose whole
+purpose is to be searched for -- `"sk-ant-test-distinctive-marker-should-never-appear-0000"`
+(`TaxaWizard/tests/testthat/test-pack.R:216`) and
+`"sk-ant-TOTALLY-SECRET-VALUE-12345"` (`test-setup.R:81`), each set with
+`Sys.setenv()` inside a test that then asserts the value does not reach an
+output. They are shaped like keys on purpose; neither is a credential.
 
 Twelve credential-bearing variables appear by name, in 36 call sites across the
 nine `R/` trees:
@@ -80,24 +96,37 @@ nine `R/` trees:
 | `GEMINI_API_KEY` | 1 | Google Generative Language |
 | `AZURE_OPENAI_API_KEY` | 1 | Azure OpenAI (DOI) |
 
-`GBIF_EMAIL` and `NCBI_EMAIL` sit beside them and are identifiers, not secrets.
+`GBIF_EMAIL` (2 sites) and `NCBI_EMAIL` (1) sit beside them and are identifiers,
+not secrets. **The arithmetic, so a reviewer's own grep reconciles:** a sweep of
+`Sys\.getenv\("[A-Z_]*"` over the nine `R/` trees returns **42** literal hits:
+**36** credential sites (the table), **3** identifier sites (`GBIF_EMAIL` 2,
+`NCBI_EMAIL` 1), and **3** that are not credentials at all -- `TAXAID_ROOT`,
+`HOME`, and `MY_KEY_VAR`, the last a variable name used as an example inside
+roxygen (`TaxaTools/R/llm_api_utils.R:658`). 36 + 3 + 3 = 42.
 
 **That list cannot be closed by grep, and the reason matters more than the
-count.** Ten further call sites resolve the variable's NAME at run time rather
-than naming it literally: the four built-in LLM providers come from a table in
-`TaxaTools/R/zzz.R:17-20`, and a caller-registered provider supplies its own
-through `prov_reg$api_key_var` (`TaxaTools/R/call_api.R:109`,
-`R/model_registry.R:386,488,576`). `register_provider()` is exported and
-documents `api_key_var` as "Name of the environment variable holding..."
-(`R/model_registry.R:731`), so **the set of variables this software may read is
-extensible by the caller and no static inventory of it can be complete.** What
-makes that safe is that the redaction below matches on the key's VALUE, not on
-its variable name, so it covers a caller-registered provider identically.
+count.** Nine further call sites read a variable whose NAME is itself a value:
+`Sys.getenv(key_var)` at `TaxaTools/R/call_api.R:121` and
+`R/model_registry.R:393,500,586`; `Sys.getenv(p$key)` at `TaxaTools/R/zzz.R:25`
+and `TaxaWizard/R/zzz.R:28`; `Sys.getenv(v)` at `TaxaWizard/R/setup.R:62`; and
+two inside the text of a script TaxaWizard generates, at `R/shiny.R:1718,1730`.
+The name comes either from the built-in provider table (`TaxaTools/R/zzz.R:17-20`)
+or, for a caller-registered provider, from `prov_reg$api_key_var`, chosen at
+`R/call_api.R:109` and `R/model_registry.R:386,488,576`.
 
-**Credentials in URLs: three cases, three different handlings.** Anthropic,
-OpenAI, Azure and xAI pass the key in a header (`x-api-key`,
-`Authorization: Bearer`, `api-key`). Three places put a credential in a URL
-query string, each because the provider's API requires it:
+`register_provider()` is exported and documents `api_key_var` as "Name of the
+environment variable holding..." (`R/model_registry.R:731`), so **the set of
+variables this software may read is extensible by the caller and no static
+inventory of it can be complete.** What makes that safe is that the redaction
+below matches on the key's VALUE, not on its variable name, so it covers a
+caller-registered provider identically.
+
+**Credentials in URLs: four cases, two handlings.** Anthropic, OpenAI, Azure and
+xAI pass the key in a header (`x-api-key`, `Authorization: Bearer`, `api-key`).
+Four places put a credential in a URL query string, each because the provider's
+API requires it. Note that a one-line grep for `req_url_query(key` finds only
+three of them: the fourth spreads its arguments over several lines, which is
+worth saying because it is how this case was missed twice.
 
 1. `TaxaTools/R/call_api.R:268` -- Gemini. A connection error raised by curl or
    httr2 can echo the full request URL into its condition message. The handler
@@ -122,6 +151,11 @@ query string, each because the provider's API requires it:
    key into a `stop()` message. **This check found that and it is fixed at this
    commit** (`:88-103`), by the same value-matching redaction as case 1.
 
+4. `TaxaLikely/R/coverage.R:1506-1509` -- xeno-canto, `key = xc_key` inside a
+   multi-line `req_url_query()`. Handled as case 2: `tryCatch(..., error =
+   function(e) NULL)` at `:1512` discards the condition, so no message can carry
+   the key.
+
 Separately, `rentrez::set_entrez_key()` hands the NCBI key to rentrez, which
 appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:1766`,
 `R/coverage.R:156,895`, `R/suggest_unreferenced_species.R:975`;
@@ -143,7 +177,7 @@ rather than as "added none", so that re-checking it is a matter of re-running th
 same greps:
 
 * `system()` -- one: `TaxaFetch/R/plan_gbif_fetch.R:180`, `sysctl -n hw.memsize`.
-* `system2()` -- seven, every one a fixed binary with a fixed argument vector and
+* `system2()` -- eight, every one a fixed binary with a fixed argument vector and
   no interpolated user text: `TaxaLikely/R/build_sequence.R:1400` (`ps`),
   `R/matrix_size.R:147,150` (`vm_stat`, `powershell`),
   `TaxaMatch/R/blast_sequences.R:1459,1588` (`blastn -version`,
@@ -153,8 +187,24 @@ same greps:
 * `eval(parse(text = ))` -- four, all in `TaxaWizard/R/shiny.R:285,291,318,1476`,
   acting on the app's own parameter fields as its `:1866` comment records, not on
   anything a remote client supplies.
-* No `eval.parent()`, and no deserialization of external data: `readRDS` is
-  used only on this software's own caches and model objects.
+* **Bare `eval()`** -- on this software's own formals defaults, never on supplied
+  text: `TaxaAssign/R/generate_report.R:246` evaluates its own `default_model`
+  default, falling back to `as.character()` on error; and
+  `TaxaMatch/R/evaluate_reference_accessions.R:89,93,94` evaluate this function's
+  own `formals()` to report the defaults it ran under. Listed because a reviewer
+  grepping `eval(` rather than `eval(parse(` finds these, and a statement that
+  mentions only the latter reads as incomplete.
+* **`parse(text = )` without `eval()`** -- two, both parse-only: at
+  `TaxaWizard/R/shiny.R:413` a user-supplied script is parsed with
+  `keep.source = TRUE` to read its source references, and the expressions are
+  never evaluated; at `R/validate.R:137` the package parses its own `inst/`
+  snippets to check they are syntactically valid. Parsing is not evaluation, but
+  the same grep finds both, so both are named.
+* No `eval.parent()`. No deserialization of external data: `readRDS` reads only
+  this software's own file formats, including at caller-named paths --
+  `TaxaWizard/R/cli.R:275` reads a wizard session object and
+  `TaxaHabitat/R/spatial_review_decisions.R:60` a decisions object. The path is
+  the caller's; the format is ours.
 
 **File writes.** Every cache is opt-in through a caller-supplied `cache_dir`, except
 TaxaWizard's workflow registry and TaxaTools' model registry, both of which use a
