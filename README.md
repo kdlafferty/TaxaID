@@ -968,7 +968,7 @@ describe each in full.
 | TaxaTools   | 57                 | 34         | Yes      |
 | TaxaFetch   | 32                 | 28         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
-| TaxaMatch   | 30                 | 22         | Yes      |
+| TaxaMatch   | 30                 | 23         | Yes      |
 | TaxaLikely  | 33                 | 43         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
 | TaxaAssign  | 13                 | 24         | Yes      |
