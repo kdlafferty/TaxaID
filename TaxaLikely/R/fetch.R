@@ -758,21 +758,6 @@ utils::globalVariables(c(
   FALSE
 }
 
-#' Drop rows that describe a different organism from the fetch's own reference
-#'
-#' Replaces the kingdom-only rule. The arithmetic, the guards, the one-vote-per-
-#' taxon context and the ordering are unchanged -- only the comparison is, from
-#' "same kingdom string" to \code{.different_organisms()}, and the messages name
-#' the rank that decided rather than always saying kingdom.
-#'
-#' Runs on the ASSEMBLED frame rather than the per-taxon list, so priority-species
-#' rows are judged and vote like any other (Kevin's decision). Grouping is by
-#' \code{group_col}, which is why \code{queried_taxon} is now unconditional.
-#'
-#' Returns both the filtered frame and the accessions dropped: the dry run
-#' reports per-taxon counts from a different object, and it would otherwise
-#' report counts that include rows the real run removes.
-#' @noRd
 #' Is `queried_taxon` present, and say so loudly when it is not
 #'
 #' \code{queried_taxon} is stamped at assembly on every fetch, so its absence is
@@ -802,6 +787,21 @@ utils::globalVariables(c(
   ok
 }
 
+#' Drop rows that describe a different organism from the fetch's own reference
+#'
+#' Two rows are compared with \code{.different_organisms()}, which decides at the
+#' finest rank both declare, and the messages name the rank that decided. The
+#' arithmetic, the guards, the one-vote-per-taxon context and the ordering are
+#' those of the surrounding dominance test.
+#'
+#' Runs on the ASSEMBLED frame rather than the per-taxon list, so priority-species
+#' rows are judged and vote like any other. Grouping is by \code{group_col},
+#' which is why \code{queried_taxon} is stamped unconditionally.
+#'
+#' Returns both the filtered frame and the accessions dropped: the dry run
+#' reports per-taxon counts from a different object, and it would otherwise
+#' report counts that include rows the real run removes.
+#' @noRd
 .resolve_cross_lineage_contamination <- function(meta, group_col = "queried_taxon",
                                                  dominance = 0.90, min_context = 3L,
                                                  ranks = .ORGANISM_RANKS) {
