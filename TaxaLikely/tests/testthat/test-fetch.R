@@ -296,10 +296,11 @@ test_that(".build_search_term ORs in ribosomal-subunit synonyms for bare 12S/16S
 })
 
 test_that(".build_search_term does NOT apply ribosomal-subunit synonyms to 18S", {
-  # Deliberate scope limit: "small subunit ribosomal RNA" is ambiguous between
-  # mitochondrial 12S and nuclear 18S -- reusing it for 18S would trade missed
-  # true positives for new false positives, a different tradeoff needing its
-  # own design (not attempted here).
+  # Deliberate scope limit: "small subunit ribosomal RNA" names both
+  # mitochondrial 12S and nuclear 18S, so it cannot identify an 18S record.
+  # For 12S and 16S the same ambiguity is handled by searching the phrase only
+  # within mitochondrion[FILTER]; that cannot help 18S, whose target IS the
+  # nuclear subunit, so 18S still gets no subunit synonym at all.
   bst <- TaxaLikely:::.build_search_term
   out18 <- bst("Gadidae", "18S")
   expect_false(grepl("subunit ribosomal RNA", out18))
@@ -314,7 +315,7 @@ test_that(".build_search_term leaves GENE-tagged and primer-name terms unaffecte
     paste0(
       "Gadidae[Organism] AND (MiFishU[All Fields] OR 12S[All Fields] OR ",
       "\"12S ribosomal RNA\"[All Fields] OR \"12S rRNA\"[All Fields] OR ",
-      "\"small subunit ribosomal RNA\"[All Fields])"
+      "(\"small subunit ribosomal RNA\"[All Fields] AND mitochondrion[FILTER]))"
     )
   )
 })
@@ -505,16 +506,93 @@ test_that("fetch_bold_reference_sequences: the no-records early return carries t
   ) %in% names(out)))
 })
 
-test_that("a MiFish term's cache key changes with its broader query; 12S keys do not", {
+test_that("the stem is taxon + barcode only -- the term digest is NOT in it", {
   stem <- TaxaLikely:::.ref_cache_stem
+  # A per-generation stem would stop stem-scoped eviction recognising the
+  # generation it replaces, and would make every pre-change file immortal
+  # (the grammar's stem is free text, so such a file still MATCHES). So the
+  # stem must stay free of the digest.
   expect_identical(stem("Girella", "12S"), "Girella_12S")
   expect_identical(stem("Girella", "COI"), "Girella_COI")
-  expect_identical(stem("Girella", "MiFishU"), "Girella_MiFishU_syn")
-  expect_identical(stem("Girella", c("MiFish", "U")), "Girella_MiFish_U_syn")
-  # new names still satisfy the eviction grammar, so eviction never deletes them
-  f <- basename(TaxaLikely:::.ref_cache_file(tempdir(), "Girella", "MiFishU", 130, 210,
-    NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
-  expect_match(f, TaxaLikely:::.ref_cache_grammar())
+  expect_identical(stem("Girella", "MiFishU"), "Girella_MiFishU")
+  expect_identical(stem("Girella", c("MiFish", "U")), "Girella_MiFish_U")
+  expect_false(grepl("_q[0-9a-f]{8}", stem("Girella", "MiFishU")))
+})
+
+test_that("the cache key carries a digest of the query, not just the term string", {
+  key <- function(bt, name = "Girella") {
+    basename(TaxaLikely:::.ref_cache_file(tempdir(), name, bt, 130, 210,
+      NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
+  }
+  # Shape, and the grammar must accept it -- the eviction proof depends on
+  # .ref_cache_file() and .ref_cache_grammar() agreeing.
+  expect_match(key("12S"), "_q[0-9a-f]{8}_l130_210")
+  expect_match(key("12S"), TaxaLikely:::.ref_cache_grammar())
+
+  # Different question, different key.
+  expect_false(identical(key("12S"), key("16S")))
+  expect_false(identical(key("12S"), key("COI")))
+  # Same question, same key (so a re-run hits its own cache).
+  expect_identical(key("12S"), key("12S"))
+
+  # The digest is per MARKER, not per taxon: the taxon is already in the stem,
+  # so two taxa fetched with one term must share one digest.
+  d <- function(k) sub("^.*(_q[0-9a-f]{8}).*$", "\\1", k)
+  expect_identical(d(key("12S", "Girella")), d(key("12S", "Sebastes")))
+})
+
+test_that("the key moves when the QUERY changes even though the term string does not", {
+  # This is the test the old "_syn" suffix could not pass, and the reason the
+  # digest exists. That suffix grepped the built query for one phrase, so any
+  # other change to the query -- restricting a synonym to
+  # mitochondrion[FILTER], re-ordering clauses, adding a filter -- moved the
+  # question without moving the key, and the stale cache was served. A cached
+  # object is written post-taxonomy-merge, so such a hit bypasses the taxonomy
+  # bridge entirely and the stale rows are never looked at again.
+  sfx <- TaxaLikely:::.ref_cache_term_sfx
+  before <- sfx("12S")
+  after <- testthat::with_mocked_bindings(
+    .build_search_term = function(taxon, barcode_term, ...) {
+      "a deliberately different query for the same term"
+    },
+    .package = "TaxaLikely",
+    code = sfx("12S")
+  )
+  expect_false(identical(before, after))
+  expect_match(after, "^_q[0-9a-f]{8}$")
+})
+
+test_that("a cache file written before the digest existed is evictable, not immortal", {
+  d <- tempfile("taxalikely_q_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+
+  live <- TaxaLikely:::.ref_cache_file(d, "Girella", "12S", 130, 210,
+    NULL, NULL, FALSE, 0, 0, c("family", "genus", "species"))
+  # The same name as the key used to produce: everything except the digest.
+  old <- file.path(d, sub("_q[0-9a-f]{8}", "", basename(live)))
+  file.create(live, old)
+
+  unreachable <- TaxaLikely:::.ref_cache_unreachable(d)
+  expect_true(old %in% unreachable)
+  expect_false(live %in% unreachable)
+
+  # And it is recognised as a previous generation OF THAT TAXON, which is what
+  # scopes the automatic write-path eviction.
+  scoped <- TaxaLikely:::.ref_cache_unreachable(
+    d, TaxaLikely:::.ref_cache_stem("Girella", "12S")
+  )
+  expect_identical(scoped, old)
+})
+
+test_that(".ref_cache_stem_of() strips the digest along with the other components", {
+  live <- basename(TaxaLikely:::.ref_cache_file(tempdir(), "Sebastes miniatus",
+    "MiFishU", 130, 210, "2000/01/01", NULL, TRUE, 3, 900,
+    c("family", "genus", "species"), taxid = "1261581"))
+  expect_identical(
+    TaxaLikely:::.ref_cache_stem_of(live),
+    TaxaLikely:::.ref_cache_stem("Sebastes miniatus", "MiFishU")
+  )
 })
 
 # ---- network abort rules (2026-10-05) ---------------------------------------
@@ -588,4 +666,107 @@ test_that("a connection that never answers is aborted quickly, and the retry fir
   r <- TaxaLikely:::.retry_fetch(function() { n <<- n + 1L; httr::GET(url, cfg) }, max_attempts = 2L)
   expect_false(r$success)
   expect_equal(n, 2L) # a stalled call now errors, so the retry runs
+})
+
+test_that("the SSU/LSU synonyms are searched only within mitochondrion[FILTER]", {
+  # The two phrases also name the NUCLEAR rRNA operon's subunits, so searched
+  # unrestricted they return 28S/18S/ITS records for the right organism.
+  # Measured live: 45 nuclear Cottus records via LSU, 10 via SSU, and 23
+  # Castilleja (plant) records for the goby genus Clevelandia.
+  t16 <- TaxaLikely:::.build_search_term("Clevelandia", "16S")
+  t12 <- TaxaLikely:::.build_search_term("Clevelandia", "12S")
+
+  expect_true(grepl(
+    '("large subunit ribosomal RNA"[All Fields] AND mitochondrion[FILTER])',
+    t16, fixed = TRUE
+  ))
+  expect_true(grepl(
+    '("small subunit ribosomal RNA"[All Fields] AND mitochondrion[FILTER])',
+    t12, fixed = TRUE
+  ))
+
+  # The restriction is gone the moment the phrase appears OUTSIDE the
+  # parenthesised AND -- which is what a revert, or a move back into
+  # marker_synonyms, would produce. Without this the test above still passes
+  # while the clause also searches the phrase unrestricted.
+  expect_false(grepl('OR "large subunit ribosomal RNA"[All Fields] OR', t16, fixed = TRUE))
+  expect_false(grepl('OR "large subunit ribosomal RNA"[All Fields])', t16, fixed = TRUE))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields] OR', t12, fixed = TRUE))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields])', t12, fixed = TRUE))
+
+  # Each marker's own unambiguous names stay UNRESTRICTED. Filtering the whole
+  # clause instead drops genuine untagged records (LC342688/LC342689,
+  # "Cottus pollux / Cottus reinii gene for 12S ribosomal RNA").
+  expect_true(grepl('"16S ribosomal RNA"[All Fields] OR', t16, fixed = TRUE))
+  expect_true(grepl('"12S ribosomal RNA"[All Fields] OR', t12, fixed = TRUE))
+  expect_false(grepl("AND mitochondrion[FILTER])) AND", t16, fixed = TRUE))
+
+  # Pinned in full, so any reordering or requoting is visible rather than
+  # silently equivalent-looking.
+  expect_identical(
+    t16,
+    paste0(
+      'Clevelandia[Organism] AND (16S[All Fields] OR "16S ribosomal RNA"[All Fields]',
+      ' OR "16S rRNA"[All Fields] OR ("large subunit ribosomal RNA"[All Fields]',
+      " AND mitochondrion[FILTER]))"
+    )
+  )
+})
+
+test_that("a primer-set term inherits its marker's RESTRICTED synonym too", {
+  # MiFish-U resolves to 12S through primer_to_locus, a second lookup path.
+  # Fixing only the direct marker_synonyms path leaves this one unrestricted.
+  tm <- TaxaLikely:::.build_search_term("Fundulus", "MiFish-U")
+  expect_true(grepl(
+    '("small subunit ribosomal RNA"[All Fields] AND mitochondrion[FILTER])',
+    tm, fixed = TRUE
+  ))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields] OR', tm, fixed = TRUE))
+  expect_false(grepl('OR "small subunit ribosomal RNA"[All Fields])', tm, fixed = TRUE))
+})
+
+test_that(".report_kingdom_split names every kingdom and drops nothing", {
+  meta <- data.frame(
+    taxid = as.character(1:28),
+    kingdom = c(rep("Viridiplantae", 26), rep("Metazoa", 2)),
+    species = c(paste0("Castilleja sp", 1:26), "Clevelandia ios", "Clevelandia ios"),
+    stringsAsFactors = FALSE
+  )
+  # Pinned: both kingdoms AND both counts. A bare expect_message() would pass
+  # on any message at all, including one that named only the majority.
+  expect_message(
+    TaxaLikely:::.report_kingdom_split(meta, "Clevelandia"),
+    "CROSS-KINGDOM SPLIT.*Viridiplantae 26.*Metazoa 2"
+  )
+  expect_message(
+    TaxaLikely:::.report_kingdom_split(meta, "Clevelandia"),
+    "Clevelandia"
+  )
+  # It reports; it must not delete. The within-taxon majority here is the
+  # CONTAMINANT (26 of 28), so a majority-based drop would discard both real
+  # records and keep all 26 plants.
+  out <- suppressMessages(TaxaLikely:::.report_kingdom_split(meta, "Clevelandia"))
+  expect_identical(nrow(out), 28L)
+  expect_identical(sum(out$kingdom == "Metazoa"), 2L)
+})
+
+test_that(".report_kingdom_split stays silent when there is nothing to report", {
+  one <- data.frame(
+    taxid = c("1", "2"), kingdom = c("Metazoa", "Metazoa"),
+    stringsAsFactors = FALSE
+  )
+  expect_silent(TaxaLikely:::.report_kingdom_split(one, "Gillichthys"))
+  # No kingdom column at all (a cache written without one) must not error.
+  expect_silent(TaxaLikely:::.report_kingdom_split(
+    data.frame(taxid = "1", stringsAsFactors = FALSE), "Gillichthys"
+  ))
+  expect_silent(TaxaLikely:::.report_kingdom_split(
+    data.frame(taxid = character(0), kingdom = character(0),
+               stringsAsFactors = FALSE), "Gillichthys"
+  ))
+  # All-NA kingdoms carry no information, so there is no split to claim.
+  expect_silent(TaxaLikely:::.report_kingdom_split(
+    data.frame(taxid = c("1", "2"), kingdom = c(NA_character_, NA_character_),
+               stringsAsFactors = FALSE), "Gillichthys"
+  ))
 })

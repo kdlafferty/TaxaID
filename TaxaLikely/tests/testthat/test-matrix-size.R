@@ -328,9 +328,13 @@ write_uncapped_cache <- function(cache_dir, taxon, species, n_each) {
   attr(meta, "sel_params") <- TaxaLikely:::.sel_params(
     NULL, NULL, "uncultured|environmental|predicted|vector|synthetic|unverified"
   )
-  saveRDS(meta, file.path(cache_dir, sprintf(
-    "%s_12S_l100_5000_d_rk-family-genus-species_meta.rds", taxon
-  )))
+  # Built by the key function rather than spelled out: a hand-written name is
+  # a second copy of the key, and once it drifts this fixture is a cache MISS
+  # and the warm-cache assertions below stop measuring anything.
+  saveRDS(meta, TaxaLikely:::.ref_cache_file(
+    cache_dir, taxon, "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
+    c("family", "genus", "species")
+  ))
   meta
 }
 
