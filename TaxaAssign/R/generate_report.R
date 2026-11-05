@@ -763,6 +763,22 @@ generate_report <- function(result,
       "of the posterior probability for each candidate taxon."
     )
   }
+  # The limits sentence goes on BOTH branches, and a test pins it on both:
+  # this paragraph is what a reader of the manuscript sees instead of the
+  # package docs, so a branch that loses it states the posterior without its
+  # scope. See posterior_consensus()'s @return for the same wording.
+  post_text <- paste0(
+    post_text, " ",
+    "Posterior probabilities are relative to the hypotheses evaluated for each ",
+    "observation (the referenced candidates and the unreferenced-lineage ",
+    "hypotheses the trained likelihood model could express) and are not ",
+    "calibrated probabilities that an assignment is correct: where the reference ",
+    "set lacked taxonomic breadth, no hypothesis for another order or class was ",
+    "available, and a sequence from an unreferenced lineage could be assigned ",
+    "with a high posterior to the nearest referenced lineage. Likelihood ",
+    "calibration refers only to the per-marker training of score distributions ",
+    "on reference-to-reference comparisons."
+  )
   sections <- c(sections, post_text)
 
   # --- Consensus taxonomy ---

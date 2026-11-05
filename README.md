@@ -157,6 +157,19 @@ avoid such mistakes.
     Dynamic Bayesian updating further sharpens priors within a sample
     after high-confidence detections support a species' presence.
 
+#### What a posterior means here
+
+`consensus_posterior` is the share of probability the called taxon holds among
+the hypotheses offered for that sequence: the referenced candidates plus the
+unreferenced-lineage hypotheses the trained model could fit. It is relative to
+that set, not a calibrated probability that the call is right. Where the
+reference set lacks taxonomic breadth there may be no hypothesis for "another
+order" or "another class", so a sequence from an unreferenced lineage can be
+called confidently to the nearest referenced one. `poor_absolute_fit` and
+`best_identity_rank` flag that case; they do not change the call. "Calibrated"
+applies only to the per-marker likelihood training on reference-to-reference
+comparisons.
+
 ### Package Descriptions
 
 1.  TaxaTools enforces a consistent taxonomy by cleaning and
@@ -165,7 +178,8 @@ avoid such mistakes.
     package.
 2.  TaxaMatch standardizes match tables from external classifiers into a
     common format. It also checks for mislabeled references.
-3.  TaxaLikely converts match scores into calibrated likelihoods using a
+3.  TaxaLikely converts match scores into likelihoods calibrated against
+    reference-to-reference comparisons, using a
     hierarchical Bayesian model trained on the reference library. It
     also audits references for coverage gaps so users can adjust
     expectations.
@@ -408,8 +422,14 @@ and `read_crabs_output()` for CRABS output), coverage auditing
 how confidence is expressed: these tools sort a detection into ordinal
 tiers from raw scores, whereas TaxaID reports a posterior probability,
 and a screening database restricted to target species guarantees a best
-hit from that set even for a taxon with no reference at all, the
-missing-reference redirect TaxaID models as its own hypothesis (H3).
+hit from that set even for a taxon with no reference at all. TaxaID models
+that redirect as its own hypothesis only as far as its fitted rings reach:
+an unreferenced species within a referenced genus (H2), an unreferenced
+genus within a referenced family (H3), and a coarser ring per rank the
+training had enough groups to fit. A query from a clade with no reference
+at any fitted rank has no hypothesis of its own on the ballot and is
+assigned to the nearest expressible one; see "What a posterior means here"
+above.
 TaxaID has no counterpart to BIOWATCH's multi-year detection ledger; its
 scope ends at the assignment.
 
@@ -455,7 +475,7 @@ process.
 
 | Tool | Taxa scope | Score output | Spatial priors | Unreferenced taxa | R access |
 |------------|------------|------------|------------|------------|------------|
-| TaxaID (image path) | Any (classifier-agnostic) | Calibrated likelihoods → Bayesian posteriors | Yes (GBIF + habitat) | Yes (coverage audit) | Native |
+| TaxaID (image path) | Any (classifier-agnostic) | Likelihoods calibrated on reference comparisons → Bayesian posteriors, relative to the hypotheses offered | Yes (GBIF + habitat) | Yes (coverage audit) | Native |
 | animl / SpeciesNet (Tabak et al. 2019; Wildlife Insights\*) | Camera trap mammals | Confidence (0--1), top-5; rollup ensemble | No | No | `animl` R package |
 | iNaturalist computer vision | General wildlife (108,000+ taxa) | Softmax (0--1), top-10; genus/family fallback | Limited (app UI only) | No | `rinat` (indirect) |
 | InsectNet (Chiranjeevi et al. 2025) | Insects (2,526 spp, 17 orders) | Conformal prediction sets; OOD energy score | No | Limited (OOD flag) | Web app only |
@@ -938,7 +958,7 @@ describe each in full.
 | Occurrence records standardized to Darwin Core columns, with habitat assignments and spatial quality flags | TaxaFetch `stack_occurrences()`; TaxaHabitat `assign_habitat_biological()`, `flag_habitat_inconsistencies()` |
 | Reference-library assessment: mislabel verdicts, coverage audits, model diagnostics | TaxaMatch `corroborate_references_locally()`, `evaluate_reference_accessions()`; TaxaLikely `audit_barcode_coverage()`, `interpret_model()` |
 | Priors: a Beta prior per taxon at the focal site, including undetected diversity, and the prior field as a map or data frame | TaxaExpect `estimate_kernel_priors()`, `generate_undetected_diversity()`, `plot_theta_surface()` |
-| Assignment: calibrated likelihoods, posterior probabilities with uncertainty, and a consensus taxon per detection with every competing candidate retained | TaxaLikely `evaluate_likelihoods()`; TaxaAssign `compute_posterior()`, `posterior_consensus()`, `score_consensus()` |
+| Assignment: likelihoods calibrated on reference comparisons, posterior probabilities with uncertainty relative to the hypotheses offered, and a consensus taxon per detection with every competing candidate retained | TaxaLikely `evaluate_likelihoods()`; TaxaAssign `compute_posterior()`, `posterior_consensus()`, `score_consensus()` |
 | Quality flags and a Methods and Results report | TaxaFlag `flag_contaminant()`, `flag_handler()`, `review_assignments()`; TaxaAssign `generate_report()`; TaxaTools `assemble_report()` |
 
 # Software Inventory

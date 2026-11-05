@@ -159,8 +159,9 @@ $$P(H_i \mid D) = \frac{L(D \mid H_i) \times \pi(H_i)}{\sum_j L(D \mid H_j) \tim
 where $L$ is the likelihood (TaxaLikely's trained model) and $\pi$ is
 the prior (TaxaExpect's occurrence model).
 
--   Two workflows: the full Bayesian workflow uses calibrated
-    likelihoods from TaxaLikely's hierarchical model and
+-   Two workflows: the full Bayesian workflow uses likelihoods from
+    TaxaLikely's hierarchical model, calibrated against
+    reference-to-reference comparisons, and
     spatially-explicit priors from TaxaExpect's kernel-based composition
     estimator; the LLM-Bayesian workflow uses exponential score
     weighting ($L_i = e^{\lambda s_i}$) and LLM-estimated priors with
