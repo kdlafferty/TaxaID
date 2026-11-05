@@ -17,7 +17,7 @@ check_geographic_outliers(
   candidate_scope = c("genus", "species", "all"),
   verdict_cache = TRUE,
   verbose = FALSE,
-  on_cap = c("escalate", "warn", "error")
+  on_cap = c("warn", "escalate", "error")
 )
 }
 \arguments{
@@ -116,12 +116,18 @@ what to do when a species' global fetch returns exactly the direct API's
 per-key limit (10,000) and was therefore TRUNCATED. Fewer than
 \code{key_threshold} (50) rare species use the direct API, and a
 truncated cloud is GBIF's return order, a non-random prefix -- the very
-reference this test measures "normal range" against. \code{"escalate"}
-(default) re-fetches the capped species through the download API with
-no limit; it needs GBIF credentials and falls back to a warning without
-them. \code{"warn"} keeps the truncated cloud and warns; \code{"error"}
-stops. Escalation downloads a species' full GLOBAL record set, which for
-a globally common species can run to millions of records.}
+reference this test measures "normal range" against. \code{"warn"}
+(default) keeps the truncated cloud, warns, and records the affected
+species in \code{attr(, "capped_keys")}; \code{"escalate"} re-fetches
+the capped species through the download API with no limit, which needs
+GBIF credentials and falls back to a warning without them;
+\code{"error"} stops. The default is the same as
+\code{\link{get_gbif_occurrences}}'s, so neither function submits a
+GBIF download unless asked: escalation retrieves a species' full GLOBAL
+record set, which for a globally common species can run to millions of
+records, and a completed download is issued against the supplied
+credentials with a DOI to cite. Request \code{"escalate"} explicitly
+when the truncated cloud is not an acceptable reference.}
 }
 \value{
 \code{local_occurrences} with three columns added, and

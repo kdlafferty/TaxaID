@@ -51,7 +51,12 @@ state only.
 
 ## Current behaviour worth knowing
 
-- No behaviour changed this cycle; the package's own README and roxygen were brought up to date.
+- `check_geographic_outliers()` and `get_gbif_occurrences()` share one `on_cap`
+  default, `"warn"`: a truncated global cloud (a key returning exactly the
+  per-key limit) is reported and kept, and `"escalate"` -- a download-API
+  re-fetch that spends the configured GBIF account and yields a citable DOI --
+  is opt-in in both. `on_cap` is part of `.outlier_verdict_hash()`, so the two
+  values key different verdict files.
 
 ## Conventions
 
