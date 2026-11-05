@@ -88,9 +88,17 @@
   resp <- tryCatch(
     httr2::req_perform(req),
     error = function(e) {
-      stop(sprintf("OpenAlex request failed: %s", conditionMessage(e)),
-        call. = FALSE
-      )
+      # The key travels as a URL query parameter (OpenAlex's own scheme, see
+      # req_url_query above), so a connection error raised by curl or httr2 can
+      # echo the full request URL -- key included -- into its condition
+      # message, which this handler re-raises. Strip it first, exactly as
+      # TaxaTools::call_api() does for Gemini's equivalent URL-parameter key.
+      msg <- conditionMessage(e)
+      if (!is.null(api_key) && length(api_key) == 1L && !is.na(api_key) &&
+        nzchar(api_key)) {
+        msg <- gsub(api_key, "***REDACTED***", msg, fixed = TRUE)
+      }
+      stop(sprintf("OpenAlex request failed: %s", msg), call. = FALSE)
     }
   )
   httr2::resp_body_json(resp, simplifyVector = FALSE)

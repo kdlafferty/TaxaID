@@ -54,35 +54,82 @@ the reviewer before anything is deleted.
 
 ## Notes for the technical reviewer: security posture
 
-Checked against the WERC criteria on 2026-10-18, at `06d3ef3b`. Nothing here needs
-a fix; it is written down so the review does not have to rediscover it.
+Checked against the WERC criteria at the release commit. Scope: the nine package
+`R/` trees. It is written down so the review does not have to rediscover it; where
+a check found something to change, this says so rather than claiming nothing did.
 
-**Where API keys come from, and where they go.** Keys are read only through
-`Sys.getenv()` -- twelve call sites across seven variables
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_API_KEY`,
-`XAI_API_KEY`, `OPENALEX_API_KEY`, `XC_API_KEY`). No key material is committed:
-every key-shaped string in the repository is either a documentation placeholder
-(`sk-ant-your-key-here`, `AIza...`) or the string `"fake-key"` in a test. No code
-path prints, logs, messages or writes a key.
+**Where credentials come from.** Every credential is read through `Sys.getenv()`
+and none is committed: each key-shaped string in the repository is a documentation
+placeholder (`sk-ant-your-key-here`, `AIza...`) or `"fake-key"` in a test.
 
-**The one case that looks alarming and is already handled.** The Gemini request
-sends its key as a URL query parameter rather than a header
-(`TaxaTools/R/call_api.R`, `req_url_query(key = api_key)`). That is Google's
-Generative Language API scheme, not a design choice. It means a connection error
-raised by curl or httr2 can echo the full request URL -- including the key -- into
-its condition message. The code strips it before that message is ever surfaced:
+Twelve credential-bearing variables appear by name, in 36 call sites across the
+nine `R/` trees:
 
-```r
-# TaxaTools/R/call_api.R, in the req_perform() error handler
-msg <- conditionMessage(e)
-if (nzchar(api_key)) {
-  msg <- gsub(api_key, "***REDACTED***", msg, fixed = TRUE)
-}
-```
+| variable | sites | goes to |
+|---|---|---|
+| `NCBI_API_KEY` | 8 | NCBI E-utilities |
+| `ENTREZ_KEY` | 5 | NCBI E-utilities (rentrez' own variable) |
+| `INAT_API_TOKEN` | 5 | iNaturalist |
+| `XAI_API_KEY` | 3 | xAI |
+| `GBIF_USER` | 3 | GBIF (username) |
+| `ANTHROPIC_API_KEY` | 3 | Anthropic |
+| `OPENALEX_API_KEY` | 2 | OpenAlex |
+| `OPENAI_API_KEY` | 2 | OpenAI |
+| `GBIF_PWD` | 2 | GBIF (**password**) |
+| `XC_API_KEY` | 1 | xeno-canto |
+| `GEMINI_API_KEY` | 1 | Google Generative Language |
+| `AZURE_OPENAI_API_KEY` | 1 | Azure OpenAI (DOI) |
 
-All other providers pass the key in a header (`x-api-key`, `Authorization: Bearer`,
-`api-key`). Every `stop()`, `message()` and `warning()` site in `call_api.R` was
-checked: none includes the request URL, endpoint or request object.
+`GBIF_EMAIL` and `NCBI_EMAIL` sit beside them and are identifiers, not secrets.
+
+**That list cannot be closed by grep, and the reason matters more than the
+count.** Ten further call sites resolve the variable's NAME at run time rather
+than naming it literally: the four built-in LLM providers come from a table in
+`TaxaTools/R/zzz.R:17-20`, and a caller-registered provider supplies its own
+through `prov_reg$api_key_var` (`TaxaTools/R/call_api.R:109`,
+`R/model_registry.R:386,488,576`). `register_provider()` is exported and
+documents `api_key_var` as "Name of the environment variable holding..."
+(`R/model_registry.R:731`), so **the set of variables this software may read is
+extensible by the caller and no static inventory of it can be complete.** What
+makes that safe is that the redaction below matches on the key's VALUE, not on
+its variable name, so it covers a caller-registered provider identically.
+
+**Credentials in URLs: three cases, three different handlings.** Anthropic,
+OpenAI, Azure and xAI pass the key in a header (`x-api-key`,
+`Authorization: Bearer`, `api-key`). Three places put a credential in a URL
+query string, each because the provider's API requires it:
+
+1. `TaxaTools/R/call_api.R:268` -- Gemini. A connection error raised by curl or
+   httr2 can echo the full request URL into its condition message. The handler
+   strips the key before anything is surfaced (`:750-754`):
+
+   ```r
+   msg <- conditionMessage(e)
+   if (nzchar(api_key)) {
+     msg <- gsub(api_key, "***REDACTED***", msg, fixed = TRUE)
+   }
+   ```
+
+2. `TaxaTools/R/model_registry.R:191` -- `.fetch_gemini_models()`, the model-list
+   request. It carries no redaction and does not need one: its
+   `tryCatch(..., error = function(e) NULL)` discards the condition entirely and
+   returns `character(0)`, so no message can reach a caller. The protection is
+   suppression rather than redaction, which is worth stating because the two look
+   different in a diff.
+
+3. `TaxaFetch/R/literature_search.R:84` -- OpenAlex. Its handler re-raised
+   `conditionMessage(e)` verbatim, so a connection error could have carried the
+   key into a `stop()` message. **This check found that and it is fixed at this
+   commit** (`:88-103`), by the same value-matching redaction as case 1.
+
+Separately, `rentrez::set_entrez_key()` hands the NCBI key to rentrez, which
+appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:1766`,
+`R/coverage.R:156,895`, `R/suggest_unreferenced_species.R:975`;
+`TaxaMatch/R/blast_sequences.R:1886,2007,2161`,
+`R/investigate_flagged_accession.R:93`, `R/evaluate_reference_accessions.R:576`,
+`R/check_marker_mismatch.R:114`. rentrez owns the request and the error text from
+that point, so the redaction above does not reach it; the exposure is an NCBI key
+in a URL inside a third-party package's condition message.
 
 **Outbound requests.** Three request builders (Anthropic, Gemini, OpenAI-compatible).
 The optional `temperature` argument is validated -- rejected unless it is a single
@@ -91,9 +138,23 @@ finite non-negative number -- and is included in the request body only when it i
 the parameter outright (HTTP 400, "temperature is deprecated for this model"), which
 `call_api()` surfaces as the provider's own message.
 
-**No dynamic code execution.** The 1.0 cycle added no `system()`, `system2()`,
-`eval()`, `eval.parent()` or `parse(text = )` call, and no new deserialization of
-external data (`readRDS`, `unserialize`, `load`).
+**Process and dynamic-evaluation inventory.** Stated as a current inventory
+rather than as "added none", so that re-checking it is a matter of re-running the
+same greps:
+
+* `system()` -- one: `TaxaFetch/R/plan_gbif_fetch.R:180`, `sysctl -n hw.memsize`.
+* `system2()` -- seven, every one a fixed binary with a fixed argument vector and
+  no interpolated user text: `TaxaLikely/R/build_sequence.R:1400` (`ps`),
+  `R/matrix_size.R:147,150` (`vm_stat`, `powershell`),
+  `TaxaMatch/R/blast_sequences.R:1459,1588` (`blastn -version`,
+  `blastdbcmd -info`; the database path goes through `shQuote()`),
+  `R/investigate_flagged_accession.R:241,250` (`blastdbcmd`, `makeblastdb`),
+  `TaxaWizard/R/setup.R:449` (a registered binary's version flag).
+* `eval(parse(text = ))` -- four, all in `TaxaWizard/R/shiny.R:285,291,318,1476`,
+  acting on the app's own parameter fields as its `:1866` comment records, not on
+  anything a remote client supplies.
+* No `eval.parent()`, and no deserialization of external data: `readRDS` is
+  used only on this software's own caches and model objects.
 
 **File writes.** Every cache is opt-in through a caller-supplied `cache_dir`, except
 TaxaWizard's workflow registry and TaxaTools' model registry, both of which use a
