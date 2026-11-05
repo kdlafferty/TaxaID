@@ -763,21 +763,35 @@ generate_report <- function(result,
       "of the posterior probability for each candidate taxon."
     )
   }
-  # The limits sentence goes on BOTH branches, and a test pins it on both:
-  # this paragraph is what a reader of the manuscript sees instead of the
-  # package docs, so a branch that loses it states the posterior without its
-  # scope. See posterior_consensus()'s @return for the same wording.
+  # The scope sentence goes on BOTH posterior branches, and a test pins it on
+  # each: this paragraph is what a reader of the manuscript sees instead of the
+  # package docs, so a branch that loses it states the posterior without saying
+  # what it is a posterior OVER. See posterior_consensus()'s @return for the
+  # same wording.
+  #
+  # The hypothesis-set clause is gated on has_unreferenced, because naming
+  # unreferenced-lineage hypotheses in a run that evaluated none would be a
+  # claim about this analysis that is not true of it. The scope caveat itself
+  # applies either way -- a posterior over referenced candidates alone is still
+  # relative to that set.
   post_text <- paste0(
     post_text, " ",
     "Posterior probabilities are relative to the hypotheses evaluated for each ",
-    "observation (the referenced candidates and the unreferenced-lineage ",
-    "hypotheses the trained likelihood model could express) and are not ",
-    "calibrated probabilities that an assignment is correct: where the reference ",
-    "set lacked taxonomic breadth, no hypothesis for another order or class was ",
-    "available, and a sequence from an unreferenced lineage could be assigned ",
-    "with a high posterior to the nearest referenced lineage. Likelihood ",
-    "calibration refers only to the per-marker training of score distributions ",
-    "on reference-to-reference comparisons."
+    "observation ",
+    if (has_unreferenced) {
+      paste0(
+        "(the referenced candidates and the unreferenced-lineage hypotheses the ",
+        "trained likelihood model could express) "
+      )
+    } else {
+      "(the candidates with reference sequences for the marker) "
+    },
+    "and are not calibrated probabilities that an assignment is correct: where ",
+    "the reference set lacked taxonomic breadth, there may have been no ",
+    "hypothesis for another order or class, and a sequence from a lineage with ",
+    "no reference could be assigned with a high posterior to the nearest ",
+    "referenced lineage. Likelihood calibration refers only to the per-marker ",
+    "training of score distributions on reference-to-reference comparisons."
   )
   sections <- c(sections, post_text)
 

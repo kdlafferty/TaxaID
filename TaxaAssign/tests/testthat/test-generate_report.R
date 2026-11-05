@@ -220,13 +220,26 @@ test_that("the Methods text says the posterior is relative to the hypotheses off
   pin <- "relative to the hypotheses evaluated for each observation"
   not_calibrated <- "not[[:space:]]+calibrated probabilities that an assignment is correct"
 
+  mc_marker <- "Monte Carlo simulations were performed"
+
   for (nm in c("point estimate", "Monte Carlo")) {
-    result <- if (identical(nm, "Monte Carlo")) {
-      .mock_bayesian_result()
-    } else {
-      .mock_posterior_result()
+    result <- .mock_bayesian_result()
+    if (identical(nm, "point estimate")) {
+      # Both mocks ship n_sims = 1000L and generate_report() branches on
+      # `n_sims > 0`, so without this override BOTH iterations took the Monte
+      # Carlo path and the loop proved one branch twice.
+      attr(result, "report_params")$n_sims <- 0L
     }
     report <- generate_report(result, consensus, llm_fn = NULL)
+
+    # Prove which branch ran, so neither iteration can silently become the
+    # other one again.
+    if (identical(nm, "point estimate")) {
+      expect_false(grepl(mc_marker, report, fixed = TRUE), info = nm)
+    } else {
+      expect_true(grepl(mc_marker, report, fixed = TRUE), info = nm)
+    }
+
     expect_true(grepl(pin, report, fixed = TRUE), info = nm)
     expect_true(grepl(not_calibrated, report), info = nm)
     # The scope sentence must sit WITH the Bayes sentence it qualifies, not in
@@ -237,6 +250,29 @@ test_that("the Methods text says the posterior is relative to the hypotheses off
       info = nm
     )
   }
+})
+
+test_that("the Methods text does not claim unreferenced hypotheses a run did not use", {
+  # .build_methods_text() takes has_unreferenced, and an existing test asserts
+  # the word is absent when it is FALSE. The scope sentence must respect that:
+  # naming unreferenced-lineage hypotheses in a run that evaluated none would be
+  # a claim about THIS analysis that is not true of it.
+  params <- list(n_sims = 0L, cumulative_threshold = 0.9, min_posterior = 0.05)
+  off <- .build_methods_text("bayesian", params, "eDNA", NULL,
+    has_unreferenced = FALSE, has_family_expansion = FALSE,
+    has_empirical_bayes = TRUE)
+  on <- .build_methods_text("bayesian", params, "eDNA", NULL,
+    has_unreferenced = TRUE, has_family_expansion = FALSE,
+    has_empirical_bayes = TRUE)
+
+  # The scope caveat applies either way -- a posterior over referenced
+  # candidates alone is still relative to that set.
+  for (txt in list(off, on)) {
+    expect_true(grepl("relative to the hypotheses evaluated", txt, fixed = TRUE))
+  }
+  expect_false(grepl("unreferenced", off))
+  expect_true(grepl("unreferenced-lineage hypotheses", on, fixed = TRUE))
+  expect_true(grepl("candidates with reference sequences for the marker", off, fixed = TRUE))
 })
 
 test_that("the posterior's scope is not described as calibrated anywhere in the report", {

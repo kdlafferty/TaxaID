@@ -866,8 +866,8 @@ See `inst/workflows/6_no_score_pathway_workflow.R` for a full example.
 
 ## Part of TaxaID
 
-TaxaLikely receives match data from TaxaMatch and produces calibrated
-likelihoods for TaxaAssign (posterior computation).
+TaxaLikely receives match data from TaxaMatch and produces likelihoods
+calibrated against reference-to-reference comparisons for TaxaAssign (posterior computation).
 
 Ecosystem: TaxaMatch -\> TaxaLikely -\> TaxaAssign
 

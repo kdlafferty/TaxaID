@@ -74,6 +74,18 @@
 
 ## Changed behaviour
 
+* The Methods paragraph `generate_report()` emits states what the posterior is a
+  probability over: the hypotheses evaluated for that observation, rather than a
+  calibrated probability that the assignment is correct. It says that where the
+  reference set lacked taxonomic breadth there may have been no hypothesis for
+  another order or class, so a sequence from a lineage with no reference could be
+  assigned with a high posterior to the nearest referenced lineage, and that
+  likelihood calibration refers only to the per-marker training of score
+  distributions. The sentence names unreferenced-lineage hypotheses only when the
+  run evaluated them. `posterior_consensus()`'s `consensus_posterior`
+  documentation carries the same statement. The wording of a generated report
+  therefore depends on this release, which matters if a manuscript quotes it.
+
 * `join_priors()` gives the floor-priced ring rows of one observation (at one
   site) a single shared global floor: each of `k` such rings gets floor / `k`,
   with its concentration kept. A unit detects one taxon, so unreferenced prior

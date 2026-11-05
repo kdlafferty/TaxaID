@@ -53,6 +53,14 @@ likelihoods for named unreferenced taxa (lives in TaxaLikely, next to
 }
 }
 
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/kdlafferty/TaxaID}
+  \item Report bugs at \url{https://github.com/kdlafferty/TaxaID/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Kevin Lafferty \email{klafferty@usgs.gov}
 
