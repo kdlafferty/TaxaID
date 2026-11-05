@@ -118,3 +118,60 @@ test_that("download_literature_pdfs: creates output_dir if absent", {
   expect_true(dir.exists(new_dir))
   unlink(new_dir, recursive = TRUE)
 })
+
+
+# --- the OpenAlex key must not reach a failure message -----------------------
+# OpenAlex takes its key as a URL query parameter, so a connection error raised
+# by curl or httr2 can carry the whole request URL -- key included -- into its
+# condition message, and .openalex_fetch_page() re-raises that message to the
+# caller. The redaction is the only thing between the key and anything that
+# captures those messages. Mutation-checked: with the gsub() removed from
+# literature_search.R, the second expectation below fails, which is the one that
+# matters.
+
+test_that(".openalex_fetch_page redacts the key from a failure message", {
+  key <- "oa-SECRET-KEY-DO-NOT-LEAK-9f3a"
+
+  # Error the way httr2/curl does: the message carries the full request URL,
+  # which is where the key is.
+  local_mocked_bindings(
+    req_perform = function(req, ...) {
+      stop(sprintf(
+        "Could not resolve host: api.openalex.org (url: https://api.openalex.org/works?api_key=%s&per-page=200)",
+        key
+      ), call. = FALSE)
+    },
+    .package = "httr2"
+  )
+
+  err <- tryCatch(
+    TaxaFetch:::.openalex_fetch_page("https://api.openalex.org/works", key),
+    error = function(e) e
+  )
+  expect_s3_class(err, "error")
+  msg <- conditionMessage(err)
+
+  # The function still reports the failure, and still says it was OpenAlex.
+  expect_match(msg, "OpenAlex request failed")
+  expect_match(msg, "Could not resolve host")
+  # The key is gone and the placeholder is there in its place.
+  expect_false(grepl(key, msg, fixed = TRUE))
+  expect_match(msg, "***REDACTED***", fixed = TRUE)
+})
+
+test_that(".openalex_fetch_page does not break when there is no key to redact", {
+  # The redaction is guarded, so an empty, NA or NULL key must not turn a
+  # connection error into a different error from inside the handler.
+  local_mocked_bindings(
+    req_perform = function(req, ...) stop("Timeout was reached", call. = FALSE),
+    .package = "httr2"
+  )
+  for (k in list("", NA_character_, NULL)) {
+    err <- tryCatch(
+      TaxaFetch:::.openalex_fetch_page("https://api.openalex.org/works", k),
+      error = function(e) e
+    )
+    expect_s3_class(err, "error")
+    expect_match(conditionMessage(err), "Timeout was reached")
+  }
+})
