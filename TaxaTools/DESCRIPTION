@@ -12,6 +12,8 @@ Description: Provides helper functions for cleaning, verifying, and
     OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for
     drafting methods and results sections. Part of the TaxaID ecosystem.
 License: CC0
+URL: https://github.com/kdlafferty/TaxaID
+BugReports: https://github.com/kdlafferty/TaxaID/issues
 Encoding: UTF-8
 Depends: R (>= 4.1.0)
 Roxygen: list(markdown = TRUE)

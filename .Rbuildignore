@@ -54,6 +54,20 @@
 # not fail CI, because the gate is error_on = warning; a missing disclaimer
 # would fail a USGS review.
 
+# A development record, not user documentation: a generated inventory of
+# functions written after a review round. It carries its own provenance line
+# naming the commit it was generated against, which ages against every merge,
+# and a stale provenance line inside a shipped tarball is worse than no file.
+# It stays in the repository as part of the development record and simply does
+# not ship. Regenerating it instead is the alternative if it should ship.
+^inst/extra_functions_for_review\.md$
+
+# Validation scripts and their logs for the homonym work. Development record,
+# not part of the meta-package, and the third name in the non-standard
+# top-level NOTE. Removing it shortens that NOTE; it does not clear it, because
+# DISCLAIMER.md and LICENSE.md stay in the build deliberately, as noted above.
+^homonym_validation$
+
 # The two space-named review files under inst/ trip --as-cran's "non-portable
 # file names" WARNING, and CI now fails on warnings. Deliberately NOT renamed:
 # eight files reference these paths, and where development records live is an

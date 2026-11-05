@@ -11,6 +11,8 @@ Description: Estimates theta priors -- each taxon's expected share of the
     invasive watch lists and domestic or food species. Part of the TaxaID
     ecosystem.
 License: CC0
+URL: https://github.com/kdlafferty/TaxaID
+BugReports: https://github.com/kdlafferty/TaxaID/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:

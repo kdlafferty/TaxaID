@@ -12,6 +12,8 @@ Description: Stores and standardizes raw match data produced by external tools t
     model training. Score-to-likelihood conversion itself lives in TaxaLikely.
     Part of the TaxaID ecosystem.
 License: CC0
+URL: https://github.com/kdlafferty/TaxaID
+BugReports: https://github.com/kdlafferty/TaxaID/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:
