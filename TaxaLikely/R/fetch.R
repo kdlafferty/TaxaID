@@ -632,6 +632,29 @@ utils::globalVariables(c(
 #' @return \code{all_meta}, with contaminant rows removed from internally
 #'   split taxa. Messages what it did, including when it declined to act.
 #' @noRd
+# Comparison ranks for the "different organisms" predicate: `class` and every
+# rank coarser than it.
+#
+# Measured, not preferred. In the JV oracle, `class` discriminates 18 of 18
+# genuine genus homonyms and `kingdom` only 8 of 18, because NCBI assigns no
+# kingdom to Rhodophyta, Ochrophyta, Bacillariophyta, Ciliophora or
+# Chrysophyceae -- every one of which still has a class. `order` would cost
+# nothing extra in the same NCBI round trip, but no measured case needs it, so
+# it is left out rather than carried on the chance that it helps.
+.ORGANISM_RANKS <- c("kingdom", "phylum", "class")
+
+#' The ranks a reference fetch resolves: the caller's rank_system plus the
+#' organism ranks the predicate compares.
+#'
+#' One definition, called by the broad path, the priority path and the cache
+#' key. It is a function rather than a local so a test can derive the same key
+#' the fetch will look for, instead of carrying a second copy of this union that
+#' goes stale the moment an organism rank is added.
+#' @noRd
+.fetch_ranks <- function(rank_system) {
+  union(tolower(rank_system), .ORGANISM_RANKS)
+}
+
 .resolve_kingdom_contamination <- function(all_meta, taxa, dominance = 0.90,
                                            min_context = 3L) {
   if (length(all_meta) == 0L) {
@@ -858,7 +881,7 @@ utils::globalVariables(c(
 .ref_cache_file <- function(cache_dir, name, barcode_term, min_len, max_len,
                             min_date, max_date, keep_out_of_range,
                             max_out_of_range_per_species,
-                            max_out_of_range_len, rank_system, prefix = "",
+                            max_out_of_range_len, fetched_ranks, prefix = "",
                             taxid = NULL) {
   if (is.null(cache_dir)) {
     return(NULL)
@@ -877,7 +900,11 @@ utils::globalVariables(c(
   } else {
     ""
   }
-  rank_sfx <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
+  # Built from the ranks actually FETCHED, not from rank_system. Keying on
+  # rank_system meant a cache written before an organism rank was requested
+  # would be served to a call that needs it, and the predicate would silently
+  # see class = NULL -- the exact failure this key component exists to prevent.
+  rank_sfx <- paste0("_rk-", paste(tolower(fetched_ranks), collapse = "-"))
   txid_sfx <- if (!is.null(taxid) && !is.na(taxid) && nzchar(taxid)) {
     sprintf("_txid%s", taxid)
   } else {
@@ -1741,6 +1768,15 @@ fetch_ncbi_reference_sequences <- function(taxa,
   if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector (coarse to fine)")
   }
+  # ONE definition of "the ranks this fetch resolves", used by the broad path,
+  # the priority path and the cache key alike. Previously the broad path built
+  # its own union while the priority path passed tolower(rank_system), so
+  # priority rows came back with no kingdom and no phylum -- two call sites that
+  # had to be kept in step by hand, and were not.
+  #
+  # The organism ranks cost no extra round trip: they are already in the XML the
+  # same taxonomy call returns.
+  fetched_ranks <- .fetch_ranks(rank_system)
   if (!is.null(max_per_species) && (!is.numeric(max_per_species) ||
     max_per_species < 1L)) {
     stop("max_per_species must be a positive integer or NULL")
@@ -1831,7 +1867,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
       cache_files[i] <- .ref_cache_file(
         cache_dir, taxa[i], barcode_term, eff_min_len, eff_max_len,
         min_date, max_date, keep_out_of_range,
-        max_out_of_range_per_species, max_out_of_range_len, rank_system,
+        max_out_of_range_per_species, max_out_of_range_len, fetched_ranks,
         taxid = resolved_taxids[i]
       )
       if (file.exists(cache_files[i])) {
@@ -2163,7 +2199,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
       p_cache_file <- .ref_cache_file(
         cache_dir, sp, barcode_term, eff_min_len, eff_max_len,
         min_date, max_date, keep_out_of_range,
-        max_out_of_range_per_species, max_out_of_range_len, rank_system,
+        max_out_of_range_per_species, max_out_of_range_len, fetched_ranks,
         prefix = "priority_"
       )
       if (!is.null(p_cache_file)) {
@@ -2229,7 +2265,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
       .ref_cache_file(
         cache_dir, taxa[i], barcode_term, eff_min_len, eff_max_len,
         min_date, max_date, keep_out_of_range,
-        max_out_of_range_per_species, max_out_of_range_len, rank_system,
+        max_out_of_range_per_species, max_out_of_range_len, fetched_ranks,
         taxid = resolved_taxids[i]
       )
     }
@@ -2347,8 +2383,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
         # kingdom column is the only thing that lets a homonym be seen at all.
         # Gating them on an opt-in argument meant a fetch that did not opt in
         # could not detect a cross-kingdom split even in principle.
-        desired_ranks <- union(tolower(rank_system), c("kingdom", "phylum"))
-        tax_map <- .fetch_taxonomy_map(unique_taxids, desired_ranks)
+        tax_map <- .fetch_taxonomy_map(unique_taxids, fetched_ranks)
 
         if (is.null(tax_map) || nrow(tax_map) == 0L) {
           message(sprintf("Taxonomy resolution failed for '%s'", taxa[i]))
@@ -2473,7 +2508,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
             "Resolving taxonomy for %d priority taxids...",
             length(p_taxids)
           ))
-          p_tax_map <- .fetch_taxonomy_map(p_taxids, tolower(rank_system))
+          p_tax_map <- .fetch_taxonomy_map(p_taxids, fetched_ranks)
           if (!is.null(p_tax_map) && nrow(p_tax_map) > 0L) {
             priority_combined <- merge(priority_combined, p_tax_map,
               by = "taxid", all.x = TRUE

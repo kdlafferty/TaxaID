@@ -333,7 +333,7 @@ write_uncapped_cache <- function(cache_dir, taxon, species, n_each) {
   # and the warm-cache assertions below stop measuring anything.
   saveRDS(meta, TaxaLikely:::.ref_cache_file(
     cache_dir, taxon, "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
-    c("family", "genus", "species")
+    TaxaLikely:::.fetch_ranks(c("family", "genus", "species"))
   ))
   meta
 }
