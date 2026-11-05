@@ -82,9 +82,17 @@ ranges (e.g., 2) focus on the closest matches only but risk silently
 dropping the true species when a congener happens to score higher (see
 Details).}
 
-\item{max_hits}{Integer. Safety cap: maximum hits to retain per query after
-score window filtering (default \code{20L}). Increase for queries
-expected to match many closely related species.}
+\item{max_hits}{Integer. Per-query floor on the hits retained after score
+window filtering (default \code{20L}). It is a floor rather than a hard
+cap because it is not allowed to split a tie: every hit sharing the
+identity of the last hit kept is also kept, so the count returned can
+exceed \code{max_hits}. A row-count cut cannot do this -- \code{order()}
+is stable, so hits tied at the boundary would be kept or dropped by their
+position in the BLAST output, making the result depend on input row order.
+The overshoot is bounded by what BLAST returned, so by
+\code{max_target_seqs}; the cap cannot restore a tie BLAST itself
+truncated. Increase for queries expected to match many closely related
+species.}
 
 \item{max_hits_per_taxon}{Integer or \code{NULL} (default). When set, caps
 the number of hits retained per taxon \emph{before} \code{max_hits} is
@@ -94,8 +102,12 @@ species -- can consume the entire \code{max_hits} budget with redundant
 near-duplicate hits, silently crowding out a real, different congener
 that would otherwise have survived \code{score_range} filtering. Each
 taxon's own best-scoring hit is always kept, so this never changes which
-taxon has the top score. Set to e.g. \code{3L} to keep at most 3
-representative hits per species.
+taxon has the top score. Unlike \code{max_hits} this IS a hard count: a
+tie here is between repeated deposits of one species, which is what the cap
+exists to collapse, so keeping them would restore the crowding-out it
+prevents. Which of several tied deposits survives is decided by identity
+and then accession, so it does not depend on the order BLAST returned them.
+Set to e.g. \code{3L} to keep at most 3 representative hits per species.
 
 \strong{Requires \code{resolve_taxonomy = TRUE} to have any effect on
 remote BLAST results.} Remote BLAST's XML output never populates a real
@@ -346,7 +358,8 @@ Rather than a flat top-N cutoff, hits are filtered per query:
 range are removed (see "Subject length filter" below)
 \item For each query, the top hit's percent identity is found
 \item All hits within \code{score_range} of the top hit are retained
-\item A \code{max_hits} safety cap is applied per query
+\item A \code{max_hits} floor is applied per query, which keeps every hit
+tied with the last one kept rather than cutting at a row count
 }
 
 This means a clear top match may return only 1-3 hits (the rest are too

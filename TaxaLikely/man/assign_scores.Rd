@@ -39,7 +39,7 @@ from this output.
 
 For all other \code{score_type} values: a data frame with one row per
 \code{observation_id} x hypothesis (H1 aggregated to one row per
-\code{taxon_name}, H2/H3/H4 unchanged), with columns
+\code{taxon_name}, H2/H3 unchanged), with columns
 \code{score_likelihood}, \code{score_likelihood_mean} (= point estimate),
 \code{score_likelihood_sd} (= 0), and \code{score_method} added.
 }
@@ -88,7 +88,7 @@ entry point.}
 
 \strong{Normalization convention:} all \code{score_likelihood} values are
 likelihood \emph{ratios} (divided by the maximum H1 likelihood), not
-probabilities.  H2/H3/H4 rows are added after H1 normalization so that H1
+probabilities.  H2/H3 rows are added after H1 normalization so that H1
 values are unaffected by the number of unreferenced hypotheses.
 \code{TaxaAssign::compute_posterior()} normalizes posteriors, so the
 absolute scale of likelihoods does not matter.

@@ -224,6 +224,9 @@ test_that("train_likelihood_model: score_transform = 'sqrt_mismatch' trains end 
     score_transform = "sqrt_mismatch"
   )
   expect_equal(out$Score_Transform, "sqrt_mismatch")
+  # The model records the rank system it was fitted on, as supplied, so
+  # evaluate_likelihoods() can compare it with the rank system of each call.
+  expect_identical(out$Rank_System, c("genus", "species"))
   # sqrt_mismatch's own default max_gap_ceiling (~0.6234) should have been
   # resolved and applied -- gap values must never exceed it.
   expect_true("var_shrunk" %in% names(out$H2_Lookup))

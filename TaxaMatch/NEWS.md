@@ -1,6 +1,18 @@
 # TaxaMatch 1.0.0
 
 * Initial release.
+* Neither hit cap in `blast_sequences()` depends on the order BLAST returned its
+  hits. `max_hits` is a per-query floor: every hit sharing the identity of the
+  last one kept is also kept, so the count can exceed `max_hits`, because a tie
+  there is between different taxa and dropping one would discard a candidate
+  species. The overshoot is bounded by what BLAST returned, hence by
+  `max_target_seqs`; a tie BLAST itself truncated cannot be recovered.
+  `max_hits_per_taxon` is a hard count, because a tie there is between repeated
+  deposits of one species, which is what that cap exists to collapse; which of
+  several tied deposits survives is settled by identity and then accession.
+  Measured on a saved 622-ASV hit set: of the 93 ASVs the per-query cap acted on,
+  89 had the cut land inside a run of equal identities and 48 had all twenty kept
+  hits at a single identity, median lowest-kept identity 98.99.
 
 ## New features
 

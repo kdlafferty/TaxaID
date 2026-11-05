@@ -139,6 +139,13 @@ trained mean; see that function's own documentation).}
 the scale this model's H1/H2/H3 parameters were fit on. Read
 automatically by \code{evaluate_likelihoods()}; callers should not need
 to track or re-supply it.}
+\item{\code{Rank_System}}{Character, coarse to fine: the \code{rank_system} this
+model was fitted on, as supplied. \code{evaluate_likelihoods()} compares
+it with the \code{rank_system} of each call and warns about a rank the
+call adds, which can carry no ring and so no unreferenced
+hypothesis. It records what was ASKED for, not what the data
+supported: \code{Rings} is the list of rings actually fitted, and a rank
+named here can still have none.}
 \item{\code{H2}}{List with \code{delta} and \code{sigma} for the missing-species
 hypothesis (pooled across all genera).}
 \item{\code{H3}}{List with \code{delta} and \code{sigma} for the missing-genus

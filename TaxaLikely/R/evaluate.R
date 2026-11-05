@@ -1723,6 +1723,86 @@ evaluate_likelihoods <- function(match_df,
     stop("rank_system must be a non-empty character vector (coarse to fine)")
   }
 
+  # A model can offer an unreferenced hypothesis at a rank only where it holds
+  # a ring, and the ring rows below are built by iterating model_params$Rings,
+  # skipping any ring whose rank this call does not carry. So a rank this call
+  # adds BEYOND the trained set gets no ring and nothing says so: a silently
+  # short ladder on a deeper evaluation. Here is the only place both rank
+  # systems are in hand. It matters most on the auto-detection branch above,
+  # where rank_system comes from match_df's own columns and the caller never
+  # chose it, so the mismatch can arise without anyone naming a rank.
+  trained_rs <- model_params$Rank_System
+  if (is.null(trained_rs)) {
+    message(
+      "model_params records no Rank_System, so the rank system this model was ",
+      "fitted on cannot be checked against this call's rank_system (",
+      paste(rank_system, collapse = "/"), ")."
+    )
+  }
+
+  # Which of THIS call's ranks could carry a ring at all: train.R fits one per
+  # rank at position 1..n-3 of the rank system it was given (its ring_codes are
+  # letters[4:n], mapped back to rank_system[n - k + 1]), so every rank but the
+  # last three. Read positionally, exactly as train.R writes it, rather than by
+  # naming family -- a check that spells the rule differently from the code can
+  # disagree with it.
+  n_rs <- length(rank_system)
+  ring_eligible <- if (n_rs >= 4L) tolower(rank_system[seq_len(n_rs - 3L)]) else character(0)
+
+  # Rings is the authoritative answer to "where can this model express an
+  # unreferenced hypothesis", and it is not the rank system: train.R skips a
+  # ring whose rank has fewer than 3 groups supplying matches, so a rank can be
+  # trained and still have none. Asking Rings catches both the rank that was
+  # never trained and the rank that was trained and skipped; Rank_System alone
+  # sees only the first, and the second is the likelier one.
+  fitted_ring_ranks <- tolower(vapply(
+    model_params$Rings %||% list(),
+    function(R) as.character(R$rank)[[1L]],
+    character(1L)
+  ))
+  no_ring <- setdiff(ring_eligible, fitted_ring_ranks)
+  if (length(no_ring) > 0L) {
+    warning(sprintf(paste0(
+      "this model holds no ring at %s, so it can express no unreferenced ",
+      "hypothesis there and the ladder stops at %s. A ring is fitted only ",
+      "where at least 3 groups supply matches, so a rank can be trained and ",
+      "still have none -- the data decide, and retraining on a deeper ",
+      "rank_system does not guarantee one.%s"
+    ),
+    paste(no_ring, collapse = "/"),
+    if (length(setdiff(ring_eligible, no_ring)) > 0L) {
+      paste(setdiff(ring_eligible, no_ring), collapse = "/")
+    } else {
+      "the three finest ranks"
+    },
+    if (is.null(trained_rs)) {
+      ""
+    } else {
+      sprintf(" Trained on: %s.", paste(trained_rs, collapse = "/"))
+    }),
+    call. = FALSE)
+  }
+
+  # A rank the model never saw that could not have carried a ring anyway: the
+  # H1/H2/H3 lookups are keyed on the finest ranks, so this is a different
+  # defect from a missing ring and gets its own report. Ring-eligible ranks are
+  # excluded because the check above already names them, more precisely.
+  if (!is.null(trained_rs)) {
+    untrained <- setdiff(
+      setdiff(tolower(rank_system), tolower(trained_rs)),
+      ring_eligible
+    )
+    if (length(untrained) > 0L) {
+      warning(sprintf(paste0(
+        "rank_system includes %s, which this model was not trained on ",
+        "(trained: %s). No ring can be fitted at a rank among the three ",
+        "finest, so retraining is the only way to model it."
+      ),
+      paste(untrained, collapse = "/"), paste(trained_rs, collapse = "/")),
+      call. = FALSE)
+    }
+  }
+
   names(match_df) <- tolower(names(match_df))
   if (!is.null(evidence_col)) evidence_col <- tolower(evidence_col)
 

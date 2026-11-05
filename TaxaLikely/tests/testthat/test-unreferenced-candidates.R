@@ -62,35 +62,18 @@ test_that("added rows have score_original = NA", {
   expect_true(all(is.na(added$score_original)))
 })
 
-# ---- H4 (unreferenced_family) -----------------------------------------------
+# ---- no catch-all hypothesis is ever added -----------------------------------
+# unreferenced_candidates() adds H2 and H3 only. A coarser catch-all would carry
+# hypothesis_type "unreferenced_family" -- which is also what a trained model's
+# order ring is named (train.R: paste0("unreferenced_", child_rk)), so one
+# string would stand for two different hypotheses, one of them a fixed
+# constant. This asserts that collision cannot be created from here.
 
-test_that("no H4 rows by default", {
+test_that("no catch-all unreferenced_family row is added", {
   out <- unreferenced_candidates(.make_uc_match(),
     rank_system = c("family", "genus", "species")
   )
   expect_false("unreferenced_family" %in% out$hypothesis_type)
-})
-
-test_that("H4 rows added when include_unreferenced_family = TRUE", {
-  out <- unreferenced_candidates(.make_uc_match(),
-    rank_system = c("family", "genus", "species"),
-    include_unreferenced_family = TRUE
-  )
-  expect_true("unreferenced_family" %in% out$hypothesis_type)
-  n_obs <- length(unique(.make_uc_match()$observation_id))
-  expect_equal(sum(out$hypothesis_type == "unreferenced_family"), n_obs)
-})
-
-test_that("H4 rows have all rank columns and taxon_name NA", {
-  out <- unreferenced_candidates(.make_uc_match(),
-    rank_system = c("family", "genus", "species"),
-    include_unreferenced_family = TRUE
-  )
-  h4 <- out[out$hypothesis_type == "unreferenced_family", ]
-  expect_true(all(is.na(h4$family)))
-  expect_true(all(is.na(h4$genus)))
-  expect_true(all(is.na(h4$species)))
-  expect_true(all(is.na(h4$taxon_name)))
 })
 
 # ---- anchor selection -------------------------------------------------------

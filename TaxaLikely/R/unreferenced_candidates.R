@@ -12,8 +12,6 @@
 #'     reference but the species is not.
 #'   \item \code{"unreferenced_genus"} -- family is represented but the genus
 #'     is not.
-#'   \item \code{"unreferenced_family"} -- optional catch-all (see
-#'     \code{include_unreferenced_family}).
 #' }
 #'
 #' Both placeholder rows are anchored on the best-scoring H1 candidate for
@@ -35,19 +33,10 @@
 #'   (e.g., \code{c("family", "genus", "species")}).  When \code{NULL}
 #'   (default), auto-detected from column names using
 #'   \code{TaxaTools::extended_ranks}.  At least two ranks are required.
-#' @param include_unreferenced_family Logical (default \code{FALSE}).  When
-#'   \code{TRUE}, one \code{"unreferenced_family"} catch-all row is added per
-#'   observation with all taxonomy columns set to \code{NA}.  Use when
-#'   running [assign_scores()] without TaxaExpect priors (e.g. under a flat
-#'   prior) to absorb posterior mass from taxa outside all
-#'   represented families.  Do \strong{not} set to \code{TRUE} when using
-#'   TaxaExpect priors -- the prior distribution already covers unrepresented
-#'   families.
-#'
 #' @return A data frame with the same columns as \code{match_df}, plus
 #'   \code{hypothesis_type} (\code{"specific_candidate"} for original rows;
-#'   \code{"unreferenced_species"}, \code{"unreferenced_genus"}, or
-#'   \code{"unreferenced_family"} for added rows).  Added rows have
+#'   \code{"unreferenced_species"} or \code{"unreferenced_genus"} for added
+#'   rows).  Added rows have
 #'   \code{score_original = NA} (and any other score columns set to \code{NA}).
 #'
 #' @seealso [assign_scores()]
@@ -72,18 +61,11 @@
 #' @importFrom stats median
 #' @export
 unreferenced_candidates <- function(match_df,
-                                    rank_system = NULL,
-                                    include_unreferenced_family = FALSE) {
+                                    rank_system = NULL) {
   # ---- validate ---------------------------------------------------------------
   if (!is.data.frame(match_df)) {
     stop("`match_df` must be a data frame.", call. = FALSE)
   }
-  if (!is.logical(include_unreferenced_family) ||
-    length(include_unreferenced_family) != 1L ||
-    is.na(include_unreferenced_family)) {
-    stop("`include_unreferenced_family` must be TRUE or FALSE.", call. = FALSE)
-  }
-
   names(match_df) <- tolower(names(match_df))
 
   required <- c("observation_id", "taxon_name", "taxon_name_rank")
@@ -135,9 +117,9 @@ unreferenced_candidates <- function(match_df,
   second <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NULL
   has_score <- "score_original" %in% names(match_df)
 
-  # ---- per-observation: build H2, H3, (H4) rows ------------------------------
+  # ---- per-observation: build H2 and H3 rows ---------------------------------
   obs_ids <- unique(match_df$observation_id[!is.na(match_df$observation_id)])
-  n_extra_per_obs <- 2L + as.integer(include_unreferenced_family)
+  n_extra_per_obs <- 2L
   extra_rows <- vector("list", length(obs_ids) * n_extra_per_obs)
   k <- 0L
 
@@ -185,20 +167,6 @@ unreferenced_candidates <- function(match_df,
       if (has_score) row_h3$score_original <- NA_real_
       k <- k + 1L
       extra_rows[[k]] <- row_h3
-    }
-
-    # H4: unreferenced_family -- all rank columns -> NA
-    if (include_unreferenced_family) {
-      row_h4 <- anchor_row
-      for (rc in rank_cols) {
-        if (rc %in% names(row_h4)) row_h4[[rc]] <- NA_character_
-      }
-      row_h4$taxon_name <- NA_character_
-      row_h4$taxon_name_rank <- NA_character_
-      row_h4$hypothesis_type <- "unreferenced_family"
-      if (has_score) row_h4$score_original <- NA_real_
-      k <- k + 1L
-      extra_rows[[k]] <- row_h4
     }
   }
 

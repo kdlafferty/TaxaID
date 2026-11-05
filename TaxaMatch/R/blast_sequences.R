@@ -61,9 +61,17 @@ NULL
 #'   ranges (e.g., 2) focus on the closest matches only but risk silently
 #'   dropping the true species when a congener happens to score higher (see
 #'   Details).
-#' @param max_hits Integer. Safety cap: maximum hits to retain per query after
-#'   score window filtering (default \code{20L}). Increase for queries
-#'   expected to match many closely related species.
+#' @param max_hits Integer. Per-query floor on the hits retained after score
+#'   window filtering (default \code{20L}). It is a floor rather than a hard
+#'   cap because it is not allowed to split a tie: every hit sharing the
+#'   identity of the last hit kept is also kept, so the count returned can
+#'   exceed \code{max_hits}. A row-count cut cannot do this -- \code{order()}
+#'   is stable, so hits tied at the boundary would be kept or dropped by their
+#'   position in the BLAST output, making the result depend on input row order.
+#'   The overshoot is bounded by what BLAST returned, so by
+#'   \code{max_target_seqs}; the cap cannot restore a tie BLAST itself
+#'   truncated. Increase for queries expected to match many closely related
+#'   species.
 #' @param max_hits_per_taxon Integer or \code{NULL} (default). When set, caps
 #'   the number of hits retained per taxon \emph{before} \code{max_hits} is
 #'   applied. Without this, one heavily-resequenced species -- e.g. a genus
@@ -72,8 +80,12 @@ NULL
 #'   near-duplicate hits, silently crowding out a real, different congener
 #'   that would otherwise have survived \code{score_range} filtering. Each
 #'   taxon's own best-scoring hit is always kept, so this never changes which
-#'   taxon has the top score. Set to e.g. \code{3L} to keep at most 3
-#'   representative hits per species.
+#'   taxon has the top score. Unlike \code{max_hits} this IS a hard count: a
+#'   tie here is between repeated deposits of one species, which is what the cap
+#'   exists to collapse, so keeping them would restore the crowding-out it
+#'   prevents. Which of several tied deposits survives is decided by identity
+#'   and then accession, so it does not depend on the order BLAST returned them.
+#'   Set to e.g. \code{3L} to keep at most 3 representative hits per species.
 #'
 #'   \strong{Requires \code{resolve_taxonomy = TRUE} to have any effect on
 #'   remote BLAST results.} Remote BLAST's XML output never populates a real
@@ -300,7 +312,8 @@ NULL
 #'     range are removed (see "Subject length filter" below)
 #'   \item For each query, the top hit's percent identity is found
 #'   \item All hits within \code{score_range} of the top hit are retained
-#'   \item A \code{max_hits} safety cap is applied per query
+#'   \item A \code{max_hits} floor is applied per query, which keeps every hit
+#'     tied with the last one kept rather than cutting at a row count
 #' }
 #'
 #' This means a clear top match may return only 1-3 hits (the rest are too
@@ -799,6 +812,70 @@ blast_sequences <- function(seq_df,
 # ==============================================================================
 # Internal: Remote NCBI BLAST via URL API
 # ==============================================================================
+
+#' Keep each taxon's top \code{max_n} hits, breaking ties deterministically
+#'
+#' A HARD count, unlike \code{.cap_hits_keeping_ties()}, and the difference is
+#' deliberate. At the per-query cap a tie is between DIFFERENT taxa, so dropping
+#' one arbitrarily discards a candidate species. Here a tie is between deposits
+#' of the SAME taxon -- independently submitted mitogenomes of one well-studied
+#' species, which tie at or near 100% identity -- and those are precisely what
+#' this cap exists to collapse. Keeping them would preserve no candidate species
+#' and would restore the crowding-out of real congeners the cap was added to
+#' prevent.
+#'
+#' What is fixed here is the other half of the defect: WHICH of the tied rows
+#' survives. \code{order()} is stable, so ordering by identity alone left that
+#' to the row's position in the BLAST output. Ordering by identity and then by
+#' accession makes the retained row a property of the data.
+#' @noRd
+.cap_hits_per_taxon <- function(df, max_n) {
+  if (is.null(max_n) || is.na(max_n) || nrow(df) == 0L) {
+    return(df)
+  }
+  tie_key <- if ("sacc" %in% names(df)) {
+    as.character(df$sacc)
+  } else if ("sseqid" %in% names(df)) {
+    as.character(df$sseqid)
+  } else {
+    rownames(df)
+  }
+  df <- df[order(-df$pident, tie_key), , drop = FALSE]
+  utils::head(df, max_n)
+}
+
+#' Keep the top \code{max_n} hits by identity, plus every hit tied with the last
+#' one kept
+#'
+#' A row-count cut cannot do this: \code{order()} is stable, so hits tied at the
+#' boundary are kept or dropped by their position in the BLAST output, and the
+#' retained set then depends on input row order. Cutting at the boundary SCORE
+#' makes it a property of the data instead.
+#'
+#' \code{max_n} is therefore a floor, not a hard cap: the result can exceed it
+#' when the \code{max_n}-th identity is tied. The overshoot is bounded by what
+#' BLAST returned, hence by \code{max_target_seqs}; a tie BLAST itself truncated
+#' cannot be recovered here.
+#'
+#' One definition for both the per-taxon and the per-query cap, which had the
+#' same rule written out twice.
+#'
+#' Measured on Mugu's saved hits (622 ASVs, one read, no network): of the 93 ASVs
+#' the per-query cap acted on, 89 had the cut land inside a run of equal
+#' identities and 48 had all twenty kept hits at a single identity, median
+#' lowest-kept identity 98.99. The row-count cut was splitting ties among
+#' near-perfect matches in almost every case where it fired.
+#' @noRd
+.cap_hits_keeping_ties <- function(df, max_n) {
+  if (is.null(max_n) || is.na(max_n) || nrow(df) == 0L) {
+    return(df)
+  }
+  df <- df[order(-df$pident), , drop = FALSE]
+  if (nrow(df) <= max_n) {
+    return(df)
+  }
+  df[df$pident >= df$pident[max_n], , drop = FALSE]
+}
 
 #' Thin wrapper around Sys.sleep() for NCBI rate-limit pauses
 #'
@@ -1837,7 +1914,7 @@ blast_sequences <- function(seq_df,
     )
     hits <- do.call(rbind, lapply(
       split(hits, list(hits$qseqid, taxon_key), drop = TRUE),
-      function(g) utils::head(g[order(-g$pident), ], max_hits_per_taxon)
+      function(g) .cap_hits_per_taxon(g, max_hits_per_taxon)
     ))
     rownames(hits) <- NULL
   }
@@ -1855,8 +1932,7 @@ blast_sequences <- function(seq_df,
   # 5. Safety cap
   if (nrow(hits) > 0L) {
     hits <- do.call(rbind, lapply(split(hits, hits$qseqid), function(qhits) {
-      qhits <- qhits[order(-qhits$pident), ]
-      utils::head(qhits, max_hits)
+      .cap_hits_keeping_ties(qhits, max_hits)
     }))
     rownames(hits) <- NULL
   }
