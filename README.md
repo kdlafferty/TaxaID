@@ -966,7 +966,7 @@ describe each in full.
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
 | TaxaTools   | 57                 | 34         | Yes      |
-| TaxaFetch   | 32                 | 27         | Yes      |
+| TaxaFetch   | 32                 | 28         | Yes      |
 | TaxaHabitat | 15                 | 12         | Yes      |
 | TaxaMatch   | 30                 | 22         | Yes      |
 | TaxaLikely  | 33                 | 43         | Yes      |

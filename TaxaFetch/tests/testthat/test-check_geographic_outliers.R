@@ -489,7 +489,7 @@ test_that("a verdict cache file matching this call's key but holding none of its
   key_hash <- .outlier_verdict_hash(
     rare_keys = 999L, year_range = .gbif_default_year_range(),
     method = "distance", min_occs = 1L, tdi = 1000, mltpl = 5,
-    local_ids = "q1", on_cap = "escalate"
+    local_ids = "q1", on_cap = "warn"
   )
   stale_path <- file.path(cd, sprintf("gbif_outlier_verdicts_%s.rds", key_hash))
   saveRDS(
@@ -498,7 +498,9 @@ test_that("a verdict cache file matching this call's key but holding none of its
   )
 
   expect_message(
-    out <- check_geographic_outliers(local, min_local_n = 5L, cache_dir = cd, min_occs = 1L),
+    out <- check_geographic_outliers(
+      local, min_local_n = 5L, cache_dir = cd, min_occs = 1L, on_cap = "warn"
+    ),
     "stale or foreign cache"
   )
   expect_equal(out$outlier_status, "consistent")
@@ -510,8 +512,9 @@ test_that("a verdict cache file matching this call's key but holding none of its
 # =============================================================================
 # Fewer than 50 rare species take the direct API, which caps each key at
 # 10,000 records in GBIF's return order. The verdict is measured against that
-# cloud, so a prefix-derived verdict must be escalated, or at least reported,
-# and never served from cache to a call that asked for the full cloud.
+# cloud, so a prefix-derived verdict must be reported, escalated when the
+# caller asks for that, and never served from cache to a call that asked for
+# the full cloud.
 
 .cap_glob <- function() {
   data.frame(
@@ -534,16 +537,20 @@ test_that("a verdict cache file matching this call's key but holding none of its
   cd
 }
 
-test_that("on_cap defaults to 'escalate' and is forwarded to the global fetch", {
+test_that("on_cap defaults to 'warn' and is forwarded to the global fetch", {
+  # The default is the fetcher's default, so a plain call reports a truncated
+  # cloud and keeps it; submitting a GBIF download is opt-in. See
+  # test-gbif-oncap-default.R for the two defaults agreeing and for what each
+  # value does once it reaches get_gbif_occurrences().
   seen <- new.env()
   local_mocked_bindings(get_gbif_occurrences = function(..., on_cap) {
     seen$on_cap <- on_cap
     .cap_glob()
   })
   suppressMessages(do.call(check_geographic_outliers, .cap_args(.cap_dir())))
-  expect_identical(seen$on_cap, "escalate")
-  suppressMessages(do.call(check_geographic_outliers, .cap_args(.cap_dir(), on_cap = "warn")))
   expect_identical(seen$on_cap, "warn")
+  suppressMessages(do.call(check_geographic_outliers, .cap_args(.cap_dir(), on_cap = "escalate")))
+  expect_identical(seen$on_cap, "escalate")
 })
 
 test_that("keys left truncated are reported on the result, and again on a cache hit", {
