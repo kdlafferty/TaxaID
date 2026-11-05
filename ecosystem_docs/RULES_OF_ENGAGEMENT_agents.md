@@ -71,11 +71,14 @@ that a test suite does not catch.
 
 16. **Verify against the generated artefact, not the source you edited.** A
     roxygen claim is not visible until you check the `.Rd`, and a pack claim is
-    not visible until you grep the pack. Per function, `TaxaWizard:::.pack_*`
-    (`TaxaWizard/R/pack.R:374-390`) emits the signature, `\title`,
-    `\description`, the `\arguments` table, `\value`, then **`@details` in
-    full** under `#### Details`, then **every titled `@section` in full** under
-    its own `#### <title>`. Nothing is truncated and nothing is dropped. So a
+    not visible until you grep the pack. Per function the pack carries the
+    signature, `\title`, `\description` **as its first paragraph only and at
+    most 600 characters** (`TaxaWizard/R/registry.R:466`), then the
+    `\arguments` table, `\value`, `@details` and **every titled `@section`,
+    all four in full** (`R/pack.R:374-390`; `\value` is deliberately uncapped,
+    and `registry.R:468-481` records why -- a prefix of an enumeration is not a
+    shorter version of it but a wrong one). So the only thing shortened is the
+    description, and a
     measurement buried in `@details` DOES reach the pack, and thence any model
     advising a user: there are 132 `#### Details` sections in the committed pack
     and `"Measured on"` appears in seven of the nine `CONTEXT_*.md` files.
