@@ -16,7 +16,7 @@ build_sequence_matrix(
   verbose = TRUE,
   by_genus = FALSE,
   max_foreign_reps_per_genus = 20L,
-  pair_retention = c("all", "best_per_partner", "best_per_class"),
+  pair_retention = c("all", "best_per_partner", "best_per_class", "best2_per_partner"),
   min_pair_coverage = 0.8,
   memory_budget_fraction = 0.7,
   seed = NULL
@@ -140,19 +140,23 @@ across genera even though it is no longer exhaustive. \code{0L} disables the
 augmentation entirely (representative-only alignment -- see the
 \verb{@section} below for why that understates \code{gap_logit}).}
 
-\item{pair_retention}{\code{"all"} (default), \code{"best_per_partner"} or
-\code{"best_per_class"}. Which pairs within \code{max_dist} are returned. \code{"all"}
-returns every pair. The other two return every within-species pair
-plus, for each sequence and each stratum of its cross-species partners,
-at most two pairs: the best-scoring one whose \code{coverage} clears
-\code{min_pair_coverage}, and the best-scoring one regardless of coverage.
-Under \code{"best_per_partner"} the stratum is the partner species inside the
-sequence's own genus and the partner family (or genus when no family
-rank is given) outside it; under \code{"best_per_class"} it is the pair type
-itself -- congeneric, confamilial or cross-family -- so a sequence keeps
-at most six cross-species pairs in total. See \verb{@section Pair retention}
-for why both are exact for \code{\link[=train_likelihood_model]{train_likelihood_model()}} and what each
-changes elsewhere.}
+\item{pair_retention}{\code{"all"} (default), \code{"best_per_partner"},
+\code{"best_per_class"} or \code{"best2_per_partner"}. Which pairs within
+\code{max_dist} are returned. \code{"all"} returns every pair. The others return
+every within-species pair plus, for each sequence and each stratum of
+its cross-species partners, at most two pairs: the best-scoring one
+whose \code{coverage} clears \code{min_pair_coverage}, and the best-scoring one
+regardless of coverage. Under \code{"best_per_partner"} the stratum is the
+partner species inside the sequence's own genus and the partner family
+(or genus when no family rank is given) outside it; under
+\code{"best_per_class"} it is the pair type itself -- congeneric, confamilial
+or cross-family -- so a sequence keeps at most six cross-species pairs in
+total. \code{"best2_per_partner"} is \code{"best_per_partner"} plus the best
+floored pair of each out-of-genus family's SECOND partner species, which
+is what H3's gap needs: it is the only policy other than \code{"all"} under
+which \code{\link[=train_likelihood_model]{train_likelihood_model()}} measures H3's gap rather than assuming
+it. See \verb{@section Pair retention} for which quantities each policy
+reproduces exactly and what each changes elsewhere.}
 
 \item{min_pair_coverage}{Numeric in (0, 1] or \code{NULL} (default \code{0.8}). Only
 used when \code{pair_retention} is not \code{"all"}: the coverage floor the
@@ -233,8 +237,24 @@ confusion-risk curves read the best match per pair type (within-species,
 congeneric, confamilial, cross-family); a singleton takes its single best
 partner. Every one of those is a maximum, and the maximum over a union of
 strata is the maximum of the per-stratum maxima -- so keeping the two
-best pairs per (sequence, partner stratum) reproduces each of them exactly
-and the trained model is identical to the one trained on \code{"all"}.
+best pairs per (sequence, partner stratum) reproduces each of them exactly.
+
+That argument covers the SCORE maxima, and only those. H2's and H3's gap
+parameters are a mean and a variance of \code{top1 - top2} over each
+reference's partner SPECIES, which are moments of the retained
+distribution rather than maxima of it. H2's survives \code{"best_per_partner"},
+because the in-genus stratum is the partner species and an out-of-genus
+runner-up is necessarily its own family's best. H3's does not: with the
+reference's own genus dropped, its runner-up is often a SECOND species of
+the reference's own family, which the family stratum discards. So
+\code{train_likelihood_model()} ASSUMES H3's gap under \code{"best_per_partner"} and
+\code{"best_per_class"} and says so in \code{Stats$h3_gap_source}.
+\code{"best2_per_partner"} keeps the top two partner species of each
+out-of-genus family and so recovers that runner-up -- the true runner-up
+is either a second species of the reference's own family or another
+family's best, and both are retained -- which makes the trained model
+identical to \code{"all"} in every slot, H3's gap included. Its retained set is
+a superset of \code{"best_per_partner"}'s.
 Within-species pairs are always kept in full: they are a few percent of
 the table, and \code{TaxaMatch::corroborate_references_locally()} counts
 distinct conspecific partners and their submission independence, which
@@ -244,6 +264,8 @@ What changes: under \code{"best_per_partner"} the table is smaller by roughly
 the mean number of sequences per partner species inside a genus (bounded
 above by \code{max_seqs_per_taxon}), so same-genus rows grow as sequences
 times species per genus instead of sequences squared; under
+\code{"best2_per_partner"} adds at most one further pair per (sequence,
+out-of-genus family) on top of that; under
 \code{"best_per_class"} they grow as sequences alone, and within-species pairs
 (quadratic per species, bounded by \code{max_seqs_per_taxon}) become the
 largest term. Alignment cost is unchanged either way. The row count
