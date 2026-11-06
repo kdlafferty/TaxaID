@@ -938,7 +938,7 @@ test_that(".best_per_partner_keep: keeps every conspecific pair and at most two 
   expect_equal(keep_na, c(TRUE, TRUE, TRUE, FALSE, TRUE, TRUE))
 })
 
-for (policy in c("best_per_partner", "best_per_class")) test_that(sprintf("build_sequence_matrix: %s is a subset of all, keeps every conspecific pair, and trains identically", policy), {
+for (policy in c("best_per_partner", "best_per_class", "best2_per_partner")) test_that(sprintf("build_sequence_matrix: %s is a subset of all, keeps every conspecific pair, and trains identically", policy), {
   skip_if_not_installed("DECIPHER")
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("lme4")
@@ -966,14 +966,23 @@ for (policy in c("best_per_partner", "best_per_class")) test_that(sprintf("build
   expect_setequal(key(consp_thin), key(consp_full))
 
   cross <- thin[thin$species.x != thin$species.y, ]
-  stratum <- if (policy == "best_per_partner") {
+  stratum <- if (policy %in% c("best_per_partner", "best2_per_partner")) {
     ifelse(cross$genus.x == cross$genus.y, cross$species.y, cross$family.y)
   } else {
     ifelse(cross$genus.x == cross$genus.y, "congeneric",
       ifelse(cross$family.x == cross$family.y, "confamilial", "crossfamily")
     )
   }
-  expect_true(all(table(paste(cross$id_x, stratum)) <= 2L))
+  # best2_per_partner spends one extra slot per out-of-genus stratum on that
+  # family's second partner species; in-genus strata keep the same bound.
+  bound <- if (identical(policy, "best2_per_partner")) {
+    ifelse(cross$genus.x == cross$genus.y, 2L, 3L)
+  } else {
+    rep(2L, nrow(cross))
+  }
+  tab <- table(paste(cross$id_x, stratum))
+  max_bound <- tapply(bound, paste(cross$id_x, stratum), max)
+  expect_true(all(tab <= max_bound[names(tab)]))
   if (policy == "best_per_class") expect_lte(max(table(cross$id_x)), 6L)
 
   # Every per-sequence maximum train_likelihood_model() reads is preserved,
@@ -990,7 +999,7 @@ for (policy in c("best_per_partner", "best_per_class")) test_that(sprintf("build
   expect_equal(mod_thin$H1_Sigma, mod_full$H1_Sigma)
   # The H2 gap needs each reference's runner-up congener SPECIES, which
   # best_per_class does not keep; that policy falls back to the assumed gap.
-  if (policy == "best_per_partner") {
+  if (policy %in% c("best_per_partner", "best2_per_partner")) {
     expect_equal(mod_thin$H2, mod_full$H2)
   } else {
     keep <- setdiff(names(mod_full$H2), c("sigma", "gap_mean"))
@@ -1128,4 +1137,183 @@ test_that("seed rejects a value that cannot seed", {
     build_sequence_matrix(df, c("genus", "species"), seed = NA),
     "seed must be NULL or a single non-NA number"
   )
+})
+
+test_that(".best_per_partner_keep: by = \"partner2\" keeps the SECOND partner species, not the second pair", {
+  # One query, its own conspecific pair, and four out-of-genus pairs in family
+  # FB: species "B c" twice, then "B d" and "B e" once each. The unit of the
+  # rule is the partner SPECIES: "B c"'s second pair is a second PAIR of a
+  # species already represented, so it supplies no runner-up and must not be
+  # what the extra slot is spent on.
+  x <- rep("x", 5L)
+  sp_x <- rep("A a", 5L)
+  sp_y <- c("A a", "B c", "B c", "B d", "B e")
+  gn_x <- rep("A", 5L)
+  gn_y <- c("A", "B", "B", "B", "B")
+  fam_x <- rep("FA", 5L)
+  fam_y <- c("FA", "FB", "FB", "FB", "FB")
+  p <- c(0.99, 0.97, 0.95, 0.90, 0.85)
+  cov <- rep(0.9, 5L)
+
+  # "partner": the FB stratum keeps the best overall and the best clearing the
+  # floor, which are the same row -- so no second species survives at all.
+  expect_equal(
+    .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+      p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner"
+    ),
+    c(TRUE, TRUE, FALSE, FALSE, FALSE)
+  )
+  # "partner2": "B c" (0.97) and "B d" (0.90) are the top two SPECIES, so
+  # row 4 is kept. Row 3 -- "B c"'s second pair, and the second best pair in
+  # the stratum -- is not.
+  expect_equal(
+    .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+      p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner2"
+    ),
+    c(TRUE, TRUE, FALSE, TRUE, FALSE)
+  )
+})
+
+test_that(".best_per_partner_keep: by = \"partner2\" ranks the second species on FLOORED pairs", {
+  # "B c" scores highest but its only pair fails the coverage floor, so it is
+  # the unfloored best (kept as before) while the top two FLOORED species are
+  # "B d" and "B e". All three rows survive: the rule adds the floored
+  # runner-up without giving up the unfloored maximum.
+  x <- rep("x", 4L)
+  sp_x <- rep("A a", 4L)
+  sp_y <- c("A a", "B c", "B d", "B e")
+  gn_x <- rep("A", 4L)
+  gn_y <- c("A", "B", "B", "B")
+  fam_x <- rep("FA", 4L)
+  fam_y <- c("FA", "FB", "FB", "FB")
+  p <- c(0.99, 0.97, 0.90, 0.85)
+  cov <- c(0.9, 0.3, 0.9, 0.9)
+
+  expect_equal(
+    .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+      p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner"
+    ),
+    c(TRUE, TRUE, TRUE, FALSE)
+  )
+  expect_equal(
+    .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+      p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner2"
+    ),
+    c(TRUE, TRUE, TRUE, TRUE)
+  )
+  # With no floor every pair is eligible, so the top two species are "B c"
+  # and "B d" and the lowest-scoring species drops out.
+  expect_equal(
+    .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+      p, cov, tie = seq_along(x), min_pair_coverage = NULL, by = "partner2"
+    ),
+    c(TRUE, TRUE, TRUE, FALSE)
+  )
+})
+
+test_that(".best_per_partner_keep: by = \"partner2\" breaks a species tie deterministically", {
+  # "B d" and "B e" tie on score and coverage, so `tie` decides which is the
+  # second species. The same inputs must always give the same answer.
+  x <- rep("x", 4L)
+  sp_x <- rep("A a", 4L)
+  sp_y <- c("A a", "B c", "B d", "B e")
+  gn_x <- rep("A", 4L)
+  gn_y <- c("A", "B", "B", "B")
+  fam_x <- rep("FA", 4L)
+  fam_y <- c("FA", "FB", "FB", "FB")
+  p <- c(0.99, 0.97, 0.90, 0.90)
+  cov <- rep(0.9, 4L)
+  once <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner2"
+  )
+  twice <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner2"
+  )
+  expect_equal(once, c(TRUE, TRUE, TRUE, FALSE))
+  expect_identical(once, twice)
+  # Reversing `tie` picks the other tied species, which is what makes the
+  # choice `tie`'s and not the row order's.
+  rev_tie <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = rev(seq_along(x)), min_pair_coverage = 0.8, by = "partner2"
+  )
+  expect_equal(rev_tie, c(TRUE, TRUE, FALSE, TRUE))
+})
+
+test_that("build_sequence_matrix: best2_per_partner's rows are a superset of best_per_partner's", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- .make_retention_df()
+  rs <- c("family", "genus", "species")
+  set.seed(11L)
+  bpp <- build_sequence_matrix(df, rs,
+    max_dist = 1.0, by_genus = TRUE, verbose = FALSE,
+    pair_retention = "best_per_partner", min_pair_coverage = 0.8
+  )
+  set.seed(11L)
+  b2 <- build_sequence_matrix(df, rs,
+    max_dist = 1.0, by_genus = TRUE, verbose = FALSE,
+    pair_retention = "best2_per_partner", min_pair_coverage = 0.8
+  )
+  key <- function(m) paste(m$id_x, m$id_y)
+  expect_true(all(key(bpp) %in% key(b2)))
+  expect_gte(nrow(b2), nrow(bpp))
+  # The extra rows are out-of-genus: inside the genus the stratum is already
+  # the partner species, so there is nothing for the rule to add.
+  extra <- b2[!key(b2) %in% key(bpp), , drop = FALSE]
+  if (nrow(extra) > 0L) expect_true(all(extra$genus.x != extra$genus.y))
+  # In-genus strata stay at two rows; out-of-genus strata gain at most one.
+  cross <- b2[b2$species.x != b2$species.y, , drop = FALSE]
+  in_gn <- cross[cross$genus.x == cross$genus.y, , drop = FALSE]
+  out_gn <- cross[cross$genus.x != cross$genus.y, , drop = FALSE]
+  if (nrow(in_gn) > 0L) expect_true(all(table(paste(in_gn$id_x, in_gn$species.y)) <= 2L))
+  if (nrow(out_gn) > 0L) expect_true(all(table(paste(out_gn$id_x, out_gn$family.y)) <= 3L))
+})
+
+test_that("best2_per_partner trains the same model as \"all\", H3's measured gap included", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  skip_if_not_installed("lme4")
+  df <- .make_retention_df()
+  rs <- c("family", "genus", "species")
+  bld <- function(policy) {
+    set.seed(11L)
+    if (identical(policy, "all")) {
+      build_sequence_matrix(df, rs, max_dist = 1.0, by_genus = TRUE, verbose = FALSE)
+    } else {
+      build_sequence_matrix(df, rs,
+        max_dist = 1.0, by_genus = TRUE, verbose = FALSE,
+        pair_retention = policy, min_pair_coverage = 0.8
+      )
+    }
+  }
+  ff <- function(m) suppressMessages(suppressWarnings(train_likelihood_model(m,
+    rank_system = rs, min_pair_coverage = 0.8, score_transform = "sqrt_mismatch"
+  )))
+  mod_all <- ff(bld("all"))
+  mod_b2 <- ff(bld("best2_per_partner"))
+  mod_bpp <- ff(bld("best_per_partner"))
+
+  # The comparison is only meaningful if "all" measured H3's gap at all: with
+  # fewer than 10 draws .gap_fit() assumes it, and then every policy would
+  # agree for a reason that has nothing to do with retention.
+  expect_identical(mod_all$Stats$h3_gap_source, "measured")
+
+  # best_per_partner cannot recover H3's runner-up partner species, so it
+  # assumes the gap and says so. This is the behaviour best2 exists to fix.
+  expect_match(mod_bpp$Stats$h3_gap_source, "best_per_partner")
+  expect_identical(mod_bpp$H3$gap_mean, 0)
+
+  # best2_per_partner keeps that runner-up, so H3 is measured and identical.
+  expect_identical(mod_b2$Stats$h3_gap_source, "measured")
+  expect_equal(mod_b2$H3, mod_all$H3)
+  expect_equal(mod_b2$H3$gap_mean, mod_all$H3$gap_mean)
+  expect_equal(mod_b2$Stats$n_h3_gap, mod_all$Stats$n_h3_gap)
+
+  # And it keeps everything best_per_partner already got right.
+  expect_equal(mod_b2$H2, mod_all$H2)
+  expect_equal(mod_b2$H1_Lookup, mod_all$H1_Lookup)
+  expect_equal(mod_b2$H1_Global_Mu, mod_all$H1_Global_Mu)
+  expect_equal(mod_b2$H1_Sigma, mod_all$H1_Sigma)
+  expect_equal(mod_b2$H2_Lookup, mod_all$H2_Lookup)
+  expect_equal(mod_b2$Confusion_Risk_Curves, mod_all$Confusion_Risk_Curves)
 })

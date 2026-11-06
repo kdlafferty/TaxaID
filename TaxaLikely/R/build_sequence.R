@@ -140,19 +140,23 @@ utils::globalVariables(c(
 #'   across genera even though it is no longer exhaustive. `0L` disables the
 #'   augmentation entirely (representative-only alignment -- see the
 #'   `@section` below for why that understates `gap_logit`).
-#' @param pair_retention `"all"` (default), `"best_per_partner"` or
-#'   `"best_per_class"`. Which pairs within `max_dist` are returned. `"all"`
-#'   returns every pair. The other two return every within-species pair
-#'   plus, for each sequence and each stratum of its cross-species partners,
-#'   at most two pairs: the best-scoring one whose `coverage` clears
-#'   `min_pair_coverage`, and the best-scoring one regardless of coverage.
-#'   Under `"best_per_partner"` the stratum is the partner species inside the
-#'   sequence's own genus and the partner family (or genus when no family
-#'   rank is given) outside it; under `"best_per_class"` it is the pair type
-#'   itself -- congeneric, confamilial or cross-family -- so a sequence keeps
-#'   at most six cross-species pairs in total. See `@section Pair retention`
-#'   for why both are exact for [train_likelihood_model()] and what each
-#'   changes elsewhere.
+#' @param pair_retention `"all"` (default), `"best_per_partner"`,
+#'   `"best_per_class"` or `"best2_per_partner"`. Which pairs within
+#'   `max_dist` are returned. `"all"` returns every pair. The others return
+#'   every within-species pair plus, for each sequence and each stratum of
+#'   its cross-species partners, at most two pairs: the best-scoring one
+#'   whose `coverage` clears `min_pair_coverage`, and the best-scoring one
+#'   regardless of coverage. Under `"best_per_partner"` the stratum is the
+#'   partner species inside the sequence's own genus and the partner family
+#'   (or genus when no family rank is given) outside it; under
+#'   `"best_per_class"` it is the pair type itself -- congeneric, confamilial
+#'   or cross-family -- so a sequence keeps at most six cross-species pairs in
+#'   total. `"best2_per_partner"` is `"best_per_partner"` plus the best
+#'   floored pair of each out-of-genus family's SECOND partner species, which
+#'   is what H3's gap needs: it is the only policy other than `"all"` under
+#'   which [train_likelihood_model()] measures H3's gap rather than assuming
+#'   it. See `@section Pair retention` for which quantities each policy
+#'   reproduces exactly and what each changes elsewhere.
 #' @param min_pair_coverage Numeric in (0, 1] or `NULL` (default `0.8`). Only
 #'   used when `pair_retention` is not `"all"`: the coverage floor the
 #'   retained best-clearing pair is chosen under. Must equal the
@@ -185,8 +189,24 @@ utils::globalVariables(c(
 #' congeneric, confamilial, cross-family); a singleton takes its single best
 #' partner. Every one of those is a maximum, and the maximum over a union of
 #' strata is the maximum of the per-stratum maxima -- so keeping the two
-#' best pairs per (sequence, partner stratum) reproduces each of them exactly
-#' and the trained model is identical to the one trained on `"all"`.
+#' best pairs per (sequence, partner stratum) reproduces each of them exactly.
+#'
+#' That argument covers the SCORE maxima, and only those. H2's and H3's gap
+#' parameters are a mean and a variance of `top1 - top2` over each
+#' reference's partner SPECIES, which are moments of the retained
+#' distribution rather than maxima of it. H2's survives `"best_per_partner"`,
+#' because the in-genus stratum is the partner species and an out-of-genus
+#' runner-up is necessarily its own family's best. H3's does not: with the
+#' reference's own genus dropped, its runner-up is often a SECOND species of
+#' the reference's own family, which the family stratum discards. So
+#' `train_likelihood_model()` ASSUMES H3's gap under `"best_per_partner"` and
+#' `"best_per_class"` and says so in `Stats$h3_gap_source`.
+#' `"best2_per_partner"` keeps the top two partner species of each
+#' out-of-genus family and so recovers that runner-up -- the true runner-up
+#' is either a second species of the reference's own family or another
+#' family's best, and both are retained -- which makes the trained model
+#' identical to `"all"` in every slot, H3's gap included. Its retained set is
+#' a superset of `"best_per_partner"`'s.
 #' Within-species pairs are always kept in full: they are a few percent of
 #' the table, and `TaxaMatch::corroborate_references_locally()` counts
 #' distinct conspecific partners and their submission independence, which
@@ -196,6 +216,8 @@ utils::globalVariables(c(
 #' the mean number of sequences per partner species inside a genus (bounded
 #' above by `max_seqs_per_taxon`), so same-genus rows grow as sequences
 #' times species per genus instead of sequences squared; under
+#' `"best2_per_partner"` adds at most one further pair per (sequence,
+#' out-of-genus family) on top of that; under
 #' `"best_per_class"` they grow as sequences alone, and within-species pairs
 #' (quadratic per species, bounded by `max_seqs_per_taxon`) become the
 #' largest term. Alignment cost is unchanged either way. The row count
@@ -320,7 +342,8 @@ build_sequence_matrix <- function(reference_df,
                                   verbose = TRUE,
                                   by_genus = FALSE,
                                   max_foreign_reps_per_genus = 20L,
-                                  pair_retention = c("all", "best_per_partner", "best_per_class"),
+                                  pair_retention = c("all", "best_per_partner", "best_per_class",
+                                                     "best2_per_partner"),
                                   min_pair_coverage = 0.8,
                                   memory_budget_fraction = 0.7,
                                   seed = NULL) {
@@ -728,7 +751,13 @@ build_sequence_matrix <- function(reference_df,
     genus = if (!identical(finest, "genus")) .col("genus") else NULL,
     family = if (!identical(finest, "family")) .col("family") else NULL,
     min_pair_coverage = min_pair_coverage,
-    by = if (identical(policy, "best_per_class")) "class" else "partner"
+    by = if (identical(policy, "best_per_class")) {
+      "class"
+    } else if (identical(policy, "best2_per_partner")) {
+      "partner2"
+    } else {
+      "partner"
+    }
   )
 }
 
@@ -744,6 +773,12 @@ build_sequence_matrix <- function(reference_df,
 #' regardless of coverage (the same row when they coincide). Ties break on
 #' higher coverage, then on `tie` (any orderable vector, e.g. the partner's
 #' index or id) so the result is deterministic.
+#'
+#' With `by = "partner2"` one more row per out-of-genus stratum survives: the
+#' best floored pair of that family's SECOND partner species, which is what
+#' H3's gap needs. The unit is the species, not the pair, because the top two
+#' pairs of a family can both belong to one species and so supply no
+#' runner-up.
 #'
 #' Why this is lossless for the consumers of the pair table: every quantity
 #' `train_likelihood_model()` reads from a cross-species pair is a per-query
@@ -768,7 +803,7 @@ build_sequence_matrix <- function(reference_df,
 #' @noRd
 .best_per_partner_keep <- function(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
                                    p_match, coverage, tie, min_pair_coverage,
-                                   by = c("partner", "class")) {
+                                   by = c("partner", "class", "partner2")) {
   by <- match.arg(by)
   n <- length(x)
   if (n == 0L) {
@@ -780,7 +815,7 @@ build_sequence_matrix <- function(reference_df,
   # Stratum for a cross-species pair: partner species inside the genus,
   # partner family (coarsest available) outside it. The prefix keeps a
   # species-stratum key from ever colliding with a family/genus-stratum key.
-  stratum <- if (by == "partner") {
+  stratum <- if (by %in% c("partner", "partner2")) {
     cross_stratum <- if (!is.null(fam_y)) {
       paste0("f:", fam_y)
     } else if (has_gn) {
@@ -814,6 +849,39 @@ build_sequence_matrix <- function(reference_df,
   if (!is.null(min_pair_coverage)) {
     ok <- ord[cov_ord[ord] >= min_pair_coverage]
     keep[ok[!duplicated(key[ok])]] <- TRUE
+  }
+  if (identical(by, "partner2")) {
+    # Outside the genus the stratum is the partner FAMILY, so the rule above
+    # keeps only that family's best partner species. H3's gap is the best
+    # out-of-genus partner species' score minus the RUNNER-UP partner
+    # species', and inside the reference's own family that runner-up is a
+    # SECOND species of it -- dropped under "best_per_partner", which is why
+    # train_likelihood_model() has to assume H3's gap there. So keep the best
+    # floored pair of the top TWO partner species per (query, out-of-genus
+    # family). Inside the genus the stratum is already the partner species, so
+    # those per-species maxima are complete and nothing is added.
+    #
+    # The unit is the partner SPECIES, not the pair: the top two PAIRS of a
+    # family can both belong to one species, which adds no runner-up at all,
+    # because every quantity the gap reads is a per-species maximum.
+    oog <- cand[!same_gn[cand]]
+    flo <- if (is.null(min_pair_coverage)) {
+      oog
+    } else {
+      oog[cov_ord[oog] >= min_pair_coverage]
+    }
+    if (length(flo) > 0L) {
+      # One representative per (query, family, partner species): its best
+      # floored pair.
+      sp_ord <- flo[order(
+        key[flo], sp_y[flo], -p_match[flo], -cov_ord[flo], tie[flo]
+      )]
+      reps <- sp_ord[!duplicated(paste(key[sp_ord], sp_y[sp_ord], sep = "\r"))]
+      # Of those representatives, the top two species per (query, family).
+      two <- reps[order(key[reps], -p_match[reps], -cov_ord[reps], tie[reps])]
+      rank_in_stratum <- stats::ave(seq_along(two), key[two], FUN = seq_along)
+      keep[two[rank_in_stratum <= 2L]] <- TRUE
+    }
   }
   keep
 }
