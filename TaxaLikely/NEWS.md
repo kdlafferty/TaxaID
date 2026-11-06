@@ -1,6 +1,26 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `build_sequence_matrix()` gains `pair_retention = "best2_per_partner"`,
+  which keeps every pair `"best_per_partner"` keeps plus the best floored pair
+  of each out-of-genus family's second partner species. H3's gap parameters
+  are the mean and variance of each reference's best out-of-genus partner
+  species' score minus its runner-up's, and with the reference's own genus
+  dropped that runner-up is often a second species of its own family, which a
+  family stratum holding one species per family discards. So
+  `train_likelihood_model()` assumes H3's gap under `"best_per_partner"` and
+  `"best_per_class"`, and measures it under `"best2_per_partner"`:
+  `Stats$h3_gap_source` reports which. A model trained on a
+  `"best2_per_partner"` table is identical to one trained on `"all"` in every
+  slot, H3's gap included, at roughly `"best_per_partner"`'s size.
+  `evaluate_likelihoods()` reads `H3$gap_mean` as the centre of H3's gap
+  dimension, so the value a model carries there reaches its H3 likelihoods and
+  its H1/H3 ratios.
+* `build_sequence_matrix()`'s pair-retention documentation states which
+  quantities a thinned table reproduces exactly. The per-stratum maxima
+  argument covers the score maxima; a gap mean and variance are moments of the
+  retained distribution rather than maxima of it, and only
+  `"best2_per_partner"` and `"all"` supply the partner species H3's needs.
 * `evaluate_likelihoods()` warns when the model holds no ring at a rank the
   call asks for, naming that rank and the rank the ladder stops at. A model can
   express an unreferenced hypothesis only where it holds a ring, and a ring is

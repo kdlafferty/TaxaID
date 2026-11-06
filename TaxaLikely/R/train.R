@@ -1632,13 +1632,17 @@ train_likelihood_model <- function(raw_df,
   # table (build_sequence_matrix(pair_retention =)) keeps it only for some
   # strata: "best_per_partner" keeps every congener species and the best of
   # each other family, which recovers the H2 runner-up exactly but not the H3
-  # one; "best_per_class" keeps neither. Where it is not exact the earlier
+  # one; "best2_per_partner" keeps the top two species of each out-of-genus
+  # family as well, which recovers the H3 runner-up too, because it is either
+  # a second species of the reference's own family or another family's best;
+  # "best_per_class" keeps neither. Where it is not exact the earlier
   # assumption is kept, so a thinned table trains the same model as "all"
   # wherever it can.
   retention <- attr(raw_df, "pair_retention")$policy %||% "all"
   .assumed <- function(why) list(mean = 0, var = 1.0 * unit_ratio^2, n = 0L, source = why)
+  h3_exact <- c("all", "best2_per_partner")
   if (retention == "best_per_class") h2_gap <- .assumed("assumed (pair_retention = best_per_class)")
-  if (retention != "all") h3_gap <- .assumed(sprintf("assumed (pair_retention = %s)", retention))
+  if (!retention %in% h3_exact) h3_gap <- .assumed(sprintf("assumed (pair_retention = %s)", retention))
 
   # ---- IDENTICAL-BARCODE CONGENERS ------------------------------------------
   # Some congeners share an identical barcode; a query from such an unsequenced
