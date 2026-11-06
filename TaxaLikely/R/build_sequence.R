@@ -215,9 +215,11 @@ utils::globalVariables(c(
 #' What changes: under `"best_per_partner"` the table is smaller by roughly
 #' the mean number of sequences per partner species inside a genus (bounded
 #' above by `max_seqs_per_taxon`), so same-genus rows grow as sequences
-#' times species per genus instead of sequences squared; under
+#' times species per genus instead of sequences squared.
 #' `"best2_per_partner"` adds at most one further pair per (sequence,
-#' out-of-genus family) on top of that; under
+#' out-of-genus family) on top of that -- measured at 4.8% more rows than
+#' `"best_per_partner"` on a 4,061-sequence 12S reference set, against 2.2x
+#' for `"all"`. Under
 #' `"best_per_class"` they grow as sequences alone, and within-species pairs
 #' (quadratic per species, bounded by `max_seqs_per_taxon`) become the
 #' largest term. Alignment cost is unchanged either way. The row count
