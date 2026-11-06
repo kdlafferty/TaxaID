@@ -1317,3 +1317,26 @@ test_that("best2_per_partner trains the same model as \"all\", H3's measured gap
   expect_equal(mod_b2$H2_Lookup, mod_all$H2_Lookup)
   expect_equal(mod_b2$Confusion_Risk_Curves, mod_all$Confusion_Risk_Curves)
 })
+
+test_that(".best_per_partner_keep: by = \"partner2\" does not spend the extra slot on an unlabelled partner", {
+  # "B ?" has no finest-rank label and outscores the real second species
+  # "B d". train_likelihood_model() drops unlabelled partners before taking
+  # per-species maxima, so letting one hold the extra slot would cost the
+  # runner-up that makes H3's gap measurable -- the exactness would be
+  # claimed and not delivered.
+  x <- rep("x", 5L)
+  sp_x <- rep("A a", 5L)
+  sp_y <- c("A a", "B c", NA, "B d", "B e")
+  gn_x <- rep("A", 5L)
+  gn_y <- c("A", "B", "B", "B", "B")
+  fam_x <- rep("FA", 5L)
+  fam_y <- c("FA", "FB", "FB", "FB", "FB")
+  p <- c(0.99, 0.97, 0.95, 0.90, 0.85)
+  cov <- rep(0.9, 5L)
+  keep <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "partner2"
+  )
+  # "B c" (0.97) and "B d" (0.90) take the two species slots; the unlabelled
+  # 0.95 pair does not, even though it scores higher than "B d".
+  expect_equal(keep, c(TRUE, TRUE, FALSE, TRUE, FALSE))
+})

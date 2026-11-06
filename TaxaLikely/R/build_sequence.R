@@ -864,7 +864,13 @@ build_sequence_matrix <- function(reference_df,
     # The unit is the partner SPECIES, not the pair: the top two PAIRS of a
     # family can both belong to one species, which adds no runner-up at all,
     # because every quantity the gap reads is a per-species maximum.
-    oog <- cand[!same_gn[cand]]
+    # A partner with no finest-rank label cannot BE a runner-up species:
+    # train_likelihood_model()'s gap step drops those pairs before it takes
+    # per-species maxima (train.R, STEP 3D, `!is.na(rank_code_a.y)`), so a
+    # slot spent on one would cost a real runner-up and the gap would not be
+    # exact after all. The best-overall and best-clearing keeps above are
+    # left alone: their consumers are the score maxima, which do not care.
+    oog <- cand[!same_gn[cand] & !is.na(sp_y[cand])]
     flo <- if (is.null(min_pair_coverage)) {
       oog
     } else {
