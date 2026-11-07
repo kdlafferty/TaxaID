@@ -77,7 +77,7 @@ stored as metadata on the result tibble but does NOT drive the search query.
 Set \code{geo_scope = NULL} to search without any geographic pre-filtering.
 
 \strong{OpenAlex API key:}
-Required since February 2026.  Free to obtain -- create an account at
+Required.  Free to obtain -- create an account at
 \url{https://openalex.org} and copy your key from
 \url{https://openalex.org/settings/api}.  Add
 \code{OPENALEX_API_KEY=your_key} to \file{~/.Renviron} then restart R.

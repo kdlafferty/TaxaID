@@ -369,7 +369,7 @@
 #' its own "family" value matches the family actually requested
 #' (case-insensitive, after trimming); a response that omits the "family"
 #' column entirely (older-format response) falls back to the exclude_genera
-#' filter alone, unchanged from before this fix.
+#' filter alone.
 #' @noRd
 .parse_family_response <- function(response, family, exclude_genera,
                                    group_label = "all") {

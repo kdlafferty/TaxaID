@@ -92,7 +92,7 @@ PDF-vision call that can legitimately take longer than two minutes.}
 
 \item{temperature}{Numeric or \code{NULL}. Sampling temperature, one
 non-negative number. \code{NULL} (default) sends no temperature field, so
-the provider's own default applies, as before this argument existed. A
+the provider's own default applies. A
 low value (e.g. \code{0.2}) makes repeated calls on one prompt agree more
 often, which matters for a judgement that is re-asked or cached; it does
 not make them identical. Providers differ in the range they accept

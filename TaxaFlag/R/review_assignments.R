@@ -474,7 +474,7 @@
 #' There is no UNPRECEDENTED bullet, because there is no UNPRECEDENTED note:
 #' "no local occurrence record at all" is a statement about the occurrence
 #' data and the flag is read without being shown (see \emph{What the review is
-#' shown, and what it is not}). Everything that bullet used to say is now in
+#' shown, and what it is not}). Everything such a bullet would say is in
 #' the UNCONDITIONAL geography text, which is the right place for it, because
 #' all of it is true of every taxon rather than only of the ones the
 #' occurrence data flagged: that no records is not evidence of absence, that
@@ -1759,7 +1759,7 @@ review_assignments <- function(input_df,
 #' drives a decision. This is the SAME test the parser applies before a row is
 #' kept, and it has to be: if the write side refuses to store a row with one
 #' unusable probability while the read side only rejects a row with none
-#' usable, then an entry written by any earlier build is served as a hit
+#' usable, then an entry written under the looser rule is served as a hit
 #' forever and its \code{NA} is discarded by every export filter without a
 #' word. Read and write must agree about what an answer is.
 #'
@@ -2707,7 +2707,7 @@ review_assignments <- function(input_df,
 #' pressure) rather than lowering \code{taxa_per_call} for the whole run.
 #' A hard \code{llm_fn} error (network/auth/etc.) is deliberately NOT retried
 #' this way -- a smaller batch can't fix a broken call, so that error is
-#' surfaced once, immediately, exactly as before this mechanism existed.
+#' surfaced once, immediately, and never retried by halving.
 #' @noRd
 .review_batch_with_retry <- function(taxa_batch, ctx, target_group, marker,
                                      data_type, use_candidates, llm_fn,
@@ -3585,7 +3585,7 @@ review_assignments <- function(input_df,
 
 #' The EXAMPLE OUTPUT FORMAT block, for whichever geography fields were asked
 #'
-#' Two objects, as before: a plausible resident and a contaminant. The
+#' Two objects: a plausible resident and a contaminant. The
 #' contaminant's comment is the data-type-specific one, so an acoustic or image
 #' study sees an example from its own method rather than an eDNA one.
 #' @noRd
@@ -3969,8 +3969,8 @@ review_assignments <- function(input_df,
 #' or absent from the site table takes the study-wide pair. The study-wide
 #' probability is the MAXIMUM over the sites where THIS taxon was detected --
 #' not over the whole site table -- and the study-wide verdict is that
-#' probability's level, never the model's own summary, which it is no longer
-#' asked for. Taking the maximum is why the study verdict is also the best of
+#' probability's level, never the model's own summary, which is not asked
+#' for. Taking the maximum is why the study verdict is also the best of
 #' those site verdicts: the cuts are monotone.
 #'
 #' Detected sites, not all sites, because the study-wide verdict is a statement

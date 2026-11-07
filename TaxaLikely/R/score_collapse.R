@@ -411,7 +411,7 @@ detect_suppressed_candidates <- function(match_obj,
 #'   (\code{@section Measured restored scores}) and added only when a kept
 #'   reference covers at least \code{min_query_coverage} of the query
 #'   (\code{restoration_basis = "dropped_hit_replacement"}). Dropping an
-#'   accession then no longer drops a genus that has other good references --
+#'   accession therefore does not drop a genus that has other good references --
 #'   including from an observation whose every hit was dropped -- and a
 #'   congener the dropped label never named can win on its own alignment.
 #'   Requires \code{sequence_col}.

@@ -159,9 +159,8 @@ registered account.
 
 **Used by:** `search_literature()` in TaxaFetch
 
-**Why:** OpenAlex provides open scholarly metadata. The API works without a key,
-but authenticated requests have higher rate limits and are polled. Required since
-February 2026.
+**Why:** OpenAlex provides open scholarly metadata. A key is required;
+authenticated requests also have higher rate limits and are polled.
 
 **Get it:**
 

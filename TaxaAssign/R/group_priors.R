@@ -85,8 +85,8 @@
 #'   presence claim about a NAMED species with no local occurrence record --
 #'   i.e. rows carrying a real `evidence_sources` value (`distance_clamp`,
 #'   `regional_proximity`, `invasive_watch`, `inat_range`). Curve pricing gives
-#'   every zero-record candidate a clamp row, so "has a row in the
-#'   priors table" no longer means "known locally". Measured on a PtCon 12S
+#'   every zero-record candidate a clamp row, so a row in the priors table
+#'   does not mean "known locally". Measured on a PtCon 12S
 #'   run: without this filter, 256 of 264
 #'   winner-scope `unprecedented` rows read `expected` or `unexpected` at
 #'   consensus scope, 75 of them on nothing but a clamp or evidence row (a neon

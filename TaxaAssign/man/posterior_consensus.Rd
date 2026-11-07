@@ -722,9 +722,10 @@ the hypotheses above the floor are added until they hold
 short the whole tail block joins the plausible set, so the consensus is the
 LCA of everything in it (\code{tail_pooled = TRUE}). A single noise-level
 hypothesis still cannot coarsen a call on its own, but a flat tail holding
-most of the mass is no longer renormalised away. This changes the meaning of
-the threshold (a call at 0.6 with 0.4 below the floor no longer resolves
-alone), so re-check a validation set before adopting it.
+most of the mass is not renormalised away. The threshold therefore means
+something different from its \code{pool_tail = FALSE} reading (a call at 0.6
+with 0.4 below the floor does not resolve alone), so re-check a validation
+set before adopting it.
 \code{cumulative_threshold = 0.9} is analogous to a
 90\% credible interval; increase toward 0.95--0.99 for more conservative
 assignments (more upranking to genus/family); decrease to 0.8 for more
