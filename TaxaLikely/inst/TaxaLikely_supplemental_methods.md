@@ -1033,11 +1033,25 @@ alternative is not re-proposed without new evidence.
 
 **The benchmark.** The GreatLakes 2023 12S pipeline scored against the Lamar survey species
 list for the same samples: species-level precision (Lamar-confirmed species calls divided
-by all species calls) and the number of the 61 Lamar species recovered. Every comparison
-below reproduced the production result -- precision 0.872, 42 of 61 species -- bit for bit
-from cached objects before anything was changed, then changed only the likelihood model,
-leaving priors, Monte Carlo seeds, consensus rules and review verdicts identical. The
-benchmark is one dataset and one marker; decisions resting on it should be re-checked when
+by all species calls) and the number of the 61 Lamar species recovered.
+
+The released figures come from the product run `GreatLakes2023BurnsHarbor_v106finalr8`:
+794 of 914 species-level comparisons, precision 0.869, under `consensus_method = "lca"`,
+and 786 of 893, precision 0.880, under `"credible_node"`, the weighted LCA by node
+summing. Those two are the numbers to cite for this release.
+
+The comparisons in this section rest on a different baseline and are not commensurable
+with those two. They are scored against the lca arm of a separate run of the same
+pipeline: 840 of 963 comparisons, precision 0.872, 42 of 61 Lamar species. Every delta
+below is a difference from that baseline, and its 963 comparisons are a different set from
+the released run's 914, so no difference may be read across the two. Each comparison
+reproduced that baseline bit for bit from cached objects before anything was changed, then
+changed only the likelihood model, leaving priors, Monte Carlo seeds, consensus rules and
+review verdicts identical -- which holds because the scripts name the consensus arguments
+they were run under (`consensus_method = "lca"`, `robust_prior_s = 1`,
+`cross_phylum_eps = 0.05`) instead of taking the package defaults.
+
+The benchmark is one dataset and one marker; decisions resting on it should be re-checked when
 a second held-out truth exists. The scripts are in the `TaxaID_dev` repository under
 `diagnostics/` (`softmax_ab_greatlakes.R`, `blast_model_ab_greatlakes*.R`,
 `thin_training_ab_greatlakes.R`, `pooled_model_ab_greatlakes.R`,
@@ -1052,7 +1066,7 @@ of magnitude:
 
 | likelihood | precision | Lamar species |
 |---|---|---|
-| bivariate normal (production) | 0.872 | 42 |
+| bivariate normal (baseline) | 0.872 | 42 |
 | softmax, best precision ($T = 2$, no unreferenced hypotheses) | 0.841 | 37 |
 | softmax, best recall ($T = 0.25$) | 0.829 | 59 |
 
@@ -1097,7 +1111,7 @@ one calibration constant.
 
 ### 17D. What the calibration is worth
 
-Removing `calibrate_query_noise()` from the production model drops precision from 0.872
+Removing `calibrate_query_noise()` from the model drops precision from the baseline 0.872
 to 0.823, the largest single effect measured. Its linear form falls back to a constant
 whenever trained means do not vary across the confident species, which, given 17C, is
 always, so the constant offset is the operative form. The offset is the same whichever

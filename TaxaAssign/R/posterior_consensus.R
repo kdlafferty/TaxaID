@@ -342,8 +342,10 @@
 #'   validated before it is trusted. One Kish effective record is the
 #'   defensible starting point if you want one. Changing it from `0` WILL
 #'   move `winner_has_occurrence_record`, and therefore the plausibility
-#'   counts -- re-run the held-out GreatLakes/Lamar check (current benchmark:
-#'   precision 0.872) before relying on the result.
+#'   counts -- re-run the held-out GreatLakes/Lamar check before relying on
+#'   the result. The benchmark it is scored against, and the run that produced
+#'   it, are recorded in `TaxaLikely`'s supplemental methods (section 17); the
+#'   figure is not restated here, so there is one place to correct it.
 #' @details
 #' \strong{Threshold interaction:}
 #' \code{min_posterior} and \code{cumulative_threshold} work together. By

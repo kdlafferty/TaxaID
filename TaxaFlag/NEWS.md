@@ -1,6 +1,20 @@
 # TaxaFlag 1.0.0
 
 * Initial release.
+* `review_assignments()` asks `p_scope` about the kind of organism only. It
+  previously asked about the organism "and its depth or habitat zone", and
+  rated low any "kind of organism, realm or depth the target group excludes",
+  so habitat entered the answer twice: `p_habitat` already scores where a
+  taxon lives. The double count was worst where the target group itself names
+  a habitat -- under a group such as "shallow-water marine fishes" a
+  mesopelagic or a freshwater fish is a fish being asked about by a group whose
+  own words exclude its zone, and it took a low `p_scope` for a habitat reason
+  as well as a low `p_habitat` for the same one. The field now says in as many
+  words that a habitat, depth, zone or realm inside the target group's name is
+  to be ignored and scored in `p_habitat`. The cache key's version token moves
+  with it, so a verdict given under the old wording is re-asked rather than
+  served; `p_scope` is reported and read by no rule in this package, so what
+  changes is the judgement a reader sees, not a call the package makes.
 * `report_flags()` detects reference-support columns from
   `TaxaLikely::annotate_reference_support()` and reports their distribution and
   basis breakdown alongside the flags, deliberately outside every flag count:

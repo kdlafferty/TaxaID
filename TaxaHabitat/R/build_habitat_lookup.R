@@ -42,10 +42,16 @@
 #' @section What the cache key covers:
 #' The taxon name, the habitat columns the scheme asks for (derived exactly
 #' as [build_habitat_prompt()] derives them, so a changed scheme is a miss),
-#' `extra_covariates`, `geographic_context`, and `cache_tag`. The LLM
-#' function itself cannot be hashed -- if you change providers or models and
-#' want fresh verdicts, pass a new `cache_tag` (e.g. the model name) or
-#' clear the directory with [taxahabitat_clear_cache()].
+#' `extra_covariates`, `geographic_context`, and `cache_tag`.
+#'
+#' Not the model. Every entry written RECORDS what answered it, and a hit from
+#' another model is served with a warning naming how many, so a habitat weight
+#' can be traced and a mixed set cannot pass unnoticed. The record identifies
+#' the FUNCTION, not the model a capability tier resolves to at call time: a
+#' tier later pointed at a newer model reads the same. Pass `cache_tag` = the
+#' resolved model identifier when the record has to name the model itself, or
+#' clear the directory with [taxahabitat_clear_cache()] to re-ask.
+#' `cache_summary` reports the model in force and the two counts.
 #'
 #' @section What is and is not cached:
 #' Only a taxon whose parsed row carries a resolved `Habitat` (at least one
@@ -74,7 +80,10 @@
 #' @return A data frame with one row per unique taxon in `taxon_list`
 #'   (the same shape [parse_hierarchical_habitat_response()] returns), in
 #'   `taxon_list` order, with a `cache_summary` attribute:
-#'   `n_total`, `n_from_cache`, `n_called`, `n_cached_new`.
+#'   `n_total`, `n_from_cache`, `n_called`, `n_cached_new`, `model` (what
+#'   answered this call), `models` (every model behind the returned verdicts;
+#'   more than one is warned about) and `n_model_unknown` (hits written before
+#'   the model was recorded, which cannot be traced to one).
 #' @seealso [build_habitat_prompt()], [parse_hierarchical_habitat_response()],
 #'   [assign_habitat_biological()], [taxahabitat_clear_cache()]
 #' @export
@@ -130,8 +139,23 @@ build_habitat_lookup <- function(taxon_list,
     compound_rule = compound_rule
   ))
   out_hab_cols <- probe$scheme_cols %||% probe$habitat_cols
+  # What will answer. Recorded in every entry written and reported in
+  # cache_summary, so a habitat weight can be traced to the thing that
+  # produced it instead of to nothing at all.
+  model_id <- .habitat_model_id(llm_fn)
+  # Bump this token whenever build_habitat_prompt() changes wording that can
+  # move a verdict: the key holds the inputs, not the prompt, so an answer
+  # given under the old wording would otherwise be served as a hit.
+  # v2: the compound-label guidelines changed the text a compound scheme is
+  # asked under -- "afterwards as the maximum over its components" became
+  # "afterwards from its components" when compound_rule arrived, and the
+  # habitat block gained a "[part of: ...]" annotation. A scheme with no
+  # compounds is asked the same question as before, but the token is one
+  # value for every caller and cannot distinguish them, so every cache is a
+  # miss once. See test-habitat_prompt_fingerprint.R, which fails when the
+  # prompt source moves without this token.
   shared_key <- paste(c(
-    "v1", cache_tag,
+    "v2", cache_tag,
     paste(probe$habitat_cols, collapse = "|"),
     paste(sort(extra_covariates), collapse = "|"),
     geographic_context %||% ""
@@ -152,16 +176,55 @@ build_habitat_lookup <- function(taxon_list,
     )
     hit_list <- list()
     hit_idx <- integer(0)
+    hit_models <- character(0)
     for (i in seq_along(cache_paths)) {
       ent <- .habitat_cache_read(cache_paths[i], cache_keys[i])
       if (!is.null(ent)) {
         hit_idx <- c(hit_idx, i)
-        hit_list[[length(hit_list) + 1L]] <- ent
+        hit_list[[length(hit_list) + 1L]] <- ent$row
+        hit_models <- c(hit_models, ent$model %||% NA_character_)
       }
     }
+    # What is worth a warning is a MIXED result -- habitat weights in one
+    # returned table that came from more than one model -- not merely a
+    # caller who changed their wrapper since the cache was written. The
+    # narrower test would also fire on the legitimate pattern of passing a
+    # stub that must not be called, which proves a full cache hit.
+    # Entries written before the model was recorded carry NA and are counted
+    # separately: "no record" is not "another model".
+    n_model_unknown <- sum(is.na(hit_models))
+    hit_model_set <- unique(hit_models[!is.na(hit_models)])
     if (length(hit_idx) > 0L) {
       cache_hits <- dplyr::bind_rows(hit_list)
       to_call <- taxon_list[-hit_idx]
+    }
+    # The model about to answer counts only if it is going to be asked.
+    models_in_play <- unique(c(
+      hit_model_set,
+      if (length(to_call) > 0L) model_id else NULL
+    ))
+    models_in_play <- models_in_play[!is.na(models_in_play)]
+    n_models <- length(models_in_play)
+    if (n_models > 1L) {
+      warning(sprintf(
+        paste0(
+          "build_habitat_lookup: this lookup draws on %d different models ",
+          "(%s), so the habitat weights it returns are not one model's ",
+          "judgement. Clear the cache with taxahabitat_clear_cache(), or pass ",
+          "cache_tag = the model identifier so each model keeps its own ",
+          "entries."
+        ),
+        n_models, paste(models_in_play, collapse = "; ")
+      ), call. = FALSE)
+    }
+    if (n_model_unknown > 0L && verbose) {
+      message(sprintf(
+        paste0(
+          "build_habitat_lookup: %d cached verdict(s) record no model (written ",
+          "before the model was stored); they cannot be traced to one."
+        ),
+        n_model_unknown
+      ))
     }
     if (verbose) {
       message(sprintf(
@@ -206,7 +269,7 @@ build_habitat_lookup <- function(taxon_list,
       for (k in which(resolved & !is.na(pos))) {
         .habitat_cache_write(
           cache_paths[pos[k]], cache_keys[pos[k]],
-          parsed[k, , drop = FALSE]
+          parsed[k, , drop = FALSE], model_id
         )
         n_cached_new <- n_cached_new + 1L
       }
@@ -243,7 +306,10 @@ build_habitat_lookup <- function(taxon_list,
     n_total = length(taxon_list),
     n_from_cache = if (is.null(cache_hits)) 0L else nrow(cache_hits),
     n_called = length(to_call),
-    n_cached_new = n_cached_new
+    n_cached_new = n_cached_new,
+    model = model_id,
+    models = if (is.null(cache_dir)) model_id else models_in_play,
+    n_model_unknown = if (is.null(cache_dir)) 0L else n_model_unknown
   )
   out
 }
@@ -309,6 +375,45 @@ taxahabitat_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaHabitat",
   sprintf("%010.0f-%010.0f-%06d", a, b, n)
 }
 
+#' Identify what will answer a habitat call
+#'
+#' The question TaxaFlag's \code{.review_reviewer_id()} answers, for the same
+#' reason: a cached verdict carries no trace of the model that gave it, so a
+#' provider tier later pointed at another model serves the first model's
+#' answers under the second one's name.
+#'
+#' What it can and cannot see: a function from a loaded namespace is named by
+#' that namespace and its formals, which identifies the FUNCTION, not the model
+#' a tier resolves to at call time. Anything else is a closure the caller
+#' wrote, and all that is visible of it is its source, so that is hashed. A
+#' caller who needs the resolved model in the record passes it through
+#' \code{cache_tag}.
+#' @noRd
+.habitat_model_id <- function(llm_fn) {
+  if (!is.function(llm_fn)) {
+    return(NA_character_)
+  }
+  env_name <- tryCatch(environmentName(environment(llm_fn)),
+    error = function(e) ""
+  )
+  if (length(env_name) == 1L && !is.na(env_name) && nzchar(env_name) &&
+    env_name %in% loadedNamespaces()) {
+    return(paste(env_name,
+      paste(deparse(args(llm_fn)), collapse = " "),
+      sep = ":"
+    ))
+  }
+  paste0("closure:", .habitat_cache_hash(paste(
+    tryCatch(deparse(llm_fn), error = function(e) ""),
+    collapse = "\n"
+  )))
+}
+
+#' Read one cached habitat entry, verifying its full key
+#'
+#' Returns the whole entry, not just its row, so the caller can see which model
+#' answered. \code{model} is \code{NULL} on an entry written before it was
+#' recorded; the caller distinguishes that from a mismatch.
 #' @noRd
 .habitat_cache_read <- function(path, key) {
   if (!file.exists(path)) {
@@ -324,12 +429,12 @@ taxahabitat_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaHabitat",
   if (!is.data.frame(ent$row) || nrow(ent$row) != 1L) {
     return(NULL)
   }
-  ent$row
+  ent
 }
 
 #' @noRd
-.habitat_cache_write <- function(path, key, row) {
-  tryCatch(saveRDS(list(key = key, row = row), path),
+.habitat_cache_write <- function(path, key, row, model = NA_character_) {
+  tryCatch(saveRDS(list(key = key, row = row, model = model), path),
     error = function(e) invisible(NULL)
   )
   invisible(NULL)
