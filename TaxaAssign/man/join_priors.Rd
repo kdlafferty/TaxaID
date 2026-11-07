@@ -301,7 +301,7 @@ within-family score discrimination is available.
 
 Rows whose coarse-rank constraint finds no matching species in
 \code{taxaexpect_priors} (e.g. a family absent from the study region) are left
-unchanged and receive the dark diversity floor prior as before.
+unchanged and receive the dark diversity floor prior.
 }
 
 \section{Taxa that matched no prior}{

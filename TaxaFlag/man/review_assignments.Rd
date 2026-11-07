@@ -567,7 +567,7 @@ within it.}
 There is no UNPRECEDENTED bullet, because there is no UNPRECEDENTED note:
 "no local occurrence record at all" is a statement about the occurrence
 data and the flag is read without being shown (see \emph{What the review is
-shown, and what it is not}). Everything that bullet used to say is now in
+shown, and what it is not}). Everything such a bullet would say is in
 the UNCONDITIONAL geography text, which is the right place for it, because
 all of it is true of every taxon rather than only of the ones the
 occurrence data flagged: that no records is not evidence of absence, that

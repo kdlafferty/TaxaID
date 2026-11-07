@@ -85,7 +85,7 @@ holds 0.93 and resolves; zeroed, it held 0.85 and the call fell to the
 family.)  The posterior step needs the \code{constraint_applied} column this
 function adds and a \code{genus} column (or a species binomial) on the rows;
 a consensus run on these likelihoods WITHOUT that step sees the
-placeholder at its full weight, as before the relabel.  Ambiguity AMONG
+placeholder at its full weight.  Ambiguity AMONG
 the referenced species is carried by their own rows and by the
 consensus's rank walk, not by this placeholder.
 \item \code{"zero"}: \code{score_likelihood}, \code{score_likelihood_mean} and

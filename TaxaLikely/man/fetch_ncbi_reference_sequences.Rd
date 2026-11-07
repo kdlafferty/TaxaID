@@ -286,7 +286,7 @@ row whose returned lineage shared nothing with its queried taxon's
 declared lineage, via \code{attr(reference_df, "lineage_disagreements")}.
 Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} (which applies its own,
 independent length filter -- out-of-range rows kept here are excluded
-from training there exactly as before this parameter existed).
+from training there).
 
 With \code{dry_run = TRUE}, instead a list: \code{taxa} (one row per requested
 taxon: \code{ncbi_count}, \code{NA} for a taxon served from cache; \code{cached};
