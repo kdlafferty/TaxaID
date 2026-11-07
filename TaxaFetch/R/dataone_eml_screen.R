@@ -415,9 +415,8 @@ screen_eml_columns <- function(ids,
 #' Detect the most likely column name matching a candidate pattern set.
 #'
 #' Shared implementation for \code{.detect_lat_col()}, \code{.detect_lon_col()},
-#' \code{.detect_species_col()} (2026-08 human review: these three were
-#' identical except for their candidate lists -- consolidated to one query
-#' function per that review's suggestion). Exact matches (highest confidence)
+#' \code{.detect_species_col()}, which differ only in their candidate lists.
+#' Exact matches (highest confidence)
 #' are checked first, then partial/substring matches.
 #'
 #' @param attrs Character vector of (lowercased) attribute names.

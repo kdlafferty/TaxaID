@@ -238,8 +238,8 @@
 #' one or two) makes the median robust to one tooth's count being unusually
 #' close to a neighbour's.
 #'
-#' Two guards return `NA` (i.e. "behave exactly as before -- no quantum, no
-#' smoothing") rather than guessing:
+#' Two guards return `NA` -- no quantum and no smoothing -- rather than
+#' guessing:
 #' \enumerate{
 #'   \item **Genuinely continuous data**: if the number of distinct values
 #'     present is a large fraction of the sample size (`> max_unique_frac`,

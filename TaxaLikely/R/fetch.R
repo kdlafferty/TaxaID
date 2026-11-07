@@ -594,7 +594,7 @@ utils::globalVariables(c(
 #'     like.
 #'   \item The reference kingdom is the dominant kingdom of the OTHER taxa, and
 #'     only when it holds at least \code{dominance} (0.90) of them. Otherwise
-#'     nothing is dropped and the split is reported, as before.
+#'     nothing is dropped and the split is reported.
 #'   \item Votes are counted per TAXON, not per row, and a split taxon casts
 #'     none. Per-row counting would let one heavily contaminated taxon outvote
 #'     a dozen clean ones, and letting a split taxon vote would let a
@@ -985,28 +985,27 @@ utils::globalVariables(c(
 #' own key components, so they are left at their defaults here and the digest
 #' carries only what the barcode term itself decides.
 #'
-#' It replaces an earlier suffix that grepped the built query for one phrase
-#' and emitted \code{"_syn"}. That proxy covered exactly the one change it was
-#' written for: any OTHER change to the query -- including restricting a
-#' synonym to \code{mitochondrion[FILTER]} -- moved the query without moving
-#' the key. A digest cannot have that gap, because it is derived from the whole
-#' term and not from a phrase someone remembered to look for.
+#' A digest, rather than a grep of the built query for one known phrase, is
+#' what closes the gap: a phrase proxy covers only the change it was written
+#' for, and any OTHER change to the query -- including restricting a synonym
+#' to \code{mitochondrion[FILTER]} -- moves the query without moving the key.
+#' A digest is derived from the whole term, not from a phrase someone
+#' remembered to look for.
 #'
 #' It is appended by \code{.ref_cache_file()} as its own key component rather
 #' than inside the stem, and UNCONDITIONALLY, which is what makes the previous
 #' generation collectable instead of immortal. \code{.ref_cache_grammar()}
-#' requires \code{_q} + 8 hex digits, so every file written before this
-#' existed fails the grammar and \code{.ref_cache_unreachable()} can prove it
-#' unhittable -- the same proof \code{rank_sfx} supplies. Had the digest gone
-#' in the stem it would instead have given each query generation its own stem:
-#' the old files would still MATCH the grammar, so nothing could ever delete
-#' them, and stem-scoped eviction would no longer recognise the generation it
-#' is replacing.
+#' requires \code{_q} + 8 hex digits, so a file written without the component
+#' fails the grammar and \code{.ref_cache_unreachable()} can prove it
+#' unhittable -- the same proof \code{rank_sfx} supplies. A digest in the stem
+#' would instead give each query generation its own stem: such files would
+#' still MATCH the grammar, so nothing could ever delete them, and
+#' stem-scoped eviction could not recognise the generation it is replacing.
 #'
-#' \strong{Every existing reference-cache file changes name}, including bare
-#' \code{"12S"}/\code{"16S"} ones that previously took no suffix. That is the
-#' point -- those are the files written before the query changed -- but it
-#' means the next run re-fetches.
+#' \strong{A reference-cache file written without this component is
+#' unreachable}, bare \code{"12S"}/\code{"16S"} names included. That is the
+#' point -- the term that produced it is not the term being asked now -- but
+#' it means the next run re-fetches that term.
 #' @noRd
 .ref_cache_term_sfx <- function(barcode_term) {
   # Built against a fixed probe so the digest is per-marker, not per-taxon.
@@ -1861,7 +1860,7 @@ utils::globalVariables(c(
 #'   declared lineage, via `attr(reference_df, "lineage_disagreements")`.
 #'   Ready for input to [build_sequence_matrix()] (which applies its own,
 #'   independent length filter -- out-of-range rows kept here are excluded
-#'   from training there exactly as before this parameter existed).
+#'   from training there).
 #'
 #'   With `dry_run = TRUE`, instead a list: `taxa` (one row per requested
 #'   taxon: `ncbi_count`, `NA` for a taxon served from cache; `cached`;

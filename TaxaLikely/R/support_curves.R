@@ -373,8 +373,8 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #' problem -- shrinkage weight -> 0 handles this gracefully with no separate
 #' NA-emitting floor needed, same as `H2_Lookup`'s own convention).
 #'
-#' Interpolation replaces an earlier nearest-grid-threshold snap, which put a
-#' real discontinuity exactly where this data lives. The curves are built on a
+#' Interpolation avoids the real discontinuity that a nearest-grid-threshold
+#' snap puts exactly where this data lives. The curves are built on a
 #' 1-percentage-point grid, but a congeneric false-positive rate falls very
 #' steeply across the top point or two (on real 12S: 0.279 at 99% to ~0 at
 #' 100%), and 45% of real observed scores sit at or above 99%. Snapping

@@ -1087,7 +1087,7 @@ build_sequence_matrix <- function(reference_df,
 #' EXCLUDED from this per-genus step (a rep-vs-rep pair would otherwise be
 #' computed twice, once from each of the two genera's own augmented
 #' alignment, in two different alignment contexts with two different
-#' resulting `p_match` values) -- those pairs are, as before, the sole
+#' resulting `p_match` values) -- those pairs are the sole
 #' responsibility of the small dedicated cross-genus-representative
 #' alignment below.
 #'

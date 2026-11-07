@@ -208,12 +208,11 @@ fetch_inat_occurrence_counts <- function(
 #' via `.http_with_retry()` -- see that function for why this is a small,
 #' iNaturalist-only helper rather than a reuse of
 #' `download_gbif_occurrences.R`'s `.gbif_submit_with_retry()`/
-#' `.gbif_wait_with_retry()` engine. A 401 is never retried (raised
-#' immediately, same message as before); any other non-200 status, or a
-#' network-level failure that survives every retry attempt, returns
-#' `NA_integer_` exactly as before -- this only adds retry/backoff ahead of
-#' that existing failure path, it does not change what a final failure looks
-#' like to the caller (`fetch_inat_occurrence_counts()`'s `query_status` still
+#' `.gbif_wait_with_retry()` engine. A 401 is never retried and is raised
+#' immediately; any other non-200 status, or a network-level failure that
+#' survives every retry attempt, returns `NA_integer_`. The retry and backoff
+#' sit ahead of that failure path and do not change what a final failure looks
+#' like to the caller (`fetch_inat_occurrence_counts()`'s `query_status`
 #' becomes `"request_failed"`).
 #' @noRd
 .inat_observation_count <- function(taxon_id, lat, lng, radius_km, captive, quality_grade, api_token,
