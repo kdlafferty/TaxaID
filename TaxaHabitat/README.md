@@ -356,7 +356,19 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San Francisco, California).
+## AI use and disclaimers
+
+AI-assisted coding tools were used to develop this package: Anthropic
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6 and 5; Fable 5 and 5.1)
+through Claude Code (Anthropic PBC, San Francisco, California), between
+May 2026 and November 2026, for code, tests, documentation and review.
+Every commit names the model that contributed to it in a
+`Co-Authored-By` trailer. All code was reviewed, tested and validated by
+the author to ensure correctness and reproducibility, and was also
+subject to a human code review.
+
+Any use of trade, firm, or product names is for descriptive purposes
+only and does not imply endorsement by the U.S. Government.
 
 ## References
 
