@@ -125,6 +125,16 @@ its JUSTIFICATION is sequence-shaped: `-sqrt(1 - p)` treats the mismatch side
 as a rare-event count, "few mismatches out of many aligned bases". The
 transform itself only needs a match proportion in [0, 1], which an image
 classifier or an acoustic confidence also produces, and `"logit"` remains
-available. No non-sequence study has been measured on either scale, so the
-default picks the scale justified on barcode data. Worth revisiting when an
-image or acoustic reference set is trained.
+available.
+
+The maintainer's decision, 2026-11-06: no non-sequence training is planned, so
+the default stands and the documentation states the scope of the evidence
+instead. `@param score_transform` now says that either transform accepts an
+image or acoustic score, that the comparison between them was derived and
+tested on sequence identities alone, and that the rare-event argument for
+`"sqrt_mismatch"` is an argument about mismatched bases -- so the default is
+to be read as a sequence result.
+
+This is the opposite case to `check_regional_overlap` and worth keeping both:
+there the default would have made a non-sequence call IMPOSSIBLE, which is a
+defect; here it makes a non-sequence call UNTESTED, which is a caveat.

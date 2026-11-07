@@ -789,7 +789,13 @@ utils::globalVariables(c(
 #'   count (few mismatches out of many aligned bases -- the regime real data
 #'   is actually in), for which square-root is the classical
 #'   variance-stabilizing transform; it recovers the correct qualitative
-#'   ordering where `"logit"` does not. See `evaluate_likelihoods()`'s own
+#'   ordering where `"logit"` does not. Both transforms take a match
+#'   proportion in `[0, 1]`, so either accepts an image classifier's or an
+#'   acoustic recogniser's score, but the comparison between them was derived
+#'   and tested on sequence identities alone: neither has been tested on image
+#'   or sound scores, and the rare-event argument for `"sqrt_mismatch"` is an
+#'   argument about mismatched bases. Treat the default as a sequence result.
+#'   See `evaluate_likelihoods()`'s own
 #'   documentation for the full empirical derivation, including why
 #'   several other standard transforms (probit, complementary log-log) were
 #'   checked and rejected. `"sqrt_mismatch"` is bounded to `[-1, 0]` rather
