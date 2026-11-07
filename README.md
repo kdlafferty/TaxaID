@@ -29,14 +29,13 @@ recording) previously obtained by querying a reference library. Its main
 advances are to:
 
 -   screen for reference-database errors
--   detect and patch missing references
 -   convert match scores to statistical likelihoods
 -   identify plausibility at the sampling location (the prior)
+-   detect and patch missing references
 -   apply Bayes' Theorem to generate posterior assignment probabilities
     from likelihoods and priors
 -   make assignments transparent
--   use LLMs to improve assignments, assist with workflows, and review
-    results
+-   use LLMs to review assignments, classify habitat, and assist with workflows
 -   create Shiny apps for clients to process their data without R
     programming
 
@@ -52,16 +51,20 @@ LLM integration requires an Application Programming Interface (API) key
 (see below). If an LLM assistant is reading this repository, start at
 `llm_prompts/START_HERE.md` for the package's own workflow graph.
 
-The ecosystem supports three types of workflows to select a consensus
+The ecosystem supports two types of workflows to select a consensus
 taxon from a list of candidates, ranging from simple to comprehensive:
 
 1.  Conventional: use match-score thresholds and a lowest common
     ancestor.
-2.  LLM: Use a large language model to transform match scores and
-    estimate candidate plausibilities.
-3.  Bayesian: Model likelihoods from match scores, patch missing
+2.  Bayesian: Model likelihoods from match scores, patch missing
     references, build spatially explicit priors from species records,
     and compare posterior probabilities.
+
+Either route can be followed by an LLM review. TaxaFlag asks a model
+how plausible each call is on habitat, scope, geography and
+contamination and records the answers as columns. The review flags; it
+never drops a call. It reads the sequence evidence and the study's own
+design, and no text derived from occurrence records.
 
 ### Common Errors in Taxonomic Assignment
 
@@ -329,21 +332,25 @@ should not be confused.
 
 In the software: several functions call an LLM as part of the analysis.
 TaxaHabitat assigns habitat categories by biological consensus, TaxaFlag
-reviews assignments for ecological plausibility, TaxaAssign offers an
-LLM-elicited alternative to the modelled prior, and TaxaWizard generates
+reviews assignments for ecological plausibility, and TaxaWizard generates
 workflow scripts. All of these route through a common provider interface
 (`TaxaTools::call_api()`), so any supported provider can be used, and
 every one of them except TaxaWizard has a non-LLM alternative. Functions
 that make billed API calls cache their results to disk, so re-running a
-workflow does not pay for the same call twice.
+workflow does not pay for the same call twice. A study that uses these
+functions is using generative AI in its analysis, and should disclose
+that in its own products.
 
 In writing the code: the TaxaID source code was written with the
-assistance of Anthropic Claude models, used through Claude Code. Claude
-Sonnet did the bulk of the development; Claude Opus and Claude Fable
-also contributed. Because this assistance was continuous rather than
-confined to particular functions, per-function annotation would imply a
-precision that does not exist, so this repository-level statement is the
-annotation. All of it was reviewed and tested before release: every
+assistance of Anthropic Claude models, used through Claude Code
+(Anthropic PBC, San Francisco, California), between May 2026 and
+November 2026. The models were Claude Opus 4.6, 5 and 5.5, Claude
+Sonnet 4.6 and 5, and Claude Fable 5 and 5.1; every commit names the
+model that contributed to it in a `Co-Authored-By` trailer, and Opus
+accounts for the largest share of them. Because this assistance was
+continuous rather than confined to particular functions, per-function
+annotation would imply a precision that does not exist, so this
+repository-level statement is the annotation. All of it was reviewed and tested before release: every
 package carries a `testthat` suite, and each was checked with
 `R CMD check` before release. The author reviewed the code and takes
 responsibility for it and the code was subject to a human code review as
