@@ -106,7 +106,7 @@ test_that("consensus_posterior reflects the winner's posterior_mean, not 0, with
     posterior_mean  = c(0.9993, 0.0004, 0.0003)
   )
   expect_false("species" %in% names(df))
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  out <- posterior_consensus(consensus_method = "lca", df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Oligocottus snyderi")
   expect_equal(out$consensus_reason, "single")
   expect_equal(out$consensus_posterior, 0.9993, tolerance = 1e-6)
@@ -248,7 +248,7 @@ test_that("all hypotheses below min_posterior -> empty row", {
     hypothesis_type = rep("specific_candidate", 2),
     posterior_mean = c(0.04, 0.03)
   )
-  out <- posterior_consensus(df,
+  out <- posterior_consensus(consensus_method = "lca", df,
     rank_system = c("genus", "species"),
     min_posterior = 0.05
   )
@@ -276,12 +276,13 @@ test_that("unreferenced_family rows are excluded from LCA", {
   # The catch-all cannot join the LCA, but its 0.4 is mass the call does not
   # hold: with unnamed_in_threshold = TRUE (default) 0.6 < 0.9 of the total,
   # so the observation is unresolved.
-  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  out <- posterior_consensus(consensus_method = "lca", df, rank_system = c("genus", "species"))
   expect_true(is.na(out$consensus_taxon))
   expect_equal(out$consensus_reason, "unnamed_mass")
   expect_equal(out$unnamed_mass, 0.4)
   # named-only threshold: only Fundulus parvipinnis contributes -> resolved
-  old <- posterior_consensus(df, rank_system = c("genus", "species"), unnamed_in_threshold = FALSE)
+  old <- posterior_consensus(df, rank_system = c("genus", "species"),
+    consensus_method = "lca", unnamed_in_threshold = FALSE)
   expect_equal(old$n_plausible, 1L)
   expect_equal(old$consensus_taxon, "Fundulus parvipinnis")
   expect_true(old$is_resolved)
@@ -475,7 +476,7 @@ test_that("winner columns are NA_real_ in empty consensus rows", {
   df$score_likelihood <- 0.80
   df$score_likelihood_cov <- 0.75
   expect_warning(
-    out <- posterior_consensus(df,
+    out <- posterior_consensus(consensus_method = "lca", df,
       rank_system = c("genus", "species"),
       min_posterior = 0.05
     ),
@@ -544,7 +545,7 @@ test_that("winner_rank_expanded is TRUE when the winner came from coarse-rank ex
     hypothesis_type = rep("rank_expanded", 2),
     posterior_mean  = c(0.65, 0.35) # tie-broken by prior alone
   )
-  out <- posterior_consensus(df,
+  out <- posterior_consensus(consensus_method = "lca", df,
     rank_system = c("genus", "species"),
     cumulative_threshold = 0.5
   )
@@ -559,7 +560,7 @@ test_that("winner_hypothesis_type/winner_rank_expanded are NA in empty consensus
     "specific_candidate", 0.01
   )
   expect_warning(
-    out <- posterior_consensus(df,
+    out <- posterior_consensus(consensus_method = "lca", df,
       rank_system = c("genus", "species"),
       min_posterior = 0.05
     ),
@@ -676,7 +677,7 @@ test_that("an implausible winner still reports its plausible rivals (axes stay i
 test_that("counts use every named hypothesis, not just the post-filter plausible set", {
   # min_posterior = 0.5 keeps only the winner in `plausible`, but the rival
   # still competed and must still be counted.
-  out <- posterior_consensus(make_competitor_df(),
+  out <- posterior_consensus(consensus_method = "lca", make_competitor_df(),
     rank_system = c("family", "genus", "species"),
     min_posterior = 0.5, cumulative_threshold = 0.9
   )
@@ -1449,7 +1450,7 @@ test_that("a confident call is unchanged and does not pool the tail", {
 test_that("with no hypothesis above min_posterior the tail is the plausible set", {
   df <- .tail_df(0.04, rep(0.96 / 24, 24), tail_genus = "Lacuna")
   out <- suppressMessages(suppressWarnings(
-    posterior_consensus(df, rank_system = c("family", "genus", "species"), pool_tail = TRUE)
+    posterior_consensus(consensus_method = "lca", df, rank_system = c("family", "genus", "species"), pool_tail = TRUE)
   ))
   expect_equal(out$consensus_taxon, "Littorinidae")
   expect_true(out$tail_pooled)
@@ -1457,7 +1458,7 @@ test_that("with no hypothesis above min_posterior the tail is the plausible set"
 
 test_that("by default the tail is discarded as before, but its mass is reported", {
   df <- .tail_df(0.13, rep(0.87 / 20, 20), tail_genus = "Lacuna")
-  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  out <- suppressMessages(posterior_consensus(consensus_method = "lca", df, rank_system = c("family", "genus", "species")))
   expect_equal(out$consensus_taxon, "Littorina littorea")
   expect_false(out$tail_pooled)
   expect_equal(out$tail_mass, 0.87, tolerance = 1e-9)
@@ -1480,8 +1481,12 @@ test_that("pool_tail must be TRUE or FALSE", {
     posterior_point_est = c(0.80, rep(0.03, 5), 0.05), stringsAsFactors = FALSE
   )
 }
-.cn <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
-  rank_system = c("order", "family", "genus", "species"), ...)))
+# These blocks are about the LCA walk and the robust rule, so the helpers name
+# the value each block is asking about rather than inheriting the package
+# default, which selects the node-summing call with both checks off.
+.cn <- function(df, consensus_method = "lca", ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("order", "family", "genus", "species"),
+  consensus_method = consensus_method, ...)))
 
 test_that("credible_node reports the finest taxon holding the threshold", {
   out <- .cn(.cn_df(), consensus_method = "credible_node")
@@ -1582,8 +1587,9 @@ test_that("the robust-skip warning is silent when the caller asks for the plain 
   prior_branch = c("kernel_estimated", "resident_undetected", NA, NA),
   prior_site_records = 96851,
   posterior_point_est = c(0.925, 4.1e-6, 0.0466, 0.0288), stringsAsFactors = FALSE)
-.om <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
-  rank_system = c("order", "family", "genus", "species"), consensus_method = "credible_node", ...)))
+.om <- function(df, robust_prior_s = 1, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+  rank_system = c("order", "family", "genus", "species"), consensus_method = "credible_node",
+  robust_prior_s = robust_prior_s, ...)))
 .with_variant <- function(v, expr) { old <- options(TaxaAssign.robust_variant = v); on.exit(options(old)); force(expr) }
 
 test_that("a genus with one locally recorded species keeps the genus, and the reference then names the species", {
@@ -1692,8 +1698,11 @@ test_that("a named unreferenced competitor beside an unreferenced winner: never 
   expect_true(out$robust_lower_posterior >= strict$robust_lower_posterior - 1e-9)
 })
 
-test_that("the default consensus_method is lca and unchanged", {
-  expect_identical(.cn(.cn_df()), .cn(.cn_df(), consensus_method = "lca"))
+test_that("the default consensus_method is the node-summing call", {
+  f <- function(...) suppressWarnings(suppressMessages(posterior_consensus(
+    .cn_df(), rank_system = c("order", "family", "genus", "species"), ...)))
+  expect_identical(f(), f(consensus_method = "credible_node"))
+  expect_false(identical(f(), f(consensus_method = "lca")))
 })
 
 test_that("a genus-rank row carrying its anchor's species value is not counted as that species", {
@@ -1725,9 +1734,12 @@ test_that("a genus-rank row carrying its anchor's species value is not counted a
     posterior_point_est = pt, stringsAsFactors = FALSE
   )
 }
-.pd_run <- function(df, ...) {
+.pd_run <- function(df, consensus_method = "lca", robust_prior_s = 1,
+                    cross_phylum_eps = 0.05, ...) {
   suppressMessages(posterior_consensus(df,
-    rank_system = c("family", "genus", "species"), ...
+    rank_system = c("family", "genus", "species"),
+    consensus_method = consensus_method, robust_prior_s = robust_prior_s,
+    cross_phylum_eps = cross_phylum_eps, ...
   ))
 }
 
@@ -1821,9 +1833,10 @@ test_that("likelihood_support is the reported taxon's share under the flattened-
     prior_branch = "kernel_estimated",
     posterior_point_est = lik * prior / sum(lik * prior), stringsAsFactors = FALSE)
 }
-.rb <- function(df, ...) suppressMessages(posterior_consensus(df,
+.rb <- function(df, robust_prior_s = 1, cross_phylum_eps = 0.05, ...) suppressMessages(posterior_consensus(df,
   rank_system = c("family", "genus", "species"), consensus_method = "credible_node",
-  likelihood_consensus = FALSE, ...))
+  likelihood_consensus = FALSE, robust_prior_s = robust_prior_s,
+  cross_phylum_eps = cross_phylum_eps, ...))
 
 test_that("a call resting on a thinly supported prior coarsens; off restores it", {
   # equal likelihoods, prior 0.97 vs 0.03 from few records (N = 30)
@@ -1853,9 +1866,10 @@ test_that("robust_prior_s is validated", {
 })
 
 # ---- credible node on per-row (rank, name) ancestry ---------------------------
-.anc <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+.anc <- function(df, cross_phylum_eps = 0.05, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
   rank_system = c("phylum", "class", "order", "family", "genus", "species"),
-  consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0, ...)))
+  consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0,
+  cross_phylum_eps = cross_phylum_eps, ...)))
 .anc_df <- function(post, class, order, family = c("F1", "F2", "F3"), genus = c("G1", "G2", "G3")) {
   data.frame(observation_id = "E1", taxon_name = paste(genus, c("a", "b", "c")),
     taxon_name_rank = "species", hypothesis_type = "specific_candidate",
@@ -1909,7 +1923,7 @@ test_that("consensus_limit separates threshold-limited from backbone-limited cal
   ring$hypothesis_type[2] <- "unreferenced_genus"
   expect_equal(.anc(ring)$consensus_limit, "threshold")
   # lca method leaves the column NA
-  expect_true(is.na(suppressWarnings(suppressMessages(posterior_consensus(spread,
+  expect_true(is.na(suppressWarnings(suppressMessages(posterior_consensus(consensus_method = "lca", spread,
     rank_system = c("family", "genus", "species"), likelihood_consensus = FALSE)))$consensus_limit))
 })
 
@@ -1938,9 +1952,10 @@ test_that("robust N never comes from floor or dark-diversity pseudo-counts", {
 })
 
 # ---- lineage_conflict, threshold > 0.5, rank order (2026-10-02) --------------
-.lc <- function(df, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
+.lc <- function(df, cross_phylum_eps = 0.05, ...) suppressWarnings(suppressMessages(posterior_consensus(df,
   rank_system = c("phylum", "class", "order", "family", "genus", "species"),
-  consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0, ...)))
+  consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0,
+  cross_phylum_eps = cross_phylum_eps, ...)))
 
 test_that("lineage_conflict reports a name the rows use with two lineages", {
   h <- data.frame(observation_id = "E1", taxon_name = c("Porella aaa", "Porella bbb"),
@@ -1969,9 +1984,10 @@ test_that("credible_node refuses a threshold at or below one half", {
     family = c("F1", "F2"), genus = c("Aaa", "Bbb"), posterior_point_est = c(0.5, 0.5),
     stringsAsFactors = FALSE)
   expect_error(.lc(df, cumulative_threshold = 0.5), "exceed 0.5")
-  # the lca method is unchanged
+  # the lca method accepts a threshold at one half
   expect_no_error(suppressWarnings(suppressMessages(posterior_consensus(df,
-    rank_system = c("family", "genus", "species"), cumulative_threshold = 0.5, likelihood_consensus = FALSE))))
+    rank_system = c("family", "genus", "species"), consensus_method = "lca",
+    cumulative_threshold = 0.5, likelihood_consensus = FALSE))))
 })
 
 test_that("a non-standard rank in rank_system orders the rank masking", {
@@ -2082,9 +2098,11 @@ test_that("a PARTIAL phylum placement failure names the phyla it could not place
     order = c("Laminariales", "Peronosporales"), family = c("Laminariaceae", "Peronosporaceae"),
     genus = c("Macrocystis", "Phytophthora"), posterior_point_est = post, stringsAsFactors = FALSE)
 }
-.xp <- function(df, rs = c("phylum", "class", "order", "family", "genus", "species"), ...)
+.xp <- function(df, rs = c("phylum", "class", "order", "family", "genus", "species"),
+                cross_phylum_eps = 0.05, ...)
   suppressWarnings(suppressMessages(posterior_consensus(df, rank_system = rs,
-    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0, ...)))
+    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0,
+    cross_phylum_eps = cross_phylum_eps, ...)))
 
 test_that("cross_phylum_eps withholds a call finer than phylum when the runner-up phylum holds eps or more", {
   df <- .xp_df(c(0.93, 0.07))
@@ -2229,7 +2247,8 @@ test_that("cross_phylum_eps is validated and says when it cannot apply", {
     expect_error(.xp(df, cross_phylum_eps = bad), "cross_phylum_eps")
   }
   expect_message(suppressWarnings(posterior_consensus(df, rank_system = c("class", "order", "family", "genus", "species"),
-    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0)),
+    consensus_method = "credible_node", likelihood_consensus = FALSE, robust_prior_s = 0,
+    cross_phylum_eps = 0.05)),
     "cross_phylum_eps is not applied")
   expect_equal(attr(.xp(df, cross_phylum_eps = 0.1), "report_params")$cross_phylum_eps, 0.1)
 })
@@ -2383,8 +2402,11 @@ test_that(".phylum_lineage_map degrades to an empty map instead of failing", {
   }
   df
 }
-.prov <- function(df, ...) {
-  suppressWarnings(suppressMessages(posterior_consensus(df, ...)))
+.prov <- function(df, consensus_method = "lca", robust_prior_s = 1,
+                  cross_phylum_eps = 0.05, ...) {
+  suppressWarnings(suppressMessages(posterior_consensus(df,
+    consensus_method = consensus_method, robust_prior_s = robust_prior_s,
+    cross_phylum_eps = cross_phylum_eps, ...)))
 }
 
 test_that("consensus_hypothesis_type reports the row the CALL landed on", {

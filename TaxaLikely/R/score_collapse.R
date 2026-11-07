@@ -307,15 +307,17 @@ detect_suppressed_candidates <- function(match_obj,
 #'   floor, on the same distance (\code{1 - p_match}) scale as
 #'   [build_sequence_matrix()]'s own \code{max_dist} -- reuse the same value
 #'   passed there for consistency.
-#' @param check_regional_overlap Logical (default \code{TRUE}). When
+#' @param check_regional_overlap Logical (default \code{FALSE}). When
 #'   \code{TRUE}, enables the score-sourcing hierarchy's Level 4 (live Tier 2
 #'   pairwise alignment, \code{@section Score-sourcing hierarchy}) for
-#'   candidates that Levels 1-3 can't resolve for free; with \code{FALSE},
-#'   such candidates simply get no score and are never restored. The default
-#'   therefore requires \code{accession_col} in \code{match_obj} and
-#'   \code{composite_id}/\code{sequence} in \code{reference_df}, and errors
-#'   if they are absent; pass \code{FALSE} for a match object that carries
-#'   neither. This also
+#'   candidates that Levels 1-3 can't resolve for free; with \code{FALSE}
+#'   (the default), such candidates simply get no score and are never
+#'   restored. \code{TRUE} requires \code{accession_col} in \code{match_obj}
+#'   and \code{composite_id}/\code{sequence} in \code{reference_df}, and
+#'   errors if they are absent, so it is available only to a workflow whose
+#'   references carry sequences -- which is why it is not the default: this
+#'   function also serves image and acoustic matches, whose reference tables
+#'   have no sequence to align. This also
 #'   doubles as Purpose A's regional-overlap guarantee for real, without a
 #'   second position check: any candidate resolved via Levels 1-3 is
 #'   position-safe by construction (\code{seq_matrix} only ever contains
@@ -631,7 +633,7 @@ restore_suppressed_candidates <- function(match_obj,
                                           model_params = NULL,
                                           alpha = 0.001,
                                           max_dist = 0.25,
-                                          check_regional_overlap = TRUE,
+                                          check_regional_overlap = FALSE,
                                           seq_matrix = NULL,
                                           min_regional_coverage = 0.5,
                                           accession_col = "accession",

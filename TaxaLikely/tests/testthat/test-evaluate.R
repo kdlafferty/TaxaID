@@ -76,12 +76,12 @@ test_that(".evaluate_one_query: includes all three hypothesis types when ratio_t
   expect_true("unreferenced_genus" %in% out$hypothesis_type)
 })
 
-test_that(".evaluate_one_query: generic rows survive the default ratio_threshold", {
+test_that(".evaluate_one_query: generic rows survive a ratio_threshold that drops specifics", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
   # In this fixture the unreferenced_genus row's ratio is ~0.002, below the
-  # default 0.01. Only specific candidates may be dropped by ratio_threshold,
-  # at the point estimate AND after simulation.
+  # 0.01 this block asks about. Only specific candidates may be dropped by
+  # ratio_threshold, at the point estimate AND after simulation.
   all_rows <- TaxaLikely:::.evaluate_one_query(
     .make_match_df(), params, c("family", "genus", "species"),
     ratio_threshold = 0
@@ -92,7 +92,7 @@ test_that(".evaluate_one_query: generic rows survive the default ratio_threshold
     set.seed(1)
     out <- TaxaLikely:::.evaluate_one_query(
       .make_match_df(), params, c("family", "genus", "species"),
-      n_sims = ns
+      ratio_threshold = 0.01, n_sims = ns
     )
     expect_true("unreferenced_species" %in% out$hypothesis_type)
     expect_true("unreferenced_genus" %in% out$hypothesis_type)
@@ -209,8 +209,15 @@ test_that(".evaluate_one_query: min_match_threshold filters low scores", {
     min_match_threshold = 0.5
   )
   spec <- out[out$hypothesis_type == "specific_candidate", ]
-  # All H1 likelihoods should be 0, so they are filtered out
-  expect_equal(nrow(spec), 0L)
+  # Every H1 likelihood is 0. min_match_threshold zeroes them; it does not
+  # remove them, and with ratio_threshold = 0 a zero-likelihood row is kept.
+  expect_true(all(spec$score_likelihood == 0))
+  # A positive ratio_threshold is what drops them.
+  dropped <- TaxaLikely:::.evaluate_one_query(df_low, params,
+    c("family", "genus", "species"),
+    min_match_threshold = 0.5, ratio_threshold = 0.01
+  )
+  expect_equal(sum(dropped$hypothesis_type == "specific_candidate"), 0L)
 })
 
 test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier, retains near-mean", {

@@ -83,7 +83,10 @@ consensus <- TaxaAssign::posterior_consensus(
   cross_phylum_eps        = 0
 )
 
-# Optional: empirical Bayes refinement
+# Optional: empirical Bayes refinement. n_sims defaults to 1000, which
+# propagates uncertainty through the re-run as the production workflows do;
+# pass n_sims = 0 for point estimates only if the refinement is being tried
+# out rather than reported.
 posteriors_updated <- TaxaAssign::update_prior_from_consensus({{input_var}}, consensus)
 consensus_final <- TaxaAssign::posterior_consensus(
   posteriors_updated,

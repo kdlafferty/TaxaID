@@ -14,7 +14,8 @@ library(dplyr)
 .upf <- function(...) update_prior_from_consensus(..., require_support_columns = FALSE)
 # the guarded (production) path. The fixtures' consensus is hand-built, so it carries the settings
 # posterior_consensus() would attach (attr "consensus_settings"), which the species guard reuses.
-.CARGS <- list(cumulative_threshold = 0.9, min_posterior = 0.05)
+.CARGS <- list(cumulative_threshold = 0.9, min_posterior = 0.05,
+  consensus_method = "lca")
 .with_settings <- function(consensus, settings = .CARGS) {
   attr(consensus, "consensus_settings") <- settings
   consensus
@@ -1399,7 +1400,7 @@ test_that("posterior_consensus() attaches its own settings, and the species guar
   cs <- attr(cons, "consensus_settings")
   expect_identical(sort(names(cs)), sort(setdiff(names(formals(posterior_consensus)), "posterior_df")))
   expect_identical(cs$cumulative_threshold, 0.8)
-  expect_identical(cs$consensus_method, "lca") # match.arg()'d, as the call used it
+  expect_identical(cs$consensus_method, "credible_node") # match.arg()'d, as the call used it
   # the guard's consensus is called with exactly those settings
   seen <- NULL
   real <- posterior_consensus
@@ -1413,7 +1414,7 @@ test_that("posterior_consensus() attaches its own settings, and the species guar
   attr(x, "consensus_settings") <- cs
   local_mocked_bindings(posterior_consensus = spy)
   suppressMessages(update_prior_from_consensus(fx$result, x, n_sims = 0))
-  expect_identical(seen, list(cumulative_threshold = 0.8, consensus_method = "lca"))
+  expect_identical(seen, list(cumulative_threshold = 0.8, consensus_method = "credible_node"))
 })
 
 # --- max_raise_factor: bounding the substitution ------------------------------

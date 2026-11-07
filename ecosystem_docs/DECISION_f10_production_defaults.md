@@ -25,7 +25,6 @@ shipped `inst/TaxaID_Workflow_Template.R` and
 | `n_sims` | `update_prior_from_consensus()` | `1000` | `1000L` |
 | `score_transform` | `train_likelihood_model()` | `"sqrt_mismatch"` | `"sqrt_mismatch"` |
 | `ratio_threshold` | `evaluate_likelihoods()` | `0` | `0` |
-| `check_regional_overlap` | `restore_suppressed_candidates()` | `TRUE` | `TRUE` |
 
 `ratio_threshold = 0` carries a written reason at
 `PtConceptionWorkflow_12S_single_site.R:2230`: a positive threshold makes a
@@ -86,9 +85,46 @@ one of these defaults. Where a test's SUBJECT is the behaviour the old default
 selected, the old value is pinned explicitly rather than the expectation
 edited.
 
-`check_regional_overlap = TRUE` is the only flip that can make a default call
-ERROR rather than return a different number: `score_collapse.R:673-685` stops
-when `match_obj` lacks `accession` or `reference_df` lacks
-`composite_id`/`sequence`. The requirement is stated in the argument's own
-documentation, and the alignment it enables is local
-(`pwalign::pairwiseAlignment`), so no default call reaches the network.
+## Rejected after the measurement: `check_regional_overlap`
+
+This was the seventh flip, and it is held on the maintainer's objection of
+2026-11-06: TaxaID is agnostic about data sources, and requiring an accession
+is specific to metabarcoding.
+
+Checked, and he is right on a stronger ground than the accession. With
+`check_regional_overlap = TRUE`, `score_collapse.R:682-685` requires a
+`sequence` column on `reference_df`. An image or acoustic workflow has no such
+column, and the workflow graph gives those paths no separate branch: the edges
+`image_to_match` and `birdnet_to_match` both produce `match_df`, and the
+`model_match_to_lik` edge that consumes it lists
+`restore_suppressed_candidates` among its functions. So the two non-sequence
+data types reach this function through the same edge as DNA. A default of
+`TRUE` would make a DNA sequence mandatory in a function whose own
+`sequence_col` defaults to `NULL` -- that is, in a function designed to work
+without one.
+
+The evidence that production passes `TRUE` turns out to say little: all six
+production call sites are metabarcoding, so of course they do. That is a fact
+about the current studies, not about what the argument should default to, and
+treating it as the latter is the dataset-patch error the project rules name.
+
+The suite said the same thing before the argument did, and it should have been
+read that way: the flip forced `check_regional_overlap = FALSE` onto **54** test
+calls whose fixtures carry no accession. A default that needs 54 opt-outs is
+not the default.
+
+What is kept from the attempt: the argument's documentation now says what
+`TRUE` requires AND why it is not the default, and a test asserts that the
+default needs no sequence, with the reason, so the next person to propose this
+flip meets the argument rather than the silence.
+
+## One note on `score_transform`, for the same reason
+
+The flip stands -- every production workflow trains on `sqrt_mismatch` -- but
+its JUSTIFICATION is sequence-shaped: `-sqrt(1 - p)` treats the mismatch side
+as a rare-event count, "few mismatches out of many aligned bases". The
+transform itself only needs a match proportion in [0, 1], which an image
+classifier or an acoustic confidence also produces, and `"logit"` remains
+available. No non-sequence study has been measured on either scale, so the
+default picks the scale justified on barcode data. Worth revisiting when an
+image or acoustic reference set is trained.

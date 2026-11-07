@@ -14,12 +14,10 @@
   against the best hypothesis of any rank, which can suppress a legitimate but
   weak H1 match that the Mahalanobis and alpha checks already gate; raising it
   trades denominator coverage for a smaller likelihood object.
-* `restore_suppressed_candidates()` defaults to
-  `check_regional_overlap = TRUE`, enabling the live pairwise alignment that
-  scores candidates the free lookup levels cannot reach. The default therefore
-  requires `accession_col` in `match_obj` and `composite_id`/`sequence` in
-  `reference_df` and errors when they are absent; pass
-  `check_regional_overlap = FALSE` for a match object that carries neither.
+* `restore_suppressed_candidates()` documents why
+  `check_regional_overlap` stays `FALSE` by default: `TRUE` requires a
+  `sequence` column on `reference_df`, and this function also serves the image
+  and acoustic paths, whose reference tables have none.
 * `build_sequence_matrix()` gains `pair_retention = "best2_per_partner"`,
   which keeps every pair `"best_per_partner"` keeps plus the best floored pair
   of each out-of-genus family's second partner species. H3's gap parameters
