@@ -49,7 +49,11 @@ rule can be changed without a single new model call.}
 A data frame with one row per unique taxon in \code{taxon_list}
 (the same shape \code{\link[=parse_hierarchical_habitat_response]{parse_hierarchical_habitat_response()}} returns), in
 \code{taxon_list} order, with a \code{cache_summary} attribute:
-\code{n_total}, \code{n_from_cache}, \code{n_called}, \code{n_cached_new}.
+\code{n_total}, \code{n_from_cache}, \code{n_called}, \code{n_cached_new}, \code{model} (the model
+that answered this call, or a description of \code{llm_fn} when it reports
+none), \code{models} (every model behind the returned verdicts; more than one
+is warned about) and \code{n_model_unknown} (hits written before the model was
+recorded, which cannot be traced to one).
 }
 \description{
 One call that does what the three-step pattern
@@ -74,10 +78,24 @@ how its answer is parsed.
 
 The taxon name, the habitat columns the scheme asks for (derived exactly
 as \code{\link[=build_habitat_prompt]{build_habitat_prompt()}} derives them, so a changed scheme is a miss),
-\code{extra_covariates}, \code{geographic_context}, and \code{cache_tag}. The LLM
-function itself cannot be hashed -- if you change providers or models and
-want fresh verdicts, pass a new \code{cache_tag} (e.g. the model name) or
-clear the directory with \code{\link[=taxahabitat_clear_cache]{taxahabitat_clear_cache()}}.
+\code{extra_covariates}, \code{geographic_context}, and \code{cache_tag}.
+
+Not the model. Every entry written RECORDS what answered it, so a habitat
+weight can be traced to what produced it, and a lookup whose verdicts come
+from more than one model warns and names them: a mixed set is the thing that
+cannot pass unnoticed. A caller who merely changed their \code{llm_fn} since the
+cache was written is not warned, because nothing about the returned verdicts
+is mixed -- including the common case of passing a stub that must not be
+called, to prove a full cache hit.
+
+What gets recorded is the model the provider resolved, which
+\code{\link[TaxaTools:prompt_api]{TaxaTools::prompt_api()}} reports from the call itself -- so a capability
+tier pointed at a different model is visible in the record rather than
+hidden behind the tier's name. An \code{llm_fn} that reports no model falls back
+to a description of the function, which can only say which function was
+called; pass \code{cache_tag} = the model identifier in that case. Several values
+mean a fallback model answered some chunk. \code{cache_summary} carries \code{model},
+\code{models} and \code{n_model_unknown}.
 }
 
 \section{What is and is not cached}{

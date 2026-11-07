@@ -110,8 +110,8 @@ test_that("sites = NULL: prompt, cache key, cache file and columns are pinned", 
   files <- list.files(cd, full.names = TRUE)
   keys <- sort(vapply(files, function(f) readRDS(f)$key, character(1), USE.NAMES = FALSE))
   frozen <- c(
-    "v14\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Gobiidae\001NA\001FALSE\001FALSE",
-    "v14\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Sardinops sagax\001NA\001FALSE\001FALSE"
+    "v15\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Gobiidae\001NA\001FALSE\001FALSE",
+    "v15\001fish\00112S\001eDNA\001FALSE\001frozen\001geography=Pacific coast|habitat=rocky intertidal\001Sardinops sagax\001NA\001FALSE\001FALSE"
   )
   expect_identical(keys, frozen)
   fixture <- readLines(
@@ -176,7 +176,7 @@ test_that("the habitat and target-group strings come from the caller, not the co
   )
   p <- attr(out, "llm_prompts")[["1"]]
   expect_match(p, "study habitat (Freshwater rocky littoral)", fixed = TRUE)
-  expect_match(p, "target group (freshwater fishes)", fixed = TRUE)
+  expect_match(p, "the target group names (freshwater fishes)", fixed = TRUE)
   expect_false(grepl("rocky intertidal|lanternfish|Point Conception", p))
   # the worked examples name no real taxon
   expect_match(p, "WORKED EXAMPLES (invented taxa)", fixed = TRUE)

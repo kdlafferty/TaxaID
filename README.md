@@ -967,12 +967,12 @@ describe each in full.
 |-------------|--------------------|------------|----------|
 | TaxaTools   | 57                 | 34         | Yes      |
 | TaxaFetch   | 32                 | 28         | Yes      |
-| TaxaHabitat | 15                 | 12         | Yes      |
+| TaxaHabitat | 15                 | 13         | Yes      |
 | TaxaMatch   | 30                 | 23         | Yes      |
 | TaxaLikely  | 33                 | 43         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
 | TaxaAssign  | 13                 | 24         | Yes      |
-| TaxaFlag    | 17                 | 22         | Yes      |
+| TaxaFlag    | 17                 | 23         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 **Export surface: 223 = 218 functions + 5 data objects.** The per-package counts

@@ -144,7 +144,16 @@ call_anthropic_api <- function(prompt_str,
 #' @param verbose Logical. Print progress per chunk. Default \code{TRUE}.
 #'
 #' @return A length-1 character string containing the combined raw response
-#'   text from all chunks.
+#'   text from all chunks, with these attributes:
+#'   \describe{
+#'     \item{\code{"model"}}{Every distinct resolved model identifier that
+#'       answered a chunk, as \code{\link{call_api}} reports it, or absent
+#'       when \code{llm_fn} reports none. More than one value means different
+#'       chunks were answered by different models, which a fallback can cause.}
+#'     \item{\code{"failed_chunks"}}{Indices of chunks that returned nothing,
+#'       or absent when none did.}
+#'     \item{\code{"n_chunks"}}{The number of chunks submitted.}
+#'   }
 #'
 #' @details
 #' \strong{Prompt types in TaxaID:}
@@ -273,6 +282,17 @@ prompt_api <- function(prompt,
   }
 
   out <- .combine_chunk_responses(results)
+  # The resolved model identifier, which call_api() attaches to each chunk's
+  # response. One chunk is returned unchanged and keeps it; several are pasted
+  # together, and the paste drops it. A verdict cached downstream then cannot
+  # name the model that gave it, so a capability tier later pointed at a
+  # different model is invisible in the record. More than one value is possible
+  # -- a fallback model can answer a chunk the first one failed -- so every
+  # distinct value is kept rather than the first.
+  models <- unique(unlist(lapply(results, function(r) {
+    if (is.null(r)) NULL else attr(r, "model", exact = TRUE)
+  })))
+  attr(out, "model") <- if (length(models) > 0L) models else NULL
   attr(out, "failed_chunks") <- if (length(failed_chunks) > 0L) failed_chunks else NULL
   attr(out, "n_chunks") <- n_chunks
   out

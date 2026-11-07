@@ -1,6 +1,21 @@
 # TaxaHabitat 1.0.0
 
 * Initial release.
+* `build_habitat_lookup()` records which model answered in every cache entry it
+  writes, reports it in the `cache_summary` attribute as `model` and `models`,
+  and warns when the verdicts it returns come from more than one -- the state
+  that made a habitat weight untraceable and let a re-run mix models silently.
+  Entries written before the model was recorded are counted as
+  `n_model_unknown`, because no record is not the same as another model. The
+  record identifies the function behind `llm_fn`, not the model a capability
+  tier resolves to at call time; pass `cache_tag` = the resolved model
+  identifier when the record must name the model itself.
+* The habitat cache key's version token moves once. The prompt's compound-label
+  wording changed under the previous token, so a scheme that declares parts
+  could be served a verdict given under different wording. Every cache is a
+  miss once and is re-asked. `test-habitat_prompt_fingerprint.R` now fails when
+  the prompt's source changes without the token moving, so the guard no longer
+  depends on remembering.
 
 ## New features
 

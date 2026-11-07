@@ -1381,8 +1381,24 @@ review_assignments <- function(input_df,
     # score against the maintainer's labels rather than on argument.
     # The study-wide p_geographic wording is unaffected -- there the study
     # area IS the unit.
+    # v15: p_scope asked for the kind of organism "and its depth or habitat
+    # zone", and rated low "a kind of organism, realm or depth the target
+    # group excludes". Habitat therefore entered the answer twice, because
+    # p_habitat already scores where a taxon lives, and the double count is
+    # worst where the target group NAMES a habitat: under "shallow-water
+    # marine fishes, macroinvertebrates and macroalgae" a mesopelagic or
+    # freshwater fish is a fish asked about by a group whose own words
+    # exclude its zone, so it took a low p_scope for a habitat reason and a
+    # low p_habitat for the same one. The maintainer's review of real calls
+    # found that on mesopelagic (Vinciguerria lucetia, Diaphus theta,
+    # Diogenichthys laternatus, Trachipterus altivelis) and freshwater
+    # (Gambusia, Dorosoma) fishes. Scope is now taxonomic only and says in as
+    # many words that a habitat, depth, zone or realm inside the target group
+    # string is to be ignored here and scored in p_habitat. The field is
+    # reported, never read by a rule in this package, so what moves is the
+    # judgement a reader sees, not a call this package makes.
     shared_parts <- c(
-      "v14", target_group %||% "", marker %||% "", data_type,
+      "v15", target_group %||% "", marker %||% "", data_type,
       as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
@@ -1770,7 +1786,7 @@ review_assignments <- function(input_df,
 #' missing answer.
 #'
 #' A row with no probability columns at all predates the probability format,
-#' which the \code{v14} key prefix already orphans; such a row falls back to
+#' which the \code{v15} key prefix already orphans; such a row falls back to
 #' the older test -- every field the LLM was asked to fill is \code{NA}, the
 #' shape \code{make_default()} produces for an omitted taxon. That test
 #' deliberately ignores \code{scope_plausibility} (legitimately \code{NA}
@@ -3413,7 +3429,7 @@ review_assignments <- function(input_df,
 # a figure here: one copy means one edit when the next measurement lands.
 #
 # The wording of every block below is part of the question, so any change to it
-# must bump "v14" (and "geo_sites_v5" for the site blocks) in the cache key --
+# must bump "v15" (and "geo_sites_v5" for the site blocks) in the cache key --
 # the key holds the inputs, not the prompt, so a verdict obtained from older
 # wording would otherwise be served as a hit.
 
@@ -3455,13 +3471,14 @@ review_assignments <- function(input_df,
     return('  "p_scope": null (no target group specified),')
   }
   paste0(
-    '  "p_scope": probability that the taxon is in the target group (',
-    target_group, ") by the KIND OF ORGANISM and its depth or habitat zone ",
-    "only; whether it occurs in the study region is geography, not scope. ",
-    "High = the kind of organism and its normal depth or zone fit the target ",
-    "group; intermediate = mainly outside it but with a regular life stage ",
-    "inside it, or a group containing both kinds; low = a kind of organism, ",
-    "realm or depth the target group excludes,"
+    '  "p_scope": probability that the taxon belongs to the KIND OF ORGANISM ',
+    "the target group names (", target_group, "). Judge the taxonomy only. ",
+    "Where the target group also names a habitat, depth, zone or realm, ",
+    "ignore that part here: a taxon of the right kind is in scope however ",
+    "unsuited its habitat, and its habitat is scored in p_habitat. Whether it ",
+    "occurs in the study region is geography, not scope. High = the taxon is ",
+    "one of the kinds named; intermediate = a group containing both the kinds ",
+    "named and others; low = a kind of organism the target group excludes,"
   )
 }
 

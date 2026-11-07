@@ -191,8 +191,10 @@ call that moves rows between plausibility categories and must be
 validated before it is trusted. One Kish effective record is the
 defensible starting point if you want one. Changing it from \code{0} WILL
 move \code{winner_has_occurrence_record}, and therefore the plausibility
-counts -- re-run the held-out GreatLakes/Lamar check (current benchmark:
-precision 0.872) before relying on the result.}
+counts -- re-run the held-out GreatLakes/Lamar check before relying on
+the result. The benchmark it is scored against, and the run that produced
+it, are recorded in \code{TaxaLikely}'s supplemental methods (section 17); the
+figure is not restated here, so there is one place to correct it.}
 
 \item{taxonomy_cache_dir}{Character or \code{NULL} (default). Passed to
 \code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}} as \code{cache_dir} when
