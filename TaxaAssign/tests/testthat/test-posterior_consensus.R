@@ -2743,3 +2743,33 @@ test_that("lookup_missing_taxonomy passes each unreferenced hypothesis's own ran
   expect_false(is.null(seen$ranks))
   expect_identical(unname(seen$ranks[match(c("Etheostoma", "Percidae"), seen$names)]), c("genus", "family"))
 })
+
+# ---- shipped defaults -------------------------------------------------------
+# The production workflows and the workflow template all pass these three, and
+# the defaults match what they pass. One argument must not have two different
+# defaults, so the internal helpers that take the same arguments are checked
+# against the exported ones here rather than left to drift.
+
+test_that("posterior_consensus() ships the production consensus defaults", {
+  f <- formals(posterior_consensus)
+  expect_identical(eval(f$consensus_method), c("credible_node", "lca"))
+  expect_identical(eval(f$robust_prior_s), 0)
+  expect_identical(eval(f$cross_phylum_eps), 0)
+})
+
+test_that("the consensus internals default to the same values as the export", {
+  f <- formals(posterior_consensus)
+  for (fn in list(TaxaAssign:::.consensus_one_observation,
+                  TaxaAssign:::.add_prior_role)) {
+    g <- formals(fn)
+    if ("consensus_method" %in% names(g)) {
+      expect_identical(eval(g$consensus_method), eval(f$consensus_method)[[1L]])
+    }
+    if ("robust_prior_s" %in% names(g)) {
+      expect_identical(eval(g$robust_prior_s), eval(f$robust_prior_s))
+    }
+    if ("cross_phylum_eps" %in% names(g)) {
+      expect_identical(eval(g$cross_phylum_eps), eval(f$cross_phylum_eps))
+    }
+  }
+})

@@ -1,6 +1,25 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `train_likelihood_model()` defaults to `score_transform = "sqrt_mismatch"`,
+  the scale every production workflow trains on. `-sqrt(1 - p)` treats the
+  mismatch side as a rare-event count, which is where real barcode data sits,
+  and it recovers the genus-tightness ordering that the logit scale inverts
+  for tightly clustered genera. `score_transform = "logit"` selects the logit
+  scale; H1, H2 and H3 always share one transform, and
+  `model_params$Score_Transform` records which, so `evaluate_likelihoods()`
+  reads it without being told.
+* `evaluate_likelihoods()` defaults to `ratio_threshold = 0`, retaining every
+  specific candidate. A positive threshold compares a specific candidate
+  against the best hypothesis of any rank, which can suppress a legitimate but
+  weak H1 match that the Mahalanobis and alpha checks already gate; raising it
+  trades denominator coverage for a smaller likelihood object.
+* `restore_suppressed_candidates()` defaults to
+  `check_regional_overlap = TRUE`, enabling the live pairwise alignment that
+  scores candidates the free lookup levels cannot reach. The default therefore
+  requires `accession_col` in `match_obj` and `composite_id`/`sequence` in
+  `reference_df` and errors when they are absent; pass
+  `check_regional_overlap = FALSE` for a match object that carries neither.
 * `build_sequence_matrix()` gains `pair_retention = "best2_per_partner"`,
   which keeps every pair `"best_per_partner"` keeps plus the best floored pair
   of each out-of-genus family's second partner species. H3's gap parameters

@@ -912,3 +912,15 @@ test_that("option TaxaLikely.train_block_ids is validated", {
   on.exit(options(old), add = TRUE)
   expect_error(TaxaLikely:::.train_block_size(), "positive integer")
 })
+
+# ---- shipped defaults -------------------------------------------------------
+
+test_that("train_likelihood_model() ships sqrt_mismatch, and the internal agrees", {
+  # Every production workflow trains on sqrt_mismatch. The internal prep step
+  # is a private implementation of this one argument, so a different default
+  # there would be a second answer to the same question.
+  expect_identical(eval(formals(train_likelihood_model)$score_transform),
+                   "sqrt_mismatch")
+  expect_identical(eval(formals(TaxaLikely:::.prep_training_data)$score_transform),
+                   eval(formals(train_likelihood_model)$score_transform))
+})

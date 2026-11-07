@@ -1774,3 +1774,10 @@ test_that("align_cache keys stay bounded however large the material", {
   expect_false(identical(k1, k2))
   expect_lt(nchar(k1), 100L)
 })
+
+test_that("restore_suppressed_candidates() checks regional overlap by default", {
+  # Six production call sites pass TRUE. The default needs `accession` on
+  # match_obj and composite_id/sequence on reference_df, and says so; a caller
+  # whose match object carries neither passes FALSE.
+  expect_true(eval(formals(restore_suppressed_candidates)$check_regional_overlap))
+})

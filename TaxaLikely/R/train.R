@@ -58,7 +58,7 @@ utils::globalVariables(c(
 #'   differences larger than this are capped to prevent extreme outliers from
 #'   dominating model estimates.  `NULL` resolves per `score_transform` via
 #'   `.resolve_gap_ceiling()`.
-#' @param score_transform Character, `"logit"` (default) or `"sqrt_mismatch"`.
+#' @param score_transform Character, `"sqrt_mismatch"` (default) or `"logit"`.
 #'   Which scale scores/gaps are transformed onto before training -- see
 #'   `train_likelihood_model()`'s own `@param score_transform` for the full
 #'   explanation (this internal function is always called with the same value
@@ -116,7 +116,7 @@ utils::globalVariables(c(
                                 score_bounds = NULL,
                                 logit_epsilon = 1e-4,
                                 max_gap_ceiling = NULL,
-                                score_transform = "logit",
+                                score_transform = "sqrt_mismatch",
                                 min_pair_coverage = NULL) {
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (!is.data.frame(raw_df)) {
@@ -770,7 +770,7 @@ utils::globalVariables(c(
 #'   between 99.3% and 50% identity, in logit units) or `0.6234` for
 #'   `"sqrt_mismatch"` (the same 99.3%-vs-50% reference gap on that scale) --
 #'   prevents extreme outliers from dominating model estimates either way.
-#' @param score_transform Character, `"logit"` (default) or `"sqrt_mismatch"`.
+#' @param score_transform Character, `"sqrt_mismatch"` (default) or `"logit"`.
 #'   The scale H1/H2/H3 are all modeled on -- must be shared across all three
 #'   hypotheses, since they are compared via density ratios at the same
 #'   observed point (a valid likelihood ratio requires one consistent scale;
@@ -1032,7 +1032,7 @@ train_likelihood_model <- function(raw_df,
                                    anchor_perfect = TRUE,
                                    logit_epsilon = 1e-4,
                                    max_gap_ceiling = NULL,
-                                   score_transform = "logit",
+                                   score_transform = "sqrt_mismatch",
                                    min_pair_coverage = 0.8,
                                    shrinkage = c("empirical_bayes", "fixed")) {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))

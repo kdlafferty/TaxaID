@@ -102,7 +102,7 @@
 #'   threshold against named mass only. `unnamed_mass` is reported either way.
 #'   Applies to `consensus_method = "lca"`; `"credible_node"` always keeps
 #'   every row in the denominator.
-#' @param consensus_method `"lca"` (default) or `"credible_node"`. `"lca"`
+#' @param consensus_method `"credible_node"` (default) or `"lca"`. `"lca"`
 #'   takes the smallest top set of hypotheses reaching `cumulative_threshold`
 #'   and reports their lowest common taxon. `"credible_node"` sums the
 #'   posterior of every hypothesis under each taxon, rank by rank from the
@@ -134,7 +134,8 @@
 #'   `likelihood_consensus_rank`, `prior_role` and `likelihood_support`;
 #'   changes no other column. Skipped (columns `NA`) when `posterior_df` has
 #'   no `score_likelihood` column. See \emph{Sequence support}.
-#' @param robust_prior_s Numeric (default `1`; `0` turns it off). Used with
+#' @param robust_prior_s Numeric (default `0`, which turns the check off; a
+#'   positive value applies it). Used with
 #'   `consensus_method = "credible_node"`. The occurrence prior is estimated
 #'   from finitely many records, so a node is reported only if its posterior
 #'   stays at or above `cumulative_threshold` for every prior within an
@@ -164,8 +165,9 @@
 #'   one warning per call naming how many observations it affected and why,
 #'   because a plain credible node is a less conservative call than the
 #'   robust one the caller asked for.
-#' @param cross_phylum_eps Numeric in `[0, 0.5)` (default `0.05`; `0` turns
-#'   it off). Used with `consensus_method = "credible_node"`. When the
+#' @param cross_phylum_eps Numeric in `[0, 0.5)` (default `0`, which turns
+#'   the check off; a positive value applies it). Used with
+#'   `consensus_method = "credible_node"`. When the
 #'   runner-up phylum holds at least this share of an observation's total
 #'   posterior, a call finer than phylum would rest on a choice between
 #'   phyla that the evidence barely makes (typically a low-identity sequence
@@ -849,10 +851,10 @@ posterior_consensus <- function(posterior_df,
                                 taxonomy_cache_dir = NULL,
                                 pool_tail = FALSE,
                                 unnamed_in_threshold = TRUE,
-                                consensus_method = c("lca", "credible_node"),
+                                consensus_method = c("credible_node", "lca"),
                                 likelihood_consensus = TRUE,
-                                robust_prior_s = 1,
-                                cross_phylum_eps = 0.05) {
+                                robust_prior_s = 0,
+                                cross_phylum_eps = 0) {
   consensus_method <- match.arg(consensus_method)
   if (!is.numeric(cross_phylum_eps) || length(cross_phylum_eps) != 1L ||
     is.na(cross_phylum_eps) || cross_phylum_eps < 0 || cross_phylum_eps >= 0.5) {
@@ -1616,7 +1618,7 @@ posterior_consensus <- function(posterior_df,
 # muffled.
 .add_prior_role <- function(result, posterior_df, rank_system, enabled,
                             cumulative_threshold, min_posterior, pool_tail,
-                            unnamed_in_threshold = TRUE, consensus_method = "lca",
+                            unnamed_in_threshold = TRUE, consensus_method = "credible_node",
                             cross_phylum_eps = 0, lineage_map = NULL) {
   result$likelihood_consensus_taxon <- NA_character_
   result$likelihood_consensus_rank <- NA_character_
@@ -1836,7 +1838,7 @@ posterior_consensus <- function(posterior_df,
                                        min_effective_records = 0,
                                        pool_tail = FALSE,
                                        unnamed_in_threshold = TRUE,
-                                       consensus_method = "lca",
+                                       consensus_method = "credible_node",
                                        robust_prior_s = 0,
                                        unsupplied = character(0),
                                        cross_phylum_eps = 0,

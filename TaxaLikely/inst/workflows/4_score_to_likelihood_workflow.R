@@ -124,7 +124,8 @@ lik_result <- evaluate_likelihoods(
   rank_system  = rank_system,
   n_sims       = 200L, # Monte Carlo iterations (0 = point estimate only)
   min_coverage = min_cov # NULL (no filter) or threshold from Workflow 3
-  # ratio_threshold = 0.001        # drop hypotheses with ratio below this (default)
+  # ratio_threshold = 0            # default: retain every candidate; raise it
+  #                                # to drop hypotheses with a ratio below it
   # verbose = TRUE                 # prints message when trivariate fallback is used
 )
 

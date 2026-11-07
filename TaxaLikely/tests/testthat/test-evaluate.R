@@ -1140,3 +1140,12 @@ test_that("evaluate_likelihoods announces a per-observation failure ONCE, not pe
   expect_length(total, 1L)
   expect_true(grepl(sprintf("%d of %d", n_obs, n_obs), msgs[total]))
 })
+
+test_that("evaluate_likelihoods() retains every candidate by default", {
+  # A positive ratio_threshold compares a specific candidate against the best
+  # hypothesis of any rank, which can suppress a weak but legitimate H1 match
+  # the Mahalanobis and alpha checks already gate. Production passes 0.
+  expect_identical(eval(formals(evaluate_likelihoods)$ratio_threshold), 0)
+  expect_identical(eval(formals(TaxaLikely:::.evaluate_one_query)$ratio_threshold),
+                   eval(formals(evaluate_likelihoods)$ratio_threshold))
+})

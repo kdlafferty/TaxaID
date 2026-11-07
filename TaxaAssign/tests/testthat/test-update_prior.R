@@ -1524,3 +1524,9 @@ test_that("max_raise_factor is validated and recorded in report_params", {
   expect_equal(attr(out, "report_params")$max_raise_factor, 7)
 })
 
+
+test_that("update_prior_from_consensus() ships the production n_sims default", {
+  # The production workflows pass 1000; a default of 0 made the documented
+  # path and the default call disagree about whether uncertainty propagates.
+  expect_identical(eval(formals(update_prior_from_consensus)$n_sims), 1000)
+})

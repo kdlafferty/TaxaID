@@ -1,6 +1,20 @@
 # TaxaAssign 1.0.0
 
 * Initial release.
+* `posterior_consensus()` defaults to `consensus_method = "credible_node"`
+  with `robust_prior_s = 0` and `cross_phylum_eps = 0` -- the weighted LCA by
+  node summing, with the imprecise-Dirichlet prior check and the cross-phylum
+  withholding both off. These are the values the production workflows and the
+  workflow template pass, so the default call and the documented path now
+  agree. `consensus_method = "lca"` selects the lowest common taxon of the
+  smallest top set reaching the threshold, and a positive `robust_prior_s` or
+  `cross_phylum_eps` turns its check back on; the Great Lakes workflow passes
+  `robust_prior_s = 1` and `cross_phylum_eps = 0.05` explicitly for its LCA
+  arm, so both values remain usable. A caller that relied on the default to
+  select `"lca"` must now name it.
+* `update_prior_from_consensus()` defaults to `n_sims = 1000`, propagating
+  uncertainty through the re-run as the production workflows do. `n_sims = 0`
+  asks for point estimates only, which is faster.
 
 ## New features
 

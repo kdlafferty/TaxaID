@@ -299,8 +299,9 @@
 #'   are unaffected: their update moves `prior_mix_w` and is already bounded
 #'   by the row's own `prior_mix_theta_present` and `prior_mix_veto_bound`.
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
-#'   Default 0 (point estimates only, fast). Set to 1000 to propagate
-#'   uncertainty -- match the value used in the original run.
+#'   Default 1000, which propagates uncertainty as the production runs do;
+#'   match the value used in the original run. Set 0 for point estimates
+#'   only, which is faster.
 #' @param detections Data frame, optional. One row per observation x group
 #'   membership: an `observation_id` column plus the `group_cols` column(s), and
 #'   optionally `marker_col`. An observation may appear in many rows (an ESV
@@ -365,7 +366,7 @@ update_prior_from_consensus <- function(result,
                                         consensus,
                                         confirmation_quantile = 0.9,
                                         confirmation_discount = 0.25,
-                                        n_sims = 0,
+                                        n_sims = 1000,
                                         detections = NULL,
                                         group_cols = "sample_id",
                                         marker_col = "marker",

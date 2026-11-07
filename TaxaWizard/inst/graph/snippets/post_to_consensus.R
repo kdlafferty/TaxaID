@@ -54,10 +54,11 @@ species_reference_df <- if (isTRUE({{include_downranking}})) {
 # the finest taxon holding at least cumulative_threshold of ALL the
 # observation's posterior is reported. robust_prior_s = 0 turns off the
 # imprecise-Dirichlet prior check and cross_phylum_eps = 0 the cross-phylum
-# withholding, both of which only apply with "credible_node". The PACKAGE
-# default remains consensus_method = "lca" (the lowest common taxon of the
-# smallest top set reaching the threshold); this template sets the weighted
-# form explicitly. Use the same three arguments in both calls below.
+# withholding, both of which only apply with "credible_node". These three are
+# also the package defaults; this template passes them explicitly so the
+# choice is visible rather than inherited. Pass consensus_method = "lca" for
+# the lowest common taxon of the smallest top set reaching the threshold.
+# Use the same three arguments in both calls below.
 #
 # The posterior table's pooled_n / pooled_prior_mass / pooled_taxa columns
 # (see lik_prior_to_post) stay on the table: a ring row stands for the named
