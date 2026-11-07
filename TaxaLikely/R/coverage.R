@@ -1256,7 +1256,7 @@ audit_acoustic_coverage <- function(plausible_species,
 #'   family.)  The posterior step needs the `constraint_applied` column this
 #'   function adds and a `genus` column (or a species binomial) on the rows;
 #'   a consensus run on these likelihoods WITHOUT that step sees the
-#'   placeholder at its full weight, as before the relabel.  Ambiguity AMONG
+#'   placeholder at its full weight.  Ambiguity AMONG
 #'   the referenced species is carried by their own rows and by the
 #'   consensus's rank walk, not by this placeholder.
 #'

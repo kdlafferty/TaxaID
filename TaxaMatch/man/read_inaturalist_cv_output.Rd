@@ -58,10 +58,9 @@ and returns a tidy data frame in match object format, ready for
 \details{
 Each JSON file should be the raw API response for one image, saved to disk
 after calling the iNaturalist API endpoint
-\verb{POST https://api.inaturalist.org/v1/computervision/score_image} --
-confirmed live and working (returning HTTP 200 with real results) as of
-this package's \code{\link[=score_image_inat]{score_image_inat()}}, which calls the same v1 endpoint
-directly rather than saving JSON to disk first. See the \verb{@details}
+\verb{POST https://api.inaturalist.org/v1/computervision/score_image} -- the
+same v1 endpoint this package's \code{\link[=score_image_inat]{score_image_inat()}} calls directly,
+rather than saving JSON to disk first. See the \verb{@details}
 section for a minimal API call example for the save-to-disk path this
 function reads.
 

@@ -439,13 +439,13 @@ default_sampling_scheme <- function() {
 #'   \code{kingdom} column at all is still decided on its phylum if it HAS a
 #'   \code{phylum} column; only when BOTH columns are absent -- a
 #'   class/order-only table, which this function supports -- is there nothing
-#'   to decide on, and then every unmatched row keeps the catch-all as before,
-#'   with one warning naming the columns it could not find.
+#'   to decide on, and then every unmatched row keeps the catch-all, with one
+#'   warning naming the columns it could not find.
 #'
 #'   Note for a caller with a DOWNSTREAM gate that drops units whose every
-#'   candidate is out of scope: a candidate whose only in-scope status came
-#'   from a bare domain label is now out of scope, so such a gate may drop
-#'   units it previously kept, and its own identity hold should be set.
+#'   candidate is out of scope: a candidate whose only in-scope status would
+#'   come from a bare domain label is out of scope here, so such a gate can
+#'   drop a whole unit, and its own identity hold should be set.
 #'
 #'   Set \code{kingdom_guard = FALSE} to make every unmatched row (any
 #'   kingdom, including \code{NA}) become the catch-all instead; that

@@ -78,7 +78,7 @@
 #' `"Uncertain"`, `"Unknown"`, `"Unassigned"`, any case) is UNPLACEABLE and
 #' is kept at its taxon's own probability of occupying `site_habitat`, read
 #' from `habitat_weights[[site_habitat]]`. A record in a different declared
-#' habitat is excluded as before, and so is `"Other"`, which
+#' habitat is excluded, and so is `"Other"`, which
 #' `TaxaHabitat::assign_habitat_biological()` emits as a PLACED verdict
 #' (none of the scheme's habitats). A label that is none of these is
 #' excluded too and named in a warning, because exclusion is the direction

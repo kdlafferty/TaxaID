@@ -62,8 +62,8 @@ utils::globalVariables(c(
 #' only substitutes on \code{NULL}, by design (it's used ecosystem-wide and
 #' its NULL-only semantics are relied on elsewhere), so applying it
 #' directly to these axis fields silently left \code{NA} unresolved instead
-#' of falling back to a sensible default -- confirmed via a real bundled
-#' PDF in the 2026-08 human review, where every one of these four fields
+#' of falling back to a sensible default -- confirmed on a real bundled
+#' PDF, where every one of these four fields
 #' came back \code{NA} and stayed \code{NA} all the way through prompt
 #' building. Use this helper instead of \code{\%||\%} for these four axis
 #' fields specifically.

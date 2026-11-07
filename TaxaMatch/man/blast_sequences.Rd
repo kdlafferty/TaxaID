@@ -122,8 +122,8 @@ lookups than the \code{resolve_taxonomy = TRUE} default alone (resolved
 on the larger pre-\code{max_hits} set, not the smaller final one) -- a
 real cost, only incurred when \code{max_hits_per_taxon} is actually
 requested. With \code{resolve_taxonomy = FALSE}, this falls back to
-grouping by \code{staxids} (a no-op for remote results, same as before
-this parameter existed) -- local BLAST via \pkg{rBLAST} does supply
+grouping by \code{staxids} (a no-op for remote results) -- local BLAST
+via \pkg{rBLAST} does supply
 real \code{staxids} directly from its own database's taxonomy mapping,
 so this fallback is only inert for the remote path.}
 

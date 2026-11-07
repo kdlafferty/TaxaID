@@ -655,7 +655,7 @@ utils::globalVariables(c(
 #'
 #' Rows whose coarse-rank constraint finds no matching species in
 #' `taxaexpect_priors` (e.g. a family absent from the study region) are left
-#' unchanged and receive the dark diversity floor prior as before.
+#' unchanged and receive the dark diversity floor prior.
 #'
 #' @return A data frame ready for [compute_posterior()], with columns
 #'   `prior_mean`, `prior_alpha`, and `prior_beta` added. All input columns are

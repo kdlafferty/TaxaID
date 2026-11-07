@@ -308,8 +308,8 @@ report_habitat <- function(habitat_data,
 #' taxon column or a known non-habitat column. This is deliberately just the
 #' candidate set (no value-range filtering) -- report_habitat()'s own dispatch
 #' logic uses the range check to decide which shape was passed, but once
-#' Shape A is confirmed every candidate is still treated as a real habitat
-#' column here, same as before, so a column with a defensible out-of-range
+#' Shape A is confirmed every candidate is treated as a real habitat
+#' column here, so a column with a defensible out-of-range
 #' value (e.g. floating-point overshoot) is never silently dropped.
 #' @noRd
 .candidate_habitat_cols <- function(habitat_data, taxon_col) {
