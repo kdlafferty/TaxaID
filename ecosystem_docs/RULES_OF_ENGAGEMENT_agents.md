@@ -55,10 +55,28 @@ that a test suite does not catch.
     name and full signature and wait. An exports diff cannot see a new *argument*
     on an existing function -- diff signatures, not just names.
 12. **No dated or historical prose in user-facing documentation.** Roxygen,
-    package READMEs, vignettes and NEWS describe what the code does now, not what
+    package READMEs and vignettes describe what the code does now, not what
     it used to do or when it changed. No "Session N", no "previously", no "no
     longer", no "legacy", no measurement dates. `CLAUDE.md`, `ecosystem_docs/`
     and `inst/*_review_response.md` are where history belongs.
+
+    **`NEWS.md` is exempt, because saying what changed is its job.** A release
+    note may say "previously", "no longer" or "withdraws a documented
+    guarantee" where that is the information a reader needs -- whether to
+    re-run something, whether a column moved, whether a guarantee they relied
+    on is gone. What NEWS may not do is pad: "the rest of the class stays
+    `zooplankton` as before" says nothing that "stays `zooplankton`" does not.
+    Keep the comparison when it carries information and drop it when it does
+    not.
+
+    **The AI-use disclosure is exempt, and its dates are required.** The USGS
+    policy on disclosing AI use in scientific products
+    (Survey Manual 502.4 and 502.6) requires each tool's name and version, the
+    purpose and extent of its use, and **the dates**. Every package README and
+    the root README carry that statement, dates included. A sweep for dated
+    prose must not strip it: removing those dates breaks a federal disclosure
+    requirement, not a style rule. The same goes for the non-endorsement
+    disclaimer that accompanies it.
 13. **Decisions are learned from the data, never hard-coded per marker.** A rule
     that names 12S, 18S or COI, or that hard-codes a threshold, is wrong even if
     it fits. Any tier must be learned, with evidence that it carries signal.
@@ -105,6 +123,7 @@ that a test suite does not catch.
     shipping unrecorded, and one already did: a reference-cache key change
     meant every cached taxon re-fetched on the next run, with no entry saying
     why. User-visible means a caller can observe it: returned columns or rows,
-    messages, file names, defaults, or work the user must redo. Write each entry
-    as a description of current behaviour, because rule 12 bars "previously",
-    "no longer" and "as before" from NEWS as from everything else.
+    messages, file names, defaults, or work the user must redo. An entry may
+    say what the behaviour changed FROM where that is what the reader needs --
+    rule 12's ban on historical prose does not reach `NEWS.md`, which exists to
+    record change. Say it because it is informative, not as filler.
