@@ -906,7 +906,7 @@ Submits an 'llm_prompt' object to an LLM provider, handling multi-chunk prompts 
 | pause_seconds | no | 1 | Numeric. Seconds to pause between chunks to avoid rate limits. Default 1. |
 | verbose | no | TRUE | Logical. Print progress per chunk. Default TRUE. |
 
-**Value:** A length-1 character string containing the combined raw response text from all chunks.
+**Value:** A length-1 character string containing the combined raw response text from all chunks, with these attributes: '"model"' Every distinct resolved model identifier that answered a chunk, as 'call_api' reports it, or absent when 'llm_fn' reports none. More than one value means different chunks were answered by different models, which a fallback can cause. '"failed_chunks"' Indices of chunks that returned nothing, or absent when none did. '"n_chunks"' The number of chunks submitted.
 
 #### Details
 
