@@ -82,7 +82,9 @@ consensus <- TaxaAssign::posterior_consensus(
   cross_phylum_eps = 0
 )
 
-# 4. Confirmation update, then Round 2 consensus
+# 4. Confirmation update, then Round 2 consensus. n_sims defaults to 1000,
+#    which propagates uncertainty through the re-run; pass n_sims = 0 for
+#    point estimates only.
 result_updated <- TaxaAssign::update_prior_from_consensus(result, consensus)
 consensus <- TaxaAssign::posterior_consensus(
   result_updated,

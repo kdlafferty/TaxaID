@@ -36,7 +36,8 @@ utils::globalVariables(c(
 #'   [train_likelihood_model()].
 #' @param rank_system Character vector of rank names **coarse to fine**
 #'   (e.g., `c("family", "genus", "species")`).
-#' @param ratio_threshold Numeric (default `0.01`).  Minimum likelihood ratio
+#' @param ratio_threshold Numeric (default `0`, which retains every specific
+#'   candidate).  Minimum likelihood ratio
 #'   relative to the best hypothesis; specific candidates below this are dropped.
 #'   The generic `unreferenced_species`/`unreferenced_genus` rows are always
 #'   retained.
@@ -81,7 +82,7 @@ utils::globalVariables(c(
 .evaluate_one_query <- function(candidate_df,
                                 model_params,
                                 rank_system,
-                                ratio_threshold = 0.01,
+                                ratio_threshold = 0,
                                 min_match_threshold = 0.50,
                                 alpha = 0.001,
                                 n_sims = 0,
@@ -1219,8 +1220,8 @@ utils::globalVariables(c(
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL` auto-detects
 #'   from columns in `match_df`.
 #' @param ratio_threshold Minimum likelihood ratio to retain a specific
-#'   candidate (default `0.01`).  Specific candidates with likelihood ratio
-#'   less than 1% of the best hypothesis are dropped; the generic
+#'   candidate (default `0`, which retains every one).  Specific candidates
+#'   with likelihood ratio below the threshold are dropped; the generic
 #'   `unreferenced_species`/`unreferenced_genus` rows are always retained,
 #'   because their prior can make them competitive on the posterior even when
 #'   their likelihood is small.  This removes noise hypotheses that would
@@ -1620,7 +1621,7 @@ utils::globalVariables(c(
 evaluate_likelihoods <- function(match_df,
                                  model_params,
                                  rank_system = NULL,
-                                 ratio_threshold = 0.01,
+                                 ratio_threshold = 0,
                                  min_match_threshold = 0.50,
                                  alpha = 0.001,
                                  n_sims = 0L,

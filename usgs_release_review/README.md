@@ -273,3 +273,43 @@ front page is the root `README.md`, which is unaffected.
 
 The written response to this release review is `RESPONSE_to_release_review.md`
 in this folder.
+
+## AI use, for the release record
+
+The USGS policy on disclosing artificial-intelligence use in scientific
+products (Survey Manual 502.4 and 502.6; Office of Science Quality and
+Integrity guidance) asks a software release to name each AI tool with its
+version, the purpose and extent of its use, and the dates, and to carry the
+non-endorsement disclaimer wherever a trade, firm or product name appears.
+
+Where that statement lives in this repository:
+
+- The **root `README.md`**, section "Use of Large Language Models", carries the
+  full statement: the models and versions, the period, what the assistance
+  covered, and that the author reviewed the code and takes responsibility for
+  it. It also distinguishes the three separate things an LLM does here --
+  inside the software, in writing the code, and in assisting the user -- which
+  a reviewer should not conflate.
+- **Each package's `README.md`** carries the same statement in short form plus
+  the non-endorsement disclaimer, because each one names commercial LLM
+  providers.
+- The model record is checkable rather than asserted: every commit in this
+  repository names the model that contributed to it in a `Co-Authored-By`
+  trailer.
+
+Two things are deliberately NOT here, and are noted so their absence is not
+read as an omission:
+
+- `WERC_README_template.md` and `reviewer_supplied_README.md` are the
+  reviewer's own files, kept as the record of what was supplied. The template
+  has a disclaimer section but no AI section; it is not edited here.
+- `code.json` carries no AI statement because the federal source-code metadata
+  schema has no field for one.
+
+The IPDS record for the release needs its own statement, which the policy
+templates as: "AI-assisted coding tools [name and version of tools used] were
+employed to generate code used in [describe usage]. All code was reviewed,
+tested, and validated by the authors to ensure correctness and
+reproducibility."
+
+AI tools are not authors of this software.

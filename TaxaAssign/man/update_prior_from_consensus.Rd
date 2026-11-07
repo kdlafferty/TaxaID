@@ -9,7 +9,7 @@ update_prior_from_consensus(
   consensus,
   confirmation_quantile = 0.9,
   confirmation_discount = 0.25,
-  n_sims = 0,
+  n_sims = 1000,
   detections = NULL,
   group_cols = "sample_id",
   marker_col = "marker",
@@ -49,8 +49,9 @@ any kind). See the
 \emph{Soft confirmation} section.}
 
 \item{n_sims}{Integer. Passed to \code{\link[=compute_posterior]{compute_posterior()}} for the re-run.
-Default 0 (point estimates only, fast). Set to 1000 to propagate
-uncertainty -- match the value used in the original run.}
+Default 1000, which propagates uncertainty as the production runs do;
+match the value used in the original run. Set 0 for point estimates
+only, which is faster.}
 
 \item{detections}{Data frame, optional. One row per observation x group
 membership: an \code{observation_id} column plus the \code{group_cols} column(s), and

@@ -13,8 +13,8 @@
   disagree about where they sit. And `Hydrozoa` is split by habit: the benthic
   hydroid orders `Leptothecata` and `Anthoathecata` become
   `macroinvertebrates`, while `Porpitidae`, `Velellidae` and `Hydridae` stay
-  `zooplankton` ahead of them, and the rest of the class stays `zooplankton`
-  as before. A turtle, a millipede, a frog and a benthic hydroid were all
+  `zooplankton` ahead of them, and the rest of the class stays `zooplankton`.
+  A turtle, a millipede, a frog and a benthic hydroid were all
   classed as benthic marine invertebrates before this.
   `"other_vertebrates"` is a NEW group name, so a caller grouping on
   `sampling_group` gains a level, and any taxon that previously fell to the
@@ -30,7 +30,7 @@
   animal one is refused, and a phylum that is itself missing or a placeholder
   is refused as undecidable rather than guessed either way. `"Bacteria"` and
   `"Archaea"` are not treated as uninformative -- they settle the question, so
-  the allowlist refuses them as before. Phylum names are matched trimmed and
+  the allowlist refuses them. Phylum names are matched trimmed and
   case-insensitively, and the list carries the junior synonyms the backbones
   still emit, because omitting one would read as a confident non-animal. The fallback fires
   only where a row reached the catch-all, so a row any rule already placed --

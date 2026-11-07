@@ -242,8 +242,8 @@ test_that("train_likelihood_model: score_transform = 'sqrt_mismatch' trains end 
     result$likelihoods$score_likelihood <= 1))
 })
 
-test_that("train_likelihood_model: default score_transform ('logit') is fully backward compatible", {
-  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+test_that("train_likelihood_model: score_transform = \"logit\" gives the logit-scale model", {
+  out <- train_likelihood_model(score_transform = "logit", .make_genus_raw_df(), c("genus", "species"),
     use_hierarchy = FALSE, anchor_perfect = FALSE
   )
   expect_equal(out$Score_Transform, "logit")
@@ -283,7 +283,7 @@ test_that("train_likelihood_model: pooled H2 delta is not contaminated by a mono
 })
 
 test_that("train_likelihood_model: genus-specific delta is shrunk below the pooled global delta for a tight congener pair", {
-  out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+  out <- train_likelihood_model(score_transform = "logit", .make_genus_raw_df(), c("genus", "species"),
     use_hierarchy = FALSE, anchor_perfect = FALSE
   )
   fundulus_delta <- out$H2_Lookup$delta_shrunk[out$H2_Lookup$genus == "Fundulus"]
@@ -553,10 +553,10 @@ test_that("train_likelihood_model: the pooled-H2 lme4 branch counts genera, not 
 
 test_that("min_pair_coverage: a short-overlap 100% hit no longer defines the foreign match", {
   skip_if_not_installed("TaxaTools")
-  off <- suppressMessages(train_likelihood_model(.make_coverage_raw_df(), c("genus", "species"),
+  off <- suppressMessages(train_likelihood_model(score_transform = "logit", .make_coverage_raw_df(), c("genus", "species"),
     min_pair_coverage = NULL, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
   ))
-  on <- suppressMessages(train_likelihood_model(.make_coverage_raw_df(), c("genus", "species"),
+  on <- suppressMessages(train_likelihood_model(score_transform = "logit", .make_coverage_raw_df(), c("genus", "species"),
     min_pair_coverage = 0.8, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
   ))
   gap_off <- off$H1_Lookup$mu_gap[off$H1_Lookup$lookup_key == "lima"]
@@ -760,7 +760,7 @@ test_that("train_likelihood_model: identical-barcode congeners set q_identical",
 }
 
 test_that("train_likelihood_model: outer rings are measured, nested and named by rank", {
-  m <- suppressWarnings(suppressMessages(train_likelihood_model(
+  m <- suppressWarnings(suppressMessages(train_likelihood_model(score_transform = "logit", 
     .make_ring_raw_df(), rank_system = c("class", "order", "family", "genus", "species")
   )))
   expect_named(m$Rings, c("order", "class"))
@@ -911,4 +911,16 @@ test_that("option TaxaLikely.train_block_ids is validated", {
   old <- options(TaxaLikely.train_block_ids = 0)
   on.exit(options(old), add = TRUE)
   expect_error(TaxaLikely:::.train_block_size(), "positive integer")
+})
+
+# ---- shipped defaults -------------------------------------------------------
+
+test_that("train_likelihood_model() ships sqrt_mismatch, and the internal agrees", {
+  # Every production workflow trains on sqrt_mismatch. The internal prep step
+  # is a private implementation of this one argument, so a different default
+  # there would be a second answer to the same question.
+  expect_identical(eval(formals(train_likelihood_model)$score_transform),
+                   "sqrt_mismatch")
+  expect_identical(eval(formals(TaxaLikely:::.prep_training_data)$score_transform),
+                   eval(formals(train_likelihood_model)$score_transform))
 })

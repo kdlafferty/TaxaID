@@ -116,7 +116,7 @@ test_that("taxonomy lookup fills only empty rank cells, never overwrites", {
 }
 
 test_that("a call held by less than the threshold of TOTAL mass is unresolved", {
-  out <- suppressWarnings(suppressMessages(posterior_consensus(.un_df(0.468),
+  out <- suppressWarnings(suppressMessages(posterior_consensus(consensus_method = "lca", .un_df(0.468),
     rank_system = c("genus", "species"))))
   expect_true(is.na(out$consensus_taxon))
   expect_equal(out$consensus_reason, "unnamed_mass")
@@ -124,7 +124,7 @@ test_that("a call held by less than the threshold of TOTAL mass is unresolved", 
 })
 
 test_that("unnamed_in_threshold = FALSE restores the named-only threshold", {
-  out <- suppressWarnings(suppressMessages(posterior_consensus(.un_df(0.468),
+  out <- suppressWarnings(suppressMessages(posterior_consensus(consensus_method = "lca", .un_df(0.468),
     rank_system = c("genus", "species"), unnamed_in_threshold = FALSE)))
   expect_equal(out$consensus_taxon, "Neocolponema")
   expect_equal(out$unnamed_mass, 0.468)

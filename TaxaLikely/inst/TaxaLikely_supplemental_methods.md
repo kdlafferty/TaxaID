@@ -88,7 +88,7 @@ unbounded domain:
 
 This is implemented in `.normalize_scores()`, which auto-detects the input scale
 (0--1 or 0--100) and clips values at `logit_epsilon` to prevent infinite logits.
-This remains the package default (`score_transform = "logit"`).
+`score_transform = "logit"` selects this scale.
 
 ### 3A-i. Transform choice and the genus-tightness problem
 
@@ -183,10 +183,10 @@ an explicit change-of-variables (Jacobian) correction that is not built --
 comparing a `sqrt_mismatch`-scale H2/H3 density against a logit-scale H1
 density at "the same" point is not a valid likelihood ratio without one.
 `model_params$Score_Transform` records which scale a given trained model uses;
-`evaluate_likelihoods()` reads it automatically. `score_transform = "logit"`
-remains the default; `"sqrt_mismatch"` is opt-in, validated directly against
-real congener data via the actual package functions (not just the aggregate
-correlation above): the *Sardinops*/*Symphurus* case reproduces the correct,
+`evaluate_likelihoods()` reads it automatically. `score_transform =
+"sqrt_mismatch"` is the default and `"logit"` remains available. The default
+is validated directly against real congener data via the actual package
+functions (not just the aggregate correlation above): the *Sardinops*/*Symphurus* case reproduces the correct,
 well-separated direction under `sqrt_mismatch` (H2/H1 = 1.68 for the tight
 genus, competitive as expected; 0.65 for the loose genus, H1 clearly winning
 as expected) where logit could not distinguish the two cases at all.
@@ -515,9 +515,9 @@ Two structural features of TaxaID partially mitigate this inflation:
    placeholder rows for unreferenced congeners before posterior
    computation, further limiting the inflation from a short H1 list.
 
-For applications where conservative posteriors are preferred, users can set
-`ratio_threshold = 0` (retain all candidates, including very weak ones) to
-maximize denominator coverage, at the cost of a larger likelihood object.
+`ratio_threshold = 0` is the default: every candidate is retained, including
+very weak ones, which maximizes denominator coverage at the cost of a larger
+likelihood object. Raise it to drop the weakest specific candidates.
 
 ---
 
@@ -1163,7 +1163,7 @@ trained on, equality of the two by construction.
 | `read_reference_fasta()` | Load local reference FASTA + taxonomy |
 | `build_sequence_matrix()` | Align sequences, compute pairwise distance matrix |
 | `TaxaMatch::corroborate_references_locally()` / `evaluate_reference_accessions()` | Detect mislabeled references (screen `reference_df` before this function; see Section 9A) |
-| `train_likelihood_model()` | Fit hierarchical model, produce `taxa_model_params`; `score_transform = "logit"`/`"sqrt_mismatch"` (Section 3A-i) |
+| `train_likelihood_model()` | Fit hierarchical model, produce `taxa_model_params`; `score_transform = "sqrt_mismatch"`/`"logit"` (Section 3A-i) |
 | `interpret_model()` | Summarize model parameters in human-readable form |
 | `calibrate_query_noise()` | Correct H1's mean for query-vs-reference technical noise not visible to reference-vs-reference training pairs |
 | `evaluate_likelihoods()` | Apply model to queries, produce likelihood ratios |

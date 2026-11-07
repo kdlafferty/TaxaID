@@ -8,7 +8,7 @@ evaluate_likelihoods(
   match_df,
   model_params,
   rank_system = NULL,
-  ratio_threshold = 0.01,
+  ratio_threshold = 0,
   min_match_threshold = 0.5,
   alpha = 0.001,
   n_sims = 0L,
@@ -42,8 +42,8 @@ constant) for either scale, confirmed via the delta method.}
 from columns in \code{match_df}.}
 
 \item{ratio_threshold}{Minimum likelihood ratio to retain a specific
-candidate (default \code{0.01}).  Specific candidates with likelihood ratio
-less than 1\% of the best hypothesis are dropped; the generic
+candidate (default \code{0}, which retains every one).  Specific candidates
+with likelihood ratio below the threshold are dropped; the generic
 \code{unreferenced_species}/\code{unreferenced_genus} rows are always retained,
 because their prior can make them competitive on the posterior even when
 their likelihood is small.  This removes noise hypotheses that would

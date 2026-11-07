@@ -1774,3 +1774,12 @@ test_that("align_cache keys stay bounded however large the material", {
   expect_false(identical(k1, k2))
   expect_lt(nchar(k1), 100L)
 })
+
+test_that("restore_suppressed_candidates() does not require sequences by default", {
+  # The function is reached by the image and acoustic paths too (the workflow
+  # graph's match_df -> likelihoods edge), and check_regional_overlap = TRUE
+  # requires a `sequence` column on reference_df. A default of TRUE would make
+  # a sequence mandatory in a function whose own `sequence_col` is optional.
+  expect_false(eval(formals(restore_suppressed_candidates)$check_regional_overlap))
+  expect_null(eval(formals(restore_suppressed_candidates)$sequence_col))
+})

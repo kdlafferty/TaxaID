@@ -14,7 +14,7 @@ train_likelihood_model(
   anchor_perfect = TRUE,
   logit_epsilon = 1e-04,
   max_gap_ceiling = NULL,
-  score_transform = "logit",
+  score_transform = "sqrt_mismatch",
   min_pair_coverage = 0.8,
   shrinkage = c("empirical_bayes", "fixed")
 )
@@ -65,7 +65,7 @@ between 99.3\% and 50\% identity, in logit units) or \code{0.6234} for
 \code{"sqrt_mismatch"} (the same 99.3\%-vs-50\% reference gap on that scale) --
 prevents extreme outliers from dominating model estimates either way.}
 
-\item{score_transform}{Character, \code{"logit"} (default) or \code{"sqrt_mismatch"}.
+\item{score_transform}{Character, \code{"sqrt_mismatch"} (default) or \code{"logit"}.
 The scale H1/H2/H3 are all modeled on -- must be shared across all three
 hypotheses, since they are compared via density ratios at the same
 observed point (a valid likelihood ratio requires one consistent scale;
@@ -84,7 +84,13 @@ diverges fastest. \code{"sqrt_mismatch"} treats divergence as a rare-event
 count (few mismatches out of many aligned bases -- the regime real data
 is actually in), for which square-root is the classical
 variance-stabilizing transform; it recovers the correct qualitative
-ordering where \code{"logit"} does not. See \code{evaluate_likelihoods()}'s own
+ordering where \code{"logit"} does not. Both transforms take a match
+proportion in \verb{[0, 1]}, so either accepts an image classifier's or an
+acoustic recogniser's score, but the comparison between them was derived
+and tested on sequence identities alone: neither has been tested on image
+or sound scores, and the rare-event argument for \code{"sqrt_mismatch"} is an
+argument about mismatched bases. Treat the default as a sequence result.
+See \code{evaluate_likelihoods()}'s own
 documentation for the full empirical derivation, including why
 several other standard transforms (probit, complementary log-log) were
 checked and rejected. \code{"sqrt_mismatch"} is bounded to \verb{[-1, 0]} rather
