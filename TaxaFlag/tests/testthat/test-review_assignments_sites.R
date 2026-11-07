@@ -176,7 +176,7 @@ test_that("the habitat and target-group strings come from the caller, not the co
   )
   p <- attr(out, "llm_prompts")[["1"]]
   expect_match(p, "study habitat (Freshwater rocky littoral)", fixed = TRUE)
-  expect_match(p, "target group (freshwater fishes)", fixed = TRUE)
+  expect_match(p, "the target group names (freshwater fishes)", fixed = TRUE)
   expect_false(grepl("rocky intertidal|lanternfish|Point Conception", p))
   # the worked examples name no real taxon
   expect_match(p, "WORKED EXAMPLES (invented taxa)", fixed = TRUE)

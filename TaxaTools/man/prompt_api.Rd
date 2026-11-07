@@ -34,7 +34,16 @@ rate limits. Default 1.}
 }
 \value{
 A length-1 character string containing the combined raw response
-text from all chunks.
+text from all chunks, with these attributes:
+\describe{
+\item{\code{"model"}}{Every distinct resolved model identifier that
+answered a chunk, as \code{\link{call_api}} reports it, or absent
+when \code{llm_fn} reports none. More than one value means different
+chunks were answered by different models, which a fallback can cause.}
+\item{\code{"failed_chunks"}}{Indices of chunks that returned nothing,
+or absent when none did.}
+\item{\code{"n_chunks"}}{The number of chunks submitted.}
+}
 }
 \description{
 Submits an \code{llm_prompt} object to an LLM provider,

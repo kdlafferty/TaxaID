@@ -134,3 +134,86 @@ test_that("read_llm_response warns when taxon_name absent", {
   )
   unlink(tmp)
 })
+
+# --- prompt_api() carries the resolved model through the chunk combine --------
+# call_api() attaches attr(x, "model"), the model the provider actually
+# resolved. One chunk is returned unchanged and keeps it; several used to be
+# pasted together, which dropped it -- so anything caching a verdict downstream
+# could not name the model that gave it, and a capability tier re-pointed at a
+# different model was invisible in the record.
+
+.lu_prompt <- function(n) {
+  structure(
+    list(
+      prompts = as.list(paste0("prompt_", seq_len(n))),
+      chunks = as.list(paste0("taxon_", seq_len(n))),
+      n_chunks = as.integer(n),
+      n_items = as.integer(n),
+      taxa = paste0("Taxon_", seq_len(n))
+    ),
+    class = "llm_prompt"
+  )
+}
+
+# An llm_fn shaped like call_api: a response string carrying its model.
+.lu_llm <- function(models) {
+  i <- 0L
+  function(p, ...) {
+    i <<- i + 1L
+    out <- paste0("taxon_name,habitat\nTaxon_", i, ",Lentic")
+    attr(out, "model") <- models[[min(i, length(models))]]
+    out
+  }
+}
+
+test_that("a MULTI-chunk call keeps the resolved model", {
+  res <- suppressMessages(prompt_api(
+    .lu_prompt(3), llm_fn = .lu_llm(list("claude-x-1")), pause_seconds = 0
+  ))
+  expect_identical(attr(res, "model"), "claude-x-1")
+  expect_identical(attr(res, "n_chunks"), 3L)
+  # The response text itself is unaffected.
+  expect_true(is.character(res) && length(res) == 1L)
+  expect_match(res, "Taxon_1", fixed = TRUE)
+})
+
+test_that("a single-chunk call keeps it too", {
+  res <- suppressMessages(prompt_api(
+    .lu_prompt(1), llm_fn = .lu_llm(list("claude-x-1")), pause_seconds = 0
+  ))
+  expect_identical(attr(res, "model"), "claude-x-1")
+})
+
+test_that("every distinct model is kept when chunks are answered by different ones", {
+  # A fallback answering one chunk must not be hidden by the first model's name.
+  res <- suppressMessages(prompt_api(
+    .lu_prompt(3),
+    llm_fn = .lu_llm(list("claude-x-1", "grok-y-2", "grok-y-2")),
+    pause_seconds = 0
+  ))
+  expect_setequal(attr(res, "model"), c("claude-x-1", "grok-y-2"))
+})
+
+test_that("an llm_fn that reports no model leaves the attribute absent, not empty", {
+  plain <- function(p, ...) "taxon_name,habitat\nTaxon_1,Lentic"
+  res <- suppressMessages(prompt_api(.lu_prompt(2), llm_fn = plain, pause_seconds = 0))
+  expect_null(attr(res, "model"))
+  # The other attributes still arrive.
+  expect_identical(attr(res, "n_chunks"), 2L)
+})
+
+test_that("a failed chunk contributes no model and does not mask the others", {
+  i <- 0L
+  partly <- function(p, ...) {
+    i <<- i + 1L
+    if (i == 2L) stop("chunk 2 is down")
+    out <- paste0("taxon_name,habitat\nTaxon_", i, ",Lentic")
+    attr(out, "model") <- "claude-x-1"
+    out
+  }
+  res <- suppressWarnings(suppressMessages(
+    prompt_api(.lu_prompt(3), llm_fn = partly, pause_seconds = 0)
+  ))
+  expect_identical(attr(res, "model"), "claude-x-1")
+  expect_identical(attr(res, "failed_chunks"), 2L)
+})

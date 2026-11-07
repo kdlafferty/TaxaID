@@ -30,7 +30,7 @@
 # must FAIL rather than skip: an un-initialised fingerprint is an absent guard,
 # and a test that waits quietly for a value is the failure mode this file exists
 # to close.
-.rpf_expected <- NA_character_
+.rpf_expected <- "1224258686-0890673042-017469"
 
 .rpf_fingerprint <- function() {
   ns <- asNamespace("TaxaFlag")

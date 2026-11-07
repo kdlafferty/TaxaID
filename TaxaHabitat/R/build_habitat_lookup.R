@@ -44,14 +44,22 @@
 #' as [build_habitat_prompt()] derives them, so a changed scheme is a miss),
 #' `extra_covariates`, `geographic_context`, and `cache_tag`.
 #'
-#' Not the model. Every entry written RECORDS what answered it, and a hit from
-#' another model is served with a warning naming how many, so a habitat weight
-#' can be traced and a mixed set cannot pass unnoticed. The record identifies
-#' the FUNCTION, not the model a capability tier resolves to at call time: a
-#' tier later pointed at a newer model reads the same. Pass `cache_tag` = the
-#' resolved model identifier when the record has to name the model itself, or
-#' clear the directory with [taxahabitat_clear_cache()] to re-ask.
-#' `cache_summary` reports the model in force and the two counts.
+#' Not the model. Every entry written RECORDS what answered it, so a habitat
+#' weight can be traced to what produced it, and a lookup whose verdicts come
+#' from more than one model warns and names them: a mixed set is the thing that
+#' cannot pass unnoticed. A caller who merely changed their `llm_fn` since the
+#' cache was written is not warned, because nothing about the returned verdicts
+#' is mixed -- including the common case of passing a stub that must not be
+#' called, to prove a full cache hit.
+#'
+#' What gets recorded is the model the provider resolved, which
+#' [TaxaTools::prompt_api()] reports from the call itself -- so a capability
+#' tier pointed at a different model is visible in the record rather than
+#' hidden behind the tier's name. An `llm_fn` that reports no model falls back
+#' to a description of the function, which can only say which function was
+#' called; pass `cache_tag` = the model identifier in that case. Several values
+#' mean a fallback model answered some chunk. `cache_summary` carries `model`,
+#' `models` and `n_model_unknown`.
 #'
 #' @section What is and is not cached:
 #' Only a taxon whose parsed row carries a resolved `Habitat` (at least one
@@ -80,10 +88,11 @@
 #' @return A data frame with one row per unique taxon in `taxon_list`
 #'   (the same shape [parse_hierarchical_habitat_response()] returns), in
 #'   `taxon_list` order, with a `cache_summary` attribute:
-#'   `n_total`, `n_from_cache`, `n_called`, `n_cached_new`, `model` (what
-#'   answered this call), `models` (every model behind the returned verdicts;
-#'   more than one is warned about) and `n_model_unknown` (hits written before
-#'   the model was recorded, which cannot be traced to one).
+#'   `n_total`, `n_from_cache`, `n_called`, `n_cached_new`, `model` (the model
+#'   that answered this call, or a description of `llm_fn` when it reports
+#'   none), `models` (every model behind the returned verdicts; more than one
+#'   is warned about) and `n_model_unknown` (hits written before the model was
+#'   recorded, which cannot be traced to one).
 #' @seealso [build_habitat_prompt()], [parse_hierarchical_habitat_response()],
 #'   [assign_habitat_biological()], [taxahabitat_clear_cache()]
 #' @export
@@ -139,10 +148,13 @@ build_habitat_lookup <- function(taxon_list,
     compound_rule = compound_rule
   ))
   out_hab_cols <- probe$scheme_cols %||% probe$habitat_cols
-  # What will answer. Recorded in every entry written and reported in
-  # cache_summary, so a habitat weight can be traced to the thing that
-  # produced it instead of to nothing at all.
+  # What answered, recorded in every entry written and reported in
+  # cache_summary, so a habitat weight can be traced to the thing that produced
+  # it instead of to nothing at all. prompt_api() reports the model the provider
+  # actually resolved; .habitat_model_id() is the fallback for an llm_fn that
+  # reports none, and it can only name the FUNCTION.
   model_id <- .habitat_model_id(llm_fn)
+  model_recorded <- model_id
   # Bump this token whenever build_habitat_prompt() changes wording that can
   # move a verdict: the key holds the inputs, not the prompt, so an answer
   # given under the old wording would otherwise be served as a hit.
@@ -198,25 +210,6 @@ build_habitat_lookup <- function(taxon_list,
       cache_hits <- dplyr::bind_rows(hit_list)
       to_call <- taxon_list[-hit_idx]
     }
-    # The model about to answer counts only if it is going to be asked.
-    models_in_play <- unique(c(
-      hit_model_set,
-      if (length(to_call) > 0L) model_id else NULL
-    ))
-    models_in_play <- models_in_play[!is.na(models_in_play)]
-    n_models <- length(models_in_play)
-    if (n_models > 1L) {
-      warning(sprintf(
-        paste0(
-          "build_habitat_lookup: this lookup draws on %d different models ",
-          "(%s), so the habitat weights it returns are not one model's ",
-          "judgement. Clear the cache with taxahabitat_clear_cache(), or pass ",
-          "cache_tag = the model identifier so each model keeps its own ",
-          "entries."
-        ),
-        n_models, paste(models_in_play, collapse = "; ")
-      ), call. = FALSE)
-    }
     if (n_model_unknown > 0L && verbose) {
       message(sprintf(
         paste0(
@@ -249,6 +242,14 @@ build_habitat_lookup <- function(taxon_list,
       prompt,
       llm_fn = llm_fn, pause_seconds = pause_seconds, verbose = verbose
     )
+    # What the provider resolved, not what the wrapper looks like. Several
+    # values mean a fallback answered some chunk, and all of them are recorded
+    # because prompt_api() does not say which chunk a taxon came from.
+    .answered <- attr(raw, "model", exact = TRUE)
+    .answered <- .answered[!is.na(.answered) & nzchar(.answered)]
+    if (length(.answered) > 0L) {
+      model_recorded <- paste(sort(unique(.answered)), collapse = "; ")
+    }
     if (is.character(raw) && length(raw) == 1L && !is.na(raw) && nzchar(trimws(raw))) {
       parsed <- parse_hierarchical_habitat_response(
         raw,
@@ -269,11 +270,35 @@ build_habitat_lookup <- function(taxon_list,
       for (k in which(resolved & !is.na(pos))) {
         .habitat_cache_write(
           cache_paths[pos[k]], cache_keys[pos[k]],
-          parsed[k, , drop = FALSE], model_id
+          parsed[k, , drop = FALSE], model_recorded
         )
         n_cached_new <- n_cached_new + 1L
       }
     }
+  }
+
+  # Mixing is judged on what the returned table actually draws on: the models
+  # behind the hits being served, plus the one that answered if any rows came
+  # back from a call. It runs here, after the call, so it compares like with
+  # like -- a recorded resolved model against a resolved model, never against
+  # the fallback description of a wrapper. A caller who merely changed their
+  # llm_fn is not warned, and neither is the pattern of passing a stub that
+  # must not be called, because nothing new was asked.
+  models_in_play <- unique(c(
+    if (!is.null(cache_dir)) hit_model_set else NULL,
+    if (!is.null(parsed) && nrow(parsed) > 0L) model_recorded else NULL
+  ))
+  models_in_play <- models_in_play[!is.na(models_in_play)]
+  if (length(models_in_play) > 1L) {
+    warning(sprintf(
+      paste0(
+        "build_habitat_lookup: this lookup draws on %d different models ",
+        "(%s), so the habitat weights it returns are not one model's ",
+        "judgement. Clear the cache with taxahabitat_clear_cache(), or pass ",
+        "cache_tag = the model identifier so each model keeps its own entries."
+      ),
+      length(models_in_play), paste(models_in_play, collapse = "; ")
+    ), call. = FALSE)
   }
 
   out <- dplyr::bind_rows(cache_hits, parsed)
@@ -307,8 +332,8 @@ build_habitat_lookup <- function(taxon_list,
     n_from_cache = if (is.null(cache_hits)) 0L else nrow(cache_hits),
     n_called = length(to_call),
     n_cached_new = n_cached_new,
-    model = model_id,
-    models = if (is.null(cache_dir)) model_id else models_in_play,
+    model = model_recorded,
+    models = models_in_play,
     n_model_unknown = if (is.null(cache_dir)) 0L else n_model_unknown
   )
   out

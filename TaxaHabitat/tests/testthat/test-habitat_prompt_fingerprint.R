@@ -23,7 +23,7 @@
 
 # Fill from the failure message of one run, then commit the value. The sentinel
 # must FAIL rather than skip: an un-initialised fingerprint is an absent guard.
-.hpf_expected <- NA_character_
+.hpf_expected <- "0992572018-0463484266-011692"
 
 .hpf_fingerprint <- function() {
   ns <- asNamespace("TaxaHabitat")
@@ -67,12 +67,14 @@ test_that("every habitat cache entry records what answered it", {
   scheme <- data.frame(l1_name = c("Lentic", "Lotic"), stringsAsFactors = FALSE)
   taxa <- c("Esox lucius", "Moxostoma macrolepidotum")
 
+  # The column shape the parser expects for this scheme; a stray column would
+  # be folded into Other_weight with a warning and this test is not about that.
   fake <- function(p, ...) {
-    paste0(
-      "taxon_name,Habitat,Lentic,Lotic\n",
-      "Esox lucius,Lentic,0.9,0.1\n",
-      "Moxostoma macrolepidotum,Lotic,0.2,0.8\n"
-    )
+    paste(c(
+      "taxon_name,Lentic,Lotic,Other_weight,habitat_best_guess",
+      "Esox lucius,0.9,0.1,0,Lentic",
+      "Moxostoma macrolepidotum,0.2,0.8,0,Lotic"
+    ), collapse = "\n")
   }
   out <- suppressMessages(suppressWarnings(build_habitat_lookup(
     taxa, habitat_scheme = scheme, llm_fn = fake,
@@ -102,10 +104,13 @@ test_that("a cache mixing two models warns, and a stub that is never called does
   cache_dir <- withr::local_tempdir()
   scheme <- data.frame(l1_name = c("Lentic", "Lotic"), stringsAsFactors = FALSE)
 
-  resp <- function(name, hab, a, b) {
-    sprintf("taxon_name,Habitat,Lentic,Lotic\n%s,%s,%s,%s\n", name, hab, a, b)
+  resp <- function(name, a, b, best) {
+    paste(c(
+      "taxon_name,Lentic,Lotic,Other_weight,habitat_best_guess",
+      sprintf("%s,%s,%s,0,%s", name, a, b, best)
+    ), collapse = "\n")
   }
-  m1 <- function(p, ...) resp("Esox lucius", "Lentic", 0.9, 0.1)
+  m1 <- function(p, ...) resp("Esox lucius", 0.9, 0.1, "Lentic")
   out1 <- suppressMessages(suppressWarnings(build_habitat_lookup(
     "Esox lucius", habitat_scheme = scheme, llm_fn = m1,
     cache_dir = cache_dir, verbose = FALSE
@@ -125,11 +130,70 @@ test_that("a cache mixing two models warns, and a stub that is never called does
 
   # A second taxon under a different function DOES mix: one verdict from the
   # cache's model, one about to come from this one.
-  m2 <- function(p, ...) resp("Perca flavescens", "Lentic", 0.8, 0.2)
+  m2 <- function(p, ...) resp("Perca flavescens", 0.8, 0.2, "Lentic")
   expect_warning(
     suppressMessages(build_habitat_lookup(
       c("Esox lucius", "Perca flavescens"), habitat_scheme = scheme,
       llm_fn = m2, cache_dir = cache_dir, verbose = FALSE
+    )),
+    "draws on 2 different models"
+  )
+})
+
+test_that("the recorded model is the one the provider resolved, not the wrapper", {
+  cache_dir <- withr::local_tempdir()
+  scheme <- data.frame(l1_name = c("Lentic", "Lotic"), stringsAsFactors = FALSE)
+
+  # Shaped like call_api: the response carries the model that answered, which
+  # prompt_api() propagates. Two wrappers can look identical and resolve to
+  # different models, so the record has to come from the call, not the function.
+  with_model <- function(id, name = "Esox lucius") {
+    function(p, ...) {
+      out <- paste(c(
+        "taxon_name,Lentic,Lotic,Other_weight,habitat_best_guess",
+        sprintf("%s,0.9,0.1,0,Lentic", name)
+      ), collapse = "\n")
+      attr(out, "model") <- id
+      out
+    }
+  }
+
+  out <- suppressMessages(build_habitat_lookup(
+    "Esox lucius", habitat_scheme = scheme, llm_fn = with_model("claude-z-9"),
+    cache_dir = cache_dir, verbose = FALSE
+  ))
+  skip_if(nrow(out) == 0L, "the fake response did not parse; nothing was cached")
+
+  files <- list.files(cache_dir, pattern = "_habitat\\.rds$", full.names = TRUE)
+  expect_length(files, 1L)
+  expect_identical(readRDS(files[[1]])$model, "claude-z-9")
+  expect_identical(attr(out, "cache_summary")$model, "claude-z-9")
+
+  # A second wrapper that LOOKS different but resolves to the same model is not
+  # a mixed result, so it must not warn -- the point of recording the resolved
+  # model rather than the function.
+  same_model_other_wrapper <- function(p, ...) {
+    out <- paste(c(
+      "taxon_name,Lentic,Lotic,Other_weight,habitat_best_guess",
+      "Perca flavescens,0.8,0.2,0,Lentic"
+    ), collapse = "\n")
+    attr(out, "model") <- "claude-z-9"
+    out
+  }
+  expect_warning(
+    suppressMessages(build_habitat_lookup(
+      c("Esox lucius", "Perca flavescens"), habitat_scheme = scheme,
+      llm_fn = same_model_other_wrapper, cache_dir = cache_dir, verbose = FALSE
+    )),
+    NA
+  )
+
+  # A genuinely different model IS a mixed result.
+  expect_warning(
+    suppressMessages(build_habitat_lookup(
+      c("Esox lucius", "Gasterosteus aculeatus"), habitat_scheme = scheme,
+      llm_fn = with_model("grok-q-2", "Gasterosteus aculeatus"),
+      cache_dir = cache_dir, verbose = FALSE
     )),
     "draws on 2 different models"
   )
