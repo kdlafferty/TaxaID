@@ -19,10 +19,10 @@ posterior_consensus(
   taxonomy_cache_dir = NULL,
   pool_tail = FALSE,
   unnamed_in_threshold = TRUE,
-  consensus_method = c("lca", "credible_node"),
+  consensus_method = c("credible_node", "lca"),
   likelihood_consensus = TRUE,
-  robust_prior_s = 1,
-  cross_phylum_eps = 0.05
+  robust_prior_s = 0,
+  cross_phylum_eps = 0
 )
 }
 \arguments{
@@ -218,7 +218,7 @@ threshold against named mass only. \code{unnamed_mass} is reported either way.
 Applies to \code{consensus_method = "lca"}; \code{"credible_node"} always keeps
 every row in the denominator.}
 
-\item{consensus_method}{\code{"lca"} (default) or \code{"credible_node"}. \code{"lca"}
+\item{consensus_method}{\code{"credible_node"} (default) or \code{"lca"}. \code{"lca"}
 takes the smallest top set of hypotheses reaching \code{cumulative_threshold}
 and reports their lowest common taxon. \code{"credible_node"} sums the
 posterior of every hypothesis under each taxon, rank by rank from the
@@ -252,7 +252,8 @@ and compare it with the reported call. Adds \code{likelihood_consensus_taxon},
 changes no other column. Skipped (columns \code{NA}) when \code{posterior_df} has
 no \code{score_likelihood} column. See \emph{Sequence support}.}
 
-\item{robust_prior_s}{Numeric (default \code{1}; \code{0} turns it off). Used with
+\item{robust_prior_s}{Numeric (default \code{0}, which turns the check off; a
+positive value applies it). Used with
 \code{consensus_method = "credible_node"}. The occurrence prior is estimated
 from finitely many records, so a node is reported only if its posterior
 stays at or above \code{cumulative_threshold} for every prior within an
@@ -283,8 +284,9 @@ one warning per call naming how many observations it affected and why,
 because a plain credible node is a less conservative call than the
 robust one the caller asked for.}
 
-\item{cross_phylum_eps}{Numeric in \verb{[0, 0.5)} (default \code{0.05}; \code{0} turns
-it off). Used with \code{consensus_method = "credible_node"}. When the
+\item{cross_phylum_eps}{Numeric in \verb{[0, 0.5)} (default \code{0}, which turns
+the check off; a positive value applies it). Used with
+\code{consensus_method = "credible_node"}. When the
 runner-up phylum holds at least this share of an observation's total
 posterior, a call finer than phylum would rest on a choice between
 phyla that the evidence barely makes (typically a low-identity sequence
