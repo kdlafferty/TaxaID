@@ -285,3 +285,24 @@ test_that("a scheme declaring compound parts does not reuse a no-compound entry"
   ))), silent = TRUE))
   expect_gt(asked$n, 0L)
 })
+
+test_that("the verbose cache line names the model behind the cached verdicts", {
+  # The hit count alone does not tell a reader whether the verdicts they are
+  # about to use came from the model they expect.
+  cache_dir <- withr::local_tempdir()
+  taxa <- c("Esox lucius", "Moxostoma macrolepidotum")
+  fake <- .make_fake_llm(taxa)
+  suppressMessages(build_habitat_lookup(
+    taxa, habitat_scheme = .fake_scheme, llm_fn = fake$fn,
+    cache_dir = cache_dir, verbose = FALSE
+  ))
+
+  never <- function(p, ...) stop("the cache should have answered this")
+  msg <- capture_messages(build_habitat_lookup(
+    taxa, habitat_scheme = .fake_scheme, llm_fn = never,
+    cache_dir = cache_dir, verbose = TRUE
+  ))
+  cache_line <- grep("taxa already classified", msg, value = TRUE)
+  expect_length(cache_line, 1L)
+  expect_match(cache_line, "Cached verdicts came from", fixed = TRUE)
+})

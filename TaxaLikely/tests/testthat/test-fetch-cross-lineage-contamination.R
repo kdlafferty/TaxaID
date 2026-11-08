@@ -262,3 +262,22 @@ test_that("the missing-queried_taxon guard warns and reports, rather than skippi
   )
   expect_warning(TaxaLikely:::.warn_if_no_queried_taxon(NULL), "queried_taxon is absent")
 })
+
+test_that("the dominance message gives the count and three decimals, not a rounded percent", {
+  # 44 of 49 is 0.8979, under the 0.90 bar, but printed with %.0f%% it read
+  # "holds 90% of them, under the 90% needed" -- a sentence that contradicts
+  # itself, and the real Clevelandia 16S case.
+  ctx <- c(
+    lapply(seq_len(44L), function(i) .grp(paste0("F", i), FISH, paste0("F", i, "_"))),
+    lapply(seq_len(5L), function(i) .grp(paste0("O", i), ALGA, paste0("O", i, "_")))
+  )
+  meta <- do.call(.fetch, c(ctx, list(.grp("Split", c(FISH, ALGA), "S_"))))
+
+  msg <- capture_messages(out <- resolve(meta))
+  kept <- grep("CROSS-LINEAGE SPLIT KEPT", msg, value = TRUE)
+  expect_length(kept, 1L)
+  expect_match(kept, "44 of them", fixed = TRUE)
+  expect_match(kept, "0.898", fixed = TRUE)
+  expect_false(grepl("90%", kept, fixed = TRUE))
+  expect_identical(out$dropped_acc, character(0L))
+})

@@ -541,3 +541,44 @@ test_that("resolve_review_overrides() refuses a resolution-limit explanation bet
   )
   expect_error(resolve_review_overrides(rv, resolution_rank = "clade"), "resolution_rank")
 })
+
+test_that("a verdict cached under one input survives a review under a DIFFERENT input for the same accession", {
+  # The lookup keys on (accession, input_fingerprint); the write once superseded
+  # on the accession alone, so an accession screened under a second marker's
+  # evidence deleted the first screen's verdict and was re-asked for ever after.
+  # One mitogenome reached through two markers is the ordinary case.
+  cache_dir_path <- withr::local_tempdir()
+  call_log <- list()
+  logging_stub <- function(prompt, ...) {
+    accs <- unique(regmatches(prompt, gregexpr("ACC00[0-9]", prompt))[[1]])
+    call_log[[length(call_log) + 1L]] <<- accs
+    .crfa_stub(prompt)
+  }
+
+  # Input X, then input Y for the same accession (a re-review here is correct).
+  review_flagged_accessions(.base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+  )
+  df_y <- .base_evaluated_df()
+  df_y$best_disagreeing_pident[df_y$accession == "ACC002"] <- 60.0
+  review_flagged_accessions(df_y,
+    cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+  )
+
+  # Both verdicts coexist, one per input, rather than the later evicting the
+  # earlier. This is the assertion the old write could not satisfy.
+  cache <- readRDS(file.path(cache_dir_path, "accession_review_cache.rds"))
+  expect_equal(sum(cache$accession == "ACC002"), 2L)
+  expect_equal(
+    length(unique(cache$input_fingerprint[cache$accession == "ACC002"])), 2L
+  )
+
+  # And going back to input X is a hit, with no further ask for that accession.
+  n_before <- length(call_log)
+  out <- review_flagged_accessions(.base_evaluated_df(),
+    cache_dir = cache_dir_path, llm_fn = logging_stub, verbose = FALSE
+  )
+  asked_again <- unlist(call_log[-seq_len(n_before)])
+  expect_false("ACC002" %in% asked_again)
+  expect_true(out$accession_review_cache_hit[out$accession == "ACC002"])
+})
