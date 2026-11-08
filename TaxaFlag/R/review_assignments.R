@@ -355,8 +355,10 @@
 #' labels are a convenience over them, and any judgement that depends on how
 #' far a probability sits from a cut must read the number. The 0.70 cut is also
 #' where the known site-geography instability sits -- see \strong{A known
-#' instability, not fixed in this release} above, which is the same boundary
-#' seen from the other side.
+#' instability, not fixed in this release} in Details below, which is the same
+#' boundary seen from the other side.
+#'
+#' The remaining columns:
 #'
 #' \describe{
 #'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives,

@@ -5,9 +5,9 @@
   plausibility words: the cut tests `p < 0.10` and then `p < 0.70`, so exactly
   0.10 reads "possible" and that word spans a band up to 0.60 wide. The
   `llm_p_*` columns are the quantities the labels summarise.
-* The documented site-geography instability at the 0.70 cut no longer promises
-  a fix in a later release. It states the trade that leaves it in place, and
-  how to read a probability that lands near a cut.
+* The documented site-geography instability at the 0.70 cut states the trade
+  that leaves it in place, and how to read a probability that lands near a
+  cut, in place of promising a fix in a later release.
 * `llm_scope_plausibility` is documented as habitat-contaminated: scope is
   taxonomic by instruction, but the probability still falls when habitat
   mismatches -- median 0.97 against 0.85 for habitat-unlikely fish in one
