@@ -1698,8 +1698,12 @@ utils::globalVariables(c(
 #' @param cache_dir Character path.
 #'   Per-taxon intermediate results are cached here, enabling resumable
 #'   downloads when NCBI rate-limits or the session is interrupted.
-#'   Default \code{tempdir()} (clears on R restart). Set to a persistent
-#'   path for cross-session caching, or \code{NULL} to disable.
+#'   Default \code{tools::R_user_dir("TaxaLikely", "cache")}, which PERSISTS
+#'   across sessions: a later call reuses what an earlier one fetched, which
+#'   is what makes a resumed download cheap but also means a fetch is not
+#'   repeated unless the cache is cleared. Pass \code{tempdir()} for a cache
+#'   that clears on R restart, \code{NULL} to disable caching, or use
+#'   \code{\link{taxalikely_clear_cache}()} to empty it.
 #' @param ncbi_api_key Character or NULL.
 #'   NCBI API key (increases rate limit from 3 to 10 requests/second).
 #'   Can also be set via the `ENTREZ_KEY` environment variable.
@@ -1862,6 +1866,7 @@ utils::globalVariables(c(
 #'   `taxa_lineage` was supplied; absent otherwise) -- a data frame of every
 #'   row whose returned lineage shared nothing with its queried taxon's
 #'   declared lineage, via `attr(reference_df, "lineage_disagreements")`.
+#'
 #'   Ready for input to [build_sequence_matrix()] (which applies its own,
 #'   independent length filter -- out-of-range rows kept here are excluded
 #'   from training there).
@@ -1875,6 +1880,29 @@ utils::globalVariables(c(
 #'   \{none, 1000, 500, 250\}: `grid`, `species_dropped`, `available_gb`,
 #'   `budget_gb` and `rates`. The grid is also printed. Pass `sequences` to
 #'   [estimate_sequence_matrix_size()] to try other caps or build settings.
+#'
+#' @section Cross-lineage contamination, and when it does nothing:
+#'   A taxon whose returned records span more than one organism at kingdom,
+#'   phylum or class -- a homonym pulling in an unrelated clade is the usual
+#'   cause -- has the minority records dropped, but ONLY when the other taxa in
+#'   the same fetch agree strongly enough to name a reference organism. That
+#'   test is a fetch-wide vote: at least three other taxa must resolve
+#'   unambiguously, and the commonest of them must hold at least 0.90 of them.
+#'   One vote per taxon, not per row, and a taxon that is itself split casts
+#'   none.
+#'
+#'   Both the 0.90 share and the three-taxon minimum are FIXED and cannot be
+#'   set from here. The consequence is worth knowing before trusting a fetch:
+#'   where the vote falls short, nothing is dropped and the split is reported
+#'   in a message instead -- so a fetch of mostly-one-kingdom taxa filters, and
+#'   the same contamination in a genuinely mixed fetch does not. A share just
+#'   under the bar declines to act; 44 of 49 taxa agreeing is 0.898 and is not
+#'   enough. Read the messages, and treat a reported split as rows needing
+#'   review rather than as rows that were cleaned.
+#'
+#'   A within-class split is never contamination by this rule and is left
+#'   alone: two families in one class disagreeing is a revision, not a
+#'   homonym.
 #'
 #' @seealso [read_reference_fasta()] for loading a local FASTA file,
 #'   [build_sequence_matrix()] for the next step

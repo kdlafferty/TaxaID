@@ -249,3 +249,37 @@ test_that("add_slash_taxon: a ring at the top gives a one-word primary_taxon, no
   expect_identical(out$primary_taxon, "Atractoscion")
   expect_false(grepl("Atractoscion Atractoscion", out$consensus_OTU, fixed = TRUE))
 })
+
+test_that("an exact posterior tie is broken on the name, not on row order", {
+  # primary_taxon reads the FIRST element of slash_taxon_name. order() is
+  # stable, so a posterior-only sort left the leader of a tied pair as an
+  # artifact of upstream row order: a live reference census that moved three
+  # genera's totals between two otherwise identical runs was enough to swap
+  # one export row's primary_taxon between two exactly tied species.
+  mk <- function(taxa, posts) {
+    df <- data.frame(
+      observation_id = "obs1", consensus_taxon = "Gadidae",
+      stringsAsFactors = FALSE
+    )
+    df$plausible_taxa <- list(taxa)
+    df$plausible_posteriors <- list(stats::setNames(posts, taxa))
+    df
+  }
+  # The same tied pair, presented to the function in both orders.
+  a <- add_slash_taxon(mk(c("Zeus faber", "Alosa alosa"), c(0.4, 0.4)),
+    taxa_col = "plausible_taxa", posteriors_col = "plausible_posteriors"
+  )
+  b <- add_slash_taxon(mk(c("Alosa alosa", "Zeus faber"), c(0.4, 0.4)),
+    taxa_col = "plausible_taxa", posteriors_col = "plausible_posteriors"
+  )
+  expect_equal(a$slash_taxon_name, b$slash_taxon_name)
+  expect_equal(a$primary_taxon, b$primary_taxon)
+  # Byte order, so the tie resolves to Alosa whichever way it arrived.
+  expect_equal(a$primary_taxon, "Alosa alosa")
+
+  # A real posterior difference still decides, and is not overridden by the name.
+  c2 <- add_slash_taxon(mk(c("Alosa alosa", "Zeus faber"), c(0.3, 0.6)),
+    taxa_col = "plausible_taxa", posteriors_col = "plausible_posteriors"
+  )
+  expect_equal(c2$primary_taxon, "Zeus faber")
+})

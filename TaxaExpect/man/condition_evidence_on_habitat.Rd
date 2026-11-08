@@ -33,8 +33,15 @@ d_half)} under curve pricing). Default \code{0}.}
 \code{evidence} with \code{weight} replaced by the conditioned
 weight and three added columns: \code{habitat_weight} (\eqn{H_{site}},
 \code{NA} when unknown), \code{weight_unconditioned} (the generator's
-original weight) and \code{habitat_floored} (\code{TRUE} where the
-product fell below \code{w_floor}).
+original weight), \code{habitat_floored} (\code{TRUE} where the product
+fell below \code{w_floor} and was raised to it) and
+\code{habitat_zeroed} (\code{TRUE} where the conditioned weight is
+exactly 0). The two are mutually exclusive by construction: a positive
+\code{w_floor} makes a zero impossible, and the default
+\code{w_floor = 0} makes flooring impossible. A zeroed row contributes
+nothing to the prior and so is indistinguishable downstream from a row
+that was never generated, which is why it is both flagged and warned
+about.
 }
 \description{
 Multiplies each evidence row's presence weight by the taxon's own weight

@@ -39,9 +39,15 @@ observation.}
 by dropping everything from the first \code{/} or \code{+} onward -- the
 single most-reportable name when a slash/plus label is not wanted
 (e.g. simple species tallies). For a slash set, this is whichever
-candidate \code{.make_slash_name()} placed first (highest posterior when
-\code{posteriors_col} is available, else alphabetical) -- a convenience
-label, not a statistically preferred pick.}
+candidate \code{.make_slash_name()} placed first: highest posterior when
+\code{posteriors_col} is available, else alphabetical, and in BOTH cases
+exact ties are broken on the taxon name in byte order. That tie rule
+is what makes this column reproducible -- without it the leader of a
+tied pair was whatever order the rows arrived in, so an upstream
+change that reordered equals (a live reference census, say) could
+swap it between runs with no change in the evidence. It remains a
+convenience label, not a statistically preferred pick: where
+candidates tie, the consensus itself backs off to their LCA.}
 }
 }
 \description{

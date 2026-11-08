@@ -53,8 +53,15 @@ utils::globalVariables(c("taxon_name"))
 #' @return \code{evidence} with \code{weight} replaced by the conditioned
 #'   weight and three added columns: \code{habitat_weight} (\eqn{H_{site}},
 #'   \code{NA} when unknown), \code{weight_unconditioned} (the generator's
-#'   original weight) and \code{habitat_floored} (\code{TRUE} where the
-#'   product fell below \code{w_floor}).
+#'   original weight), \code{habitat_floored} (\code{TRUE} where the product
+#'   fell below \code{w_floor} and was raised to it) and
+#'   \code{habitat_zeroed} (\code{TRUE} where the conditioned weight is
+#'   exactly 0). The two are mutually exclusive by construction: a positive
+#'   \code{w_floor} makes a zero impossible, and the default
+#'   \code{w_floor = 0} makes flooring impossible. A zeroed row contributes
+#'   nothing to the prior and so is indistinguishable downstream from a row
+#'   that was never generated, which is why it is both flagged and warned
+#'   about.
 #' @seealso \code{\link{apply_undetected_evidence}},
 #'   \code{\link{generate_regional_proximity_evidence}}
 #' @export
@@ -94,6 +101,7 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
     evidence$habitat_weight <- numeric(0)
     evidence$weight_unconditioned <- numeric(0)
     evidence$habitat_floored <- logical(0)
+    evidence$habitat_zeroed <- logical(0)
     return(evidence)
   }
   lk <- habitat_lookup[!duplicated(habitat_lookup$taxon_name), , drop = FALSE]
@@ -107,18 +115,44 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
   evidence$habitat_weight <- h
   evidence$weight_unconditioned <- w0
   evidence$habitat_floored <- !is.na(h) & (w0 * h < w_floor)
+  # A weight of exactly 0 is a DIFFERENT event from being raised to the floor,
+  # and the two cannot both happen: w_floor > 0 makes a zero impossible, and
+  # w_floor = 0 -- the default -- makes `w0 * h < w_floor` unsatisfiable for
+  # non-negative weights, so habitat_floored is structurally FALSE and the
+  # "floored" count always reported zero whatever the habitat did. Meanwhile a
+  # habitat weight of 0 annihilates the row: it contributes nothing to the
+  # prior, which is indistinguishable downstream from a row that was never
+  # generated. Reported separately so neither event can hide inside the other.
+  evidence$habitat_zeroed <- !is.na(h) & w1 == 0
   evidence$weight <- w1
   if (isTRUE(verbose)) {
     message(sprintf(
       paste0(
         "condition_evidence_on_habitat: %d row(s) conditioned on '%s' -- ",
         "%d unchanged (habitat weight 1 or unknown: %d unknown), %d reduced, ",
-        "%d floored at %.3g."
+        "%d floored at %.3g, %d reduced to zero."
       ),
       nrow(evidence), site_habitat,
-      sum(is.na(h) | h >= 1), sum(is.na(h)), sum(!is.na(h) & h < 1 & !evidence$habitat_floored),
-      sum(evidence$habitat_floored), w_floor
+      sum(is.na(h) | h >= 1), sum(is.na(h)),
+      sum(!is.na(h) & h < 1 & !evidence$habitat_floored & !evidence$habitat_zeroed),
+      sum(evidence$habitat_floored), w_floor,
+      sum(evidence$habitat_zeroed)
     ))
+  }
+  if (any(evidence$habitat_zeroed)) {
+    warning(sprintf(
+      paste0(
+        "condition_evidence_on_habitat: %d evidence row(s) were reduced to a ",
+        "weight of exactly 0 by a habitat weight of 0 for '%s' (%s%s). A ",
+        "zero-weight row contributes nothing to the prior, so it is ",
+        "indistinguishable from one that was never generated. Pass a positive ",
+        "`w_floor` -- the run's clamp weight -- to keep these rows ",
+        "contributing at a floor instead of vanishing."
+      ),
+      sum(evidence$habitat_zeroed), site_habitat,
+      paste(utils::head(evidence$taxon_name[evidence$habitat_zeroed], 5L), collapse = ", "),
+      if (sum(evidence$habitat_zeroed) > 5L) ", ..." else ""
+    ), call. = FALSE)
   }
   evidence
 }

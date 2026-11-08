@@ -148,7 +148,7 @@ Low-level generic function: submits one plain character string to the Anthropic 
 
 #### Details
 
-Use this directly when you have already built your own prompt string (e.g. for geographic screening, PDF extraction, or any ad-hoc task). For habitat assignment with a build_habitat_prompt() (TaxaHabitat) object, use prompt_api instead -- it handles chunking and per-chunk retries automatically.
+Use this directly when you have already built your own prompt string (e.g. for geographic screening, PDF extraction, or any ad-hoc task). For habitat assignment with a build_habitat_prompt() (TaxaHabitat) object, use prompt_api instead -- it handles chunking automatically. A chunk that fails is not re-sent: prompt_api() warns for each failure, warns again with the count and the indices, records them in the result's "failed_chunks" attribute, and stops only if every chunk failed. A caller that needs retries implements them itself.
 
 ### call_api(prompt_str, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 16000L, api_key = NULL, base_url = NULL, images = NULL, show_tokens = FALSE, max_input_tokens = NULL, timeout = 120, temperature = NULL)
 

@@ -54,8 +54,11 @@ domain-specific logic. Thin wrapper around \code{\link{call_api}}.
 Use this directly when you have already built your own prompt string
 (e.g. for geographic screening, PDF extraction, or any ad-hoc task).
 For habitat assignment with a \code{build_habitat_prompt()} (TaxaHabitat) object,
-use \code{\link{prompt_api}} instead -- it handles chunking and
-per-chunk retries automatically.
+use \code{\link{prompt_api}} instead -- it handles chunking automatically.
+A chunk that fails is not re-sent: \code{prompt_api()} warns for each
+failure, warns again with the count and the indices, records them in the
+result's \code{"failed_chunks"} attribute, and stops only if every chunk
+failed. A caller that needs retries implements them itself.
 }
 \examples{
 \dontrun{

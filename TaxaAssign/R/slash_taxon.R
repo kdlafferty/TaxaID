@@ -111,9 +111,15 @@
 #'       by dropping everything from the first `/` or ` + ` onward -- the
 #'       single most-reportable name when a slash/plus label is not wanted
 #'       (e.g. simple species tallies). For a slash set, this is whichever
-#'       candidate `.make_slash_name()` placed first (highest posterior when
-#'       `posteriors_col` is available, else alphabetical) -- a convenience
-#'       label, not a statistically preferred pick.}
+#'       candidate `.make_slash_name()` placed first: highest posterior when
+#'       `posteriors_col` is available, else alphabetical, and in BOTH cases
+#'       exact ties are broken on the taxon name in byte order. That tie rule
+#'       is what makes this column reproducible -- without it the leader of a
+#'       tied pair was whatever order the rows arrived in, so an upstream
+#'       change that reordered equals (a live reference census, say) could
+#'       swap it between runs with no change in the evidence. It remains a
+#'       convenience label, not a statistically preferred pick: where
+#'       candidates tie, the consensus itself backs off to their LCA.}
 #'   }
 #'
 #' @note **Non-binomial names in `plausible_taxa`:** Entries that are not a
@@ -212,9 +218,23 @@ add_slash_taxon <- function(consensus_df,
       # post_vec has no names.
       p <- if (!is.null(names(post_vec))) unname(post_vec[x]) else post_vec[keep]
       p[is.na(p)] <- 0
-      x[order(-p)]
+      # Ties broken on the taxon name in BYTE order, the same rule and the
+      # same reason as .consensus_one_unit()'s own ordering: order() is
+      # stable, so a posterior-only sort leaves exact equals in whatever
+      # order the rows arrived in, and primary_taxon reads the FIRST element
+      # of this label. That made the presented leader an artifact of upstream
+      # row order -- a live NCBI census that moved three genera's totals
+      # between two otherwise identical runs was enough to swap one export
+      # row's primary_taxon between two exactly tied species. "radix" is
+      # required rather than incidental: the default method collates
+      # character by LOCALE, so two machines could otherwise order the same
+      # tied pair differently. No call changes -- tied species already back
+      # off to their LCA for the consensus -- only which of several equals is
+      # presented first.
+      x[order(-p, as.character(x), method = "radix")]
     } else {
-      sort(x)
+      # Same byte order, for the same locale reason.
+      x[order(as.character(x), method = "radix")]
     }
   })
   n_taxa <- lengths(taxa_sets)

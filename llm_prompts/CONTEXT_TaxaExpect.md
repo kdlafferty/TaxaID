@@ -144,7 +144,7 @@ Multiplies each evidence row's presence weight by the taxon's own weight for the
 | w_floor | no | 0 | Numeric in [0, 1). The weight below which no evidence row may fall -- pass the run's clamp weight (w_scale * exp(-d_cap / d_half) under curve pricing). Default 0. |
 | verbose | no | TRUE | Logical. Report counts. Default TRUE. |
 
-**Value:** 'evidence' with 'weight' replaced by the conditioned weight and three added columns: 'habitat_weight' (H_{site}, 'NA' when unknown), 'weight_unconditioned' (the generator's original weight) and 'habitat_floored' ('TRUE' where the product fell below 'w_floor').
+**Value:** 'evidence' with 'weight' replaced by the conditioned weight and three added columns: 'habitat_weight' (H_{site}, 'NA' when unknown), 'weight_unconditioned' (the generator's original weight), 'habitat_floored' ('TRUE' where the product fell below 'w_floor' and was raised to it) and 'habitat_zeroed' ('TRUE' where the conditioned weight is exactly 0). The two are mutually exclusive by construction: a positive 'w_floor' makes a zero impossible, and the default 'w_floor = 0' makes flooring impossible. A zeroed row contributes nothing to the prior and so is indistinguishable downstream from a row that was never generated, which is why it is both flagged and warned about.
 
 #### Details
 
