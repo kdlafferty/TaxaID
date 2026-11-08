@@ -6,8 +6,8 @@
   uses it to convert per-observation scores into likelihoods.
 * Produces score_likelihood, score_likelihood_mean and score_likelihood_sd
   across candidate taxa for each observation, the columns TaxaAssign requires.
-* Builds and audits reference databases: fetches reference sequences, detects
-  mislabeled and cross-lineage records, and reports taxonomic completeness
-  against the taxa a study could plausibly encounter.
+* Builds and audits reference databases: fetches reference sequences, removes
+  cross-lineage (homonym) contamination from them, and reports taxonomic
+  completeness against the taxa a study could plausibly encounter.
 * Expands the candidate set to taxa that have no reference of their own, so a
   species absent from the database can still be considered.
