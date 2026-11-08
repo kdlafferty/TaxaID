@@ -49,7 +49,20 @@ state only.
 
 ## Current behaviour worth knowing
 
-- No behaviour changed this cycle.
+- `review_flagged_accessions(on_unreviewed = )` decides what happens when
+  accessions in scope come back with no LLM verdict: `"warn"` (the default)
+  reports them and continues, `"error"` stops, `"ignore"` is silent. Every
+  failure path -- a failing `llm_fn`, an empty or unparseable response, a
+  response missing the accession field, an omitted accession -- fills NA
+  defaults, and NA in every `accession_review_` column reads as "not reviewed",
+  not as "reviewed and found acceptable". A production run wants `"error"`.
+- The residue is on the result either way, in
+  `attr(, "unreviewed_accessions")` and `attr(, "n_unreviewed_accessions")`,
+  set on every return path including the nothing-in-scope one. They are
+  attributes, so a dplyr verb drops them -- read them off the call.
+- The accession-review cache supersedes on the PAIR it keys on, the accession
+  and its input fingerprint. One accession screened under two markers' inputs
+  keeps both verdicts rather than evicting the earlier one.
 
 ## Conventions
 
