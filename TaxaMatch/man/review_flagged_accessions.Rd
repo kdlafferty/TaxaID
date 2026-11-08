@@ -15,7 +15,8 @@ review_flagged_accessions(
   max_retries = 2L,
   pause_seconds = 1,
   verbose = TRUE,
-  local_min_overlap = NULL
+  local_min_overlap = NULL,
+  on_unreviewed = c("warn", "error", "ignore")
 )
 }
 \arguments{
@@ -86,6 +87,21 @@ the amplicon"). \code{NULL} reads it from
 \code{\link[=score_reference_labels]{score_reference_labels()}} left one there, and otherwise words the line
 without a number. Only matters when \code{evaluated_df} carries
 \code{local_n_independent_conspecific}/\code{local_best_independent_pident}.}
+
+\item{on_unreviewed}{Character. What to do when accessions in scope come
+back with no review verdict: \code{"warn"} (default) reports them and
+continues, \code{"error"} stops the run, \code{"ignore"} is silent. The
+residue is recorded on the result either way, in
+\code{attr(result, "unreviewed_accessions")} and
+\code{attr(result, "n_unreviewed_accessions")}. A production run wants
+\code{"error"}: an accession with no verdict carries \code{NA} in every
+\code{accession_review_} column, which reads as "not reviewed" rather
+than "reviewed and found acceptable", so a screen that silently failed
+looks the same as one that found nothing wrong. Note the interaction with
+\code{cache_dir}: with the default persistent cache, the batches that did
+succeed are already cached when \code{"error"} stops the run, so a re-run
+pays only for the residue -- but under \code{cache_dir = NULL} an error
+discards every verdict the run had already paid for.}
 }
 \value{
 \code{evaluated_df} with 4 columns appended (\code{NA} for out-of-scope
@@ -108,6 +124,16 @@ prompt string sent for each LLM call actually made this call (named by
 batch number, with an \code{"a"}/\code{"b"} suffix per retry sub-batch split),
 matching \code{review_assignments()}'s own convention. A batch entirely served
 from cache makes no LLM call at all and so has no entry here.
+
+Also carries \code{attr(result, "unreviewed_accessions")}, the accessions that
+were in scope but came back with no verdict, and
+\code{attr(result, "n_unreviewed_accessions")}, their count. Both are set on
+every return path, including when nothing was in scope. A non-zero count
+is the only signal that a screen asked and got nothing back: the appended
+columns carry \code{NA} for an accession that went unreviewed and for an
+out-of-scope row alike, so \code{NA} alone cannot tell "not reviewed" from
+"reviewed and found acceptable". These are what \code{on_unreviewed} governs the
+reporting of; they are recorded whichever value it takes.
 }
 \description{
 Sends \code{evaluate_reference_accessions()}'s flagged/borderline rows to an LLM
