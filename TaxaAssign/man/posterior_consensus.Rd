@@ -22,7 +22,8 @@ posterior_consensus(
   consensus_method = c("credible_node", "lca"),
   likelihood_consensus = TRUE,
   robust_prior_s = 0,
-  cross_phylum_eps = 0
+  cross_phylum_eps = 0,
+  reference_snapshot = NULL
 )
 }
 \arguments{
@@ -336,6 +337,20 @@ as it did before -- it degrades toward withholding more, never less. A
 message says so. \code{lineage_conflict} reports the related within-rank case,
 and \code{TaxaFlag::flag_backbone_conflicts()} reports both this cross-rank
 case and the same-rank multi-parent one over a whole study.}
+
+\item{reference_snapshot}{\code{NULL} (default) or a single character string
+naming the reference state this consensus was computed against -- for
+example \code{"ncbi_refs_v2+bold_refs_v1"}. When set, it is recorded on
+the result twice: as \verb{attr(<result>, "reference_snapshot")} and as a
+\code{reference_snapshot} column on every row. The column is what survives a
+merge: \code{\link[=rbind]{rbind()}} and \code{\link[dplyr:bind_rows]{dplyr::bind_rows()}} keep only their first piece's
+attributes, so after old rows and recomputed rows are combined the
+attribute names one snapshot for both, while the column still says which
+row came from which. It changes no call. \code{NULL} adds neither, so the
+result is exactly as without the argument. \code{\link[=update_prior_from_consensus]{update_prior_from_consensus()}}
+reports a consensus that mixes labelled and unlabelled rows. See the
+"Updating assignments after new reference data" section of
+\code{vignette("taxonomic-assignment", package = "TaxaAssign")}.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -676,6 +691,9 @@ used (everything except \code{posterior_df}). \code{\link[=update_prior_from_con
 reads it so that Round 2's species guard uses the same settings. Row
 subsetting keeps it; \code{\link[=merge]{merge()}}, \code{\link[dplyr:summarise]{dplyr::summarise()}} or rebuilding the data
 frame drop it.
+
+When \code{reference_snapshot} is set: attribute \code{reference_snapshot} and a
+\code{reference_snapshot} column, both holding that string. Absent otherwise.
 }
 \description{
 For each \code{observation_id}, identifies the minimal set of top-ranked hypotheses

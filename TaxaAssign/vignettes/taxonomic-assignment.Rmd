@@ -148,3 +148,157 @@ comparison <- dplyr::left_join(
 4. **NCBI lookup fails in consensus:** `posterior_consensus()` with
    `lookup_missing_taxonomy = TRUE` makes NCBI API calls. Set to `FALSE` for
    offline use.
+
+## Updating assignments after new reference data
+
+New reference sequences (a BOLD pull, newly deposited GenBank records,
+references removed after screening) or new occurrence records (a new GBIF
+download) do not require rerunning the whole workflow. The expensive steps are
+fetching, matching every sequence, training the likelihood model and assigning
+habitat to occurrence records. The trained model is an INPUT to
+`TaxaLikely::evaluate_likelihoods()`, so it can be reused. Everything after it
+runs per observation and is cheap. There is no single function for this,
+because the decisions below (whether to retrain, and which observations are
+affected) belong to the analyst.
+
+### First: does the likelihood model need retraining?
+
+The model holds a fitted score distribution for each species it was trained on
+(`model_params$H1_Lookup`, one row per species), plus pooled parameters used
+for every species without its own row. Reuse is sound when the new references
+leave those distributions unchanged. Retrain when ANY of these holds:
+
+1. the marker, the amplicon region or the score type changed;
+2. the new references add sequences to, or remove sequences from, a species
+   that has its own row: its distribution was fitted without them;
+3. the new references are a large share of the reference set, enough to move
+   the pooled parameters.
+
+New references only for species WITHOUT their own row need no retraining.
+Those species are scored with the pooled parameters, which is what the model
+does for any species it was not fitted on. They keep the pooled parameters
+until the next retrain.
+
+```{r update-retrain-check}
+own_row <- trained_model$H1_Lookup$lookup_key[trained_model$H1_Lookup$rank == "species"]
+changed_species <- unique(new_refs$species)
+intersect(changed_species, own_row) # non-empty: retrain (criterion 2)
+```
+
+Retraining needs no new fetch or match, only `TaxaLikely::build_sequence_matrix()`
+and `TaxaLikely::train_likelihood_model()` on the combined references. A
+retrained model must then be applied to EVERY observation, not a subset, so
+that all calls come from one model.
+
+### Step 1: fetch the new references into a new cache
+
+The NCBI reference cache has no expiry. Re-fetching a taxon already in the
+cache returns the copy on disk (the message reports its age), not what NCBI
+holds now. Fetch into a cache directory named for the new snapshot:
+
+```{r update-fetch}
+snapshot <- "refs_v2"
+new_refs <- TaxaLikely::fetch_ncbi_reference_sequences(
+  taxa = taxa_to_refresh,
+  barcode_term = "12S",
+  cache_dir = file.path(cache_root, snapshot)
+)
+```
+
+`TaxaLikely::fetch_bold_reference_sequences()` has no cache and always fetches.
+
+Fetching a few taxa on their own changes one behaviour. The cross-lineage
+contamination filter is a vote across every taxon in the same fetch, and a
+small fetch may not reach it, so a split is reported in a message rather than
+dropped. Read the fetch messages and review any reported split.
+
+### Step 2: find the affected observations
+
+Match every query sequence against a database of ONLY the new references. It
+is small, so this is fast. Every observation with a hit is affected. For
+removed references, the affected observations are those whose existing
+`match_df` has a hit to a removed accession.
+
+```{r update-affected}
+new_hits <- TaxaMatch::blast_sequences(seq_df, method = "local", database = new_only_db)
+affected <- unique(new_hits$observation_id)
+```
+
+Then match the affected sequences again against the FULL updated database.
+Do not append the new hits to the old hit list. The old list was capped
+(`max_hits`, `max_target_seqs`), and the gap feature depends on the
+second-best match, so two capped lists joined together are not what one search
+returns.
+
+If the analysis uses Round 2 (`update_prior_from_consensus()`), widen
+`affected` to every observation in the same evidence group (its `detections`
+group, usually the sample). Round 2 pools evidence within a group. With
+`detections = NULL` the whole study is one group, so every observation is
+affected.
+
+### Step 3: likelihoods with the existing model
+
+Run `TaxaLikely::evaluate_likelihoods()` on the affected observations' new
+matches, with the existing `trained_model` and the SAME settings as the
+original run. Then repeat the same downstream steps as before
+(`filter_top_hypotheses()`, the coverage audit, the unreferenced expansion).
+The coverage audit also reads the NCBI cache, so give it the new `cache_dir`.
+
+```{r update-lik}
+lik_new <- TaxaLikely::evaluate_likelihoods(match_affected, model_params = trained_model)
+```
+
+### Step 4: priors
+
+New references do not change priors. New occurrence records do, and not only
+nearby. A site's prior is each species' SHARE of distance-weighted records,
+shrunk toward the regional composition of the whole record pool. A new record
+therefore moves every species' prior at every site within kernel reach (about
+six bandwidths), and moves every site slightly through the regional
+composition. Prior estimation is fast, so re-estimate priors for every site
+(`TaxaExpect::estimate_kernel_priors()`, after habitat assignment of the new
+records) and recompute posteriors for every observation. The expensive steps
+(fetch, match, training, habitat assignment of the old records) are still
+reused.
+
+`update_prior_from_consensus()` does not add occurrence data. It is the Round 2
+confirmation step within each group, and it runs after the posteriors below
+exactly as in the original workflow.
+
+### Step 5: posterior and consensus on the subset, labelled
+
+Join priors and compute posteriors for the affected observations with the
+SAME `n_sims` and the same consensus settings as the original run. Label the
+result with `reference_snapshot`:
+
+```{r update-posterior}
+result_new <- compute_posterior(ready_affected, n_sims = 1000)
+consensus_new <- posterior_consensus(result_new,
+  cumulative_threshold = 0.90,
+  reference_snapshot = snapshot
+)
+```
+
+With `n_sims > 0` the posteriors are Monte Carlo estimates. A subset run uses a
+different random stream from a full rerun, so recomputed rows agree with a
+full rerun to within simulation error, not exactly.
+
+### Step 6: merge the untouched rows back
+
+```{r update-merge}
+# label the original run if it was made without a snapshot
+consensus_old$reference_snapshot <- "refs_v1"
+consensus_merged <- rbind(
+  consensus_old[!consensus_old$observation_id %in% affected, ],
+  consensus_new
+)
+```
+
+`reference_snapshot` is a column as well as an attribute because `rbind()`
+keeps only its first piece's attributes. After the merge, the attribute names
+one snapshot for both pieces, while the column still records which row came
+from which. For the same reason, the merged table keeps the FIRST piece's
+`consensus_settings`, so merge only tables made with the same consensus
+settings. `update_prior_from_consensus()` warns when labelled rows sit beside
+unlabelled ones, and reports how many rows each snapshot holds when there are
+several.

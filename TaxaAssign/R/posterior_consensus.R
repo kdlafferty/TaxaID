@@ -453,6 +453,20 @@
 #' against every taxon. The gap between the posterior and `likelihood_support`
 #' is the part of the call that rests on the prior.
 #'
+#' @param reference_snapshot `NULL` (default) or a single character string
+#'   naming the reference state this consensus was computed against -- for
+#'   example `"ncbi_refs_v2+bold_refs_v1"`. When set, it is recorded on
+#'   the result twice: as `attr(<result>, "reference_snapshot")` and as a
+#'   `reference_snapshot` column on every row. The column is what survives a
+#'   merge: [rbind()] and [dplyr::bind_rows()] keep only their first piece's
+#'   attributes, so after old rows and recomputed rows are combined the
+#'   attribute names one snapshot for both, while the column still says which
+#'   row came from which. It changes no call. `NULL` adds neither, so the
+#'   result is exactly as without the argument. [update_prior_from_consensus()]
+#'   reports a consensus that mixes labelled and unlabelled rows. See the
+#'   "Updating assignments after new reference data" section of
+#'   `vignette("taxonomic-assignment", package = "TaxaAssign")`.
+#'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
@@ -794,6 +808,9 @@
 #'   subsetting keeps it; [merge()], [dplyr::summarise()] or rebuilding the data
 #'   frame drop it.
 #'
+#'   When `reference_snapshot` is set: attribute `reference_snapshot` and a
+#'   `reference_snapshot` column, both holding that string. Absent otherwise.
+#'
 #' @seealso [compute_posterior()],
 #'   [TaxaLikely::suggest_unreferenced_species()]
 #'
@@ -857,8 +874,14 @@ posterior_consensus <- function(posterior_df,
                                 consensus_method = c("credible_node", "lca"),
                                 likelihood_consensus = TRUE,
                                 robust_prior_s = 0,
-                                cross_phylum_eps = 0) {
+                                cross_phylum_eps = 0,
+                                reference_snapshot = NULL) {
   consensus_method <- match.arg(consensus_method)
+  if (!is.null(reference_snapshot) &&
+    (!is.character(reference_snapshot) || length(reference_snapshot) != 1L ||
+      is.na(reference_snapshot) || !nzchar(reference_snapshot))) {
+    cli::cli_abort("{.arg reference_snapshot} must be NULL or a single non-empty character string.")
+  }
   if (!is.numeric(cross_phylum_eps) || length(cross_phylum_eps) != 1L ||
     is.na(cross_phylum_eps) || cross_phylum_eps < 0 || cross_phylum_eps >= 0.5) {
     cli::cli_abort("{.arg cross_phylum_eps} must be a single number in [0, 0.5) (0 turns it off).")
@@ -1237,6 +1260,13 @@ posterior_consensus <- function(posterior_df,
     cross_phylum_eps     = cross_phylum_eps
   )
   attr(result, "consensus_settings") <- consensus_settings
+  # A per-row column as well as the attribute: rbind() keeps only its first
+  # piece's attributes, so a merged table of old and recomputed rows would
+  # carry one label for both. The column survives the merge row by row.
+  if (!is.null(reference_snapshot)) {
+    result$reference_snapshot <- rep(reference_snapshot, nrow(result))
+    attr(result, "reference_snapshot") <- reference_snapshot
+  }
   # internal plumbing for the cross-phylum / downranking interaction; never
   # part of the returned contract. Dropped after the attributes are set, since
   # `[`-style column removal preserves them.
