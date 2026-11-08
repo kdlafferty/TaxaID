@@ -299,11 +299,15 @@
 #'   continues, \code{"error"} stops the run, \code{"ignore"} is silent. The
 #'   residue is recorded on the result either way, in
 #'   \code{attr(result, "unreviewed_accessions")} and
-#'   \code{attr(result, "n_unreviewed_accessions")}. Production workflows pass
+#'   \code{attr(result, "n_unreviewed_accessions")}. A production run wants
 #'   \code{"error"}: an accession with no verdict carries \code{NA} in every
 #'   \code{accession_review_} column, which reads as "not reviewed" rather
 #'   than "reviewed and found acceptable", so a screen that silently failed
-#'   looks the same as one that found nothing wrong.
+#'   looks the same as one that found nothing wrong. Note the interaction with
+#'   \code{cache_dir}: with the default persistent cache, the batches that did
+#'   succeed are already cached when \code{"error"} stops the run, so a re-run
+#'   pays only for the residue -- but under \code{cache_dir = NULL} an error
+#'   discards every verdict the run had already paid for.
 review_flagged_accessions <- function(evaluated_df,
                                       hierarchy_flags = c("incongruent", "insufficient_independent_evidence"),
                                       include_non_species_resolved = TRUE,
@@ -534,11 +538,11 @@ review_flagged_accessions <- function(evaluated_df,
 
   if (length(unreviewed_acc) > 0L && !identical(on_unreviewed, "ignore")) {
     what_happened <- sprintf(paste0(
-      "%d accession(s) in scope have NO LLM review verdict (budget: up to %d ",
-      "re-ask(s) per batch; a batch stops early when a re-ask recovers ",
+      "%d of %d accession(s) in scope have NO LLM review verdict (budget: up ",
+      "to %d re-ask(s) per batch; a batch stops early when a re-ask recovers ",
       "nothing, so the per-batch messages above report what each actually ",
       "spent):\n  %s"
-    ), length(unreviewed_acc), max_retries,
+    ), length(unreviewed_acc), n_scope, max_retries,
     paste(utils::head(unreviewed_acc, 10L), collapse = "\n  ")
     )
     if (length(unreviewed_acc) > 10L) {
@@ -552,12 +556,15 @@ review_flagged_accessions <- function(evaluated_df,
       "  \"not reviewed\" and not as \"reviewed and found acceptable\" -- a filter\n",
       "  that keeps accessions whose explanation is not \"unlikely\" will keep\n",
       "  them. Re-running normally recovers them (an unreviewed accession is\n",
-      "  never cached). To continue anyway and accept the loss, set\n",
-      "  on_unreviewed = \"warn\"; the affected accessions are then named here\n",
-      "  and in attr(result, \"unreviewed_accessions\")."
+      "  never cached). They are named here and in\n",
+      "  attr(result, \"unreviewed_accessions\")."
+    )
+    stop_advice <- paste0(
+      "\n  To continue past this instead of stopping, use on_unreviewed =\n",
+      "  \"warn\" (the default) or \"ignore\"."
     )
     if (identical(on_unreviewed, "error")) {
-      stop(paste0(what_happened, what_to_do), call. = FALSE)
+      stop(paste0(what_happened, what_to_do, stop_advice), call. = FALSE)
     }
     warning(paste0(what_happened, what_to_do), call. = FALSE)
     if (verbose) message("\n!! ", what_happened, "\n")

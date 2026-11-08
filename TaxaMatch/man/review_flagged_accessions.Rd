@@ -93,11 +93,15 @@ back with no review verdict: \code{"warn"} (default) reports them and
 continues, \code{"error"} stops the run, \code{"ignore"} is silent. The
 residue is recorded on the result either way, in
 \code{attr(result, "unreviewed_accessions")} and
-\code{attr(result, "n_unreviewed_accessions")}. Production workflows pass
+\code{attr(result, "n_unreviewed_accessions")}. A production run wants
 \code{"error"}: an accession with no verdict carries \code{NA} in every
 \code{accession_review_} column, which reads as "not reviewed" rather
 than "reviewed and found acceptable", so a screen that silently failed
-looks the same as one that found nothing wrong.}
+looks the same as one that found nothing wrong. Note the interaction with
+\code{cache_dir}: with the default persistent cache, the batches that did
+succeed are already cached when \code{"error"} stops the run, so a re-run
+pays only for the residue -- but under \code{cache_dir = NULL} an error
+discards every verdict the run had already paid for.}
 }
 \value{
 \code{evaluated_df} with 4 columns appended (\code{NA} for out-of-scope
