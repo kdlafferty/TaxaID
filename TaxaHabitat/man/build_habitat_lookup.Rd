@@ -52,8 +52,9 @@ A data frame with one row per unique taxon in \code{taxon_list}
 \code{n_total}, \code{n_from_cache}, \code{n_called}, \code{n_cached_new}, \code{model} (the model
 that answered this call, or a description of \code{llm_fn} when it reports
 none), \code{models} (every model behind the returned verdicts; more than one
-is warned about) and \code{n_model_unknown} (hits written before the model was
-recorded, which cannot be traced to one).
+is warned about) and \code{n_model_unknown} (hits whose entry records no model,
+so the verdict cannot be traced to one; entries written before the model
+was recorded are the usual case).
 }
 \description{
 One call that does what the three-step pattern
@@ -79,6 +80,15 @@ how its answer is parsed.
 The taxon name, the habitat columns the scheme asks for (derived exactly
 as \code{\link[=build_habitat_prompt]{build_habitat_prompt()}} derives them, so a changed scheme is a miss),
 \code{extra_covariates}, \code{geographic_context}, and \code{cache_tag}.
+
+It also covers which VARIANT of the prompt the scheme is asked under, not
+which version of this package wrote the entry. A scheme that declares
+compound \code{parts} is asked different words from one that declares none, so
+the two cannot share an answer; two schemes that declare none are asked the
+same words, so they can, and a release that changes only the compound
+wording leaves their caches valid. The consequence worth knowing is that an
+entry written by an older release can still be a hit, and such an entry
+records no model, which is what \code{n_model_unknown} counts.
 
 Not the model. Every entry written RECORDS what answered it, so a habitat
 weight can be traced to what produced it, and a lookup whose verdicts come

@@ -44,6 +44,15 @@
 #' as [build_habitat_prompt()] derives them, so a changed scheme is a miss),
 #' `extra_covariates`, `geographic_context`, and `cache_tag`.
 #'
+#' It also covers which VARIANT of the prompt the scheme is asked under, not
+#' which version of this package wrote the entry. A scheme that declares
+#' compound `parts` is asked different words from one that declares none, so
+#' the two cannot share an answer; two schemes that declare none are asked the
+#' same words, so they can, and a release that changes only the compound
+#' wording leaves their caches valid. The consequence worth knowing is that an
+#' entry written by an older release can still be a hit, and such an entry
+#' records no model, which is what `n_model_unknown` counts.
+#'
 #' Not the model. Every entry written RECORDS what answered it, so a habitat
 #' weight can be traced to what produced it, and a lookup whose verdicts come
 #' from more than one model warns and names them: a mixed set is the thing that
@@ -91,8 +100,9 @@
 #'   `n_total`, `n_from_cache`, `n_called`, `n_cached_new`, `model` (the model
 #'   that answered this call, or a description of `llm_fn` when it reports
 #'   none), `models` (every model behind the returned verdicts; more than one
-#'   is warned about) and `n_model_unknown` (hits written before the model was
-#'   recorded, which cannot be traced to one).
+#'   is warned about) and `n_model_unknown` (hits whose entry records no model,
+#'   so the verdict cannot be traced to one; entries written before the model
+#'   was recorded are the usual case).
 #' @seealso [build_habitat_prompt()], [parse_hierarchical_habitat_response()],
 #'   [assign_habitat_biological()], [taxahabitat_clear_cache()]
 #' @export
@@ -158,16 +168,23 @@ build_habitat_lookup <- function(taxon_list,
   # Bump this token whenever build_habitat_prompt() changes wording that can
   # move a verdict: the key holds the inputs, not the prompt, so an answer
   # given under the old wording would otherwise be served as a hit.
-  # v2: the compound-label guidelines changed the text a compound scheme is
-  # asked under -- "afterwards as the maximum over its components" became
-  # "afterwards from its components" when compound_rule arrived, and the
+  #
+  # The token names the PROMPT VARIANT, not the package version, because the
+  # compound-label guidelines changed the text only for a scheme that declares
+  # parts: that scheme is now asked "afterwards from its components" where it
+  # used to be asked "afterwards as the maximum over its components", and its
   # habitat block gained a "[part of: ...]" annotation. A scheme with no
-  # compounds is asked the same question as before, but the token is one
-  # value for every caller and cannot distinguish them, so every cache is a
-  # miss once. See test-habitat_prompt_fingerprint.R, which fails when the
-  # prompt source moves without this token.
+  # compounds reaches neither, so it is asked the same bytes as before and its
+  # answers remain valid. One token for every caller cannot say that, and
+  # spending it would orphan every no-compound cache to buy nothing.
+  #
+  # Discipline this imposes: a change to the wording a NO-compound scheme is
+  # asked under must bump BOTH values, not just the compound one.
+  # test-habitat_prompt_fingerprint.R is what forces the question, by failing
+  # whenever the prompt source moves at all.
+  prompt_variant <- if (length(probe$compounds %||% list()) > 0L) "v2" else "v1"
   shared_key <- paste(c(
-    "v2", cache_tag,
+    prompt_variant, cache_tag,
     paste(probe$habitat_cols, collapse = "|"),
     paste(sort(extra_covariates), collapse = "|"),
     geographic_context %||% ""

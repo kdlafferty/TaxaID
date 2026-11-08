@@ -5,17 +5,25 @@
   writes, reports it in the `cache_summary` attribute as `model` and `models`,
   and warns when the verdicts it returns come from more than one -- the state
   that made a habitat weight untraceable and let a re-run mix models silently.
-  Entries written before the model was recorded are counted as
-  `n_model_unknown`, because no record is not the same as another model. The
-  record identifies the function behind `llm_fn`, not the model a capability
-  tier resolves to at call time; pass `cache_tag` = the resolved model
-  identifier when the record must name the model itself.
-* The habitat cache key's version token moves once. The prompt's compound-label
-  wording changed under the previous token, so a scheme that declares parts
-  could be served a verdict given under different wording. Every cache is a
-  miss once and is re-asked. `test-habitat_prompt_fingerprint.R` now fails when
-  the prompt's source changes without the token moving, so the guard no longer
-  depends on remembering.
+  Entries whose record names no model are counted as `n_model_unknown`,
+  because no record is not the same as another model. The record names the
+  model the provider resolved, which `TaxaTools::prompt_api()` reports from the
+  call, so a capability tier pointed at a different model is visible in the
+  record instead of hidden behind the tier's name; an `llm_fn` that reports no
+  model falls back to a description of the function, and `cache_tag` = the
+  resolved model identifier is the way to pin it in that case.
+* The habitat cache key names which VARIANT of the prompt a scheme is asked
+  under, rather than which release wrote the entry. The prompt's compound-label
+  wording changed, so a scheme that declares compound `parts` could be served a
+  verdict given under different wording: its cache is a miss once and is
+  re-asked. A scheme that declares no parts is asked the same words as before,
+  so its cache still hits, and an entry written by an earlier release is a hit
+  that records no model -- which is what `n_model_unknown` counts. A scheme
+  that declares parts cannot reuse an entry written without them.
+  `test-habitat_prompt_fingerprint.R` fails when the prompt's source changes
+  without the token moving, so the guard does not depend on remembering; a
+  change to the wording a no-compound scheme is asked under must move both
+  values.
 
 ## New features
 
