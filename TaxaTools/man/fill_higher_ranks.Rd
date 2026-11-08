@@ -14,7 +14,8 @@ fill_higher_ranks(
   fallback_backbone_id = 11L,
   verbose = TRUE,
   decisions = NULL,
-  lineage = NULL
+  lineage = NULL,
+  cache_dir = NULL
 )
 }
 \arguments{
@@ -100,6 +101,18 @@ taxon (its GBIF phylum, the study's class). Forwarded, per genus, to
 resolves an NCBI homonym rank alone cannot (two genus-rank nodes in
 different kingdoms) and rejects a fallback-backbone answer that
 contradicts it. The genus queries always carry \code{input_rank = "genus"}.}
+
+\item{cache_dir}{Character path or \code{NULL} (default). Forwarded to
+\code{\link{verify_taxon_names}(cache_dir =)} for the genus lookups this
+function makes on both backbones. \code{NULL} keeps
+\code{verify_taxon_names()}'s own default of not caching, so passing
+nothing changes nothing. Pass a path to reuse backbone answers across
+calls and across sessions: a fill over many names asks the backbone once
+per genus, and a second run over an overlapping name list then costs no
+further queries. The cache is the caller's to choose and to clear, which
+is why there is no default path -- a package that wrote to a user
+directory of its own accord would make every test that calls this
+function depend on what earlier runs had cached.}
 }
 \value{
 A tibble with one row per element of \code{taxon_names} (preserving
