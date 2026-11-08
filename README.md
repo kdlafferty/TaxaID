@@ -971,7 +971,7 @@ describe each in full.
 | TaxaMatch   | 30                 | 23         | Yes      |
 | TaxaLikely  | 33                 | 43         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 13                 | 24         | Yes      |
+| TaxaAssign  | 13                 | 25         | Yes      |
 | TaxaFlag    | 17                 | 23         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
