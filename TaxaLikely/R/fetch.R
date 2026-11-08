@@ -1862,6 +1862,29 @@ utils::globalVariables(c(
 #'   `taxa_lineage` was supplied; absent otherwise) -- a data frame of every
 #'   row whose returned lineage shared nothing with its queried taxon's
 #'   declared lineage, via `attr(reference_df, "lineage_disagreements")`.
+#'
+#' @section Cross-lineage contamination, and when it does nothing:
+#'   A taxon whose returned records span more than one organism at kingdom,
+#'   phylum or class -- a homonym pulling in an unrelated clade is the usual
+#'   cause -- has the minority records dropped, but ONLY when the other taxa in
+#'   the same fetch agree strongly enough to name a reference organism. That
+#'   test is a fetch-wide vote: at least three other taxa must resolve
+#'   unambiguously, and the commonest of them must hold at least 0.90 of them.
+#'   One vote per taxon, not per row, and a taxon that is itself split casts
+#'   none.
+#'
+#'   Both the 0.90 share and the three-taxon minimum are FIXED and cannot be
+#'   set from here. The consequence is worth knowing before trusting a fetch:
+#'   where the vote falls short, nothing is dropped and the split is reported
+#'   in a message instead -- so a fetch of mostly-one-kingdom taxa filters, and
+#'   the same contamination in a genuinely mixed fetch does not. A share just
+#'   under the bar declines to act; 44 of 49 taxa agreeing is 0.898 and is not
+#'   enough. Read the messages, and treat a reported split as rows needing
+#'   review rather than as rows that were cleaned.
+#'
+#'   A within-class split is never contamination by this rule and is left
+#'   alone: two families in one class disagreeing is a revision, not a
+#'   homonym.
 #'   Ready for input to [build_sequence_matrix()] (which applies its own,
 #'   independent length filter -- out-of-range rows kept here are excluded
 #'   from training there).
