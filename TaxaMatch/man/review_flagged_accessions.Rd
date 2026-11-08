@@ -124,6 +124,16 @@ prompt string sent for each LLM call actually made this call (named by
 batch number, with an \code{"a"}/\code{"b"} suffix per retry sub-batch split),
 matching \code{review_assignments()}'s own convention. A batch entirely served
 from cache makes no LLM call at all and so has no entry here.
+
+Also carries \code{attr(result, "unreviewed_accessions")}, the accessions that
+were in scope but came back with no verdict, and
+\code{attr(result, "n_unreviewed_accessions")}, their count. Both are set on
+every return path, including when nothing was in scope. A non-zero count
+is the only signal that a screen asked and got nothing back: the appended
+columns carry \code{NA} for an accession that went unreviewed and for an
+out-of-scope row alike, so \code{NA} alone cannot tell "not reviewed" from
+"reviewed and found acceptable". These are what \code{on_unreviewed} governs the
+reporting of; they are recorded whichever value it takes.
 }
 \description{
 Sends \code{evaluate_reference_accessions()}'s flagged/borderline rows to an LLM

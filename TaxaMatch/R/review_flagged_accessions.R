@@ -265,6 +265,16 @@
 #' matching `review_assignments()`'s own convention. A batch entirely served
 #' from cache makes no LLM call at all and so has no entry here.
 #'
+#' Also carries `attr(result, "unreviewed_accessions")`, the accessions that
+#' were in scope but came back with no verdict, and
+#' `attr(result, "n_unreviewed_accessions")`, their count. Both are set on
+#' every return path, including when nothing was in scope. A non-zero count
+#' is the only signal that a screen asked and got nothing back: the appended
+#' columns carry `NA` for an accession that went unreviewed and for an
+#' out-of-scope row alike, so `NA` alone cannot tell "not reviewed" from
+#' "reviewed and found acceptable". These are what `on_unreviewed` governs the
+#' reporting of; they are recorded whichever value it takes.
+#'
 #' @section Caching:
 #' An in-scope accession is served from `cache_dir` instead of a real LLM
 #' call when a cached review exists AND its stored content fingerprint
