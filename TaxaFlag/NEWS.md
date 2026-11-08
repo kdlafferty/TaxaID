@@ -2,9 +2,7 @@
 
 * First public release.
 * Flags anomalous detections in assignment results: laboratory and field
-  contamination, by comparing read proportions against control samples, and,
-  for time-stamped data, handler-related artifacts among detections close to
-  the start or end of a sampling period.
+  contamination, by comparing read proportions against control samples.
 * Detects index hopping between samples, failed libraries, and control
   samples that do not behave as controls.
 * Provides LLM expert review of habitat fit, geographic plausibility,

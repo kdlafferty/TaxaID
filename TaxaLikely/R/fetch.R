@@ -1698,8 +1698,12 @@ utils::globalVariables(c(
 #' @param cache_dir Character path.
 #'   Per-taxon intermediate results are cached here, enabling resumable
 #'   downloads when NCBI rate-limits or the session is interrupted.
-#'   Default \code{tempdir()} (clears on R restart). Set to a persistent
-#'   path for cross-session caching, or \code{NULL} to disable.
+#'   Default \code{tools::R_user_dir("TaxaLikely", "cache")}, which PERSISTS
+#'   across sessions: a later call reuses what an earlier one fetched, which
+#'   is what makes a resumed download cheap but also means a fetch is not
+#'   repeated unless the cache is cleared. Pass \code{tempdir()} for a cache
+#'   that clears on R restart, \code{NULL} to disable caching, or use
+#'   \code{\link{taxalikely_clear_cache}()} to empty it.
 #' @param ncbi_api_key Character or NULL.
 #'   NCBI API key (increases rate limit from 3 to 10 requests/second).
 #'   Can also be set via the `ENTREZ_KEY` environment variable.
@@ -1863,6 +1867,20 @@ utils::globalVariables(c(
 #'   row whose returned lineage shared nothing with its queried taxon's
 #'   declared lineage, via `attr(reference_df, "lineage_disagreements")`.
 #'
+#'   Ready for input to [build_sequence_matrix()] (which applies its own,
+#'   independent length filter -- out-of-range rows kept here are excluded
+#'   from training there).
+#'
+#'   With `dry_run = TRUE`, instead a list: `taxa` (one row per requested
+#'   taxon: `ncbi_count`, `NA` for a taxon served from cache; `cached`;
+#'   `sequences`, the in-range sequences found for it), `sequences` (one row
+#'   per in-range sequence, uncapped: accession and rank columns), and the
+#'   elements of [estimate_sequence_matrix_size()] for this call's caps plus
+#'   `max_per_species` in \{none, 20, 10\} and `max_per_genus` in
+#'   \{none, 1000, 500, 250\}: `grid`, `species_dropped`, `available_gb`,
+#'   `budget_gb` and `rates`. The grid is also printed. Pass `sequences` to
+#'   [estimate_sequence_matrix_size()] to try other caps or build settings.
+#'
 #' @section Cross-lineage contamination, and when it does nothing:
 #'   A taxon whose returned records span more than one organism at kingdom,
 #'   phylum or class -- a homonym pulling in an unrelated clade is the usual
@@ -1885,19 +1903,6 @@ utils::globalVariables(c(
 #'   A within-class split is never contamination by this rule and is left
 #'   alone: two families in one class disagreeing is a revision, not a
 #'   homonym.
-#'   Ready for input to [build_sequence_matrix()] (which applies its own,
-#'   independent length filter -- out-of-range rows kept here are excluded
-#'   from training there).
-#'
-#'   With `dry_run = TRUE`, instead a list: `taxa` (one row per requested
-#'   taxon: `ncbi_count`, `NA` for a taxon served from cache; `cached`;
-#'   `sequences`, the in-range sequences found for it), `sequences` (one row
-#'   per in-range sequence, uncapped: accession and rank columns), and the
-#'   elements of [estimate_sequence_matrix_size()] for this call's caps plus
-#'   `max_per_species` in \{none, 20, 10\} and `max_per_genus` in
-#'   \{none, 1000, 500, 250\}: `grid`, `species_dropped`, `available_gb`,
-#'   `budget_gb` and `rates`. The grid is also printed. Pass `sequences` to
-#'   [estimate_sequence_matrix_size()] to try other caps or build settings.
 #'
 #' @seealso [read_reference_fasta()] for loading a local FASTA file,
 #'   [build_sequence_matrix()] for the next step
