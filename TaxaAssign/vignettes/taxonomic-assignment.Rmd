@@ -171,13 +171,15 @@ leave those distributions unchanged. Retrain when ANY of these holds:
 1. the marker, the amplicon region or the score type changed;
 2. the new references add sequences to, or remove sequences from, a species
    that has its own row: its distribution was fitted without them;
-3. the new references are a large share of the reference set, enough to move
-   the pooled parameters.
+3. much time has passed since the model was trained, or you know that key
+   references have been added for the taxa in your study: the model was
+   fitted to the older reference set.
 
-New references only for species WITHOUT their own row need no retraining.
-Those species are scored with the pooled parameters, which is what the model
-does for any species it was not fitted on. They keep the pooled parameters
-until the next retrain.
+A few new references for species WITHOUT their own row do not by themselves
+require retraining. Those species are scored with the pooled parameters, which
+is what the model does for any species it was not fitted on, and they keep the
+pooled parameters until the next retrain. If they are key references for your
+study, criterion 3 applies: retrain so they get their own fitted distribution.
 
 ```{r update-retrain-check}
 own_row <- trained_model$H1_Lookup$lookup_key[trained_model$H1_Lookup$rank == "species"]
