@@ -88,9 +88,10 @@
 #'     as neutral. When `domestic_prior_caveat` is TRUE the vote is neutral,
 #'     because occurrence databases under-index domestic and captive taxa.
 #'   \item \strong{ECO}, habitat: `llm_p_habitat` read with the review's own
-#'     cuts. Support needs p >= 0.70 with `llm_p_habitat_lo` (if present)
-#'     >= 0.10; against needs p < 0.10 with `llm_p_habitat_hi` (if present)
-#'     < 0.70. A stated range spanning a cut is neutral.
+#'     cuts. Support needs p of at least 0.70, with `llm_p_habitat_lo` (if
+#'     present) at least 0.10; against needs p below 0.10, with
+#'     `llm_p_habitat_hi` (if present) below 0.70. A stated range spanning a
+#'     cut is neutral.
 #' }
 #' The posterior is not a fourth vote: it is likelihood times prior, so
 #' counting it would count SEQ and OCC twice. The prior is used only to
@@ -99,8 +100,8 @@
 #' `consensus_posterior`) has its OCC support set to neutral, since the prior
 #' chose the call from the same records the geography verdict reads. A call
 #' is \emph{stable} when `consensus_confidence_score` and
-#' `robust_lower_posterior` (whichever are present, at least one) are both
-#' >= 0.50; only a stable call can be "confirmed". An LLM verdict can raise
+#' `robust_lower_posterior` (whichever are present, at least one) are all
+#' at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
 #' doubt but never create confidence: every route to "confirmed" or
 #' "softened" requires SEQ support.
 #'
