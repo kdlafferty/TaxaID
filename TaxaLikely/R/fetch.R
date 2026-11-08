@@ -831,6 +831,10 @@ utils::globalVariables(c(
   tab <- sort(table(ctx), decreasing = TRUE)
   ref_key <- if (length(tab) > 0L) names(tab)[1L] else NA_character_
   share <- if (length(ctx) > 0L) as.integer(tab[1L]) / length(ctx) else 0
+  # Reported alongside the share, because a share printed to whole percent
+  # rounds 44/49 = 0.898 up to "90%" and so reads as meeting a 0.90 threshold
+  # it is in fact under.
+  n_ref_taxa <- if (length(tab) > 0L) as.integer(tab[1L]) else 0L
 
   split_names <- paste(split_groups, collapse = ", ")
   if (length(ctx) < min_context || is.na(ref_key) || share < dominance) {
@@ -845,8 +849,8 @@ utils::globalVariables(c(
         sprintf(", fewer than the %d needed", min_context)
       } else {
         sprintf(
-          ", and the commonest organism holds %.0f%% of them, under the %.0f%% needed",
-          100 * share, 100 * dominance
+          ", and the commonest organism holds %d of them (%.3f), under the %.3f needed",
+          n_ref_taxa, share, dominance
         )
       }
     ))
@@ -877,12 +881,12 @@ utils::globalVariables(c(
     message(sprintf(
       paste0(
         "  %s: dropping %d of %d record(s) -- %s %s, against %s from ",
-        "%.0f%% of the %d unambiguous taxa in this fetch.%s"
+        "%d of the %d unambiguous taxa in this fetch (%.3f).%s"
       ),
       g, sum(bad), nrow(rows),
       paste(sort(unique(stats::na.omit(deciders))), collapse = "/"),
       paste(sort(unique(stats::na.omit(labels))), collapse = "/"),
-      ref_label, 100 * share, length(ctx),
+      ref_label, n_ref_taxa, length(ctx), share,
       if (all(bad)) " EVERY record went; this taxon now contributes none." else ""
     ))
     dropped <- c(dropped, ii[bad])
@@ -2092,7 +2096,11 @@ fetch_ncbi_reference_sequences <- function(taxa,
   }
 
   # --- Step 1: Count-first estimation ----------------------------------------
-  message("Estimating search size...")
+  # Only when a count query is actually going out. The loop below skips every
+  # cached taxon, so a fully cached run used to announce an estimation it never
+  # made -- which matters because this line is read as evidence of outbound
+  # network traffic.
+  if (!all(is_cached)) message("Estimating search size...")
   counts <- integer(length(taxa))
   names(counts) <- taxa
 

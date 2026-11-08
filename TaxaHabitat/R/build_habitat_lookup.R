@@ -237,9 +237,19 @@ build_habitat_lookup <- function(taxon_list,
       ))
     }
     if (verbose) {
+      # Name the model(s) behind the hits. cache_summary has carried model,
+      # models and n_model_unknown since the entries began recording a model,
+      # and a reader who only sees the hit count cannot tell whether the
+      # verdicts they are about to use came from the model they think.
+      models_seen <- hit_model_set
       message(sprintf(
-        "build_habitat_lookup: cache: %d of %d taxa already classified; %d to call.",
-        length(hit_idx), length(taxon_list), length(to_call)
+        "build_habitat_lookup: cache: %d of %d taxa already classified; %d to call.%s",
+        length(hit_idx), length(taxon_list), length(to_call),
+        if (length(models_seen) > 0L) {
+          sprintf(" Cached verdicts came from: %s.", paste(models_seen, collapse = ", "))
+        } else {
+          ""
+        }
       ))
     }
   }

@@ -819,7 +819,17 @@ restore_suppressed_candidates <- function(match_obj,
       "train_likelihood_model()."
     ), call. = FALSE)
   }
-  score_transform <- if (is.null(model_params)) "logit" else model_params$Score_Transform
+  # NA, not "logit", when there is no model_params. Every consumer of
+  # score_transform on this path is itself inside a !is.null(model_params)
+  # guard -- the Purpose A block below, the cand_transform that depends on it,
+  # and .resolve_hierarchy_score()'s H2_Lookup branch -- so with no
+  # model_params the value is never read, and naming a transform here claimed
+  # a fact the call does not have. It also read as though a NULL call were
+  # being scored as logit, which is how it was reported as a defect. NA keeps
+  # the no-model mode working exactly as before while making any future
+  # unguarded consumer fail in match.arg() rather than silently assume a
+  # transform the model was not fit under.
+  score_transform <- if (is.null(model_params)) NA_character_ else model_params$Score_Transform
 
   # ---- build restored rows ----------------------------------------------------
   restored_list <- vector("list", length(target_obs))

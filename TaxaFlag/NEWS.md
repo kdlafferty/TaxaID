@@ -1,6 +1,17 @@
 # TaxaFlag 1.0.0
 
 * Initial release.
+* `review_assignments()` documents how a probability becomes one of the
+  plausibility words: the cut tests `p < 0.10` and then `p < 0.70`, so exactly
+  0.10 reads "possible" and that word spans a band up to 0.60 wide. The
+  `llm_p_*` columns are the quantities the labels summarise.
+* The documented site-geography instability at the 0.70 cut no longer promises
+  a fix in a later release. It states the trade that leaves it in place, and
+  how to read a probability that lands near a cut.
+* `llm_scope_plausibility` is documented as habitat-contaminated: scope is
+  taxonomic by instruction, but the probability still falls when habitat
+  mismatches -- median 0.97 against 0.85 for habitat-unlikely fish in one
+  402-fish measurement, two of them reaching 0.10.
 * `review_assignments()` asks `p_scope` about the kind of organism only. It
   previously asked about the organism "and its depth or habitat zone", and
   rated low any "kind of organism, realm or depth the target group excludes",
