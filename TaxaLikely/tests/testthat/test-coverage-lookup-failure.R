@@ -74,3 +74,30 @@ test_that("on_lookup_failure = 'error' stops instead of returning a truncated se
   expect_identical(attr(out, "lookup_failures"), character(0))
   expect_false(any(out$census$lookup_failed))
 })
+
+test_that("the census records when it was taken", {
+  # In this file because it reuses .mock_coverage_ncbi() above, which is what
+  # keeps it offline.
+  #
+  # The census is not reproducible from its own inputs: every group's `total`
+  # is a live NCBI count. A real 12S run moved three genera's totals between
+  # two otherwise identical calls (87 -> 88, 1 -> 2), which was enough to move
+  # one export row's primary taxon. Without a date on the result a reader
+  # comparing two runs cannot tell a drifted backbone from a changed argument,
+  # and the resume checkpoint cannot tell them either because it is deleted on
+  # clean completion.
+  .mock_coverage_ncbi()
+  before <- Sys.time()
+  out <- suppressMessages(audit_barcode_coverage(
+    .match_df, barcode_term = "12S", cache_dir = NULL
+  ))
+  after <- Sys.time()
+
+  expect_s3_class(attr(out, "census_date"), "Date")
+  expect_equal(attr(out, "census_date"), Sys.Date())
+  stamp <- attr(out, "census_time")
+  expect_s3_class(stamp, "POSIXct")
+  # Taken during the call, not at some other moment.
+  expect_gte(as.numeric(stamp), as.numeric(before))
+  expect_lte(as.numeric(stamp), as.numeric(after))
+})

@@ -392,6 +392,14 @@ audit_reference_coverage <- function(reference_df,
 #'   \item{`unreferenced`}{Character vector of unreferenced species names, for
 #'     [expand_unreferenced_hypotheses()]'s `unreferenced_df`.}
 #' }
+#' `attr(x, "census_date")` and `attr(x, "census_time")` record when the
+#' census was taken. They matter because this result is NOT reproducible from
+#' its own inputs: every group's `total` comes from a live NCBI query, so the
+#' same call on a different day can return different numbers as the backbone
+#' gains and loses described species. Two runs that disagree are therefore
+#' not evidence of a changed argument until their census dates are compared.
+#' The resume checkpoint cannot answer this -- it is deleted on clean
+#' completion -- so the date is recorded on the result itself.
 #'
 #' @note Requires an internet connection and the `rentrez` package.  NCBI
 #'   enforces rate limits (3 req/s without an API key; 10 req/s with one).
@@ -1035,6 +1043,16 @@ audit_barcode_coverage <- function(match_df,
   names(all_unreferenced) <- NULL
   out <- list(census = census_df, unreferenced = all_unreferenced)
   attr(out, "lookup_failures") <- failed_groups
+  # When this census was taken, because it is not reproducible from its own
+  # inputs. Every group's totals come from a live NCBI query, so the same
+  # arguments on a different day can return different numbers -- observed on a
+  # 12S run where three genera's totals moved (one genus 87 -> 88, another
+  # 1 -> 2) with no change to the call, which was enough to move one export
+  # row's primary taxon. Without a date on the result, a reader comparing two
+  # runs cannot tell a drifted backbone from a changed argument. The resume
+  # checkpoint is deleted on clean completion, so it cannot answer this either.
+  attr(out, "census_date") <- Sys.Date()
+  attr(out, "census_time") <- Sys.time()
   if (length(failed_groups) > 0L) {
     msg <- sprintf(
       "audit_barcode_coverage: NCBI lookup FAILED for %d of %d %s(s) (%s%s). Their species are absent from $unreferenced, so this result is INCOMPLETE and must not be cached or treated as a census; re-run once NCBI answers (failed groups are not checkpointed). attr(x, \"lookup_failures\") names them.",
