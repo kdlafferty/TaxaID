@@ -6,7 +6,7 @@
 * Translates names between taxonomic backbones (GBIF, NCBI, WoRMS) and
   retrieves classification hierarchies through their APIs.
 * Provides the LLM provider functions the rest of the ecosystem calls
-  (Anthropic, OpenAI, Azure OpenAI, Gemini and Ollama), with chunking, model
-  fallback and token accounting.
+  (Anthropic, OpenAI, Azure OpenAI, Gemini and Ollama), with chunking, a model
+  registry with capability tiers, and token accounting.
 * Drafts methods and results text, and assembles run reports, for the other
   packages to extend.
