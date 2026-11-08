@@ -1,6 +1,19 @@
 # TaxaLikely 1.0.0
 
 * Initial release.
+* `restore_suppressed_candidates()` names a score transform only when it has
+  `model_params` to read one from, and `NA` otherwise. Every use of the
+  transform on that path is reached only when `model_params` is supplied, so
+  the value is never consumed in the no-model mode; `NA` keeps it from
+  describing a call as logit-scored when nothing was scored, and makes any
+  future unguarded use fail rather than assume.
+* The cross-lineage dominance messages print the count of unambiguous taxa
+  behind the reference organism and the share to three decimals. A share shown
+  to whole percent rounded 44 of 49 up to "90%", which read as meeting the 0.90
+  threshold the same message said it was under.
+* `fetch_ncbi_reference_sequences()` announces "Estimating search size..."
+  only when a count query is actually issued, so a fully cached run reports no
+  network activity.
 * `train_likelihood_model()` defaults to `score_transform = "sqrt_mismatch"`,
   the scale every production workflow trains on. `-sqrt(1 - p)` treats the
   mismatch side as a rare-event count, which is where real barcode data sits,

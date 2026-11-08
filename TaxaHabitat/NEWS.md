@@ -1,6 +1,9 @@
 # TaxaHabitat 1.0.0
 
 * Initial release.
+* `build_habitat_lookup()` names the model behind cached verdicts in its
+  verbose cache line. The count of hits alone does not tell a reader whether
+  the verdicts they are about to use came from the model they expect.
 * `build_habitat_lookup()` records which model answered in every cache entry it
   writes, reports it in the `cache_summary` attribute as `model` and `models`,
   and warns when the verdicts it returns come from more than one -- the state

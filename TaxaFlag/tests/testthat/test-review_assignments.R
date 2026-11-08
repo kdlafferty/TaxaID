@@ -2043,3 +2043,16 @@ test_that("an unreviewed row is not cached even when its own batch is answered",
   expect_false("Bos taurus" %in% nm)
   expect_length(nm, 4L)
 })
+
+test_that("the plausibility cuts are where the documentation says they are", {
+  # Documented in review_assignments()'s @return: the cut tests p < 0.10 and
+  # then p < 0.70, so exactly 0.10 reads "possible" rather than "unlikely" and
+  # "possible" spans a band up to 0.60 wide. A reader deciding how far a
+  # probability sits from a cut has to read llm_p_*, not the label, and this
+  # pins the sentence that tells them so.
+  lev <- TaxaFlag:::.p_to_level(c(0.00, 0.09, 0.10, 0.69, 0.70, 1.00, NA))
+  expect_identical(
+    lev,
+    c("unlikely", "unlikely", "possible", "possible", "likely", "likely", NA_character_)
+  )
+})

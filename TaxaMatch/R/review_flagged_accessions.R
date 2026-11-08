@@ -457,7 +457,20 @@ review_flagged_accessions <- function(evaluated_df,
         drop = FALSE
       ]
       if (nrow(new_cache_rows) > 0L) {
-        cache <- cache[!(cache$accession %in% new_cache_rows$accession), , drop = FALSE]
+        # Supersede on the PAIR the lookup keys on, not on the accession. One
+        # accession can be screened under two different inputs -- a mitogenome
+        # carries several markers, and each marker's screen fingerprints
+        # different columns -- and evicting by accession alone deleted the
+        # other marker's verdict, which the lookup above could then never hit.
+        # The result was an accession re-asked on every run, at a fresh LLM
+        # call each time and with no guarantee the verdict came back the same.
+        # Rows left behind under a superseded fingerprint are unreachable
+        # rather than wrong, and their number is bounded by the distinct
+        # inputs an accession has been screened under.
+        cache_key_new <- paste(new_cache_rows$accession, new_cache_rows$input_fingerprint)
+        cache <- cache[!(paste(cache$accession, cache$input_fingerprint) %in% cache_key_new), ,
+          drop = FALSE
+        ]
         cache <- rbind(cache, new_cache_rows)
         .save_accession_review_cache(cache_dir, cache)
       }

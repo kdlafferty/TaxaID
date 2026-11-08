@@ -1783,3 +1783,25 @@ test_that("restore_suppressed_candidates() does not require sequences by default
   expect_false(eval(formals(restore_suppressed_candidates)$check_regional_overlap))
   expect_null(eval(formals(restore_suppressed_candidates)$sequence_col))
 })
+
+test_that("model_params = NULL is a supported mode and names no score transform", {
+  # NULL means no model-based scoring at all: Purpose A admits nothing and the
+  # transform is never read, because every consumer of it sits behind a
+  # !is.null(model_params) guard. This was once reported as a silent "logit"
+  # mis-scoring and nearly "fixed" with a stop(), which would have broken the
+  # mode and every caller using it deliberately.
+  ref <- make_ref()
+  result <- restore_suppressed_candidates(
+    make_match(), ref,
+    rank_system = c("family", "genus", "species"),
+    seq_matrix = make_seq_matrix_for_ref(ref),
+    model_params = NULL,
+    verbose = FALSE
+  )
+  expect_s3_class(result, "data.frame")
+  expect_true(any(result$is_restored))
+
+  # And the sentinel is self-guarding: if a future change ever reads the
+  # transform on this path, it fails here rather than assuming one.
+  expect_error(TaxaLikely:::.transform_p(0.5, NA_character_))
+})

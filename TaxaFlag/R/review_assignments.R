@@ -333,8 +333,34 @@
 #'     why this and the next three columns carry an \code{llm_} prefix.}
 #'   \item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.}
 #'   \item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
-#'     \code{NA} if \code{target_group} not supplied.}
+#'     \code{NA} if \code{target_group} not supplied. Scope is taxonomic by
+#'     instruction -- a habitat, depth, zone or realm named inside
+#'     \code{target_group} is to be scored in \code{llm_p_habitat}, not here
+#'     -- but the probability still falls when habitat mismatches. Measured on
+#'     402 fish from one study: median \code{llm_p_scope} 0.97 overall against
+#'     0.85 for the fish whose habitat was rated unlikely, with 14 of those 74
+#'     below the \code{"likely"} cut and two at 0.10. Treat this field as
+#'     habitat-contaminated, and do not read it as a habitat-free signal.}
 #'   \item{\code{llm_contamination_risk}}{high / moderate / low.}
+#' }
+#'
+#' \strong{How a probability becomes one of these words}: the cut tests
+#' \code{p < 0.10} for \code{"unlikely"} and then \code{p < 0.70} for
+#' \code{"possible"}, so \code{"likely"} means \code{p >= 0.70} and a
+#' probability of exactly 0.10 reads \code{"possible"}, not
+#' \code{"unlikely"}. \code{"possible"} therefore spans a band up to 0.60
+#' wide: a taxon at 0.10 with a credible interval reaching 0.03 carries the
+#' same word as one at 0.69. The accompanying \code{llm_p_*},
+#' \code{llm_p_*_lo} and \code{llm_p_*_hi} columns are the quantities; these
+#' labels are a convenience over them, and any judgement that depends on how
+#' far a probability sits from a cut must read the number. The 0.70 cut is also
+#' where the known site-geography instability sits -- see \strong{A known
+#' instability, not fixed in this release} in Details below, which is the same
+#' boundary seen from the other side.
+#'
+#' The remaining columns:
+#'
+#' \describe{
 #'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives,
 #'     or \code{NA}}
 #'   \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
@@ -638,8 +664,11 @@
 #' the range and 0.50 to 0.70 when it says it does not; another taxon,
 #' \emph{Spheciospongia}, moves 0.85 against 0.60 the same way. One such
 #' taxon is the whole of the leave-one-out difference above. Nothing
-#' in this release special-cases it: a fix is deferred to 1.1, because every
-#' candidate fix changes what the cut means for every other taxon.
+#' special-cases it, and nothing is planned to: every candidate fix changes
+#' what the cut means for every other taxon, which is a worse trade than the
+#' instability it would remove. Read a probability within about 0.05 of the
+#' cut as unresolved between the two levels rather than as the level it
+#' happened to land on.
 #'
 #' \strong{What the pipeline's own numbers add}: nothing that was measured.
 #' The first two arms above differ only in whether the taxon lines carried the
@@ -1377,8 +1406,8 @@ review_assignments <- function(input_df,
     # p_inside_range". A wider bar covering p_outside_range as well was
     # written and rejected -- site geography scored 93-95% in the arms that
     # were measured with NO bar on it, so barring it is a change with no
-    # evidence behind it. It is a 1.1 candidate, to be decided on r12c's
-    # score against the maintainer's labels rather than on argument.
+    # evidence behind it. Unresolved, and to be decided on r12c's score
+    # against the maintainer's labels rather than on argument.
     # The study-wide p_geographic wording is unaffected -- there the study
     # area IS the unit.
     # v15: p_scope asked for the kind of organism "and its depth or habitat
@@ -2595,8 +2624,8 @@ review_assignments <- function(input_df,
     # Two wordings, so two clauses: a taxon flagged on every detection and one
     # flagged on only some are different claims, and the batch can hold both.
     # The "on only part of their detections" phrasing is a KNOWN nit -- two
-    # reviewers read it as a possible claim about the study -- and is on the
-    # 1.1 board rather than fixed here: these prompts are the ones validated
+    # reviewers read it as a possible claim about the study -- and is left
+    # as it stands rather than fixed: these prompts are the ones validated
     # line by line against a real run under v11, and rewording them would
     # discard that evidence for a clumsiness, not an error.
     if (rexp_all) "that the sequence did not resolve the call to species",
