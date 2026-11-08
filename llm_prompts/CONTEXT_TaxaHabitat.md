@@ -90,7 +90,7 @@ One call that does what the three-step pattern 'build_habitat_prompt()' -> 'Taxa
 | verbose | no | TRUE | Passed to TaxaTools::prompt_api(). |
 | compound_rule | no | c("sum", "max") | Passed to build_habitat_prompt(): "sum" (default) or "max". NOT part of the cache key: the cache holds the parts the model returned and the compound is re-derived from them on every call, so the rule can be changed without a single new model call. |
 
-**Value:** A data frame with one row per unique taxon in 'taxon_list' (the same shape 'parse_hierarchical_habitat_response()' returns), in 'taxon_list' order, with a 'cache_summary' attribute: 'n_total', 'n_from_cache', 'n_called', 'n_cached_new', 'model' (the model that answered this call, or a description of 'llm_fn' when it reports none), 'models' (every model behind the returned verdicts; more than one is warned about) and 'n_model_unknown' (hits written before the model was recorded, which cannot be traced to one).
+**Value:** A data frame with one row per unique taxon in 'taxon_list' (the same shape 'parse_hierarchical_habitat_response()' returns), in 'taxon_list' order, with a 'cache_summary' attribute: 'n_total', 'n_from_cache', 'n_called', 'n_cached_new', 'model' (the model that answered this call, or a description of 'llm_fn' when it reports none), 'models' (every model behind the returned verdicts; more than one is warned about) and 'n_model_unknown' (hits whose entry records no model, so the verdict cannot be traced to one; entries written before the model was recorded are the usual case).
 
 #### Why cache this at all
 
@@ -99,6 +99,8 @@ A habitat verdict decides which occurrence records count toward a habitat-strati
 #### What the cache key covers
 
 The taxon name, the habitat columns the scheme asks for (derived exactly as build_habitat_prompt() derives them, so a changed scheme is a miss), extra_covariates, geographic_context, and cache_tag.
+
+It also covers which VARIANT of the prompt the scheme is asked under, not which version of this package wrote the entry. A scheme that declares compound parts is asked different words from one that declares none, so the two cannot share an answer; two schemes that declare none are asked the same words, so they can, and a release that changes only the compound wording leaves their caches valid. The consequence worth knowing is that an entry written by an older release can still be a hit, and such an entry records no model, which is what n_model_unknown counts.
 
 Not the model. Every entry written RECORDS what answered it, so a habitat weight can be traced to what produced it, and a lookup whose verdicts come from more than one model warns and names them: a mixed set is the thing that cannot pass unnoticed. A caller who merely changed their llm_fn since the cache was written is not warned, because nothing about the returned verdicts is mixed -- including the common case of passing a stub that must not be called, to prove a full cache hit.
 

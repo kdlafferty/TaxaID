@@ -207,3 +207,81 @@ test_that("build_habitat_lookup() with declared parts asks for them, returns the
     cache_dir = cache, verbose = FALSE))
   expect_equal(out3[["Coastal-Stream"]], 0.0)
 })
+
+test_that("an entry that records no model is still a hit, and counted as unknown", {
+  taxa <- "Esox lucius"
+  cache <- withr::local_tempdir()
+  fake <- .make_fake_llm(taxa)
+  first <- suppressMessages(build_habitat_lookup(
+    taxa, habitat_scheme = .fake_scheme, llm_fn = fake$fn,
+    cache_dir = cache, verbose = FALSE
+  ))
+  expect_equal(attr(first, "cache_summary")$n_called, 1L)
+
+  # Strip the model field, so the entry has the shape a release that did not
+  # record one wrote. The key comes from the package, never replicated here.
+  f <- list.files(cache, pattern = "_habitat\\.rds$", full.names = TRUE)
+  expect_length(f, 1L)
+  ent <- readRDS(f)
+  expect_true("model" %in% names(ent))
+  saveRDS(list(key = ent$key, row = ent$row), f)
+
+  never <- function(p, ...) stop("the cache should have answered this", call. = FALSE)
+  out <- expect_no_warning(suppressMessages(build_habitat_lookup(
+    taxa, habitat_scheme = .fake_scheme, llm_fn = never,
+    cache_dir = cache, verbose = FALSE
+  )))
+  cs <- attr(out, "cache_summary")
+  expect_equal(cs$n_from_cache, 1L)
+  expect_equal(cs$n_called, 0L)
+  expect_equal(cs$n_model_unknown, 1L)
+  expect_equal(out$taxon_name, taxa)
+})
+
+test_that("a scheme declaring compound parts does not reuse a no-compound entry", {
+  taxa <- "Esox lucius"
+  plain <- data.frame(
+    l1_name = c("Coastal", "Stream", "Lake"), stringsAsFactors = FALSE
+  )
+  compound <- data.frame(
+    l1_name = c("Coastal-Stream", "Lake"),
+    parts = c("Coastal|Stream", NA), stringsAsFactors = FALSE
+  )
+  # The two are asked for the SAME columns, so the prompt variant is the only
+  # thing that can separate their keys. Without that, this test would pass for
+  # the wrong reason -- a differing column set.
+  cols_plain <- suppressMessages(build_habitat_prompt(
+    taxa, habitat_scheme = plain
+  ))$habitat_cols
+  cols_comp <- suppressMessages(build_habitat_prompt(
+    taxa, habitat_scheme = compound
+  ))$habitat_cols
+  expect_setequal(cols_plain, cols_comp)
+
+  cache <- withr::local_tempdir()
+  answer <- function(p, ...) paste(
+    "taxon_name,Coastal,Stream,Lake,Other_weight,habitat_best_guess",
+    "Esox lucius,0.1,0.8,0.1,0,Stream",
+    sep = "\n"
+  )
+  suppressMessages(build_habitat_lookup(
+    taxa, habitat_scheme = plain, llm_fn = answer,
+    cache_dir = cache, verbose = FALSE
+  ))
+  expect_length(list.files(cache, pattern = "_habitat\\.rds$"), 1L)
+
+  # Count the asks rather than match an error string: prompt_api() catches a
+  # failing llm_fn and raises its own "all chunks failed", so the stub's own
+  # message never reaches here. What the test means is "the LLM was asked".
+  asked <- new.env(parent = emptyenv())
+  asked$n <- 0L
+  counting <- function(p, ...) {
+    asked$n <- asked$n + 1L
+    stop("compound scheme must not reuse this", call. = FALSE)
+  }
+  invisible(try(suppressMessages(suppressWarnings(build_habitat_lookup(
+    taxa, habitat_scheme = compound, llm_fn = counting,
+    cache_dir = cache, verbose = FALSE
+  ))), silent = TRUE))
+  expect_gt(asked$n, 0L)
+})
