@@ -95,6 +95,17 @@ utils::globalVariables(c(
 #'   resolves an NCBI homonym rank alone cannot (two genus-rank nodes in
 #'   different kingdoms) and rejects a fallback-backbone answer that
 #'   contradicts it. The genus queries always carry \code{input_rank = "genus"}.
+#' @param cache_dir Character path or \code{NULL} (default). Forwarded to
+#'   \code{\link{verify_taxon_names}(cache_dir =)} for the genus lookups this
+#'   function makes on both backbones. \code{NULL} keeps
+#'   \code{verify_taxon_names()}'s own default of not caching, so passing
+#'   nothing changes nothing. Pass a path to reuse backbone answers across
+#'   calls and across sessions: a fill over many names asks the backbone once
+#'   per genus, and a second run over an overlapping name list then costs no
+#'   further queries. The cache is the caller's to choose and to clear, which
+#'   is why there is no default path -- a package that wrote to a user
+#'   directory of its own accord would make every test that calls this
+#'   function depend on what earlier runs had cached.
 #' @return A tibble with one row per element of `taxon_names` (preserving
 #'   duplicates and order), with columns:
 #'   \describe{
@@ -217,7 +228,8 @@ fill_higher_ranks <- function(taxon_names,
                               fallback_backbone_id = 11L,
                               verbose = TRUE,
                               decisions = NULL,
-                              lineage = NULL) {
+                              lineage = NULL,
+                              cache_dir = NULL) {
   # ---- Input validation ------------------------------------------------------
   if (!is.character(taxon_names)) {
     stop("taxon_names must be a character vector")
@@ -412,7 +424,8 @@ fill_higher_ranks <- function(taxon_names,
       ))
     }
     lin_primary <- .lookup_lineage_from_backbone(need, as.integer(backbone_id), decisions,
-                                                 lineage_of = lineage_by_genus, rank_of = rank_by_genus)
+                                                 lineage_of = lineage_by_genus, rank_of = rank_by_genus,
+                                                 cache_dir = cache_dir)
     for (r in fill_ranks) {
       na_idx <- which(is.na(work[[r]]))
       if (!length(na_idx) || is.null(lin_primary) || nrow(lin_primary) == 0L) next
@@ -450,7 +463,8 @@ fill_higher_ranks <- function(taxon_names,
       ))
     }
     lin_fb <- .lookup_lineage_from_backbone(still, as.integer(fallback_backbone_id), decisions,
-                                            lineage_of = lineage_by_genus, rank_of = rank_by_genus)
+                                            lineage_of = lineage_by_genus, rank_of = rank_by_genus,
+                                            cache_dir = cache_dir)
     if (!is.null(lin_fb) && nrow(lin_fb) > 0L) {
       ok_genus <- .lineages_agree(lin_primary, lin_fb)
       rejected <- setdiff(lin_fb$genus, ok_genus)
@@ -756,7 +770,8 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # same lineage without a second round trip.
 #' @noRd
 .lookup_lineage_from_backbone <- function(genera, backbone_id, decisions = NULL,
-                                          lineage_of = NULL, rank_of = NULL) {
+                                          lineage_of = NULL, rank_of = NULL,
+                                          cache_dir = NULL) {
   ask <- function(nm) {
     tryCatch(
       verify_taxon_names(
@@ -775,7 +790,8 @@ parse_classification_path <- function(path, ranks, target_rank) {
         # The caller's own lineage for the taxon (phylum/class it already
         # knows), per genus: resolves a two-kingdom homonym and gates a
         # contradicting fallback answer. NULL when the caller gave none.
-        lineage = if (is.null(lineage_of)) NULL else unname(lineage_of[nm])
+        lineage = if (is.null(lineage_of)) NULL else unname(lineage_of[nm]),
+        cache_dir = cache_dir
       ),
       error = function(e) NULL
     )

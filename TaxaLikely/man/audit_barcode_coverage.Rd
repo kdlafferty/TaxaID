@@ -112,6 +112,14 @@ is named in \code{attr(x, "lookup_failures")} -- see \code{on_lookup_failure}).}
 \item{\code{unreferenced}}{Character vector of unreferenced species names, for
 \code{\link[=expand_unreferenced_hypotheses]{expand_unreferenced_hypotheses()}}'s \code{unreferenced_df}.}
 }
+\code{attr(x, "census_date")} and \code{attr(x, "census_time")} record when the
+census was taken. They matter because this result is NOT reproducible from
+its own inputs: every group's \code{total} comes from a live NCBI query, so the
+same call on a different day can return different numbers as the backbone
+gains and loses described species. Two runs that disagree are therefore
+not evidence of a changed argument until their census dates are compared.
+The resume checkpoint cannot answer this -- it is deleted on clean
+completion -- so the date is recorded on the result itself.
 }
 \description{
 An \strong{unreferenced species} is a described taxon that has \strong{no barcode sequence}

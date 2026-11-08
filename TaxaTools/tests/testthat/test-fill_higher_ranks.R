@@ -1084,3 +1084,48 @@ test_that("lineage= accepts duplicate and NA taxon names (per-row context, per-g
   expect_true(is.na(out2$genus[2]))
   expect_identical(seen[[1]]$lineage[match(c("Nuda", "Gadus"), seen[[1]]$names)], c("Ctenophora", "Chordata"))
 })
+
+# cache_dir is a passthrough, so the only thing worth asserting is that it
+# arrives. A forwarding argument that is never tested is indistinguishable
+# from one that was declared and then dropped on the way through.
+test_that("cache_dir reaches verify_taxon_names(), and defaults to NULL", {
+  seen <- list()
+  n_called <- 0L
+  testthat::local_mocked_bindings(
+    verify_taxon_names = function(names, backbone_id, ...) {
+      n_called <<- n_called + 1L
+      # Wrapped in list(): `x[[i]] <- NULL` deletes the element in R rather
+      # than storing NULL, which is exactly the value under test here.
+      seen[[length(seen) + 1L]] <<- list(list(...)[["cache_dir"]])
+      tibble::tibble(
+        user_supplied_name   = names,
+        matched_name         = names,
+        classification_path  = paste("Animalia", "Chordata", "Actinopterygii",
+                                     "Gadiformes", "Gadidae", names, sep = "|"),
+        classification_ranks = paste("kingdom", "phylum", "class", "order",
+                                     "family", "genus", sep = "|"),
+        score                = 1,
+        verified             = TRUE
+      )
+    },
+    .package = "TaxaTools"
+  )
+
+  tmp <- withr::local_tempdir()
+  fill_higher_ranks("Gadus morhua", local_sources = list(), backbone_id = 4L,
+                    fallback_backbone_id = NULL, verbose = FALSE,
+                    cache_dir = tmp)
+  # The mock must have run, or every assertion below is vacuous.
+  expect_gt(n_called, 0L)
+  expect_identical(seen[[1]][[1]], tmp)
+
+  # Omitting it forwards NULL, which is verify_taxon_names()'s own default --
+  # this is what makes the new argument a no-op for every existing caller.
+  seen <- list()
+  n_called <- 0L
+  fill_higher_ranks("Gadus morhua", local_sources = list(), backbone_id = 4L,
+                    fallback_backbone_id = NULL, verbose = FALSE)
+  expect_gt(n_called, 0L)
+  expect_length(seen, 1L)
+  expect_null(seen[[1]][[1]])
+})

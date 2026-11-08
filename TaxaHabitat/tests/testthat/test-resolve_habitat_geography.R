@@ -121,3 +121,61 @@ test_that("a resolved point is marked as geography, not consensus", {
   # the proportions are NOT rewritten -- the taxon really does use all three
   expect_equal(attr(r, "habitat_proportions")$Estuarine[1], 0.33)
 })
+
+test_that("an offshore point resolves to Marine and is labelled geography -- offline", {
+  # The companion to the NOAA-backed test above, and the reason it exists: that
+  # one probes gis.ngdc.noaa.gov and skips when the service is unreachable, so
+  # on an offline machine this package's central claim about geography is
+  # never checked at all. The probe is right -- it was added so the test could
+  # not report PASS having executed zero assertions -- but a skip is still a
+  # gap. This test mocks the layer machinery that does the fetching, so the
+  # zone-to-habitat decision always runs.
+  #
+  # flag_habitat_inconsistencies() is the seam: resolve_habitat_by_geography()
+  # delegates the land polygon, coastline and bathymetry work to it and then
+  # reads elevation_m and dist_to_coast_km back out. Mocking it supplies that
+  # geography directly -- an offshore point 60 km out at -2000 m, and a point
+  # already settled by consensus.
+  # The mock records that it ran. Without this the test is worthless: if the
+  # binding failed to take, the real function would fetch from NOAA and the
+  # assertions would still pass on this machine, so a test whose whole purpose
+  # is to be offline would quietly be the opposite.
+  used <- new.env(parent = emptyenv())
+  used$n <- 0L
+  fake_geo <- function(x, habitat_col = "main_habitat", ...) {
+    used$n <- used$n + 1L
+    x$elevation_m <- -2000
+    x$dist_to_coast_km <- 60
+    x$spatial_flag <- FALSE
+    x$spatial_flag_reason <- NA_character_
+    x
+  }
+  testthat::local_mocked_bindings(
+    flag_habitat_inconsistencies = fake_geo, .env = parent.frame()
+  )
+
+  occ <- data.frame(
+    point_id = c("sea", "known"),
+    decimalLatitude = c(34.0, 34.4),
+    decimalLongitude = c(-121.5, -120.0),
+    taxon_name = c("gull", "fish"),
+    main_habitat = c(NA_character_, "Marine"),
+    stringsAsFactors = FALSE
+  )
+  attr(occ, "habitat_proportions") <- data.frame(
+    point_id = c("sea", "known"),
+    Marine     = c(0.35, 1),
+    Estuarine  = c(0.33, 0),
+    Freshwater = c(0.32, 0),
+    stringsAsFactors = FALSE
+  )
+
+  r <- suppressMessages(resolve_habitat_by_geography(occ))
+  expect_gt(used$n, 0L) # the mock really replaced the fetching path
+  # The already-settled point keeps its source; the offshore one is resolved by
+  # geography, to the one habitat admissible far out at sea.
+  expect_equal(r$habitat_source[r$point_id == "known"], "consensus")
+  expect_false(is.na(r$main_habitat[r$point_id == "sea"]))
+  expect_equal(r$main_habitat[r$point_id == "sea"], "Marine")
+  expect_equal(r$habitat_source[r$point_id == "sea"], "geography")
+})
