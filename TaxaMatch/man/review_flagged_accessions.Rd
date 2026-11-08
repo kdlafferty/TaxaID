@@ -15,7 +15,8 @@ review_flagged_accessions(
   max_retries = 2L,
   pause_seconds = 1,
   verbose = TRUE,
-  local_min_overlap = NULL
+  local_min_overlap = NULL,
+  on_unreviewed = c("warn", "error", "ignore")
 )
 }
 \arguments{
@@ -86,6 +87,17 @@ the amplicon"). \code{NULL} reads it from
 \code{\link[=score_reference_labels]{score_reference_labels()}} left one there, and otherwise words the line
 without a number. Only matters when \code{evaluated_df} carries
 \code{local_n_independent_conspecific}/\code{local_best_independent_pident}.}
+
+\item{on_unreviewed}{Character. What to do when accessions in scope come
+back with no review verdict: \code{"warn"} (default) reports them and
+continues, \code{"error"} stops the run, \code{"ignore"} is silent. The
+residue is recorded on the result either way, in
+\code{attr(result, "unreviewed_accessions")} and
+\code{attr(result, "n_unreviewed_accessions")}. Production workflows pass
+\code{"error"}: an accession with no verdict carries \code{NA} in every
+\code{accession_review_} column, which reads as "not reviewed" rather
+than "reviewed and found acceptable", so a screen that silently failed
+looks the same as one that found nothing wrong.}
 }
 \value{
 \code{evaluated_df} with 4 columns appended (\code{NA} for out-of-scope

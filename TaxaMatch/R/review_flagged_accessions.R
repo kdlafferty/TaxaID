@@ -294,6 +294,16 @@
 #' }
 #'
 #' @export
+#' @param on_unreviewed Character. What to do when accessions in scope come
+#'   back with no review verdict: \code{"warn"} (default) reports them and
+#'   continues, \code{"error"} stops the run, \code{"ignore"} is silent. The
+#'   residue is recorded on the result either way, in
+#'   \code{attr(result, "unreviewed_accessions")} and
+#'   \code{attr(result, "n_unreviewed_accessions")}. Production workflows pass
+#'   \code{"error"}: an accession with no verdict carries \code{NA} in every
+#'   \code{accession_review_} column, which reads as "not reviewed" rather
+#'   than "reviewed and found acceptable", so a screen that silently failed
+#'   looks the same as one that found nothing wrong.
 review_flagged_accessions <- function(evaluated_df,
                                       hierarchy_flags = c("incongruent", "insufficient_independent_evidence"),
                                       include_non_species_resolved = TRUE,
@@ -304,10 +314,12 @@ review_flagged_accessions <- function(evaluated_df,
                                       max_retries = 2L,
                                       pause_seconds = 1,
                                       verbose = TRUE,
-                                      local_min_overlap = NULL) {
+                                      local_min_overlap = NULL,
+                                      on_unreviewed = c("warn", "error", "ignore")) {
   if (!is.data.frame(evaluated_df)) {
     stop("'evaluated_df' must be a data frame.", call. = FALSE)
   }
+  on_unreviewed <- match.arg(on_unreviewed)
   if (is.null(local_min_overlap)) {
     lp <- attr(evaluated_df, "local_corroboration_params")
     if (is.list(lp) && is.numeric(lp$min_overlap)) local_min_overlap <- lp$min_overlap
@@ -362,7 +374,12 @@ review_flagged_accessions <- function(evaluated_df,
   evaluated_df$accession_review_cache_hit <- NA
 
   if (n_scope == 0L) {
+    # Set on every return path, so a caller never has to test whether the
+    # attribute exists before reading it: nothing was in scope, so nothing
+    # went unreviewed.
     attr(evaluated_df, "llm_prompts") <- list()
+    attr(evaluated_df, "unreviewed_accessions") <- character(0L)
+    attr(evaluated_df, "n_unreviewed_accessions") <- 0L
     return(evaluated_df)
   }
 
@@ -500,6 +517,52 @@ review_flagged_accessions <- function(evaluated_df,
   evaluated_df$accession_review_cache_hit[idx] <- review_out$accession_review_cache_hit
 
   attr(evaluated_df, "llm_prompts") <- as.list(prompt_log)
+
+  # Rows that were in scope for review and came back with no verdict. Every
+  # failure path above -- a failing llm_fn, an empty or unparseable response, a
+  # response missing the accession field, and an accession the model simply
+  # omitted -- fills NA defaults and carries on, so without this the run ends
+  # looking successful and the screen's verdict is silently absent rather than
+  # negative. These accessions are never written to the cache, so re-running
+  # recovers them.
+  reviewed_acc <- review_batch$accession
+  unreviewed_acc <- reviewed_acc[
+    is.na(evaluated_df$accession_likely_explanation[match(reviewed_acc, evaluated_df$accession)])
+  ]
+  attr(evaluated_df, "unreviewed_accessions") <- unreviewed_acc
+  attr(evaluated_df, "n_unreviewed_accessions") <- length(unreviewed_acc)
+
+  if (length(unreviewed_acc) > 0L && !identical(on_unreviewed, "ignore")) {
+    what_happened <- sprintf(paste0(
+      "%d accession(s) in scope have NO LLM review verdict (budget: up to %d ",
+      "re-ask(s) per batch; a batch stops early when a re-ask recovers ",
+      "nothing, so the per-batch messages above report what each actually ",
+      "spent):\n  %s"
+    ), length(unreviewed_acc), max_retries,
+    paste(utils::head(unreviewed_acc, 10L), collapse = "\n  ")
+    )
+    if (length(unreviewed_acc) > 10L) {
+      what_happened <- paste0(
+        what_happened,
+        sprintf("\n  ... and %d more", length(unreviewed_acc) - 10L)
+      )
+    }
+    what_to_do <- paste0(
+      "\nThese rows carry NA in every accession_review_ column, which reads as\n",
+      "  \"not reviewed\" and not as \"reviewed and found acceptable\" -- a filter\n",
+      "  that keeps accessions whose explanation is not \"unlikely\" will keep\n",
+      "  them. Re-running normally recovers them (an unreviewed accession is\n",
+      "  never cached). To continue anyway and accept the loss, set\n",
+      "  on_unreviewed = \"warn\"; the affected accessions are then named here\n",
+      "  and in attr(result, \"unreviewed_accessions\")."
+    )
+    if (identical(on_unreviewed, "error")) {
+      stop(paste0(what_happened, what_to_do), call. = FALSE)
+    }
+    warning(paste0(what_happened, what_to_do), call. = FALSE)
+    if (verbose) message("\n!! ", what_happened, "\n")
+  }
+
   evaluated_df
 }
 

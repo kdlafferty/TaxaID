@@ -155,12 +155,19 @@ test_that("review_flagged_accessions() fills a missing accession with NA default
       accession_review_comment = c("x", "y")
     ))
   }
-  expect_warning(
-    out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE),
-    "omitted"
+  # Two warnings now, and both are wanted: the per-batch one naming the
+  # omission, and the run-level residue report that says the accession ended
+  # with no verdict at all.
+  w <- capture_warnings(
+    out <- review_flagged_accessions(.base_evaluated_df(), cache_dir = NULL, llm_fn = stub, verbose = FALSE)
   )
+  all_w <- paste(w, collapse = " ")
+  expect_match(all_w, "omitted")
+  expect_match(all_w, "NO LLM review verdict")
   expect_true(is.na(out$accession_review_comment[out$accession == "ACC003"]))
   expect_equal(out$accession_review_comment[out$accession == "ACC002"], "x")
+  expect_equal(attr(out, "unreviewed_accessions"), "ACC003")
+  expect_equal(attr(out, "n_unreviewed_accessions"), 1L)
 })
 
 test_that("review_flagged_accessions() batches by taxa_per_call and preserves prompt log", {
@@ -581,4 +588,57 @@ test_that("a verdict cached under one input survives a review under a DIFFERENT 
   asked_again <- unlist(call_log[-seq_len(n_before)])
   expect_false("ACC002" %in% asked_again)
   expect_true(out$accession_review_cache_hit[out$accession == "ACC002"])
+})
+
+test_that("on_unreviewed = \"error\" stops a screen that produced no verdict", {
+  # The screen used to fill NA defaults and carry on whatever happened, so a
+  # review that failed outright was indistinguishable in the output from one
+  # that found nothing wrong. The sibling review_assignments() has always let
+  # the caller choose; this gives the screen the same choice, with the same
+  # default.
+  dead <- function(prompt, ...) stop("provider is down", call. = FALSE)
+
+  expect_error(
+    suppressWarnings(suppressMessages(review_flagged_accessions(
+      .base_evaluated_df(),
+      cache_dir = NULL, llm_fn = dead, verbose = FALSE, on_unreviewed = "error"
+    ))),
+    "NO LLM review verdict"
+  )
+})
+
+test_that("on_unreviewed defaults to warn, and records the residue either way", {
+  dead <- function(prompt, ...) stop("provider is down", call. = FALSE)
+
+  # Default: warns, continues, and names the accessions.
+  w <- capture_warnings(
+    out <- suppressMessages(review_flagged_accessions(
+      .base_evaluated_df(), cache_dir = NULL, llm_fn = dead, verbose = FALSE
+    ))
+  )
+  expect_match(paste(w, collapse = " "), "NO LLM review verdict")
+  expect_setequal(attr(out, "unreviewed_accessions"), c("ACC002", "ACC003", "ACC004"))
+  expect_equal(attr(out, "n_unreviewed_accessions"), 3L)
+  expect_true(all(is.na(out$accession_likely_explanation)))
+
+  # "ignore" is silent about the residue but still records it.
+  out2 <- suppressWarnings(suppressMessages(review_flagged_accessions(
+    .base_evaluated_df(),
+    cache_dir = NULL, llm_fn = dead, verbose = FALSE, on_unreviewed = "ignore"
+  )))
+  expect_equal(attr(out2, "n_unreviewed_accessions"), 3L)
+})
+
+test_that("the residue attributes are present even when nothing was in scope", {
+  # A caller must never have to test whether the attribute exists before
+  # reading it -- an absent attribute and a zero-length one would otherwise
+  # mean the same thing read carelessly, and different things read carefully.
+  df <- .base_evaluated_df()
+  df$hierarchy_flag <- "congruent"
+  df$listed_taxon_is_species <- TRUE
+  never <- function(prompt, ...) stop("nothing is in scope, so nothing should be asked")
+
+  out <- review_flagged_accessions(df, llm_fn = never, verbose = FALSE)
+  expect_equal(attr(out, "unreviewed_accessions"), character(0L))
+  expect_equal(attr(out, "n_unreviewed_accessions"), 0L)
 })
