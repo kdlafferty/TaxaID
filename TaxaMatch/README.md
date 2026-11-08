@@ -390,14 +390,14 @@ public API exists at time of writing.
 ## Reference Accession Quality {#reference-accession-quality}
 
 A mislabeled reference in the underlying database produces confident
-wrong assignments that propagate to every query matching it. Yet
+but wrong assignments that propagate to every query matching it. Yet
 mislables are rare, and defining a mislabel is a serious accusation.
 Mistakenly removing evidence that is not mislabled can weaken downstream
 likelihood models by making evidence appear more discriminating than it
 is. Thus, I recommend taking time to assess suspicious references before
 condemning them.
 
-TaxaMatch screens the actual candidate accessions your queries match
+TaxaMatch can screen the actual candidate accessions your queries match
 against, before they're trusted as candidates or used to train a
 likelihood model, independent of whatever else happens to be in a
 caller's own taxon list. This applies equally to a training reference
@@ -407,7 +407,7 @@ have no built-in reference-quality screening of their own) and to the
 accessions your query candidates actually matched.
 
 Unfortunately, screening many thousands of references by for mislabeling
-can be very time consuming.
+can be very time consuming. Pack a lunch.
 
 ### The recommended screen: a free check first, then investigate only where needed
 

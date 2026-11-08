@@ -50,8 +50,8 @@ neither learns how match scores behave for a given marker: BLCA treats a
 normalized alignment score as its likelihood, with no error model, and
 softmax uses a sharpness constant the user chooses. Neither models
 species missing from the reference library: BLCA considers only
-reference hits, and softmax's unreferenced hypotheses borrow the scores
-of their referenced relatives.
+reference hits, and softmax's unreferenced hypotheses can borrow the scores
+of their referenced relatives, though this is rarely done.
 
 The words "prior" and "posterior" also mean different things. BLCA calls
 each reference hit's similarity-based weight a "Bayesian posterior

@@ -22,7 +22,7 @@ TaxaExpect). After normalization and Monte Carlo simulation, each
 candidate receives a posterior probability. If a single candidate has
 strong posterior support, it is assigned as the consensus taxon;
 otherwise, a coarser rank (genus, family, etc.) is assigned, by default
-via lowest common ancestor (LCA). All competing hypotheses and their
+via lowest common ancestor (LCA). The contending candidates and their
 probabilities are retained in the output, together with diagnostic
 columns that say how much of each call rests on the likelihood and how
 much on the prior (see *Reading a consensus table* below). The user can
@@ -173,9 +173,11 @@ describes, and each argument is written as
 
 ### Priors: `join_priors()` and `add_unreferenced_prior_mass()`
 
--   Even unrecorded taxa get non-zero priors. "Dark diversity" is an
-    ecological concept (Pärtel et al. 2011) for species that belong to
-    the regional species pool and could plausibly occur at a site given
+-   Candidate taxa without local records get tiny non-zero priors, 
+    and those priors are less tiny where sampling is sparse. This is
+    what allows TaxaID to discover unexpected invasions and "Dark diversity" 
+    (Pärtel et al. 2011) which are rare species that belong 
+    to the regional species pool and could plausibly occur at a site given
     its environmental conditions, but have not actually been observed
     there yet. TaxaExpect computes per-species Tier 3 ("undetected
     species") estimates using this concept; see TaxaExpect's README. For

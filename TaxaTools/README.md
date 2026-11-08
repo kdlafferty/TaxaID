@@ -12,7 +12,7 @@ TaxaID package imports TaxaTools; it has no dependency on any of them,
 which makes it the ecosystem's foundation package. It can also be used
 standalone for cleaning and verifying taxon name lists, resolving
 synonyms across backbones, or calling an LLM from a plain R script with
-no other TaxaID package installed.
+no other TaxaID package installed. Use it to LLM-boost your R code!
 
 TaxaTools solves three largely independent problems that every
 downstream package needs solved consistently:
@@ -187,11 +187,13 @@ runs. Three cautions apply:
 | `write_taxaid_manifest()` | Record that manifest beside a run's outputs. |
 | `check_taxaid_manifest()` | Compare the current library against a recorded manifest; errors by default. |
 
-Every TaxaID package sits at version 0.1.0 and is reinstalled constantly
+Every TaxaID package sits at version N.1.0 and can be altered
 during development, so a version string cannot tell you whether the
 library a run used is the library you think it used: two runs a week
 apart can report identical versions and have executed materially
-different code.
+different code. However, I have found run to run variation small enough
+that changes in final taxonomic assignments are rare compared with other
+aspects that can change (user settings, reference updates, workflow details).
 
 The signal is a hash of the installed code, not the `Built` timestamp.
 Rebuilding identical source moves `Built` and changes nothing that
@@ -202,8 +204,7 @@ not touch an exported signature.
 
 A package named in the manifest but missing from the library is reported
 first, and packages that are not installed are kept as rows rather than
-dropped: a checker that only compares what it finds on both sides cannot
-report what is gone.
+dropped.
 
 ``` r
 # in a workflow preamble
@@ -225,7 +226,7 @@ devtools::install("path/to/TaxaTools")
 Most of TaxaTools works with no key at all (`clean_taxon_names()`,
 `create_taxon_names()`, backbone verification via the public Global
 Names Verifier API, barcode/rank utilities). Two categories of function
-need one:
+need an LLM:
 
 -   LLM functions (`call_api()` and anything built on it,
     `common_to_scientific()`, `draft_methods_text()`, and every

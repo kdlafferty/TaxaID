@@ -42,7 +42,7 @@ than TaxaFetch. Querying a local copy (`gbifdb::gbif_local()`) took
 about three quarters of TaxaFetch's time, but first needed a one-time
 download of 120-150 GB, about two days. TaxaFetch therefore keeps the
 `rgbif` route. A user who already holds a local snapshot can still use
-it for exploratory queries, but records from it carry no download DOI.
+it for exploratory queries, but such records carry no download DOI.
 
 ## Installation
 

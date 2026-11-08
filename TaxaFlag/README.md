@@ -149,8 +149,8 @@ acoustic, and image data via the `data_type` param. This review is
 intended as a structured second opinion, not an automated filter. Users
 should treat the flags as candidates for closer inspection.
 
-By default the prompt carries DNA evidence and the study's own design, and no
-text derived from occurrence records. The review sees the best match identity
+By default the prompt looks at DNA evidence and the study's own design, but not
+ occurrence records from TaxaExpect. The review sees the best match identity
 for each taxon, whether that match clears any rank threshold for the marker,
 whether a confusable relative could match as well, and whether any reference
 sequence exists for the name. It does not see the occurrence prior, the GBIF

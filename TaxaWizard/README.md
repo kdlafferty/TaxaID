@@ -6,14 +6,14 @@ editor_options:
 
 # TaxaWizard
 
-TaxaID is a complex ecosystem and workflows may use dozens of functions
-and hundreds of lines of code. TaxaWizard is designed to help an LLM
-guide a user through it.
+TaxaID is a complex ecosystem with hundreds of functions. So workflows 
+may use dozens of functions and hundreds of lines of code. TaxaWizard 
+is designed to help an LLM guide a user through a workflow.
 
 An LLM can read any R package and list its functions, inputs, and
-outputs to help a user write code. TaxaWizard adds a workflow map: which
-functions flow into which, and the order that connects an input to one
-of the outputs a user might want. TaxaWizard uses this map to run an
+outputs to help a user write code. To help, TaxaWizard adds a workflow
+map: which functions flow into which, and the order that connects an input
+to one of the outputs a user might want. TaxaWizard uses this map to run an
 LLM-powered interview that identifies inputs, parameters, and pipeline
 steps, then generates a self-contained R script. There are three ways to
 reach that interview, plus a separate capability for turning a finished

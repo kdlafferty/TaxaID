@@ -26,18 +26,21 @@ language (R Core Team 2025; see Table 2, Software Requirements) that
 improve taxonomic assignment accuracy. A typical input is a table of
 candidate matches for each detection (sequence, image, or acoustic
 recording) previously obtained by querying a reference library. Its main
-advances are to:
+advance is to transparently reduce assignment errors.  To do so, it will:
 
+-   obtain and standardize data from various sources
+-   correct taxonomic names and standardize backbones
 -   screen for reference-database errors
 -   convert match scores to statistical likelihoods
 -   identify plausibility at the sampling location (the prior)
 -   detect and patch missing references
 -   apply Bayes' Theorem to generate posterior assignment probabilities
-    from likelihoods and priors
--   make assignments transparent
+-   make lowest common ancestor assignments (and retain the candidate list)
 -   use LLMs to review assignments, classify habitat, and assist with workflows
+-   generate reports to describe methods and results
 -   create Shiny apps for clients to process their data without R
     programming
+
 
 The ecosystem was designed with eDNA metabarcoding in mind, but image
 and acoustic analyses are possible when starting from a table of
@@ -55,18 +58,18 @@ The ecosystem supports two types of workflows to select a consensus
 taxon from a list of candidates, ranging from simple to comprehensive:
 
 1.  Conventional: use match-score thresholds and a lowest common
-    ancestor.
+    ancestor (LCA).
 2.  Bayesian: Model likelihoods from match scores, patch missing
     references, build spatially explicit priors from species records,
-    and compare posterior probabilities.
+    and compare posterior probabilities to choose an LCA.
 
 Either route can be followed by an LLM review. TaxaFlag asks a model
 how plausible each call is on habitat, scope, geography and
 contamination and records the answers as columns. The review flags; it
 never drops a call. It reads the sequence evidence and the study's own
-design, and no text derived from occurrence records.
+design, independent from occurrence records.
 
-### Common Errors in Taxonomic Assignment
+### WHY? Errors are common in machine-based Taxonomic Assignment
 
 False assignments are frequent in eDNA metabarcoding (Ficetola et al.
 2015). In a replicated eDNA study from the California rocky intertidal,
@@ -685,8 +688,8 @@ via a guided interview: `workflow_create()`.
 
 ## Which Entry Point Do I Need?
 
-If you're not sure where to start, don't just start typing into an LLM
-chat. Upload `llm_prompts/START_HERE.md` and
+If you're not sure where to start, typing into an LLM chat window 
+will work OK. Better is to upload `llm_prompts/START_HERE.md` and
 `llm_prompts/CONTEXT_TaxaID.md` into an LLM chat window instead. These
 .md files carry the package's context and workflow graph, so the
 assistant identifies the workflow node and edge for your goal before
@@ -759,7 +762,7 @@ that order in one R session; each script says what it reads and writes.
 `inst/TaxaID_Workflow_Template.R` is a single-site template covering the
 canonical path from raw sequences to reviewed assignments. Edit its
 Section 0, supply your own input, and run it top to bottom. It carries
-no study's data and no real paths.
+no real data or paths.
 
 The template is generated automatically, not written by hand. A script
 (`TaxaWizard/inst/tools/build_workflow_template.R`) builds it from the

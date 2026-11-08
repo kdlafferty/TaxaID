@@ -90,8 +90,8 @@ as an estimate of abundance (see the pooling discussion below).
 ### Shared detection effort
 
 TaxaExpect models relative reporting: the probability that a randomly
-selected observation/report at a site belongs to a given taxon. The
-denominator `n_total_at_site` is the total count of all "shared"
+selected observation/report at a site belongs to a given species in a group. 
+The group denominator `n_total_at_site` is the total count of all "shared"
 observations at a site and serves as the shared effort measure for every
 taxon in the model.
 
@@ -127,14 +127,12 @@ relevant taxonomic hypotheses. Although grouping improves accuracy in
 the prior, overly fine grouping reduces the effective sample size and
 widens the standard deviations of the estimate.
 
-Although the priors may not accurately reflect relative abundances among
-taxa, the consensus in TaxaAssign is less sensitive because the
-posterior is renormalized within each observation (which are usually
-related). Inaccuracies remain when an observation's candidates come from
-different detection processes (a marine and a terrestrial candidate for
-the same read), and wherever theta is read as an absolute share rather
-than compared within an observation. If possible, avoid pooling highly
-dissimilar taxa sampled by highly dissimilar methods.
+Fortunately, the priors per observation are robust to group definitions, 
+because the posterior is renormalized within each observation (which are 
+usually related). Inaccuracies remain when an observation's candidates come 
+from different detection processes (a marine and a terrestrial candidate for
+the same read). If possible, avoid pooling highly dissimilar taxa sampled by
+highly dissimilar methods.
 
 ## Installation
 
@@ -321,7 +319,7 @@ and `w` comes from the claimant's distance to its nearest occurrence
 record (or, for iNaturalist range evidence, from independent
 verification).
 
-Real validation. Why not model on a grid? Leave-one-block-out testing,
+Why doesn't TaxaExpect model on a grid? Leave-one-block-out testing,
 holding out blocks of occurrence records and scoring composition
 predictions against them by multinomial log-loss, found that single-cell
 GLMM prediction scored worse than ignoring space entirely, while the

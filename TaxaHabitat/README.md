@@ -9,8 +9,8 @@ editor_options:
 Habitat assignment and spatial quality control for the
 [TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Classifies
 species into habitat categories using LLM-based biological consensus,
-assigns habitats to sampling sites, and flags spatial outliers. It
-accepts that species can occur in multiple habitats, but assumes that a
+assigns habitats to sampling sites, and let's users flag spatial outliers. 
+It accepts that species can occur in multiple habitats, but assumes that a
 particular sampling location can be defined as a single habitat
 category. In other words, it uses the species collected at a location to
 guess the habitat at the site where the species was observed. It gets
@@ -18,7 +18,7 @@ this right most of the time, and indicates its uncertainty when it can't
 decide.
 
 Habitat (e.g., terrestrial, marine, freshwater) is a key predictor of
-which species are plausible at a sampling location. In TaxaID, I
+which species are plausible at a sampling location. In TaxaHabitat, I
 recommend a few coarse habitat types rather than a long list of subtle
 ones. Incorrect habitat classification leads to false positives when
 species from the wrong habitat receive inflated priors. Ideally, a
@@ -28,7 +28,7 @@ basic habitat categories. As with any LLM output, users should review
 the results. `flag_habitat_inconsistencies()` provides an interactive
 map that makes errant classifications easier to spot and correct.
 
-The interactive map makes it easier to review and proof occupancy data.
+The interactive map also makes it easier to review and proof occupancy data.
 Even well-curated data like GBIF (Global Biodiversity Information
 Facility; GBIF Secretariat, Copenhagen, Denmark) have a high frequency
 of location errors. By mapping points by habitat type, users can easily
