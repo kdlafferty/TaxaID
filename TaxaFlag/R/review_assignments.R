@@ -66,8 +66,9 @@
 #'   absent, all unique candidate sets are reviewed with a message. Ignored
 #'   when \code{plausible_taxa_col = NULL}. Default \code{TRUE}, because the
 #'   review costs one LLM call per distinct candidate set and a set with
-#'   \code{irreducible_consensus == FALSE} is one the dataset resolves
-#'   elsewhere, so reviewing it cannot change a call that gets reported.
+#'   \code{irreducible_consensus == FALSE} is either one the dataset resolves
+#'   elsewhere or one it does not resolve at all, so reviewing it cannot
+#'   change a call that gets reported.
 #'   \code{FALSE} reviews every unique set: the more thorough choice, and the
 #'   more expensive one.
 #' @param consensus_posterior_col Character or \code{NULL}. Column name for

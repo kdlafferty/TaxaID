@@ -562,10 +562,25 @@ test_that("R6 is NOT EVALUABLE when neither the sequence vote nor prior_driven c
   expect_false(rc$evaluated[rc$rule == "R6"])
   expect_true(is.na(rc$n_rows[rc$rule == "R6"]))
   expect_equal(rc$n_evaluable[rc$rule == "R6"], 0L)
-  # R7 is the fall-through and reads nothing optional, so it still answers.
+  # R7 still RESOLVES the row -- the fall-through always answers -- but it
+  # answers "upheld" by default, not by test: its confirm clause needs the
+  # sequence vote and a decidable prior_driven, the very columns dropped
+  # here. So the row is resolved and R7 is not evaluable, which are
+  # different facts about the same row.
   expect_equal(x$flag_resolution, "upheld")
+  expect_false(rc$evaluated[rc$rule == "R7"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R7"]))
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 0L)
+})
+
+test_that("R7 IS evaluable once its confirm clause can be decided", {
+  # The counterpart to the case above: with the sequence vote, stability and
+  # prior_role all present, R7's confirm test can be put to the row, so the
+  # rule is evaluable whether or not it confirms. Without this, the check
+  # above would pass on code that reported R7 unevaluable always.
+  rc <- attr(scr(rv()), "resolution_counts")
   expect_true(rc$evaluated[rc$rule == "R7"])
-  expect_equal(rc$n_rows[rc$rule == "R7"], 1L)
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 1L)
 })
 
 test_that("a decidable prior_driven alone makes R6 evaluable with no sequence vote", {
@@ -706,6 +721,12 @@ test_that("resolution keeps every row in order and distinguishes a zero from a r
   expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
   expect_false(rc$evaluated[rc$rule == "R1"])      # no blank or validity verdict
   expect_true(all(rc$evaluated[!rc$rule %in% c("R1", "R4")]))
-  expect_message(screen_assignments(d), "resolution by rule: R0 = 1, R1 = not evaluable")
+  # The count and the denominator are both printed, and this frame is exactly
+  # why: R0 fired on 1 row of the 4 it was asked, so "R0 = 1" alone would not
+  # say whether the other three failed the gate or never reached it.
+  expect_equal(rc$n_rows[rc$rule == "R0"], 1L)
+  expect_equal(rc$n_evaluable[rc$rule == "R0"], 4L)
+  expect_message(screen_assignments(d),
+                 "resolution by rule: R0 = 1 \\(4 asked\\), R1 = not evaluable")
   expect_message(screen_assignments(d), "R4 = not evaluable")
 })

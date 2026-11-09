@@ -179,7 +179,12 @@
 #' @param geography_col,habitat_col,scope_col Names of the reviewer's
 #'   geographic, habitat and scope plausibility columns, with values
 #'   "likely", "possible" or "unlikely" (anything else counts as missing
-#'   for geography, and as not plausible for habitat).
+#'   for geography, and as not plausible for habitat). Rule R4 needs a
+#'   SECOND geographic scale, and it picks the one `geography_col` does not
+#'   name: pass `"llm_geographic_plausibility"` and R4 reads
+#'   `"llm_geographic_plausibility_site"`, and the reverse. A
+#'   `geography_col` naming neither of those two falls back to
+#'   `"llm_geographic_plausibility"` as the second scale.
 #' @param poor_fit_col Name of the logical column that is TRUE when the best
 #'   match fits poorly in absolute terms.
 #' @param best_identity_rank_col Name of the column giving the rank at which
@@ -276,9 +281,13 @@
 #' R4 needs `geo_local_record_location_n` and a verdict on the geographic
 #' scale `geography_col` does not name; R6 needs the sequence vote for its
 #' "keep" clause, or a decidable `prior_role`/`consensus_posterior` pair for
-#' its prior-driven one. R0, R2, R3, R5 and R7 read only values every row
-#' past the two-vote gate already has, so for them reaching the rule is the
-#' whole of being asked.
+#' its prior-driven one. R7 resolves every row it reaches, but its confirm
+#' test needs the sequence vote, a decidable stability
+#' (`consensus_confidence_score` or `robust_lower_posterior`) and a decidable
+#' `prior_driven`; without them every row comes back "upheld" by default
+#' rather than by test, so those rows are not counted as asked. R0, R2, R3
+#' and R5 read only values every row past the two-vote gate already has, so
+#' for them reaching the rule is the whole of being asked.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -541,9 +550,14 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
                      n_evaluable = unname(res$n_evaluable[rn]),
                      stringsAsFactors = FALSE, row.names = NULL)
     attr(d, "resolution_counts") <- rc
+    # n_evaluable is printed beside n_rows because a bare "R1 = 0" reads as
+    # "asked and declined" whether 0 rows or 40 were actually put to the rule.
     message("screen_assignments(): resolution by rule: ",
-            paste0(rc$rule, " = ", ifelse(rc$evaluated, as.character(rc$n_rows),
-                   "not evaluable"), collapse = ", "), ".")
+            paste0(rc$rule, " = ",
+                   ifelse(rc$evaluated,
+                          sprintf("%d (%d asked)", rc$n_rows, rc$n_evaluable),
+                          "not evaluable"),
+                   collapse = ", "), ".")
   }
   d
 }
@@ -640,6 +654,10 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # different scale -- "the study says plausible, this site does not", or the
   # reverse -- because a verify_range row reads "unlikely" on the column that
   # raised it, so re-reading that same column can never soften it.
+  # A geography_col naming neither standard column falls to the study-wide
+  # one, which is the only other scale this function knows. That is a real
+  # second scale, so R4 still works; it is simply not "the other one" relative
+  # to a custom column, and the help says so.
   r4_col <- if (identical(geography_col, STUDY_GEO_COL)) SITE_GEO_COL else STUDY_GEO_COL
   geo_other <- chr(r4_col)
   seq_sup <- seq_v == "support"
@@ -681,11 +699,13 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   #
   # INPUTS: does the row carry what the rule's test reads? Where it does not,
   # the test still returns FALSE, so the rule cannot fire and a count of 0
-  # would read as "asked and declined". Three rules read something a reviewed
+  # would read as "asked and declined". Four rules read something a reviewed
   # table need not carry: R1 needs a blank verdict or a validity verdict, R4
-  # the other geographic scale and the local-record count, and R6 the
-  # sequence vote (for its "keep" clause) or a known prior_driven (for its
-  # other). R0, R2, R3, R5 and R7 read only values every gated row has.
+  # the other geographic scale and the local-record count, R6 the sequence
+  # vote (for its "keep" clause) or a known prior_driven (for its other), and
+  # R7 all three of the sequence vote, a decidable stability and a decidable
+  # prior_driven for its confirm test. R0, R2, R3 and R5 read only values
+  # every gated row has.
   #
   # REACHED: the rules are a cascade down one branch per suggested_action, so
   # a row is only put to a rule it reaches -- a "keep" row is never asked R1,
@@ -702,8 +722,16 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   all_rows <- rep(TRUE, n)
   r1_inputs <- blank_known | !is.na(chr("validity_flag"))
   r6_inputs <- (advice %in% "keep" & seq_known) | !is.na(pdriven)
+  # R7 always RESOLVES a row it reaches, but its only discriminating question
+  # is confirmed-or-upheld, and that needs all three of the sequence vote,
+  # a decidable stability and a decidable prior_driven. Without them
+  # "confirmed" is unreachable -- seq_sup is FALSE, and NA %in% TRUE and
+  # NA %in% FALSE are both FALSE -- so every row comes back "upheld" by
+  # default rather than by test. Counting those rows as asked is the same
+  # zero-versus-not-asked confusion this column exists to remove.
+  r7_inputs <- seq_known & !is.na(stable) & !is.na(pdriven)
   inputs <- list(R0 = all_rows, R1 = r1_inputs, R2 = all_rows, R3 = all_rows,
-                 R4 = r4_inputs, R5 = all_rows, R6 = r6_inputs, R7 = all_rows)
+                 R4 = r4_inputs, R5 = all_rows, R6 = r6_inputs, R7 = r7_inputs)
   reached <- list(R0 = all_rows,                        # the gate is put to every row
                   R1 = ex,
                   R2 = ex & !rule %in% "R1",

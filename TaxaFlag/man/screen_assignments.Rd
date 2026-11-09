@@ -45,7 +45,12 @@ no relatives are found and every I2 row is "review".}
 \item{geography_col, habitat_col, scope_col}{Names of the reviewer's
 geographic, habitat and scope plausibility columns, with values
 "likely", "possible" or "unlikely" (anything else counts as missing
-for geography, and as not plausible for habitat).}
+for geography, and as not plausible for habitat). Rule R4 needs a
+SECOND geographic scale, and it picks the one \code{geography_col} does not
+name: pass \code{"llm_geographic_plausibility"} and R4 reads
+\code{"llm_geographic_plausibility_site"}, and the reverse. A
+\code{geography_col} naming neither of those two falls back to
+\code{"llm_geographic_plausibility"} as the second scale.}
 
 \item{poor_fit_col}{Name of the logical column that is TRUE when the best
 match fits poorly in absolute terms.}
@@ -150,9 +155,13 @@ falls. R1 needs a blank verdict (\code{blank_flag_col}) or a \code{validity_flag
 R4 needs \code{geo_local_record_location_n} and a verdict on the geographic
 scale \code{geography_col} does not name; R6 needs the sequence vote for its
 "keep" clause, or a decidable \code{prior_role}/\code{consensus_posterior} pair for
-its prior-driven one. R0, R2, R3, R5 and R7 read only values every row
-past the two-vote gate already has, so for them reaching the rule is the
-whole of being asked.
+its prior-driven one. R7 resolves every row it reaches, but its confirm
+test needs the sequence vote, a decidable stability
+(\code{consensus_confidence_score} or \code{robust_lower_posterior}) and a decidable
+\code{prior_driven}; without them every row comes back "upheld" by default
+rather than by test, so those rows are not counted as asked. R0, R2, R3
+and R5 read only values every row past the two-vote gate already has, so
+for them reaching the rule is the whole of being asked.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table
