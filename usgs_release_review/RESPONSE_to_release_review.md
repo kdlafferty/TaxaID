@@ -35,6 +35,169 @@ test suite; those scripts have been moved out of the repository. We would like
 to confirm that reading with the reviewer before deleting anything under
 `tests/`.
 
+## Changes made after the review comments were incorporated
+
+I responded to the code review in September 2026, after which test cases
+with real data were applied, and feedback was sought from potential users at
+the Global eDNA Conference at the end of October. Responding to users
+required some additional changes, so this section records what changed
+since, separately from the responses above, which stand as written. All
+additions were subject to USGS code-review standards.
+
+### Scope of the change
+
+- Export surface: **223** exported objects (218 functions and 5 data objects)
+  across the nine packages, checked against the packages themselves by the
+  test suite.
+- **16 exported functions were added** and **10 were removed**, a net
+  reduction in surface rather than growth. The removals were the larger part
+  of the work: several were functions no caller reached.
+- Test files: this response stated **174** when it was written. The tree now
+  holds **216**, 42 more. That figure was accurate at submission and is left
+  as written above.
+
+### Functions added
+
+`add_unreferenced_prior_mass`, `annotate_reference_support`,
+`check_lineage_agreement`, `classify_sample_identity`,
+`estimate_kernel_priors_from_counts`, `estimate_sequence_matrix_size`,
+`fetch_gbif_occurrence_counts`, `fetch_inat_occurrence_counts`,
+`flag_backbone_conflicts`, `flag_failed_libraries`, `flag_hopped_detections`,
+`match_reference_region`, `plan_gbif_fetch`, `resolve_ncbi_taxid`,
+`review_sample_identity`, `screen_assignments`.
+
+### Functions removed, and why
+
+The LLM-Bayesian assignment route was **removed on 2026-10-26**:
+`TaxaAssign::assign_taxa_llm()`, together with the LLM-priors path, the
+`known_absent`/`detection_prob` absence-suppression mechanism that existed
+only on that route, and the two pipeline wrappers `run_bayesian_pipeline()`
+and `run_llm_pipeline()`.
+
+It was removed because it was measured and did not earn its place: on the
+CalIntertidal data it was no better than a flat prior (8.38 flat against 7.92
+and 8.45 for two variants), and on a Great Lakes 12S dataset it matched the
+occurrence-based priors from TaxaExpect rather than beating them. Nothing in
+the ecosystem called it. A package is easier to review and to trust with one
+documented assignment route than with two, one of which was not better.
+
+The LLM *review* routes are untouched and remain: `review_assignments()`,
+`review_sample_identity()`, `review_spatial_context()`,
+`build_habitat_lookup()`, `suggest_unreferenced_species()` and
+`review_flagged_accessions()`. These report probabilities and verdicts
+alongside an assignment; they never make the assignment.
+
+Also removed, each because no caller reached it: `build_iucn_scheme()`,
+`build_scheme_prompt()`, `parse_scheme_response()`, `correct_training_bias()`,
+`verify_local_corroborations()`, `model_cache_info()`. `fetch_inat_occurrences()`
+was renamed `fetch_inat_occurrence_counts()` to say what it returns.
+
+### Documentation corrections
+
+Several documentation sentences were found to state behaviour the code does
+not have, and were corrected rather than carried into the release. The ones
+worth naming, because each told a user something that would have changed what
+they did:
+
+- `TaxaTools` stated that `prompt_api()` retries a failed LLM chunk
+  automatically. It does not; it warns, records the failed chunk indices, and
+  stops only if every chunk failed. Retry is implemented elsewhere in the
+  ecosystem, which made the claim especially easy to believe.
+- `TaxaLikely::fetch_ncbi_reference_sequences()` documented its reference
+  cache as defaulting to `tempdir()`, clearing on restart. The default is a
+  persistent per-user cache, so results from an earlier session are reused
+  unless the cache is cleared.
+
+### Behaviour corrected
+
+- `TaxaAssign::add_slash_taxon()` now breaks ties in `primary_taxon` by byte
+  order, the rule the rest of the package already used. Equal-evidence ties
+  decide a substantial share of calls, so without it the column depended on
+  the machine's collation and the same input could name a different taxon
+  elsewhere.
+- `TaxaExpect::condition_evidence_on_habitat()` now reports a weight that
+  habitat conditioning reduced to zero, as a `habitat_zeroed` column and a
+  warning. The existing `habitat_floored` column could not fire at the
+  default floor of zero, so a zeroed weight previously had no column that
+  named it.
+- `TaxaMatch::review_flagged_accessions()` now lets the caller decide what
+  happens when accessions in scope come back with no review verdict, and
+  records the unreviewed accessions on the result either way. Previously a
+  review that failed outright was indistinguishable in the output from one
+  that found nothing wrong, because both left `NA`.
+- `TaxaLikely::audit_barcode_coverage()` now records when its census was
+  taken. A coverage census describes a reference database at a moment, and
+  without a timestamp a saved census could not be told from a current one.
+- `TaxaTools::fill_higher_ranks()` accepts a `cache_dir` to reuse backbone
+  answers across calls. It defaults to no caching, so existing callers are
+  unaffected; the package does not choose a cache location on the user's
+  behalf.
+- `TaxaLikely::fetch_ncbi_reference_sequences()` gained a documented account
+  of how it detects and removes cross-lineage (homonym) contamination in a
+  fetched reference set, and of when that rule deliberately does nothing.
+
+### Capabilities added in response to user feedback
+
+Two additions came directly from the user feedback described above, and both
+are reported here because each is visible to someone already using the
+packages.
+
+- `TaxaFlag::screen_assignments()` now resolves its own advice against all the
+  evidence on a row, reporting `flag_resolution`, a plain-language
+  `flag_resolution_basis` naming which inputs produced it, and
+  `flag_consistency_score`. Users were combining the LLM review columns, which
+  read easily because they are words, without the better-calibrated posterior
+  quantities sitting beside them. The resolution is deterministic, runs after
+  the LLM verdicts rather than influencing them, and introduces no new
+  statistic: it votes on sequence support, occurrence records with geography,
+  and habitat, and will not produce a score from fewer than two of the three.
+  The occurrence prior is deliberately NOT given a vote, because the posterior
+  already integrates it; it is reported as a caveat instead, so that a prior
+  which is strong only because a database is well sampled cannot inflate
+  confidence twice.
+
+  **Behaviour change for existing callers:** this is on by default, so every
+  current caller of `screen_assignments()` receives three additional columns.
+  Harmless unless a caller selects that output by position or asserts a fixed
+  set of columns.
+
+- `TaxaAssign::posterior_consensus(reference_snapshot =)` labels a consensus
+  with the reference state it was computed against, as both an attribute and a
+  per-row column, and `update_prior_from_consensus()` warns when labelled and
+  unlabelled rows are combined. A new vignette section documents updating
+  assignments after new reference data without rerunning the whole workflow,
+  including when the likelihood model must be retrained. Users asked for this;
+  the computational pieces already existed, so what was added is the record
+  that keeps a partial update honest. The risk it addresses is a result that is
+  half old rows and half recomputed rows with nothing to say which is which.
+  It defaults to off and changes nothing for callers that do not set it.
+
+### Documentation structure
+
+One correction is worth recording because it affected what the documentation
+said rather than how it read. A new section in
+`fetch_ncbi_reference_sequences()` had been placed inside the return-value
+block, which moved two paragraphs -- including the full account of what the
+function returns in dry-run mode -- out of the return value and into that
+section. The return value no longer documented a supported mode. It was found
+by comparing the generated LLM-context files against a written prediction of
+what should have changed, and corrected before release.
+
+### NEWS
+
+All nine `NEWS.md` files were rewritten to a single first-release entry. The
+previous contents described changes against development versions that were
+never released, which is development history rather than a changelog. The
+reviewer raised the same point for TaxaFlag.
+
+### Version state
+
+The "Release form" section below states that the nine packages sit at
+`Version: 0.1.0` and are bumped to `1.0.0` at the release tag. That was the
+tree's state when this response was written. The bump has since been made: all
+nine packages, and the `TaxaID` meta-package, now read `Version: 1.0.0`. The
+sentence is left as submitted rather than edited.
+
 ## Release form
 
 All nine packages are at `Version: 0.1.0` in this tree and are bumped to

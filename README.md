@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -216,7 +216,7 @@ See each package's README.md file for more details.
 
 ### Dependency Chain (import order)
 
-```         
+```
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
 TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 TaxaWizard (standalone; generates scripts that call the other packages)
@@ -308,6 +308,14 @@ section below for the finer-grained, object-level version.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+**The repository URL above is provisional.** TaxaID is expected to be
+released through a USGS-operated GitHub organization; until that URL is
+issued, `https://github.com/kdlafferty/TaxaID` stands in for it. Every
+file carrying the URL is listed in `usgs_release_review/REPO_URL_SWAP.md`
+so it can be replaced in one pass, and the `URL` and `BugReports` fields
+of each `DESCRIPTION`, together with `code.json`, are the ones that must
+be correct at release.
 
 A citable version with a DOI will be released through the USGS software
 release process.
@@ -688,7 +696,7 @@ via a guided interview: `workflow_create()`.
 
 ## Which Entry Point Do I Need?
 
-If you're not sure where to start, typing into an LLM chat window 
+If you're not sure where to start, typing into an LLM chat window
 will work OK. Better is to upload `llm_prompts/START_HERE.md` and
 `llm_prompts/CONTEXT_TaxaID.md` into an LLM chat window instead. These
 .md files carry the package's context and workflow graph, so the
@@ -986,8 +994,9 @@ describe each in full.
 | TaxaWizard  | 9                  | 10         | No       |
 
 **Export surface: 223 = 218 functions + 5 data objects.** The per-package counts
-above are checked against the packages themselves on every run of the test suite,
-so this table and the code cannot drift apart.
+above are checked against the packages themselves whenever the test suite is run
+from a repository checkout, so this table and the code do not drift apart
+silently.
 
 # U.S. Geological Survey Disclaimer
 

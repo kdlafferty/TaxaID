@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -188,6 +188,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.

@@ -1,13 +1,13 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
 # TaxaWizard
 
-TaxaID is a complex ecosystem with hundreds of functions. So workflows 
-may use dozens of functions and hundreds of lines of code. TaxaWizard 
+TaxaID is a complex ecosystem with hundreds of functions. So workflows
+may use dozens of functions and hundreds of lines of code. TaxaWizard
 is designed to help an LLM guide a user through a workflow.
 
 An LLM can read any R package and list its functions, inputs, and
@@ -251,6 +251,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.

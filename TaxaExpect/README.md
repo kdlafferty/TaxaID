@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -90,7 +90,7 @@ as an estimate of abundance (see the pooling discussion below).
 ### Shared detection effort
 
 TaxaExpect models relative reporting: the probability that a randomly
-selected observation/report at a site belongs to a given species in a group. 
+selected observation/report at a site belongs to a given species in a group.
 The group denominator `n_total_at_site` is the total count of all "shared"
 observations at a site and serves as the shared effort measure for every
 taxon in the model.
@@ -127,9 +127,9 @@ relevant taxonomic hypotheses. Although grouping improves accuracy in
 the prior, overly fine grouping reduces the effective sample size and
 widens the standard deviations of the estimate.
 
-Fortunately, the priors per observation are robust to group definitions, 
-because the posterior is renormalized within each observation (which are 
-usually related). Inaccuracies remain when an observation's candidates come 
+Fortunately, the priors per observation are robust to group definitions,
+because the posterior is renormalized within each observation (which are
+usually related). Inaccuracies remain when an observation's candidates come
 from different detection processes (a marine and a terrestrial candidate for
 the same read). If possible, avoid pooling highly dissimilar taxa sampled by
 highly dissimilar methods.
@@ -292,7 +292,7 @@ kernel-weighted share of occurrence records in the focal-habitat
 stratum, shrunk toward the regional composition by `m` pseudo-records (a
 Dirichlet back-off):
 
-```         
+```
 theta_i = (c_i * s + m * p_i) / (n_eff + m)
 ```
 
@@ -348,6 +348,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.

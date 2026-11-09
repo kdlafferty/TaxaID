@@ -122,7 +122,7 @@ and terms; TaxaID has not validated these routes against its reference
 runs. Three cautions apply:
 
 -   **A different model gives different answers.** An LLM step (habitat
-    lookup, expert review, LLM priors) run on another model is a
+    lookup, expert review, reference-accession screen) run on another model is a
     different method. Compare its output with a run on your usual model
     before relying on it. Habitat weights feed the priors, so changing
     the habitat model changes calls.
@@ -195,12 +195,14 @@ different code. However, I have found run to run variation small enough
 that changes in final taxonomic assignments are rare compared with other
 aspects that can change (user settings, reference updates, workflow details).
 
-The signal is a hash of the installed code, not the `Built` timestamp.
-Rebuilding identical source moves `Built` and changes nothing that
-matters, so a `Built`-based check would fire on every harmless
-reinstall, and a guard that cries wolf is a guard someone switches off.
-Internals are hashed as well as exports, because a behaviour change need
-not touch an exported signature.
+That is why `check_taxaid_manifest()` compares a hash of each package's
+installed code rather than its `Built` timestamp. Reinstalling the same
+source changes `Built` without changing anything the code does, so a
+timestamp comparison would report a difference after every harmless
+reinstall -- and a check that reports differences which do not matter is
+one people stop running. The hash covers each package's internal
+functions as well as its exported ones, because behaviour can change
+without any exported signature changing.
 
 A package named in the manifest but missing from the library is reported
 first, and packages that are not installed are kept as rows rather than
@@ -246,7 +248,7 @@ Set keys in `~/.Renviron` (one per line, no quotes):
 usethis::edit_r_environ()
 ```
 
-```         
+```
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 ENTREZ_KEY=your_ncbi_api_key_here
 ```
@@ -352,7 +354,7 @@ rename_cols()             # align column names to DarwinCore
 TaxaTools is the foundation of the TaxaID ecosystem: every other package
 imports it, and it imports none of them:
 
-```         
+```
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
 TaxaTools -> TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 ```
@@ -365,6 +367,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.

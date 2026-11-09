@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -31,24 +31,14 @@ supports species A, that evidence can sharpen the prior for species A in
 other observations from the same sample, within guards that stop the
 second round from manufacturing calls the likelihood does not support.
 
-Three workflows:
+Two workflows:
 
 1.  Conventional: uses match-score thresholds and a lowest common
     ancestor to pick the best candidate. Examples include 100% match,
     maximum match, rank thresholded (e.g., 98% to species, 95% to
     genus) and can be filtered in advance by a regional list to reduce
     false positives.
-2.  LLM Bayesian: an approximate Bayesian assignment, substituting an
-    exponential score-weighting proxy for TaxaLikely's modeled
-    likelihood and an LLM's biogeographic judgment for TaxaExpect's
-    modeled occurrence prior. It exists for rapid analysis when a
-    trained TaxaLikely model or TaxaExpect priors aren't available yet
-    (or as a quick comparison against the Full Bayesian result on data
-    you already have both for). This should be better than conventional
-    workflows, but not the statistically defensible outcome that most
-    users want, and may be model-dependent (and difficult to reproduce
-    exactly).
-3.  Full Bayesian: TaxaLikely's trained likelihood model + TaxaExpect's
+2.  Full Bayesian: TaxaLikely's trained likelihood model + TaxaExpect's
     occurrence-modelled priors. The recommended pathway for any real
     analysis: publication-quality, and every one of this ecosystem's
     real production workflows uses it exclusively.
@@ -159,13 +149,10 @@ $$P(H_i \mid D) = \frac{L(D \mid H_i) \times \pi(H_i)}{\sum_j L(D \mid H_j) \tim
 where $L$ is the likelihood (TaxaLikely's trained model) and $\pi$ is
 the prior (TaxaExpect's occurrence model).
 
--   Two workflows: the full Bayesian workflow uses likelihoods from
-    TaxaLikely's hierarchical model, calibrated against
-    reference-to-reference comparisons, and
-    spatially-explicit priors from TaxaExpect's kernel-based composition
-    estimator; the LLM-Bayesian workflow uses exponential score
-    weighting ($L_i = e^{\lambda s_i}$) and LLM-estimated priors with
-    information-quality-driven Beta concentration.
+-   The Bayesian workflow uses likelihoods from TaxaLikely's
+    hierarchical model, calibrated against reference-to-reference
+    comparisons, and spatially-explicit priors from TaxaExpect's
+    kernel-based composition estimator.
 
 The sections below follow the pipeline. Each names the function it
 describes, and each argument is written as
@@ -173,10 +160,10 @@ describes, and each argument is written as
 
 ### Priors: `join_priors()` and `add_unreferenced_prior_mass()`
 
--   Candidate taxa without local records get tiny non-zero priors, 
+-   Candidate taxa without local records get tiny non-zero priors,
     and those priors are less tiny where sampling is sparse. This is
-    what allows TaxaID to discover unexpected invasions and "Dark diversity" 
-    (Pärtel et al. 2011) which are rare species that belong 
+    what allows TaxaID to discover unexpected invasions and "Dark diversity"
+    (Pärtel et al. 2011) which are rare species that belong
     to the regional species pool and could plausibly occur at a site given
     its environmental conditions, but have not actually been observed
     there yet. TaxaExpect computes per-species Tier 3 ("undetected
@@ -371,6 +358,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.

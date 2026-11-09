@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -9,7 +9,7 @@ editor_options:
 Habitat assignment and spatial quality control for the
 [TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Classifies
 species into habitat categories using LLM-based biological consensus,
-assigns habitats to sampling sites, and let's users flag spatial outliers. 
+assigns habitats to sampling sites, and let's users flag spatial outliers.
 It accepts that species can occur in multiple habitats, but assumes that a
 particular sampling location can be defined as a single habitat
 category. In other words, it uses the species collected at a location to
@@ -342,6 +342,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.

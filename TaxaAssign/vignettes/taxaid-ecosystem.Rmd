@@ -365,8 +365,6 @@ H3 scores lower still.
 
 - **TaxaExpect priors**: derived from GBIF occurrence data + spatial occupancy model.
   Quantitative, reproducible, but limited by GBIF coverage.
-- **LLM priors**: assigned by an LLM based on species range, habitat, and
-  geographic context. Flexible, but stochastic and non-reproducible.
 - **Flat priors**: equal probability for all candidates. Used as fallback when
   no prior information is available.
 
