@@ -642,3 +642,51 @@ test_that("the residue attributes are present even when nothing was in scope", {
   expect_equal(attr(out, "unreviewed_accessions"), character(0L))
   expect_equal(attr(out, "n_unreviewed_accessions"), 0L)
 })
+
+test_that("the unreviewed advice describes what removal actually keys on", {
+  # The advice used to say an unreviewed accession is "removed on its original
+  # hierarchy_flag". Under the default gate = "action",
+  # remove_incongruent_references() builds flags_to_remove as character(0) and
+  # removes on reference_action == "remove" instead; an
+  # "insufficient_independent_evidence" flag alone removes nothing unless
+  # remove_insufficient_evidence = TRUE, which defaults to FALSE. A reviewer
+  # who believed the old sentence would have over-estimated what carrying on
+  # costs, which is the opposite of the caution the message exists to give.
+  dead <- function(prompt, ...) stop("provider is down", call. = FALSE)
+  w <- capture_warnings(
+    suppressMessages(review_flagged_accessions(
+      .base_evaluated_df(), cache_dir = NULL, llm_fn = dead, verbose = FALSE
+    ))
+  )
+  msg <- paste(w, collapse = " ")
+  expect_match(msg, "removal -- if it is enabled", fixed = TRUE)
+  expect_match(msg, "reference_action", fixed = TRUE)
+  expect_match(msg, "remove_insufficient_evidence = TRUE", fixed = TRUE)
+  # The false claim must not come back.
+  expect_false(grepl("removed on their original hierarchy_flag", msg, fixed = TRUE))
+})
+
+test_that("the unreviewed denominator counts ACCESSIONS in scope, not rows", {
+  # One accession can hold several evaluated rows. Counting rows would
+  # understate the unreviewed fraction -- "1 of 4" where the truth is "1 of 2"
+  # -- so the denominator is unique accessions.
+  df <- .base_evaluated_df()
+  dup <- df[df$hierarchy_flag == "incongruent", ]   # ACC002, ACC003
+  df2 <- rbind(df, dup)                             # each now appears twice
+  dead <- function(prompt, ...) stop("provider is down", call. = FALSE)
+
+  w <- capture_warnings(
+    out <- suppressMessages(review_flagged_accessions(
+      df2, cache_dir = NULL, llm_fn = dead, verbose = FALSE
+    ))
+  )
+  msg <- paste(w, collapse = " ")
+  n_acc <- length(unique(df2$accession[df2$hierarchy_flag %in%
+    c("incongruent", "insufficient_independent_evidence")]))
+  expect_equal(n_acc, 3L)                  # ACC002, ACC003, ACC004
+  # 5 rows are in scope but only 3 accessions; the denominator is 3.
+  expect_match(msg, sprintf("of %d accession\\(s\\) in scope", n_acc))
+  expect_false(grepl("of 5 accession", msg, fixed = TRUE))
+  # The residue is reported per accession too, deduplicated.
+  expect_equal(attr(out, "n_unreviewed_accessions"), n_acc)
+})
