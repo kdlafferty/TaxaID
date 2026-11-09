@@ -298,6 +298,10 @@ flag_habitat_inconsistencies <- function(
   # absent from each, and outside a 1 km buffer. Records there are still
   # mis-scored.
   coast_sf <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
+  # Provenance: the vendored layer is Natural Earth's 1:10m minor islands
+  # coastline, fetched with exactly the ne_download() call below -- which is
+  # also the fallback, so the file can be regenerated and checked from the
+  # code that reads it. Natural Earth data are public domain.
   # VENDORED FIRST, download second: a patch that depends on a network call
   # at analysis time is a patch that can silently fail to apply, leaving the
   # tryCatch fallback below -- mainland coastline, plus a warning easy to

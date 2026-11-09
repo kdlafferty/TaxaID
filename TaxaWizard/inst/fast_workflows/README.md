@@ -26,6 +26,22 @@ These scripts exercise code paths. Their numbers are not results.
 | `ptcon12s_r2_fast_match_obj.rds` | A second, later Point Conception 12S run, curated around eleven known downranking cases. Companions: `ptcon12s_r2_fast_lik_model_calibrated.rds` and `ptcon12s_r2_fast_taxaexpect_priors.rds` (the whole priors table, 783 rows: 258 named-evidence and 37 anonymous `resident_undetected` rows, 479 `kernel_estimated`, 9 `transport`). Do not mix these with the `ptcon12s_fast_*` files; they are different runs. |
 | `run_review_fixes_fast_check.R` | Exercises specific consensus and downranking options (`species_reference`, `downrank_requires_candidate`) against the 18S and 12S run-2 fixtures and prints before/after counts. A scoped check, not a smoke test: it reconstructs only the first stages of the pipeline, so cases that enter through `restore_suppressed_candidates()` or `expand_unreferenced_hypotheses()` in production do not reach a downrank event here. |
 
+## Where the priors fixtures' numbers come from
+
+`ptcon12s_r2_fast_taxaexpect_priors.rds` and
+`ptcon18s_fast_taxaexpect_priors.rds` hold aggregate expectation parameters
+only: per taxon, grid cell and habitat, counts and kernel-weighted summaries
+(`n_obs`, `effective_records`, `inat_n_observations_local`) and the fitted
+`alpha`, `beta` and `theta_mean`. They contain no occurrence records -- no
+`gbifID`, `occurrenceID`, `datasetKey`, per-record coordinates, collector or
+catalogue number. The counts were derived from GBIF occurrence downloads
+licensed CC BY-NC 4.0 and from iNaturalist observation counts; some rows rest
+on neither, and `prior_source_type` says which. GBIF asks that a download be
+cited by its DOI. Neither file records which download it came from, so no DOI
+is stated here; the maintainer can supply the DOIs on request. `grid_id`
+values such as `"Site_34.40_-120.40"` are the study's own site coordinates
+rounded to 0.01 degrees, not record localities.
+
 ## Building a fixture
 
 Run `build_fast_fixture.R` against a checkpoint that no workflow is currently

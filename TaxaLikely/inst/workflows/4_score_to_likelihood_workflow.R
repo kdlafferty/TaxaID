@@ -77,9 +77,9 @@ cat(
 # grade), a minimum-coverage threshold can be passed as min_coverage below.
 # Candidates below the threshold are dropped before score aggregation,
 # keeping inference data within the range the model was trained on.
-# Workflow 3 does not calibrate and save a threshold (calibrate_coverage_
-# filter()/coverage_threshold() are retired); supply a value directly if you
-# want this filter, otherwise it stays off (min_cov = NULL).
+# Workflow 3 does not calibrate and save a threshold, by design; supply a
+# value directly if you want this filter, otherwise it stays off
+# (min_cov = NULL).
 #
 # DNA (BLAST): ensure match_df has a 'coverage' column (qcovs from BLAST
 # tabular output, 0-100 scale -- evaluate_likelihoods() auto-rescales).

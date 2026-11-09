@@ -365,11 +365,13 @@ sc_df[, c("taxon_name", "hypothesis_type", "score_norm")]
 
 
 # ==============================================================================
-# SECTION 4 -- Training-database bias correction -- RETIRED
-# correct_training_bias() is not part of the live package. Every real
-# calibration run against it (image, then pooled acoustic at two sample
-# sizes) found its exponent tau ~= 0 optimal, i.e. no correction, so the
-# function had no setting at which it earned its place in a pipeline.
+# SECTION 4 -- Training-database bias correction: none, by measurement
+# This package does not correct for training-database bias, and that is a
+# measurement rather than an omission. Every real calibration run that fitted
+# a correction exponent -- image, then pooled acoustic at two sample sizes --
+# found tau of about zero optimal, which is to say no correction at all. A
+# correction with no setting at which it helps has no place in a pipeline.
+# There is no function to exercise here.
 # ==============================================================================
 
 # ==============================================================================
@@ -665,14 +667,15 @@ expanded[, c("taxon_name", "taxon_name_rank", "hypothesis_type", "score_likeliho
 
 
 # ==============================================================================
-# SECTION 8 -- Coverage quality calibration -- RETIRED
-# calibrate_coverage_filter() / coverage_threshold() are not part of the
-# live package. A real A/B test on full-scale PtConception 12S data found a
-# real H1 win-rate improvement on the queries the filter is willing to answer,
-# but also a real, quantified cost (~19% of species lose every training pair
-# at the calibrated threshold; ~25% of real evaluation queries end up
-# unresolved) -- the same hard-exclusion-on-an-imperfect-proxy pattern this
-# ecosystem has already relearned twice elsewhere.
+# SECTION 8 -- Coverage quality calibration: none, by measurement
+# This package does not filter queries on reference coverage quality. A real
+# A/B test on full-scale Point Conception 12S data found a real H1 win-rate
+# improvement on the queries such a filter is willing to answer, and also a
+# real, quantified cost: about 19% of species lose every training pair at the
+# calibrated threshold, and about 25% of real evaluation queries end up
+# unresolved. That is the same hard-exclusion-on-an-imperfect-proxy pattern
+# this ecosystem has already relearned twice elsewhere.
+# There is no function to exercise here.
 # ==============================================================================
 
 
