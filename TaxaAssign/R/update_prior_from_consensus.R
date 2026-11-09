@@ -236,6 +236,13 @@
 #' attribute is needed only on the guarded path (`require_support_columns =
 #' TRUE`).
 #'
+#' A `consensus` carrying the `reference_snapshot` column that
+#' [posterior_consensus()] writes when its `reference_snapshot` argument is set
+#' is checked for mixing: labelled rows beside unlabelled ones warn, because
+#' the unlabelled rows' reference state is unknown; rows from several labelled
+#' snapshots, the normal result of a partial update, are reported with their
+#' counts. A table without the column is not checked.
+#'
 #' @section Confirmed without an occurrence record:
 #' A row with no occurrence record (`theta_mean` `NA`) is never raised (see
 #' \emph{Receiver guards}), and `confirmed_without_occurrence_record` is
@@ -398,6 +405,7 @@ update_prior_from_consensus <- function(result,
   if (length(missing_consensus) > 0) {
     cli::cli_abort("consensus missing required column(s): {.field {missing_consensus}}")
   }
+  .report_reference_snapshots(consensus)
   if (require_support_columns) {
     miss_lik <- setdiff(c("likelihood_consensus_taxon", "likelihood_consensus_rank"), names(consensus))
     miss_theta <- setdiff("theta_mean", names(result))
@@ -1047,6 +1055,37 @@ update_prior_from_consensus <- function(result,
 # (the 97.5% normal quantile). Internal, not an argument; 0 would reduce the
 # margin guard to the ranking guard (G4).
 .ROUND2_LIKELIHOOD_MARGIN_Z <- 1.96
+
+#' Report the reference snapshots a consensus table mixes
+#'
+#' [posterior_consensus()] writes a `reference_snapshot` column only when its
+#' `reference_snapshot` argument is set, so the column's presence means the
+#' caller is labelling. Rows from several labelled snapshots are the intended
+#' result of a partial update and are reported with their counts; rows with NO
+#' label beside labelled ones are rows whose reference state is unknown, and
+#' warn. A table without the column is not checked and says nothing.
+#' @noRd
+.report_reference_snapshots <- function(consensus) {
+  if (!"reference_snapshot" %in% names(consensus)) return(invisible(NULL))
+  snap <- as.character(consensus$reference_snapshot)
+  n_unlabelled <- sum(is.na(snap) | !nzchar(snap))
+  counts <- table(snap[!is.na(snap) & nzchar(snap)])
+  if (n_unlabelled > 0L && length(counts) > 0L) {
+    cli::cli_warn(c(
+      "{.arg consensus} mixes {n_unlabelled} row{?s} with no {.field reference_snapshot} \\
+        and {sum(counts)} labelled row{?s}.",
+      "i" = "The unlabelled rows' reference state is unknown, so the table cannot say which \\
+        references each call was made against. Label every piece with \\
+        {.code posterior_consensus(reference_snapshot = )} before combining."
+    ))
+  } else if (length(counts) > 1L) {
+    cli::cli_inform(c(
+      "i" = "{.arg consensus} combines {length(counts)} reference snapshots: \\
+        {paste0(names(counts), ' (', as.integer(counts), ' rows)', collapse = ', ')}."
+    ))
+  }
+  invisible(NULL)
+}
 
 #' The consensus settings the species guard reuses
 #'

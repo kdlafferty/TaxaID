@@ -346,7 +346,10 @@ For the full statistical derivation, assumptions, and references, see
 ## Vignettes
 
 -   [Taxonomic Assignment](vignettes/taxonomic-assignment.Rmd): full
-    workflow
+    workflow, and how to update assignments after new reference data
+    without rerunning everything (when the likelihood model must be
+    retrained, and labelling the rows with
+    `posterior_consensus(reference_snapshot = )`)
 -   [TaxaID Ecosystem Overview](vignettes/taxaid-ecosystem.Rmd):
     cross-package guide
 

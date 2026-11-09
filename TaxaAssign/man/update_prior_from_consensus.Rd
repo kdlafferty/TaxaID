@@ -362,6 +362,13 @@ stops and says how to re-attach it:
 Combining consensus tables made with different settings keeps the first
 one's settings, so combine only tables made with the same settings. The
 attribute is needed only on the guarded path (\code{require_support_columns = TRUE}).
+
+A \code{consensus} carrying the \code{reference_snapshot} column that
+\code{\link[=posterior_consensus]{posterior_consensus()}} writes when its \code{reference_snapshot} argument is set
+is checked for mixing: labelled rows beside unlabelled ones warn, because
+the unlabelled rows' reference state is unknown; rows from several labelled
+snapshots, the normal result of a partial update, are reported with their
+counts. A table without the column is not checked.
 }
 
 \section{Confirmed without an occurrence record}{
