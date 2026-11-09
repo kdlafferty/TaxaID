@@ -1010,6 +1010,19 @@ utils::globalVariables(c(
 #' unreachable}, bare \code{"12S"}/\code{"16S"} names included. That is the
 #' point -- the term that produced it is not the term being asked now -- but
 #' it means the next run re-fetches that term.
+#'
+#' The digest is \code{rlang::hash()}, whose output is not guaranteed stable
+#' across rlang versions, so upgrading rlang can change every suffix and put
+#' every existing reference cache out of reach at once. That dependence is
+#' accepted rather than removed, because this suffix's whole job is to prove
+#' the question changed, and its two failure directions are not equal: a
+#' digest that changes when the question did not costs one re-fetch, while a
+#' digest that stayed the same when the question changed serves a stale cache
+#' as if it answered the new question. An rlang upgrade can only cause the
+#' first. Treat a mass re-fetch after a dependency upgrade as expected, not
+#' as a cache bug -- and do NOT pin the suffix by hand-rolling a digest to
+#' avoid it, because a stable-looking key that no longer tracks the query is
+#' the failure this component exists to prevent.
 #' @noRd
 .ref_cache_term_sfx <- function(barcode_term) {
   # Built against a fixed probe so the digest is per-marker, not per-taxon.

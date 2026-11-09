@@ -80,7 +80,12 @@ test_that("every habitat cache entry records what answered it", {
     taxa, habitat_scheme = scheme, llm_fn = fake,
     cache_dir = cache_dir, verbose = FALSE
   )))
-  skip_if(nrow(out) == 0L, "the fake response did not parse; nothing was cached")
+  # A premise, not a precondition to duck. If the fake response stops parsing
+  # this test has nothing left to check, and skipping would report success for
+  # a suite that verified none of the fingerprint behaviour below. Measured:
+  # all three cases in this file parse and this never fired, so it was cover
+  # for a regression rather than tolerance of a flaky input.
+  expect_gt(nrow(out), 0L)
 
   files <- list.files(cache_dir, pattern = "_habitat\\.rds$", full.names = TRUE)
   expect_gt(length(files), 0L)
@@ -115,7 +120,7 @@ test_that("a cache mixing two models warns, and a stub that is never called does
     "Esox lucius", habitat_scheme = scheme, llm_fn = m1,
     cache_dir = cache_dir, verbose = FALSE
   )))
-  skip_if(nrow(out1) == 0L, "the fake response did not parse; nothing was cached")
+  expect_gt(nrow(out1), 0L)   # the premise: see the note on the first such check
 
   # Same taxon, same key, nothing to ask: the stub is not counted, so no warning
   # even though it is a different function from the one that wrote the entry.
@@ -162,7 +167,7 @@ test_that("the recorded model is the one the provider resolved, not the wrapper"
     "Esox lucius", habitat_scheme = scheme, llm_fn = with_model("claude-z-9"),
     cache_dir = cache_dir, verbose = FALSE
   ))
-  skip_if(nrow(out) == 0L, "the fake response did not parse; nothing was cached")
+  expect_gt(nrow(out), 0L)   # the premise: see the note on the first such check
 
   files <- list.files(cache_dir, pattern = "_habitat\\.rds$", full.names = TRUE)
   expect_length(files, 1L)
