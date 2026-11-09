@@ -19,7 +19,10 @@ utils::globalVariables(c(
 .stamp_census <- function(x, oldest, resumed) {
   t_now <- Sys.time()
   attr(x, "census_time") <- t_now
-  attr(x, "census_date") <- as.Date(t_now)
+  # tz is REQUIRED: as.Date() on a POSIXct converts in UTC, so without it the
+  # date reads as tomorrow for the whole local evening -- a worse error than
+  # the midnight race that two clock reads could hit.
+  attr(x, "census_date") <- as.Date(t_now, tz = Sys.timezone())
   attr(x, "census_oldest_query_time") <- oldest
   attr(x, "census_resumed") <- isTRUE(resumed)
   x
@@ -413,6 +416,26 @@ audit_reference_coverage <- function(reference_df,
 #' not evidence of a changed argument until their census dates are compared.
 #' The resume checkpoint cannot answer this -- it is deleted on clean
 #' completion -- so the date is recorded on the result itself.
+#'
+#' `attr(x, "census_time")` is when the audit FINISHED, which is not the same
+#' as how old its numbers are. A resumed audit serves groups from a checkpoint
+#' that may be days or weeks old, so a finish stamp on its own hides exactly
+#' the drift the stamp exists to expose. Two further attributes answer the age
+#' question directly:
+#' \itemize{
+#'   \item{`attr(x, "census_oldest_query_time")`}{The earliest per-group query
+#'     time contributing to this census -- the age of its oldest number. `NA`
+#'     when any contributing group came from a checkpoint written before
+#'     per-group times were recorded: an unknown age is reported as unknown
+#'     rather than inheriting the finish time, and a warning names how many
+#'     groups were affected. It is NOT the oldest of the groups that happen to
+#'     carry a time, because an unstamped group could be older still.}
+#'   \item{`attr(x, "census_resumed")`}{`TRUE` when any group was served from
+#'     a checkpoint rather than queried in this run.}
+#' }
+#' `census_date` is derived from `census_time` in the local timezone rather
+#' than read from the clock separately, so the two cannot disagree across
+#' midnight.
 #'
 #' @note Requires an internet connection and the `rentrez` package.  NCBI
 #'   enforces rate limits (3 req/s without an API key; 10 req/s with one).

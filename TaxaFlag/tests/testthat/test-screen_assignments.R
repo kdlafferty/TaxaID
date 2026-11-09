@@ -380,6 +380,39 @@ test_that("R4/R5: verify_range is softened only by the CalIntertidal local-recor
   expect_equal(res(d3, geography_col = g)$flag_resolution, "upheld")
 })
 
+test_that("R4 is NOT EVALUABLE when only one geographic scale is present", {
+  # A verify_range row reads "unlikely" on the column that RAISED it, so
+  # re-reading that same column could never soften it. Under the default
+  # geography_col, with no per-site column in the frame, R4 cannot fire at
+  # all -- and a count of 0 would read as "fired on nothing", which is a
+  # different claim from "could not be asked".
+  d <- rv(geo = "unlikely")
+  d$geo_local_record_location_n <- 3
+  x <- scr(d)
+  expect_equal(x$suggested_action, "verify_range")
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_false(identical(x$flag_resolution, "softened"))
+  # every other rule stays evaluable, so the flag is specific to R4
+  expect_true(all(rc$evaluated[rc$rule != "R4"]))
+})
+
+test_that("R4 softens a verify_range row via the SECOND geographic scale", {
+  # The study scale raised the flag; the per-site scale is a DIFFERENT reading
+  # and can soften it. Under the old rule R4 re-read the study column, which
+  # is "unlikely" by construction here, so this row was always upheld.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "likely"
+  d$geo_local_record_location_n <- 3
+  r <- res(d)
+  expect_equal(r$flag_resolution, "softened")
+  expect_match(r$flag_resolution_basis, "^R4;.*local_record_locations=3")
+  rc <- attr(scr(d), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R4"])
+  expect_equal(rc$n_rows[rc$rule == "R4"], 1L)
+})
+
 test_that("R6: a keep resting on weak sequence or on the prior is escalated", {
   expect_equal(res(rv(likelihood_support = 0.05))$flag_resolution, "escalated")
   r <- res(rv(likelihood_support = 0.4, prior_role = "narrowed"))
@@ -488,7 +521,7 @@ test_that("resolve = FALSE returns exactly the pre-resolution result", {
   expect_error(screen_assignments(d, resolve = NA), "resolve")
 })
 
-test_that("resolution keeps every row in order and counts every rule, zeros included", {
+test_that("resolution keeps every row in order and distinguishes a zero from a rule that could not be asked", {
   d <- rbind(rv(), rv(poor = TRUE, geo = "unlikely"), rv(likelihood_support = 0.05),
              rv(taxon = NA_character_))
   d$observation_id <- c("o4", "o1", "o3", "o2")
@@ -497,7 +530,16 @@ test_that("resolution keeps every row in order and counts every rule, zeros incl
   expect_identical(r$observation_id, d$observation_id)
   rc <- attr(r, "resolution_counts")
   expect_identical(rc$rule, paste0("R", 0:7))
-  expect_equal(sum(rc$n_rows), 4L)
-  expect_true(any(rc$n_rows == 0L))
+  # Every row is accounted for among the rules that COULD be evaluated.
+  expect_equal(sum(rc$n_rows, na.rm = TRUE), 4L)
+  # A rule that fired on nothing reports 0; a rule that could not be asked
+  # reports NA and evaluated = FALSE. Conflating the two is what this test
+  # now guards: R4 needs a second geographic scale, and this frame has only
+  # the default column, so it is not evaluable rather than zero.
+  expect_true(any(rc$n_rows[rc$evaluated] == 0L))
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_true(all(rc$evaluated[rc$rule != "R4"]))
   expect_message(screen_assignments(d), "resolution by rule: R0 = 1, R1 = 0")
+  expect_message(screen_assignments(d), "R4 = not evaluable")
 })

@@ -133,7 +133,12 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
   # habitat weight of 0 annihilates the row: it contributes nothing to the
   # prior, which is indistinguishable downstream from a row that was never
   # generated. Reported separately so neither event can hide inside the other.
-  evidence$habitat_zeroed <- h %in% 0 & !is.na(w0) & w0 > 0
+  # Test the RESULTING weight, not the habitat weight: with w_floor > 0 a
+  # habitat weight of 0 raises the row to the floor rather than annihilating
+  # it, so h == 0 alone would claim a zero that did not happen -- and would
+  # break the invariant that a row is never both floored and zeroed. The
+  # event is: the row HAD mass (w0 > 0) and now has none (w1 == 0).
+  evidence$habitat_zeroed <- !is.na(w1) & w1 == 0 & !is.na(w0) & w0 > 0
   evidence$weight <- w1
   w_unchanged <- (is.na(w0) & is.na(w1)) |
     (!is.na(w0) & !is.na(w1) & w1 == w0)

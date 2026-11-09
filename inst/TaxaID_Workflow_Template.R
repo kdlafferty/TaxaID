@@ -155,7 +155,11 @@ if (isTRUE(SCREEN_REFERENCE_ACCESSIONS)) {
   if (isTRUE(REVIEW_FLAGGED_REFERENCES)) {
     accession_review <- TaxaMatch::review_flagged_accessions(
       accession_eval,
-      llm_fn = LLM_FN
+      llm_fn = LLM_FN,
+      # A production run stops rather than carry on with accessions the screen
+      # never ruled on: no verdict means no override, so they would be removed
+      # on their original hierarchy_flag by the removal step below.
+      on_unreviewed = "error"
     )
     accession_overrides <- TaxaMatch::resolve_review_overrides(accession_review)
     message(

@@ -494,11 +494,15 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     d$flag_resolution_basis <- res$basis
     d$flag_consistency_score <- res$score
     rn <- paste0("R", 0:7)
-    rc <- data.frame(rule = rn, n_rows = vapply(rn, function(r) sum(res$rule == r), integer(1)),
+    rn_eval <- !rn %in% "R4" | isTRUE(res$r4_evaluable)
+    rc_n <- vapply(rn, function(r) sum(res$rule == r), integer(1))
+    rc_n[!rn_eval] <- NA_integer_
+    rc <- data.frame(rule = rn, n_rows = rc_n, evaluated = rn_eval,
                      stringsAsFactors = FALSE, row.names = NULL)
     attr(d, "resolution_counts") <- rc
     message("screen_assignments(): resolution by rule: ",
-            paste0(rc$rule, " = ", rc$n_rows, collapse = ", "), ".")
+            paste0(rc$rule, " = ", ifelse(rc$evaluated, as.character(rc$n_rows),
+                   "not evaluable"), collapse = ", "), ".")
   }
   d
 }
@@ -588,7 +592,17 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # ---- rules ----
   invalid <- grepl("^invalid", chr("validity_flag"))
   lrn <- num("geo_local_record_location_n")
-  geo_study <- chr("llm_geographic_plausibility")
+  SITE_GEO_COL <- "llm_geographic_plausibility_site"
+  STUDY_GEO_COL <- "llm_geographic_plausibility"
+  # The flag was raised on `geography_col`. Softening it needs a SECOND,
+  # different scale -- "the study says plausible, this site does not", or the
+  # reverse -- because a verify_range row reads "unlikely" on the column that
+  # raised it, so re-reading that same column can never soften it. When no
+  # second scale is present R4 is NOT EVALUABLE, and resolution_counts says
+  # so rather than reporting a zero that looks like "fired on nothing".
+  r4_col <- if (identical(geography_col, STUDY_GEO_COL)) SITE_GEO_COL else STUDY_GEO_COL
+  r4_evaluable <- r4_col %in% names(d)
+  geo_other <- if (r4_evaluable) chr(r4_col) else rep(NA_character_, nrow(d))
   seq_sup <- seq_v == "support"
   eps <- 1e-9
   rule <- character(n); out <- character(n)
@@ -601,7 +615,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       rule[i] <- "R3"; out[i] <- if (score[i] <= -1/3 + eps) "confirmed" else "upheld"; next
     }
     if (a %in% "verify_range") {
-      if (!is.na(lrn[i]) && lrn[i] >= 3 && geo_study[i] %in% c("likely", "possible") && seq_sup[i]) {
+      if (!is.na(lrn[i]) && lrn[i] >= 3 && geo_other[i] %in% c("likely", "possible") && seq_sup[i]) {
         rule[i] <- "R4"; out[i] <- "softened"; next }
       rule[i] <- "R5"; out[i] <- "upheld"; next
     }
@@ -619,5 +633,6 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   basis[rule == "R4"] <- paste0(basis[rule == "R4"], sprintf("; local_record_locations=%s", lrn[rule == "R4"]))
   basis[rule == "R1"] <- paste0(basis[rule == "R1"], "; blank or invalid validity evidence")
   basis[is.na(tx)] <- "R0; no call"
-  list(resolution = out, basis = basis, score = score, rule = rule)
+  list(resolution = out, basis = basis, score = score, rule = rule,
+       r4_evaluable = r4_evaluable)
 }
