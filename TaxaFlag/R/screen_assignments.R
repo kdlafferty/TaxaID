@@ -254,12 +254,24 @@
 #' `blank_flag_col = NULL`). Because `rule_counts` is an attribute, dplyr verbs
 #' drop it; read it straight off the value `screen_assignments()` returns.
 #' With `resolve = TRUE` the result also carries `attr(, "resolution_counts")`:
-#' one row per rule R0 to R7 with `n_rows` and `evaluated`, and a message
-#' reports the same counts. `evaluated` is FALSE where no row could be asked
-#' the rule at all -- R4 reads inputs a reviewed table need not carry -- and
-#' `n_rows` is then NA, not 0, so a rule that was asked and fired on nothing
-#' is never read as one that was never asked. Every rule that was asked
-#' reports its count, zeros included.
+#' one row per rule R0 to R7 with `n_rows`, `evaluated` and `n_evaluable`, and
+#' a message reports the `n_rows` counts. `evaluated` is FALSE where no row
+#' could be asked the rule at all -- R4 reads inputs a reviewed table need not
+#' carry -- and `n_rows` is then NA, not 0, so a rule that was asked and fired
+#' on nothing is never read as one that was never asked. Every rule that was
+#' asked reports its count, zeros included.
+#'
+#' `n_evaluable` is how many rows were ASKED the rule, which is the
+#' denominator `n_rows` is a numerator of. The two columns answer different
+#' questions: `evaluated` is about the table's COLUMNS (could this rule fire
+#' at all here?), `n_evaluable` about its ROWS. The rules are a cascade down
+#' one branch per `suggested_action`, so a row is only asked a rule it
+#' reaches: a "keep" row is never asked R1, and a row R1 has already answered
+#' is never asked R2. `n_evaluable` can therefore be 0 with `evaluated` TRUE
+#' -- the rule could have fired, no row put the question -- and `n_rows` is
+#' never greater than `n_evaluable`. R3, R5 and R7 are the fall-through of
+#' their branch, so for them reaching the rule is the whole of being asked;
+#' R4 is additionally counted only where the row carries the inputs R4 reads.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -515,6 +527,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     rc_n <- vapply(rn, function(r) sum(res$rule == r), integer(1))
     rc_n[!rn_eval] <- NA_integer_
     rc <- data.frame(rule = rn, n_rows = rc_n, evaluated = rn_eval,
+                     n_evaluable = unname(res$n_evaluable[rn]),
                      stringsAsFactors = FALSE, row.names = NULL)
     attr(d, "resolution_counts") <- rc
     message("screen_assignments(): resolution by rule: ",
@@ -653,6 +666,28 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       "confirmed" else "upheld"
   }
 
+  # ---- how many rows was each rule ASKED? ----
+  # The rules are a cascade, so a row is only put to a rule it reaches: a
+  # "keep" row is never asked R1, and a row that R1 already answered is never
+  # asked R2. Reaching is therefore a property of the ROW's suggested_action,
+  # where `evaluated` is a property of the table's COLUMNS -- the two answer
+  # different questions and a reader needs both. R3, R5 and R7 are the
+  # fall-through of their branch, so reaching them is the whole of being
+  # asked; R4 additionally needs its inputs present on the row.
+  gate <- !is.na(tx) & n_cast >= 2
+  ex <- gate & advice %in% "exclude"
+  vr <- gate & advice %in% "verify_range"
+  km <- gate & !advice %in% c("exclude", "verify_range")
+  asked <- list(R0 = rep(TRUE, n),                      # the gate is put to every row
+                R1 = ex,
+                R2 = ex & !rule %in% "R1",
+                R3 = ex & !rule %in% c("R1", "R2"),
+                R4 = r4_askable,
+                R5 = vr & !rule %in% "R4",
+                R6 = km,
+                R7 = km & !rule %in% "R6")
+  n_evaluable <- vapply(asked, sum, integer(1))
+
   yn <- function(x) ifelse(is.na(x), "unknown", ifelse(x, "yes", "no"))
   basis <- sprintf("%s; seq=%s(ls %s); occ=%s; eco=%s(p %s); prior_driven=%s; stable=%s",
                    rule, seq_v, f2(ls), occ_note, eco_v, f2(ph), yn(pdriven), yn(stable))
@@ -660,5 +695,5 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   basis[rule == "R1"] <- paste0(basis[rule == "R1"], "; blank or invalid validity evidence")
   basis[is.na(tx)] <- "R0; no call"
   list(resolution = out, basis = basis, score = score, rule = rule,
-       r4_evaluable = r4_evaluable)
+       r4_evaluable = r4_evaluable, n_evaluable = n_evaluable)
 }

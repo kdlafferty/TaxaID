@@ -128,12 +128,24 @@ poor_fit_habitat_exclude without the habitat column, blank_evidence with
 \code{blank_flag_col = NULL}). Because \code{rule_counts} is an attribute, dplyr verbs
 drop it; read it straight off the value \code{screen_assignments()} returns.
 With \code{resolve = TRUE} the result also carries \code{attr(, "resolution_counts")}:
-one row per rule R0 to R7 with \code{n_rows} and \code{evaluated}, and a message
-reports the same counts. \code{evaluated} is FALSE where no row could be asked
-the rule at all -- R4 reads inputs a reviewed table need not carry -- and
-\code{n_rows} is then NA, not 0, so a rule that was asked and fired on nothing
-is never read as one that was never asked. Every rule that was asked
-reports its count, zeros included.
+one row per rule R0 to R7 with \code{n_rows}, \code{evaluated} and \code{n_evaluable}, and
+a message reports the \code{n_rows} counts. \code{evaluated} is FALSE where no row
+could be asked the rule at all -- R4 reads inputs a reviewed table need not
+carry -- and \code{n_rows} is then NA, not 0, so a rule that was asked and fired
+on nothing is never read as one that was never asked. Every rule that was
+asked reports its count, zeros included.
+
+\code{n_evaluable} is how many rows were ASKED the rule, which is the
+denominator \code{n_rows} is a numerator of. The two columns answer different
+questions: \code{evaluated} is about the table's COLUMNS (could this rule fire
+at all here?), \code{n_evaluable} about its ROWS. The rules are a cascade down
+one branch per \code{suggested_action}, so a row is only asked a rule it
+reaches: a "keep" row is never asked R1, and a row R1 has already answered
+is never asked R2. \code{n_evaluable} can therefore be 0 with \code{evaluated} TRUE
+-- the rule could have fired, no row put the question -- and \code{n_rows} is
+never greater than \code{n_evaluable}. R3, R5 and R7 are the fall-through of
+their branch, so for them reaching the rule is the whole of being asked;
+R4 is additionally counted only where the row carries the inputs R4 reads.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table

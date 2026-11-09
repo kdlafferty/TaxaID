@@ -3834,9 +3834,9 @@ review_assignments <- function(input_df,
 
 #' Normalise the model's range answer into a site rule spec
 #'
-#' Carries over every guard the earlier per-site rule object needed, because
-#' the failure modes are properties of the model, not of the field names:
-#' a latitude outside [-90, 90] is not a latitude; a southern limit placed in
+#' Applies every guard the per-site rule object needs, because the failure
+#' modes are properties of the model, not of the field names:
+#' a latitude outside \[-90, 90\] is not a latitude; a southern limit placed in
 #' range_north_lat inverts the band and would mark every site outside, so the
 #' pair is swapped rather than obeyed; named sites are matched case-insensitively
 #' against the site table and unknown names are counted, not silently treated as

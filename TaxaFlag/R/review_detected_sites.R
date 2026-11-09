@@ -11,7 +11,7 @@
 # study-wide verdict from being taken over by a site where the taxon never
 # appeared.
 
-#' The "[detected at: ...]" bracket for one taxon
+#' The "\[detected at: ...\]" bracket for one taxon
 #'
 #' Sites north to south, latitude to one decimal. A detected site the site
 #' table does not know has no latitude, so it is left out here and takes the

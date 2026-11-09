@@ -465,6 +465,46 @@ test_that("R4 reports a real zero when a row WAS asked and the answer was no", {
   expect_message(screen_assignments(d), "R4 = 0")
 })
 
+test_that("n_evaluable counts the rows each rule was ASKED, not the rows it fired on", {
+  # Three verify_range rows: two carry both of R4's inputs, the third has no
+  # verdict on the second scale. n_evaluable is the denominator n_rows is a
+  # numerator of, so it must be 2 -- counting the unaskable row would restate
+  # the very confusion the column exists to remove.
+  d <- rbind(rv(geo = "unlikely"), rv(geo = "unlikely"), rv(geo = "unlikely"))
+  d$observation_id <- c("o1", "o2", "o3")
+  d$llm_geographic_plausibility_site <- c("likely", "unlikely", NA_character_)
+  d$geo_local_record_location_n <- c(3, 3, 3)
+  rc <- attr(scr(d), "resolution_counts")
+  expect_equal(rc$n_evaluable[rc$rule == "R4"], 2L)
+  expect_true(rc$evaluated[rc$rule == "R4"])
+  expect_equal(rc$n_rows[rc$rule == "R4"], 1L)        # only the "likely" row softens
+  # R5 is R4's fall-through: the row R4 declined and the row it could not ask.
+  expect_equal(rc$n_evaluable[rc$rule == "R5"], 2L)
+  expect_equal(rc$n_rows[rc$rule == "R5"], 2L)
+  # The gate is put to every row, whatever branch the row then takes.
+  expect_equal(rc$n_evaluable[rc$rule == "R0"], 3L)
+  # No row took the exclude or keep branch. Those rules could still have
+  # fired on a row that reached them, so they are 0 with evaluated TRUE --
+  # "nothing asked", which is not "cannot be asked".
+  for (r in c("R1", "R2", "R3", "R6", "R7")) {
+    expect_equal(rc$n_evaluable[rc$rule == r], 0L)
+    expect_true(rc$evaluated[rc$rule == r])
+    expect_equal(rc$n_rows[rc$rule == r], 0L)
+  }
+  # The invariant that makes the pair readable at all.
+  expect_true(all(rc$n_rows[rc$evaluated] <= rc$n_evaluable[rc$evaluated]))
+})
+
+test_that("n_evaluable is 0 with evaluated FALSE where R4's inputs are absent", {
+  d <- rv(geo = "unlikely")
+  d$geo_local_record_location_n <- 3                   # present; the scale is not
+  rc <- attr(scr(d), "resolution_counts")
+  expect_equal(rc$n_evaluable[rc$rule == "R4"], 0L)
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_identical(names(rc), c("rule", "n_rows", "evaluated", "n_evaluable"))
+})
+
 test_that("R6: a keep resting on weak sequence or on the prior is escalated", {
   expect_equal(res(rv(likelihood_support = 0.05))$flag_resolution, "escalated")
   r <- res(rv(likelihood_support = 0.4, prior_role = "narrowed"))
