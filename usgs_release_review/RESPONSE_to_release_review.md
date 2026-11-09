@@ -108,17 +108,23 @@ they did:
   persistent per-user cache, so results from an earlier session are reused
   unless the cache is cleared.
 - `TaxaFlag::screen_assignments()` described its own resolution rules
-  incorrectly in five places: rule R4 reads the geography column at the scale
-  the caller did *not* pass, not the study-wide one; a poor sequence fit is
-  not a sequence vote unless `likelihood_support` is present; and the
-  occurrence fallback chain begins at `consensus_has_occurrence_record` and
-  includes `consensus_plausibility`. A reader reconciling a resolution against
-  the help would have reached the wrong rule.
+  incorrectly, and each is named here rather than counted: rule R4 reads the
+  geography column at the scale the caller did *not* pass, not the study-wide
+  one; a poor sequence fit is not a sequence vote unless `likelihood_support`
+  is present; the occurrence fallback chain begins at
+  `consensus_has_occurrence_record` and includes `consensus_plausibility`;
+  evaluability is decided per row, not per column; rule R7's confirm test
+  needs the sequence vote, a decidable stability and a decidable
+  `prior_driven`, so it is not a rule that reads only what every gated row
+  carries; and `resolution_counts` reports `evaluated` and `n_evaluable`
+  beside `n_rows`. A reader reconciling a resolution against the help would
+  have reached the wrong rule.
 - `TaxaAssign`'s own contributor notes stated that the package default
   `consensus_method` is `"lca"`. All three functions that take the argument
-  default to the weighted form; `"lca"` is the opt-in. The README, the
-  function definitions and the roxygen all said so already, so the notes were
-  the only place carrying the old default.
+  default to the weighted form; `"lca"` is the opt-in. Only the function
+  definitions were right: the README, the `@details`, the contributor notes, a
+  workflow snippet and the ecosystem vignette all carried the old default, and
+  all were corrected.
 - Every argument whose default is deliberately *not* the production setting
   now says why it is the default, rather than leaving a reader to infer that
   the default is the recommended value. Three of these were reviewed as
@@ -140,10 +146,12 @@ they did:
   elsewhere. The rule breaks exact ties only, and that was measured rather
   than assumed: across four real datasets -- 55,671 Point Conception
   observations carrying two or more hypotheses, plus Mugu, and two Great
-  Lakes runs -- there were 54 exactly equal top-two posteriors and not one
-  pair separated by less than 1e-8. The smallest non-zero gap anywhere was
-  2.6e-05, more than three orders of magnitude above the largest tolerance
-  considered. Top-two gaps are bimodal, exactly zero or far from it, so no
+  Lakes runs -- there were 55 exactly equal top-two posteriors, 54 of them in
+  the Point Conception table and one in Mugu, and not one pair separated by
+  less than 1e-8. The smallest non-zero gap anywhere was 2.6e-05, more than
+  three orders of magnitude above 1e-8, the largest tolerance probed. A
+  tolerance large enough to ever bind here, 1e-4, would instead have merged 14
+  Point Conception observations whose posteriors genuinely differ. Top-two gaps are bimodal, exactly zero or far from it, so no
   rounding tolerance was introduced; a tolerance would have had nothing to
   catch and could only have merged distinct results.
 - `TaxaExpect::condition_evidence_on_habitat()` now reports a weight that
@@ -168,10 +176,18 @@ they did:
   reached the rule and carried its inputs. `evaluated` is deliberately not
   defined as `n_evaluable > 0`, which would make five of the eight rules
   report "not evaluable" on an input holding a single `verify_range` row.
-- `TaxaFlag::screen_assignments()` decides evaluability for rules R1, R4 and
-  R6 per row rather than per column. A column that exists but is empty on a
-  given row cannot support a verdict on that row, so counting it as evaluable
-  reinstated the same zero-versus-not-asked confusion one level down.
+- `TaxaFlag::screen_assignments()` decides evaluability for rules R1, R4, R6
+  and R7 per row rather than per column. A column that exists but is empty on
+  a given row cannot support a verdict on that row, so counting it as
+  evaluable reinstated the same zero-versus-not-asked confusion one level
+  down. R7 is the subtle case and was found by an independent reader of this
+  branch: it resolves every row it reaches, so it looks like a rule that needs
+  nothing, but its only discriminating question is confirmed-or-upheld and
+  that needs the sequence vote, a decidable stability and a decidable
+  `prior_driven`. Without them every row comes back "upheld" by default rather
+  than by test, which is the same defect the column exists to expose. The run
+  message now prints the denominator beside the count, as `R1 = 0 (0 asked)`,
+  because a bare zero could not be told from a rule no row reached.
 - `TaxaLikely::audit_barcode_coverage()`'s `census_date` is the local date.
   `as.Date()` on a `POSIXct` converts in UTC, so without a time zone the
   census read as tomorrow's date for the whole local evening, on any machine
@@ -254,11 +270,15 @@ what should have changed, and corrected before release.
   tested. A driver was added. On its first CI run it immediately surfaced a
   test that calls GBIF live on every build, which is now skipped there through
   the mechanism the other packages already used.
-- Development material no longer ships to users. The reviewer comments and our
-  responses stay in the repository as the record of the review, but they were
-  installed inside each package -- 763 KB across the nine -- and are now
-  excluded from the build. Stale planning documents, session notes and one-off
-  validation scripts were removed from the repository.
+- The review correspondence no longer ships to users. The reviewer comments
+  and our responses stay in the repository as the record of the review, but
+  they were installed inside each package -- 763 KB across the nine -- and are
+  now excluded from the build. Stale planning documents, session notes and
+  one-off validation scripts were removed from the repository. One kind of
+  development material still ships, deliberately: `TaxaLikely`'s
+  `inst/review_function_inputs.R`, a runnable input for each exported
+  function, because 15 of that package's help pages cite a numbered section of
+  it and a user following one of those pointers needs the file present.
 - Two PDFs of published papers shipped inside `TaxaFetch`, in every tarball
   and in a public repository. They are licensed CC BY-NC 3.0, which does not
   permit redistribution, and the package is CC0. Build-excluding them would
@@ -271,10 +291,13 @@ what should have changed, and corrected before release.
 - Four development scripts no longer ship: a staged PDF-pipeline test, a
   harness that calls every exported function in sequence, a hand-run remote
   BLAST field test, and a single-site reference-screening driver. They stay in
-  the repository. One of them, `TaxaFetch`'s review-input script, had its
-  billed-LLM flag set to `TRUE` while its own header four lines above stated
-  that all such flags default to `FALSE`; a reviewer running the file top to
-  bottom made real Anthropic calls. It is now `FALSE`, as documented.
+  the repository.
+- A review-input script that DOES ship, `TaxaFetch`'s, had its billed-LLM flag
+  set to `TRUE`, while its own header four lines above stated that all such
+  flags default to `FALSE`. A reviewer running the file top to bottom made
+  real, billed Anthropic calls, and because the file ships that reached users
+  rather than staying inside the repository. It is now `FALSE`, as
+  documented.
 - A licence and provenance sweep of every other non-code file found no further
   rights problem. The images are the maintainer's own, and no object anywhere
   in the nine packages carries record-level occurrence data: the two files
