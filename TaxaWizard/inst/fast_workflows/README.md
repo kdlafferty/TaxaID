@@ -28,19 +28,28 @@ These scripts exercise code paths. Their numbers are not results.
 
 ## Where the priors fixtures' numbers come from
 
-`ptcon12s_r2_fast_taxaexpect_priors.rds` and
-`ptcon18s_fast_taxaexpect_priors.rds` hold aggregate expectation parameters
-only: per taxon, grid cell and habitat, counts and kernel-weighted summaries
-(`n_obs`, `effective_records`, `inat_n_observations_local`) and the fitted
-`alpha`, `beta` and `theta_mean`. They contain no occurrence records -- no
-`gbifID`, `occurrenceID`, `datasetKey`, per-record coordinates, collector or
-catalogue number. The counts were derived from GBIF occurrence downloads
-licensed CC BY-NC 4.0 and from iNaturalist observation counts; some rows rest
-on neither, and `prior_source_type` says which. GBIF asks that a download be
-cited by its DOI. Neither file records which download it came from, so no DOI
-is stated here; the maintainer can supply the DOIs on request. `grid_id`
-values such as `"Site_34.40_-120.40"` are the study's own site coordinates
-rounded to 0.01 degrees, not record localities.
+`ptcon12s_r2_fast_taxaexpect_priors.rds` (783 rows) and
+`ptcon18s_fast_taxaexpect_priors.rds` (1763 rows) hold fitted prior
+parameters, not occurrence records. There is no `gbifID`, `occurrenceID`,
+`datasetKey`, per-record coordinate, collector or catalogue number in either
+file.
+
+`prior_branch` says how each row's prior was arrived at, and is the column to
+read first: `kernel_estimated` (479 and 1522 rows), `resident_undetected`
+(295 and 238) and `transport` (9 and 3). Occurrence counts back only a
+minority of rows -- `n_obs` is present on 37 of 783 and 238 of 1763 -- and
+`inat_n_observations_local` is present on 0 and 1 row respectively, so these
+two fixtures are almost entirely model-estimated rather than count-driven.
+`prior_source_type` is not a provenance column: it is `NA` on 774 of 783 and
+1760 of 1763 rows, and marks only domestic or food species.
+
+Where occurrence counts do back a row they are aggregates over GBIF records,
+per taxon, grid cell and habitat. GBIF records carry the licence each
+publishing institution chose -- CC0, CC BY or CC BY-NC -- and neither file
+records which download it came from, so no licence or DOI is stated here for
+these specific numbers; the maintainer can supply the download DOIs on
+request. `grid_id` is `"Site_34.40_-120.40"` or `NA` only: the study's own
+site coordinates rounded to 0.01 degrees, not record localities.
 
 ## Building a fixture
 
