@@ -52,14 +52,6 @@ exclusions: list(
     "inst/extra_functions_review_inputs.R" = list(commented_code_linter = Inf),
     "inst/Merge_sources_workflow.R" = list(commented_code_linter = Inf),
     "inst/pdf_workflow_test_v4.R" = list(commented_code_linter = Inf),
-    "inst/review_function_inputs.R" = list(
-      commented_code_linter = Inf,
-      # RUN_GBIF_ACCOUNT_DOWNLOAD/RUN_OPENALEX_LITERATURE/RUN_LLM_CALLS are
-      # SCREAMING_SNAKE_CASE user-configurable constants -- this ecosystem's
-      # established convention for top-level config in scripts, not a
-      # naming bug.
-      object_name_linter = c(62L, 63L, 64L)
-    ),
     "inst/llm_provider_examples.R" = list(
       commented_code_linter = Inf,
       # call_gemini_api()/call_openai_api()/call_ollama_api() are loaded via

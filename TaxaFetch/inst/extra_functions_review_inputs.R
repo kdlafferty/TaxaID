@@ -5,12 +5,10 @@
 #
 # PURPOSE
 # -------
-# A companion to review_function_inputs.R (which covers every function that
-# existed at the time of that review). A later audit found 10
-# functions written after that review that have never had a reviewer-facing
-# runnable example: 7 internal (@noRd) helpers and 3 exported functions. This
-# file gives each one its own small section, in the same style/convention as
-# review_function_inputs.R.
+# Gives a reviewer a concrete, small input for each of the 10 functions that
+# have no reviewer-facing runnable example: 7 internal (@noRd) helpers and 3
+# exported functions. Each has its own small section, so any one of them can
+# be run on its own, without reverse-engineering arguments from the source.
 #
 # Inputs are pulled from the same three sources, cheapest first:
 #   1. Existing testthat fixtures reused verbatim (already validated, fully
@@ -31,8 +29,8 @@
 # of only through whatever exported function happens to call it. It is not
 # a workaround for anything broken.
 #
-# REQUIRES tags (read before running a section) -- same convention as
-# review_function_inputs.R:
+# REQUIRES tags (read before running a section) -- one per section, and they
+# mean:
 #   OFFLINE       -- pure function, or uses only bundled package data/files;
 #                    no network call
 #   NETWORK       -- hits a public API, no credentials needed
@@ -42,9 +40,8 @@
 # Two of the ten functions (check_geographic_outliers(), fetch_inat_
 # occurrences()) make real, small NETWORK calls (GBIF/CoordinateCleaner and
 # iNaturalist respectively).
-# Both sections below use a small/fast real-taxon query, matching this
-# package's established convention (e.g. review_function_inputs.R's
-# fetch_gbif_occurrences() section, Section 1 there).
+# Both sections below use a small/fast real-taxon query, this package's
+# established convention for a section that calls a live API.
 # ==============================================================================
 
 devtools::load_all() # or: library(TaxaFetch)
@@ -69,9 +66,8 @@ axis_default_na
 axis_default_real
 
 ## ---- .render_one_page_b64() ---- OFFLINE, on a PDF you supply -------------
-# Renders one page of a PDF you supply to a base64 PNG string -- the same PDF
-# extract_pdf_text() reads in review_function_inputs.R Section 6, since no PDF
-# is bundled with the package. dpi = 100L (lower than call_api_pdf()'s own 150L default) to
+# Renders one page of a PDF you supply to a base64 PNG string -- any PDF you
+# supply, since none is bundled with the package. dpi = 100L (lower than call_api_pdf()'s own 150L default) to
 # keep this section's output small/fast -- the exact resolution doesn't
 # matter for exercising the function itself. Shared by both branches of
 # .render_pdf_pages() (the callr-subprocess path and the in-process
@@ -181,8 +177,7 @@ gbif_year_range_default
 #
 # taxon_id resolved live via .inat_taxon_id() (check_inat_range.R, same
 # package -- fetch_inat_occurrence_counts() reuses it too, see its own roxygen)
-# for the same real species used in review_function_inputs.R's
-# check_inat_range() section (western sandpiper).
+# for a real species (western sandpiper).
 inat_token_for_count <- Sys.getenv("INAT_API_TOKEN")
 sandpiper_info <- TaxaFetch:::.inat_taxon_id("Calidris mauri", inat_token_for_count)
 sandpiper_info$taxon_id
