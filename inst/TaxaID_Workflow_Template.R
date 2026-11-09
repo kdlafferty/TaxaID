@@ -157,8 +157,9 @@ if (isTRUE(SCREEN_REFERENCE_ACCESSIONS)) {
       accession_eval,
       llm_fn = LLM_FN,
       # A production run stops rather than carry on with accessions the screen
-      # never ruled on: no verdict means no override, so they would be removed
-      # on their original hierarchy_flag by the removal step below.
+      # never ruled on: no verdict means no override, so the removal step
+      # below -- if it is enabled -- would decide on the screen's own verdict,
+      # as if the review had never run.
       on_unreviewed = "error"
     )
     accession_overrides <- TaxaMatch::resolve_review_overrides(accession_review)

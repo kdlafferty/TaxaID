@@ -612,7 +612,7 @@ joined     <- join_priors(likelihoods, priors,       # priors from TaxaExpect
                                       main_habitat = "Marine"),
                           backbone_id = 11)          # 11 = GBIF; 4 = NCBI
 posteriors <- compute_posterior(joined)
-consensus  <- posterior_consensus(posteriors)            # LCA, the default
+consensus  <- posterior_consensus(posteriors)            # credible_node, the default
 
 # Round 2: confirmation update within each sample, then consensus again
 # with the same settings (posterior_consensus() attaches them to its result)
