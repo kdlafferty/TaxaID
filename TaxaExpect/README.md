@@ -73,6 +73,14 @@ species. The surface is clipped to a supplied search polygon via `mask`,
 which is why it stops at the coast instead of painting
 inland.](man/figures/PisasterTheta.png)
 
+The figure is the interactive form of this function:
+`plot_theta_surface(interactive = TRUE, covariate_at = 0, mask = )` with
+three taxa passed to `taxon`, over the California intertidal kernel fits
+and their cleaned occurrence records. The map states its own conditions,
+which is how it can be checked against the code that drew it: the
+subtitle reads `main_habitat: Marine | depth_m = 0 (held constant)`, and
+a surface drawn without `covariate_at` says so instead.
+
 ## Assumptions
 
 ### Occurrence records are informative but biased
