@@ -421,7 +421,7 @@ test_that("a failing key aborts the run with an error (no silent partial results
 
 test_that("live API: returns records for a known taxon key", {
   skip_if_not_installed("rgbif")
-  skip_if_offline()
+  skip_if_live_off()
   # GBIF key for Engraulis mordax (northern anchovy) -- stable
   bbox <- make_bbox_wkt(37.0, -122.5, 2.0)
   out <- fetch_gbif_occurrences(

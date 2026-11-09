@@ -178,6 +178,14 @@ jobs:
             error_on = "warning"
           )
 
+      # NOTE ON SKIP COUNTS. Under R CMD check the TaxaWizard package job
+      # reports SKIPs for test-pack.R and test-workflow-template.R -- the
+      # package is copied out of the repository, so the checkout cannot be
+      # found. Those skips are EXPECTED and are covered by the step below,
+      # which runs the same files from the checkout and fails on a skip.
+      # Reading the per-package skip count alone leads to the conclusion that
+      # CI cannot catch a stale pack; it can, here.
+      #
       # The generated-artefact guards, and why they need their own step.
       # Each of these test files compares a COMMITTED artefact against the
       # source it is generated from: test-pack.R covers llm_prompts/ and the
