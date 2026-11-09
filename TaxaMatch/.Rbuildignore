@@ -22,3 +22,8 @@
 # these lines must stay free of regex-special characters.
 ^inst/.*_review\.Rmd$
 ^inst/.*_review_response\.md$
+# A field test of remote BLAST against five real NCBI accessions, run by hand
+# when the remote service changes. Its result is quoted in the shipped version
+# of the same chain, inst/workflows/blast_sequences_workflow.R. Development
+# record; does not ship.
+^inst/test_blast_remote\.R$

@@ -1,34 +1,20 @@
 # ==============================================================================
 # review_function_inputs.R
-# TaxaLikely -- small, ready-to-run inputs for every exported function
+# TaxaLikely -- small, ready-to-run inputs for the exported functions
 #
 # PURPOSE
 # -------
 # Prepared for external code review: gives the reviewer a concrete, small
-# input for each of the package's 35 exported functions so it can actually be
+# input for the package's exported functions so each can actually be
 # run/tested, without having to reverse-engineer arguments from source or from
 # production workflows that fetch/train on thousands of real sequences.
 # Modeled on TaxaFetch/inst/review_function_inputs.R (same monorepo).
 #
-# Three functions deliberately NOT covered here because they are not part of
-# this package: fetch_reference_sequences() and audit_barcode_coverage_ncbi()
-# were both `.Deprecated()` forwarding aliases kept from earlier renames
-# (-> fetch_ncbi_reference_sequences() / audit_barcode_coverage());
-# expand_consensus_candidates() was a superseded design pathway
-# (-> unreferenced_candidates() + assign_scores()), removed along
-# with its own dedicated teaching workflow (inst/workflows/
-# expand_consensus_demo.R). Since this package has no external users yet,
-# keeping (and reviewing/testing) migration paths nobody needs was pure
-# unreviewed surface -- all three removed entirely after confirming no real
-# production callers remained; fetch_reference_sequences() did have 4 real
-# in-monorepo callers (2 vignettes, 2 diagnostics/ scripts), all updated to
-# call the current name directly first.
-#
-# Two more, calibrate_coverage_filter() and coverage_threshold(), are also not
-# covered here: removed after a real A/B test found a real accuracy win on
-# the queries the filter is willing to answer, but also a real, quantified
-# cost (~19% of species lose every training pair at the calibrated
-# threshold; ~25% of real evaluation queries end up unresolved).
+# Seven of the 33 exports have no section below: annotate_reference_support,
+# check_cross_genus_sampling_noise, compute_rank_thresholds,
+# estimate_sequence_matrix_size, match_reference_region,
+# suggest_unreferenced_species and taxalikely_clear_cache. All seven are
+# exercised by the test suite, which is where to find a worked input.
 #
 # Inputs are pulled from three sources, cheapest first:
 #   1. Existing testthat fixtures (already validated, fully offline) -- the
@@ -52,19 +38,12 @@
 # The one NETWORK+AUTH section (Xeno-canto) is guarded by RUN_XC_FETCH below,
 # default FALSE, since a reviewer is unlikely to have their own XC_API_KEY.
 #
-# GAP NOTE: audit_inat_coverage(), calibrate_coverage_filter(),
-# coverage_threshold(), identify_confident_observations(), and
-# infer_exclude_predicted() had zero existing testthat coverage before this
-# session (confirmed by grepping tests/testthat/ for each name) -- new test
-# files were added for all five as part of the same review-prep pass that
-# produced this file (test-audit-inat-coverage.R, test-calibrate.R,
-# test-identify-confident-observations.R, test-infer-exclude-predicted.R).
-# This file's examples for those five are therefore drawn from the same
-# fixtures now backing real regression tests, not invented fresh for this
-# file. (calibrate_coverage_filter()/coverage_threshold()/test-calibrate.R
-# are retired entirely -- see the note above.)
-# file alone. (A sixth, audit_barcode_coverage_ncbi(), was also closed this
-# way but the function itself was later deleted entirely -- see above.)
+# FIXTURE NOTE: audit_inat_coverage(), identify_confident_observations() and
+# infer_exclude_predicted() reached this file and their own test files in the
+# same pass -- test-audit-inat-coverage.R,
+# test-identify-confident-observations.R, test-infer-exclude-predicted.R --
+# so the examples here for those three are the same fixtures those regression
+# tests run on, not inputs invented for this file alone.
 #
 # NON-DETERMINISM NOTE: Sections tagged NETWORK hit real, live NCBI/BOLD/
 # iNaturalist services. Exact counts (e.g. audit_barcode_coverage()'s
@@ -231,9 +210,7 @@ nchar(ref_trimmed$sequence) # matches mf_amplicon's own length exactly
 # 5 synthetic sequences, 2 species in 2 genera. S3 is a truncated copy of S1
 # (60bp of a 120bp sequence) so DECIPHER's real alignment produces genuinely
 # varying `coverage` values -- deliberately NOT hand-set, so range(ref_matrix
-# $coverage) below is non-degenerate, not a single constant. (Also
-# once fed Section 8's calibrate_coverage_filter()/coverage_threshold() demo;
-# that section is retired -- see below.)
+# $coverage) below is non-degenerate, not a single constant.
 seq_a <- paste(rep("ATGCATGCATGC", 10), collapse = "") # 120bp, species Aa
 seq_b <- paste(rep("ATGCATGCATGG", 10), collapse = "") # 120bp, species Aa
 seq_c_short <- substr(seq_a, 1, 60) # 60bp,  species Aa (truncated)

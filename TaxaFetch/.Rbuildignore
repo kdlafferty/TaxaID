@@ -25,3 +25,8 @@
 # these lines must stay free of regex-special characters.
 ^inst/.*_review\.Rmd$
 ^inst/.*_review_response\.md$
+# A staged end-to-end development test script for the PDF pipeline, not user
+# documentation: it is driven by hand, one stage at a time, writes into a pdfs
+# directory it creates, and reads whatever PDFs the developer put there. It
+# stays in the repository as part of the development record and does not ship.
+^inst/pdf_workflow_test_v4\.R$

@@ -154,7 +154,8 @@ test_that("stack_occurrences: never removes duplicate gbifID rows -- that's dedu
 })
 
 test_that("stack_occurrences: workflow list pattern (pdf_occ_list_clean) works end-to-end", {
-  # Simulate the pattern used in pdf_workflow_test_v4.R Stage 13
+  # Simulate the list-of-tibbles a per-PDF extraction loop produces, one
+  # element per paper, named by its file
   pdf_occ_list_clean <- list(
     "paper1.pdf" = .make_occ(5L, "P1"),
     "paper2.pdf" = .make_occ(3L, "P2")
