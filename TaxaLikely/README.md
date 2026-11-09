@@ -465,7 +465,10 @@ Reference preparation:
 Reference QC:
 
 -   `audit_barcode_coverage()`: find unreferenced species (no barcode
-    sequence; eDNA/DNA only). A group NCBI could not be asked about is
+    sequence; eDNA/DNA only). The result carries `census_date` and
+    `census_time`, because a coverage census describes a reference
+    database at a moment and a saved one is otherwise indistinguishable
+    from a current one. A group NCBI could not be asked about is
     reported with `lookup_failed = TRUE`, is never written to the
     checkpoint, and contributes nothing to `unreferenced`, so the
     returned set is an incomplete census rather than a census; a failure

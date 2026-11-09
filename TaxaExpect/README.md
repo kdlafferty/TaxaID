@@ -254,7 +254,10 @@ Prior estimation:
     presence weights by each taxon's weight for the site habitat (from
     the cached LLM habitat lookup), floored at the zero-evidence clamp,
     so evidence obeys the same habitat stratification as the resident
-    priors while habitat bleed survives in proportion
+    priors while habitat bleed survives in proportion. A weight that habitat
+    conditioning reduces to zero is reported in `habitat_zeroed` and
+    warned about, rather than being silently indistinguishable from a
+    weight that was always zero
 -   `generate_domestic_food_priors()`: `transport`-branch priors for
     domestic, food, and cultivar species
 
