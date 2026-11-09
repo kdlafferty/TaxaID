@@ -294,3 +294,210 @@ test_that("rule_counts distinguishes fired-zero (0, evaluated) from not evaluabl
   expect_false(rc2$evaluated[rc2$rule == "poor_fit_habitat_exclude"])
   expect_false(rc2$evaluated[rc2$rule == "I3_exception"])
 })
+
+# ---- resolution (flag_resolution) -------------------------------------------
+# A row carrying every input the resolution reads, all agreeing with a keep.
+rv <- function(..., .drop = character(0)) {
+  a <- list(...)
+  base <- list(taxon = "Fundulus parvipinnis", rank = "species", poor = FALSE,
+               geo = "likely", hab = "likely", scp = "likely", bir = "species")
+  extra <- list(likelihood_support = 0.9, consensus_posterior = 0.95, prior_role = "agrees",
+                consensus_confidence_score = 0.9, robust_lower_posterior = 0.9,
+                winner_has_occurrence_record = TRUE, llm_p_habitat = 0.9,
+                llm_p_habitat_lo = 0.8, llm_p_habitat_hi = 0.95)
+  base[intersect(names(a), names(base))] <- a[intersect(names(a), names(base))]
+  extra[intersect(names(a), names(extra))] <- a[intersect(names(a), names(extra))]
+  more <- a[setdiff(names(a), c(names(base), names(extra)))]
+  d <- do.call(mk, base)
+  for (nm in names(extra)) d[[nm]] <- extra[[nm]]
+  for (nm in names(more)) d[[nm]] <- more[[nm]]
+  d[setdiff(names(d), .drop)]
+}
+res <- function(d, ...) scr(d, ...)[c("flag_resolution", "flag_resolution_basis", "flag_consistency_score")]
+
+test_that("R7 confirms a keep that every independent vote supports", {
+  r <- res(rv())
+  expect_equal(r$flag_resolution, "confirmed")
+  expect_equal(r$flag_consistency_score, 1)
+  expect_match(r$flag_resolution_basis, "^R7; seq=support")
+})
+
+test_that("R0: no call, or fewer than two votes cast, is not_assessed", {
+  r <- res(rv(taxon = NA_character_))
+  expect_equal(r$flag_resolution, "not_assessed")
+  d <- rv(poor = NA, geo = NA_character_, likelihood_support = NA_real_,
+          winner_has_occurrence_record = NA, llm_p_habitat = NA_real_)
+  r <- res(d)
+  expect_equal(r$flag_resolution, "not_assessed")
+  expect_true(is.na(r$flag_consistency_score))
+})
+
+test_that("R1: a blank-evidence exclude is upheld, never softened", {
+  r <- res(rv(blank = TRUE), blank_flag_col = "blank")
+  expect_equal(r$flag_resolution, "upheld")
+  expect_match(r$flag_resolution_basis, "^R1;")
+  r <- res(rv(validity_flag = "invalid_lab_contaminant", poor = TRUE, geo = "unlikely",
+              likelihood_support = 0.05))
+  expect_match(r$flag_resolution_basis, "^R1;")
+})
+
+test_that("R2: an exclude the evidence contradicts is conflicted", {
+  # I4 exclude (poor fit, geography unlikely) on a call no finer than its best
+  # match, with local records and strong sequence support: records vs geography split.
+  r <- res(rv(poor = TRUE, geo = "unlikely"))
+  expect_equal(scr(rv(poor = TRUE, geo = "unlikely"))$suggested_action, "exclude")
+  expect_equal(r$flag_resolution, "conflicted")
+  expect_match(r$flag_resolution_basis, "occ=split\\(records yes, geo unlikely\\)")
+  # Habitat exclusion while all three votes support.
+  d <- rv(poor = TRUE, hab = "unlikely")
+  expect_equal(scr(d)$suggested_action, "exclude")
+  expect_equal(res(d)$flag_resolution, "conflicted")
+})
+
+test_that("R3: an exclude the evidence agrees with is confirmed", {
+  d <- rv(poor = TRUE, geo = "unlikely", likelihood_support = 0.05,
+          winner_has_occurrence_record = FALSE, llm_p_habitat = 0.05,
+          llm_p_habitat_lo = 0.01, llm_p_habitat_hi = 0.2)
+  r <- res(d)
+  expect_equal(r$flag_resolution, "confirmed")
+  expect_equal(r$flag_consistency_score, -1)
+})
+
+test_that("R4/R5: verify_range is softened only by the CalIntertidal local-record rule", {
+  d <- rv(geo = "possible", llm_geographic_plausibility_site = "unlikely")
+  g <- "llm_geographic_plausibility_site"
+  expect_equal(scr(d, geography_col = g)$suggested_action, "verify_range")
+  expect_equal(res(d, geography_col = g)$flag_resolution, "upheld")          # column absent
+  d$geo_local_record_location_n <- 2
+  expect_equal(res(d, geography_col = g)$flag_resolution, "upheld")          # 2 < 3
+  d$geo_local_record_location_n <- 3
+  r <- res(d, geography_col = g)
+  expect_equal(r$flag_resolution, "softened")
+  expect_match(r$flag_resolution_basis, "^R4;.*local_record_locations=3")
+  d2 <- d; d2$llm_geographic_plausibility <- "unlikely"                       # study-wide unlikely
+  expect_equal(res(d2, geography_col = g)$flag_resolution, "upheld")
+  d3 <- d; d3$likelihood_support <- 0.3                                       # no SEQ support
+  expect_equal(res(d3, geography_col = g)$flag_resolution, "upheld")
+})
+
+test_that("R6: a keep resting on weak sequence or on the prior is escalated", {
+  expect_equal(res(rv(likelihood_support = 0.05))$flag_resolution, "escalated")
+  r <- res(rv(likelihood_support = 0.4, prior_role = "narrowed"))
+  expect_equal(r$flag_resolution, "escalated")
+  expect_match(r$flag_resolution_basis, "prior_driven=yes")
+})
+
+test_that("a move_up is not escalated for the poor match that caused it", {
+  d <- rv(poor = TRUE, rank = "species", bir = "genus", genus = "Fundulus")
+  expect_equal(scr(d)$suggested_action, "move_up")
+  r <- res(d)
+  expect_match(r$flag_resolution_basis, "seq=against")
+  expect_false(r$flag_resolution %in% "escalated")
+})
+
+test_that("circularity guard: a prior-driven call loses its occurrence support", {
+  # Same row; only prior_role differs. If OCC support were still counted on the
+  # prior-driven row, both would read confirmed with score 1.
+  a <- res(rv(likelihood_support = 0.6, prior_role = "agrees"))
+  b <- res(rv(likelihood_support = 0.6, prior_role = "narrowed"))
+  expect_equal(a$flag_resolution, "confirmed")
+  expect_equal(a$flag_consistency_score, 1)
+  expect_equal(b$flag_resolution, "upheld")
+  expect_equal(b$flag_consistency_score, 2/3)
+  expect_match(b$flag_resolution_basis, "occ=support->neutral\\(prior-driven\\)")
+  # The ratio route: likelihood_support below half the posterior.
+  c <- res(rv(likelihood_support = 0.4, consensus_posterior = 0.95))
+  expect_match(c$flag_resolution_basis, "prior_driven=yes")
+})
+
+test_that("records and geography cast ONE occurrence vote", {
+  # SEQ against, OCC support (records yes, geography likely), ECO against.
+  # One OCC vote: (1 - 2) / 3. Counted twice it would be (2 - 2) / 4 = 0.
+  # consensus_posterior 0.08 keeps the call from reading prior-driven (0.05 >= 0.04).
+  r <- res(rv(likelihood_support = 0.05, consensus_posterior = 0.08, llm_p_habitat = 0.05,
+              llm_p_habitat_lo = 0.01, llm_p_habitat_hi = 0.2))
+  expect_match(r$flag_resolution_basis, "occ=support;")
+  expect_equal(r$flag_consistency_score, -1/3)
+})
+
+test_that("domestic caveat: missing records are not evidence against", {
+  d <- rv(geo = NA_character_, winner_has_occurrence_record = FALSE)
+  a <- res(d)
+  d$domestic_prior_caveat <- TRUE
+  b <- res(d)
+  expect_match(a$flag_resolution_basis, "occ=against")
+  expect_equal(a$flag_consistency_score, 1/3)
+  expect_match(b$flag_resolution_basis, "occ=neutral\\(domestic caveat\\)")
+  expect_equal(b$flag_consistency_score, 2/3)
+  expect_false(b$flag_resolution %in% "escalated")
+})
+
+test_that("demote-only: LLM support without SEQ support is upheld, never confirmed", {
+  r <- res(rv(likelihood_support = 0.3, consensus_posterior = 0.35))
+  expect_equal(r$flag_consistency_score, 2/3)
+  expect_equal(r$flag_resolution, "upheld")
+})
+
+test_that("an unstable call cannot be confirmed", {
+  expect_equal(res(rv(robust_lower_posterior = 0.3))$flag_resolution, "upheld")
+  expect_equal(res(rv(consensus_confidence_score = 0.3))$flag_resolution, "upheld")
+})
+
+test_that("a family call is resolved at its own rank, not short-circuited", {
+  d <- rv(taxon = "Fundulidae", rank = "family", bir = "family", poor = TRUE,
+          consensus_has_occurrence_record = TRUE, winner_has_occurrence_record = FALSE)
+  r <- res(d)
+  expect_false(r$flag_resolution %in% "not_assessed")
+  expect_equal(r$flag_resolution, "confirmed")
+  expect_match(r$flag_resolution_basis, "seq=support")
+})
+
+test_that("an unreferenced species is not marked down for its expected poor fit", {
+  # bir genus: the call is finer than its best match, so for any other species
+  # the poor fit would count against.
+  d <- rv(poor = TRUE, bir = "genus", winner_hypothesis_type = "unreferenced_species")
+  expect_match(res(d)$flag_resolution_basis, "seq=support")
+  d$winner_hypothesis_type <- "specific_candidate"
+  expect_match(res(d)$flag_resolution_basis, "seq=against")
+})
+
+test_that("a habitat range spanning a cut is neutral", {
+  expect_match(res(rv(llm_p_habitat = 0.75, llm_p_habitat_lo = 0.05))$flag_resolution_basis, "eco=neutral")
+  expect_match(res(rv(llm_p_habitat = 0.05, llm_p_habitat_lo = 0.01,
+                      llm_p_habitat_hi = 0.8))$flag_resolution_basis, "eco=neutral")
+})
+
+test_that("missing inputs are not_evaluated, with no error", {
+  d <- mk()
+  r <- res(d)
+  expect_match(r$flag_resolution_basis, "eco=not_evaluated")
+  expect_false(is.na(r$flag_resolution))
+})
+
+test_that("resolve = FALSE returns exactly the pre-resolution result", {
+  strip <- function(x) { attr(x, "rule_counts") <- NULL; attr(x, "resolution_counts") <- NULL; x }
+  d <- rbind(rv(), rv(poor = TRUE, geo = "unlikely"), rv(likelihood_support = 0.05))
+  d$observation_id <- c("o1", "o2", "o3")
+  r0 <- scr(d, resolve = FALSE)
+  r1 <- scr(d)
+  expect_false(any(grepl("^flag_", names(r0))))
+  expect_null(attr(r0, "resolution_counts"))
+  expect_identical(names(r1)[seq_along(names(r0))], names(r0))
+  expect_identical(strip(r1[names(r0)]), strip(r0))
+  expect_identical(attr(r1, "rule_counts"), attr(r0, "rule_counts"))
+  expect_error(screen_assignments(d, resolve = NA), "resolve")
+})
+
+test_that("resolution keeps every row in order and counts every rule, zeros included", {
+  d <- rbind(rv(), rv(poor = TRUE, geo = "unlikely"), rv(likelihood_support = 0.05),
+             rv(taxon = NA_character_))
+  d$observation_id <- c("o4", "o1", "o3", "o2")
+  r <- scr(d)
+  expect_equal(nrow(r), 4L)
+  expect_identical(r$observation_id, d$observation_id)
+  rc <- attr(r, "resolution_counts")
+  expect_identical(rc$rule, paste0("R", 0:7))
+  expect_equal(sum(rc$n_rows), 4L)
+  expect_true(any(rc$n_rows == 0L))
+  expect_message(screen_assignments(d), "resolution by rule: R0 = 1, R1 = 0")
+})

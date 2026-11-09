@@ -62,6 +62,88 @@
 #' site against that site's own geographic verdict, rather than one verdict
 #' for the taxon across the whole study.
 #'
+#' @section Resolution across all the evidence:
+#' With `resolve = TRUE` (the default) the screen takes one more,
+#' deterministic step after the rules above. It asks whether the rest of the
+#' evidence on the row agrees with the screen's own advice, and records the
+#' answer in `flag_resolution`. It makes no LLM call, adds nothing to the
+#' review prompt or its cache key, and never changes `suggested_action` or
+#' any other column. Acting on it is left to the user.
+#'
+#' The evidence is read as three independent votes, each "support",
+#' "against", "neutral" or "not_evaluated" (the needed columns are absent):
+#' \itemize{
+#'   \item \strong{SEQ}, the sequence match: `likelihood_support` and
+#'     `poor_absolute_fit`. Support: `likelihood_support` >= 0.50 and no
+#'     poor fit that counts against. Against: `likelihood_support` < 0.10, or
+#'     a poor fit on a call finer than `best_identity_rank` (an unreferenced
+#'     species is expected to fit poorly, so for it only
+#'     `likelihood_support` counts).
+#'   \item \strong{OCC}, occurrence: the occurrence-record side of the prior
+#'     (`consensus_has_occurrence_record`, which matches the call's rank; else
+#'     `winner_has_occurrence_record`; else `primary_plausibility`) and the
+#'     reviewer's geography verdict together cast ONE vote,
+#'     because both rest on the same occurrence data and their agreement is
+#'     not two confirmations. If they disagree the vote is "split", counted
+#'     as neutral. When `domestic_prior_caveat` is TRUE the vote is neutral,
+#'     because occurrence databases under-index domestic and captive taxa.
+#'   \item \strong{ECO}, habitat: `llm_p_habitat` read with the review's own
+#'     cuts. Support needs p of at least 0.70, with `llm_p_habitat_lo` (if
+#'     present) at least 0.10; against needs p below 0.10, with
+#'     `llm_p_habitat_hi` (if present) below 0.70. A stated range spanning a
+#'     cut is neutral.
+#' }
+#' The posterior is not a fourth vote: it is likelihood times prior, so
+#' counting it would count SEQ and OCC twice. The prior is used only to
+#' DISCOUNT, never to add support. A \emph{prior-driven} call (`prior_role`
+#' "narrowed" or "changed", or `likelihood_support` below half of
+#' `consensus_posterior`) has its OCC support set to neutral, since the prior
+#' chose the call from the same records the geography verdict reads. A call
+#' is \emph{stable} when `consensus_confidence_score` and
+#' `robust_lower_posterior` (whichever are present, at least one) are all
+#' at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
+#' doubt but never create confidence: every route to "confirmed" or
+#' "softened" requires SEQ support.
+#'
+#' `flag_consistency_score` is (votes for - votes against) / votes cast over
+#' SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
+#' first rule that applies sets `flag_resolution`:
+#' \itemize{
+#'   \item R0: no call, or fewer than two votes cast: "not_assessed".
+#'   \item R1: advice "exclude" with blank evidence or a `validity_flag`
+#'     starting "invalid": "upheld". Positive evidence is never softened.
+#'   \item R2: advice "exclude" with all three votes for, or with local
+#'     records against an unlikely geography verdict and SEQ support:
+#'     "conflicted".
+#'   \item R3: advice "exclude": "confirmed" if the score is -1/3 or lower,
+#'     else "upheld".
+#'   \item R4: advice "verify_range" where the taxon has at least 3 distinct
+#'     occurrence-record locations within 50 km of the row's site
+#'     (`geo_local_record_location_n`, see below), the study-wide
+#'     `llm_geographic_plausibility` is likely or possible, and SEQ
+#'     supports: "softened".
+#'   \item R5: advice "verify_range" otherwise: "upheld".
+#'   \item R6: advice "keep" with SEQ against, or advice "keep" or "move_up"
+#'     on a prior-driven call without SEQ support: "escalated". A "move_up"
+#'     row is not escalated for SEQ against alone, because the move already
+#'     answers the poor match.
+#'   \item R7: advice "keep" or "move_up": "confirmed" with SEQ support, a
+#'     score of 2/3 or higher, a stable call and a call that is not
+#'     prior-driven; else "upheld".
+#' }
+#' Rank is never a condition. A genus or family call is resolved with the
+#' same rules from its own rank-matched columns, so no rank is a dead end
+#' (see `add_posthoc_assessment()`, \strong{Why no rank-based
+#' short-circuit}).
+#'
+#' `geo_local_record_location_n` is supplied by the caller: for each row,
+#' the number of distinct occurrence-record locations of the taxon (for a
+#' genus or family call, of any member) within 50 km of the row's site.
+#' Given a table `local_n` with columns `consensus_taxon`, `site` and `n`
+#' (distinct `point_id` within 50 km), join it without reordering rows:
+#' `reviewed$geo_local_record_location_n <- local_n$n[match(paste(reviewed$consensus_taxon, reviewed$site), paste(local_n$consensus_taxon, local_n$site))]`.
+#' Without the column, R4 never fires and those rows read "upheld".
+#'
 #' @param reviewed_df A data frame with one row per taxon x site unit.
 #'   Required columns: `observation_id`, the columns named by `taxon_col`,
 #'   `rank_col`, `geography_col`, `poor_fit_col` and `best_identity_rank_col`.
@@ -103,6 +185,10 @@
 #'   "exclude" and `identity_reason` has "blank evidence" appended;
 #'   `identity_action` is unchanged. The default `NULL` ignores it, because no fixed column
 #'   name exists, so the caller names the column.
+#' @param resolve Logical. `TRUE` (default) appends `flag_resolution`,
+#'   `flag_resolution_basis` and `flag_consistency_score`; see
+#'   \strong{Resolution across all the evidence}. `FALSE` returns exactly the
+#'   columns and attributes the screen returned before this argument existed.
 #'
 #' @return `reviewed_df` with these columns appended, in the same row order:
 #' \describe{
@@ -129,6 +215,14 @@
 #'     the taxon's total tubes across the input (summed `n_tubes`) is at most
 #'     3 and geography is unlikely; FALSE otherwise; NA when `reviewed_df` has
 #'     no `n_tubes` column or the count is missing.}
+#'   \item{flag_resolution}{With `resolve = TRUE`: "confirmed", "upheld",
+#'     "softened", "escalated", "conflicted" or "not_assessed". Whether the
+#'     rest of the evidence agrees with `suggested_action`; never NA.}
+#'   \item{flag_resolution_basis}{With `resolve = TRUE`: the rule that fired
+#'     and each vote with the values behind it, e.g.
+#'     `"R4; seq=support(ls 0.91); occ=split(records yes, geo unlikely); eco=support(p 0.85); prior_driven=no; stable=yes"`.}
+#'   \item{flag_consistency_score}{With `resolve = TRUE`: numeric, -1 to 1,
+#'     or NA when fewer than two votes were cast.}
 #' }
 #' The result also carries `attr(, "rule_counts")`, a data frame with one row
 #' per rule (I1, I2_relative, I2_review, I3_move_up, I3_flag_coarse,
@@ -144,6 +238,9 @@
 #' poor_fit_habitat_exclude without the habitat column, blank_evidence with
 #' `blank_flag_col = NULL`). Because `rule_counts` is an attribute, dplyr verbs
 #' drop it; read it straight off the value `screen_assignments()` returns.
+#' With `resolve = TRUE` the result also carries `attr(, "resolution_counts")`:
+#' one row per rule R0 to R7 with `n_rows`, and a message reports the same
+#' counts, zeros included.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -171,7 +268,8 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
                                relative_score_gap = 0.25,
                                move_up_max_rank = "genus",
                                poor_fit_habitat_exclude_max_rank = "family",
-                               blank_flag_col = NULL) {
+                               blank_flag_col = NULL,
+                               resolve = TRUE) {
   RANKS <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
   rk <- function(x) match(x, RANKS)
 
@@ -190,6 +288,8 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     stop("`reviewed_df` is missing required column(s): ", paste(miss, collapse = ", "), call. = FALSE)
   if (!is.null(blank_flag_col) && !blank_flag_col %in% names(reviewed_df))
     stop("`blank_flag_col` '", blank_flag_col, "' is not a column of `reviewed_df`.", call. = FALSE)
+  if (!is.logical(resolve) || length(resolve) != 1L || is.na(resolve))
+    stop("`resolve` must be TRUE or FALSE.", call. = FALSE)
   if (!is.numeric(relative_score_gap) || length(relative_score_gap) != 1L ||
       is.na(relative_score_gap) || relative_score_gap < 0)
     stop("`relative_score_gap` must be a single non-negative number.", call. = FALSE)
@@ -384,5 +484,128 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
              else "not evaluated (no posterior_df)"
   message("screen_assignments(): rows by rule: ", paste0(rule_names, " = ", shown, collapse = ", "), ". ",
           "Relative move (relative_score_gap = ", relative_score_gap, ") ", rel_txt, ".")
+  if (resolve) {
+    res <- .screen_resolution(d, advice = sugg, tx = tx, cr = cr, bir = bir, wht = wht,
+                              blank = bl, poor_fit_col = poor_fit_col,
+                              geography_col = geography_col)
+    d$flag_resolution <- res$resolution
+    d$flag_resolution_basis <- res$basis
+    d$flag_consistency_score <- res$score
+    rn <- paste0("R", 0:7)
+    rc <- data.frame(rule = rn, n_rows = vapply(rn, function(r) sum(res$rule == r), integer(1)),
+                     stringsAsFactors = FALSE, row.names = NULL)
+    attr(d, "resolution_counts") <- rc
+    message("screen_assignments(): resolution by rule: ",
+            paste0(rc$rule, " = ", rc$n_rows, collapse = ", "), ".")
+  }
   d
+}
+
+# Resolution step (see @section Resolution across all the evidence). Reads
+# only columns already on the row; every threshold below is named in the
+# roxygen section, and the habitat cuts are review_assignments()'s own.
+#' @noRd
+.screen_resolution <- function(d, advice, tx, cr, bir, wht, blank, poor_fit_col, geography_col) {
+  RANKS <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
+  rk <- function(x) match(x, RANKS)
+  n <- nrow(d)
+  num <- function(nm) if (nm %in% names(d)) suppressWarnings(as.numeric(d[[nm]])) else rep(NA_real_, n)
+  chr <- function(nm) if (nm %in% names(d)) as.character(d[[nm]]) else rep(NA_character_, n)
+  lgl <- function(nm) if (nm %in% names(d)) as.logical(d[[nm]]) else rep(NA, n)
+  f2 <- function(x) ifelse(is.na(x), "NA", formatC(x, format = "f", digits = 2))
+
+  # ---- SEQ ----
+  ls <- num("likelihood_support")
+  pf <- as.logical(d[[poor_fit_col]])
+  unref <- wht %in% "unreferenced_species"
+  # A poor fit counts against only a call finer than the rank the best match
+  # identifies to (rank-matched); unknown best rank -> counts against.
+  finer <- ifelse(is.na(rk(bir)) | is.na(rk(cr)), TRUE, rk(cr) < rk(bir))
+  pf_against <- pf %in% TRUE & finer & !unref
+  ls_low <- !is.na(ls) & ls < 0.10
+  ls_high <- !is.na(ls) & ls >= 0.50
+  seq_v <- ifelse(is.na(pf) & is.na(ls), "not_evaluated",
+           ifelse(pf_against | ls_low, "against",
+           ifelse(ls_high, "support", "neutral")))
+
+  # ---- prior-driven / stable ----
+  pr <- chr("prior_role"); cp <- num("consensus_posterior")
+  pd_known <- !is.na(pr) | (!is.na(ls) & !is.na(cp))
+  pdriven <- pr %in% c("narrowed", "changed") | (!is.na(ls) & !is.na(cp) & ls < 0.5 * cp)
+  pdriven[!pd_known] <- NA
+  ccs <- num("consensus_confidence_score"); rlp <- num("robust_lower_posterior")
+  low_stab <- (!is.na(ccs) & ccs < 0.50) | (!is.na(rlp) & rlp < 0.50)
+  stable <- ifelse(is.na(ccs) & is.na(rlp), NA, !low_stab)
+
+  # ---- OCC: records side and geography side, ONE vote ----
+  # Rank-matched first: consensus_has_occurrence_record answers for the
+  # reported group, so a genus or family call is not judged by one species.
+  rec <- if ("consensus_has_occurrence_record" %in% names(d)) lgl("consensus_has_occurrence_record")
+  else if ("winner_has_occurrence_record" %in% names(d)) lgl("winner_has_occurrence_record") else {
+    pp <- chr("primary_plausibility")
+    ifelse(pp %in% c("expected", "unexpected"), TRUE, ifelse(pp %in% "unprecedented", FALSE, NA))
+  }
+  geo <- chr(geography_col)
+  geo_ok <- ifelse(geo %in% c("likely", "possible"), TRUE, ifelse(geo %in% "unlikely", FALSE, NA))
+  occ_v <- ifelse(is.na(rec) & is.na(geo_ok), "not_evaluated",
+           ifelse(is.na(rec), ifelse(geo_ok, "support", "against"),
+           ifelse(is.na(geo_ok), ifelse(rec, "support", "against"),
+           ifelse(rec == geo_ok, ifelse(rec, "support", "against"), "split"))))
+  occ_note <- occ_v
+  dom <- lgl("domestic_prior_caveat") %in% TRUE
+  occ_v[dom & occ_v != "not_evaluated"] <- "neutral"
+  occ_note[dom & occ_note != "not_evaluated"] <- "neutral(domestic caveat)"
+  circ <- occ_v == "support" & pdriven %in% TRUE
+  occ_v[circ] <- "neutral"; occ_note[circ] <- "support->neutral(prior-driven)"
+  occ_split_records <- rec %in% TRUE & geo_ok %in% FALSE
+  occ_note[occ_v == "split"] <- sprintf("split(records %s, geo %s)",
+                                        ifelse(rec[occ_v == "split"], "yes", "no"), geo[occ_v == "split"])
+
+  # ---- ECO: habitat with stated range ----
+  ph <- num("llm_p_habitat"); lo <- num("llm_p_habitat_lo"); hi <- num("llm_p_habitat_hi")
+  eco_v <- ifelse(is.na(ph), "not_evaluated",
+           ifelse(ph >= .p_cut_likely & (is.na(lo) | lo >= .p_cut_unlikely), "support",
+           ifelse(ph < .p_cut_unlikely & (is.na(hi) | hi < .p_cut_likely), "against", "neutral")))
+
+  # ---- consistency score ----
+  votes <- cbind(seq_v, occ_v, eco_v)
+  n_for <- rowSums(votes == "support"); n_against <- rowSums(votes == "against")
+  n_cast <- rowSums(votes != "not_evaluated")
+  score <- ifelse(n_cast >= 2, (n_for - n_against) / pmax(n_cast, 1), NA_real_)
+
+  # ---- rules ----
+  invalid <- grepl("^invalid", chr("validity_flag"))
+  lrn <- num("geo_local_record_location_n")
+  geo_study <- chr("llm_geographic_plausibility")
+  seq_sup <- seq_v == "support"
+  eps <- 1e-9
+  rule <- character(n); out <- character(n)
+  for (i in seq_len(n)) {
+    a <- advice[i]
+    if (is.na(tx[i]) || n_cast[i] < 2) { rule[i] <- "R0"; out[i] <- "not_assessed"; next }
+    if (a %in% "exclude") {
+      if (blank[i] || invalid[i]) { rule[i] <- "R1"; out[i] <- "upheld"; next }
+      if (n_for[i] == 3 || (occ_split_records[i] && seq_sup[i])) { rule[i] <- "R2"; out[i] <- "conflicted"; next }
+      rule[i] <- "R3"; out[i] <- if (score[i] <= -1/3 + eps) "confirmed" else "upheld"; next
+    }
+    if (a %in% "verify_range") {
+      if (!is.na(lrn[i]) && lrn[i] >= 3 && geo_study[i] %in% c("likely", "possible") && seq_sup[i]) {
+        rule[i] <- "R4"; out[i] <- "softened"; next }
+      rule[i] <- "R5"; out[i] <- "upheld"; next
+    }
+    # keep / move_up
+    if ((a %in% "keep" && seq_v[i] == "against") || (pdriven[i] %in% TRUE && !seq_sup[i])) {
+      rule[i] <- "R6"; out[i] <- "escalated"; next }
+    rule[i] <- "R7"
+    out[i] <- if (seq_sup[i] && score[i] >= 2/3 - eps && stable[i] %in% TRUE && pdriven[i] %in% FALSE)
+      "confirmed" else "upheld"
+  }
+
+  yn <- function(x) ifelse(is.na(x), "unknown", ifelse(x, "yes", "no"))
+  basis <- sprintf("%s; seq=%s(ls %s); occ=%s; eco=%s(p %s); prior_driven=%s; stable=%s",
+                   rule, seq_v, f2(ls), occ_note, eco_v, f2(ph), yn(pdriven), yn(stable))
+  basis[rule == "R4"] <- paste0(basis[rule == "R4"], sprintf("; local_record_locations=%s", lrn[rule == "R4"]))
+  basis[rule == "R1"] <- paste0(basis[rule == "R1"], "; blank or invalid validity evidence")
+  basis[is.na(tx)] <- "R0; no call"
+  list(resolution = out, basis = basis, score = score, rule = rule)
 }

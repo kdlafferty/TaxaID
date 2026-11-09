@@ -17,7 +17,8 @@ screen_assignments(
   relative_score_gap = 0.25,
   move_up_max_rank = "genus",
   poor_fit_habitat_exclude_max_rank = "family",
-  blank_flag_col = NULL
+  blank_flag_col = NULL,
+  resolve = TRUE
 )
 }
 \arguments{
@@ -71,6 +72,11 @@ blank (contamination) evidence. Where TRUE, \code{suggested_action} becomes
 "exclude" and \code{identity_reason} has "blank evidence" appended;
 \code{identity_action} is unchanged. The default \code{NULL} ignores it, because no fixed column
 name exists, so the caller names the column.}
+
+\item{resolve}{Logical. \code{TRUE} (default) appends \code{flag_resolution},
+\code{flag_resolution_basis} and \code{flag_consistency_score}; see
+\strong{Resolution across all the evidence}. \code{FALSE} returns exactly the
+columns and attributes the screen returned before this argument existed.}
 }
 \value{
 \code{reviewed_df} with these columns appended, in the same row order:
@@ -98,6 +104,14 @@ identity-excluded rows and where habitat is missing.}
 the taxon's total tubes across the input (summed \code{n_tubes}) is at most
 3 and geography is unlikely; FALSE otherwise; NA when \code{reviewed_df} has
 no \code{n_tubes} column or the count is missing.}
+\item{flag_resolution}{With \code{resolve = TRUE}: "confirmed", "upheld",
+"softened", "escalated", "conflicted" or "not_assessed". Whether the
+rest of the evidence agrees with \code{suggested_action}; never NA.}
+\item{flag_resolution_basis}{With \code{resolve = TRUE}: the rule that fired
+and each vote with the values behind it, e.g.
+\code{"R4; seq=support(ls 0.91); occ=split(records yes, geo unlikely); eco=support(p 0.85); prior_driven=no; stable=yes"}.}
+\item{flag_consistency_score}{With \code{resolve = TRUE}: numeric, -1 to 1,
+or NA when fewer than two votes were cast.}
 }
 The result also carries \code{attr(, "rule_counts")}, a data frame with one row
 per rule (I1, I2_relative, I2_review, I3_move_up, I3_flag_coarse,
@@ -113,6 +127,9 @@ I3_exception without a \code{winner_hypothesis_type} column,
 poor_fit_habitat_exclude without the habitat column, blank_evidence with
 \code{blank_flag_col = NULL}). Because \code{rule_counts} is an attribute, dplyr verbs
 drop it; read it straight off the value \code{screen_assignments()} returns.
+With \code{resolve = TRUE} the result also carries \code{attr(, "resolution_counts")}:
+one row per rule R0 to R7 with \code{n_rows}, and a message reports the same
+counts, zeros included.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table
@@ -180,6 +197,90 @@ distinction.
 \code{review_assignments(sites = ...)}. The rules then judge each taxon at each
 site against that site's own geographic verdict, rather than one verdict
 for the taxon across the whole study.
+}
+
+\section{Resolution across all the evidence}{
+
+With \code{resolve = TRUE} (the default) the screen takes one more,
+deterministic step after the rules above. It asks whether the rest of the
+evidence on the row agrees with the screen's own advice, and records the
+answer in \code{flag_resolution}. It makes no LLM call, adds nothing to the
+review prompt or its cache key, and never changes \code{suggested_action} or
+any other column. Acting on it is left to the user.
+
+The evidence is read as three independent votes, each "support",
+"against", "neutral" or "not_evaluated" (the needed columns are absent):
+\itemize{
+\item \strong{SEQ}, the sequence match: \code{likelihood_support} and
+\code{poor_absolute_fit}. Support: \code{likelihood_support} >= 0.50 and no
+poor fit that counts against. Against: \code{likelihood_support} < 0.10, or
+a poor fit on a call finer than \code{best_identity_rank} (an unreferenced
+species is expected to fit poorly, so for it only
+\code{likelihood_support} counts).
+\item \strong{OCC}, occurrence: the occurrence-record side of the prior
+(\code{consensus_has_occurrence_record}, which matches the call's rank; else
+\code{winner_has_occurrence_record}; else \code{primary_plausibility}) and the
+reviewer's geography verdict together cast ONE vote,
+because both rest on the same occurrence data and their agreement is
+not two confirmations. If they disagree the vote is "split", counted
+as neutral. When \code{domestic_prior_caveat} is TRUE the vote is neutral,
+because occurrence databases under-index domestic and captive taxa.
+\item \strong{ECO}, habitat: \code{llm_p_habitat} read with the review's own
+cuts. Support needs p of at least 0.70, with \code{llm_p_habitat_lo} (if
+present) at least 0.10; against needs p below 0.10, with
+\code{llm_p_habitat_hi} (if present) below 0.70. A stated range spanning a
+cut is neutral.
+}
+The posterior is not a fourth vote: it is likelihood times prior, so
+counting it would count SEQ and OCC twice. The prior is used only to
+DISCOUNT, never to add support. A \emph{prior-driven} call (\code{prior_role}
+"narrowed" or "changed", or \code{likelihood_support} below half of
+\code{consensus_posterior}) has its OCC support set to neutral, since the prior
+chose the call from the same records the geography verdict reads. A call
+is \emph{stable} when \code{consensus_confidence_score} and
+\code{robust_lower_posterior} (whichever are present, at least one) are all
+at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
+doubt but never create confidence: every route to "confirmed" or
+"softened" requires SEQ support.
+
+\code{flag_consistency_score} is (votes for - votes against) / votes cast over
+SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
+first rule that applies sets \code{flag_resolution}:
+\itemize{
+\item R0: no call, or fewer than two votes cast: "not_assessed".
+\item R1: advice "exclude" with blank evidence or a \code{validity_flag}
+starting "invalid": "upheld". Positive evidence is never softened.
+\item R2: advice "exclude" with all three votes for, or with local
+records against an unlikely geography verdict and SEQ support:
+"conflicted".
+\item R3: advice "exclude": "confirmed" if the score is -1/3 or lower,
+else "upheld".
+\item R4: advice "verify_range" where the taxon has at least 3 distinct
+occurrence-record locations within 50 km of the row's site
+(\code{geo_local_record_location_n}, see below), the study-wide
+\code{llm_geographic_plausibility} is likely or possible, and SEQ
+supports: "softened".
+\item R5: advice "verify_range" otherwise: "upheld".
+\item R6: advice "keep" with SEQ against, or advice "keep" or "move_up"
+on a prior-driven call without SEQ support: "escalated". A "move_up"
+row is not escalated for SEQ against alone, because the move already
+answers the poor match.
+\item R7: advice "keep" or "move_up": "confirmed" with SEQ support, a
+score of 2/3 or higher, a stable call and a call that is not
+prior-driven; else "upheld".
+}
+Rank is never a condition. A genus or family call is resolved with the
+same rules from its own rank-matched columns, so no rank is a dead end
+(see \code{add_posthoc_assessment()}, \strong{Why no rank-based
+short-circuit}).
+
+\code{geo_local_record_location_n} is supplied by the caller: for each row,
+the number of distinct occurrence-record locations of the taxon (for a
+genus or family call, of any member) within 50 km of the row's site.
+Given a table \code{local_n} with columns \code{consensus_taxon}, \code{site} and \code{n}
+(distinct \code{point_id} within 50 km), join it without reordering rows:
+\code{reviewed$geo_local_record_location_n <- local_n$n[match(paste(reviewed$consensus_taxon, reviewed$site), paste(local_n$consensus_taxon, local_n$site))]}.
+Without the column, R4 never fires and those rows read "upheld".
 }
 
 \examples{
