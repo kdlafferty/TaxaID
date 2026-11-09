@@ -71,7 +71,7 @@ blanks before it enters a workflow. `flag_contaminant()` computes a
 depth-weighted detection rate per taxon in each group (taxon reads /
 total reads for that group, field or control), then a score:
 
-```         
+```
 score = field_rate / (field_rate + control_rate)
 ```
 
@@ -122,7 +122,7 @@ function identifies the earliest and latest timestamps as the
 sampling-period edges. Each observation receives a linear score based on
 its proximity to the nearest edge:
 
-```         
+```
 handler_score = minutes_to_nearest_edge / interval_minutes
 ```
 
@@ -149,8 +149,8 @@ acoustic, and image data via the `data_type` param. This review is
 intended as a structured second opinion, not an automated filter. Users
 should treat the flags as candidates for closer inspection.
 
-By default the prompt carries DNA evidence and the study's own design, and no
-text derived from occurrence records. The review sees the best match identity
+By default the prompt looks at DNA evidence and the study's own design, but not
+ occurrence records from TaxaExpect. The review sees the best match identity
 for each taxon, whether that match clears any rank threshold for the marker,
 whether a confusable relative could match as well, and whether any reference
 sequence exists for the name. It does not see the occurrence prior, the GBIF
@@ -185,9 +185,16 @@ geography (and, for a poor fit, habitat):
 |------------------|------------------|------------------|------------------|
 | I1 | good | plausible | keep |
 | I2 | good | unlikely | move up to a genus or family shared with a local, referenced relative that scores nearly as well; otherwise "review", suggested exclude |
-| I3 | poor | plausible | move up one rank (genus and species calls only); coarser calls are kept with `poor_fit_flag` |
-|  | poor | plausible, habitat unlikely | exclude (family or finer) |
+| I3 | poor | plausible | move up one rank, for calls at `move_up_max_rank` or finer (`"genus"` by default); coarser calls are kept with `poor_fit_flag` |
+|  | poor | plausible, habitat unlikely | exclude, for calls at `poor_fit_habitat_exclude_max_rank` or finer (`"family"` by default) |
 | I4 | poor | unlikely | exclude |
+
+Two exceptions are worth knowing before reading the table as the whole
+rule. A named unreferenced species whose geography is likely keeps its
+name under I3 rather than moving up. And a missing verdict never fires a
+rule: an absent poor-fit verdict counts as a good fit, an absent
+geography verdict counts as plausible, so a row the screen could not
+judge is left alone rather than acted on.
 
 Because TaxaFlag was designed with eDNA in mind, it separates out the
 presence of a sequence at a location from the presence of an organism
@@ -604,6 +611,8 @@ Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
 
+The repository URL above is provisional; see the root TaxaID README.
+
 A citable version with a DOI will be released through the USGS software
 release process.
 
@@ -618,7 +627,19 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San Francisco, California).
+## AI use and disclaimers
+
+AI-assisted coding tools were used to develop this package: Anthropic
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6 and 5; Fable 5 and 5.1)
+through Claude Code (Anthropic PBC, San Francisco, California), between
+May 2026 and November 2026, for code, tests, documentation and review.
+Every commit names the model that contributed to it in a
+`Co-Authored-By` trailer. All code was reviewed, tested and validated by
+the author to ensure correctness and reproducibility, and was also
+subject to a human code review.
+
+Any use of trade, firm, or product names is for descriptive purposes
+only and does not imply endorsement by the U.S. Government.
 
 ## References
 

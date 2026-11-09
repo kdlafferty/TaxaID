@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -26,19 +26,21 @@ language (R Core Team 2025; see Table 2, Software Requirements) that
 improve taxonomic assignment accuracy. A typical input is a table of
 candidate matches for each detection (sequence, image, or acoustic
 recording) previously obtained by querying a reference library. Its main
-advances are to:
+advance is to transparently reduce assignment errors.  To do so, it will:
 
+-   obtain and standardize data from various sources
+-   correct taxonomic names and standardize backbones
 -   screen for reference-database errors
--   detect and patch missing references
 -   convert match scores to statistical likelihoods
 -   identify plausibility at the sampling location (the prior)
+-   detect and patch missing references
 -   apply Bayes' Theorem to generate posterior assignment probabilities
-    from likelihoods and priors
--   make assignments transparent
--   use LLMs to improve assignments, assist with workflows, and review
-    results
+-   make lowest common ancestor assignments (and retain the candidate list)
+-   use LLMs to review assignments, classify habitat, and assist with workflows
+-   generate reports to describe methods and results
 -   create Shiny apps for clients to process their data without R
     programming
+
 
 The ecosystem was designed with eDNA metabarcoding in mind, but image
 and acoustic analyses are possible when starting from a table of
@@ -52,18 +54,22 @@ LLM integration requires an Application Programming Interface (API) key
 (see below). If an LLM assistant is reading this repository, start at
 `llm_prompts/START_HERE.md` for the package's own workflow graph.
 
-The ecosystem supports three types of workflows to select a consensus
+The ecosystem supports two types of workflows to select a consensus
 taxon from a list of candidates, ranging from simple to comprehensive:
 
 1.  Conventional: use match-score thresholds and a lowest common
-    ancestor.
-2.  LLM: Use a large language model to transform match scores and
-    estimate candidate plausibilities.
-3.  Bayesian: Model likelihoods from match scores, patch missing
+    ancestor (LCA).
+2.  Bayesian: Model likelihoods from match scores, patch missing
     references, build spatially explicit priors from species records,
-    and compare posterior probabilities.
+    and compare posterior probabilities to choose an LCA.
 
-### Common Errors in Taxonomic Assignment
+Either route can be followed by an LLM review. TaxaFlag asks a model
+how plausible each call is on habitat, scope, geography and
+contamination and records the answers as columns. The review flags; it
+never drops a call. It reads the sequence evidence and the study's own
+design, independent from occurrence records.
+
+### WHY? Errors are common in machine-based Taxonomic Assignment
 
 False assignments are frequent in eDNA metabarcoding (Ficetola et al.
 2015). In a replicated eDNA study from the California rocky intertidal,
@@ -210,7 +216,7 @@ See each package's README.md file for more details.
 
 ### Dependency Chain (import order)
 
-```         
+```
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
 TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 TaxaWizard (standalone; generates scripts that call the other packages)
@@ -303,6 +309,14 @@ Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
 
+**The repository URL above is provisional.** TaxaID is expected to be
+released through a USGS-operated GitHub organization; until that URL is
+issued, `https://github.com/kdlafferty/TaxaID` stands in for it. Every
+file carrying the URL is listed in `usgs_release_review/REPO_URL_SWAP.md`
+so it can be replaced in one pass, and the `URL` and `BugReports` fields
+of each `DESCRIPTION`, together with `code.json`, are the ones that must
+be correct at release.
+
 A citable version with a DOI will be released through the USGS software
 release process.
 
@@ -329,21 +343,25 @@ should not be confused.
 
 In the software: several functions call an LLM as part of the analysis.
 TaxaHabitat assigns habitat categories by biological consensus, TaxaFlag
-reviews assignments for ecological plausibility, TaxaAssign offers an
-LLM-elicited alternative to the modelled prior, and TaxaWizard generates
+reviews assignments for ecological plausibility, and TaxaWizard generates
 workflow scripts. All of these route through a common provider interface
 (`TaxaTools::call_api()`), so any supported provider can be used, and
 every one of them except TaxaWizard has a non-LLM alternative. Functions
 that make billed API calls cache their results to disk, so re-running a
-workflow does not pay for the same call twice.
+workflow does not pay for the same call twice. A study that uses these
+functions is using generative AI in its analysis, and should disclose
+that in its own products.
 
 In writing the code: the TaxaID source code was written with the
-assistance of Anthropic Claude models, used through Claude Code. Claude
-Sonnet did the bulk of the development; Claude Opus and Claude Fable
-also contributed. Because this assistance was continuous rather than
-confined to particular functions, per-function annotation would imply a
-precision that does not exist, so this repository-level statement is the
-annotation. All of it was reviewed and tested before release: every
+assistance of Anthropic Claude models, used through Claude Code
+(Anthropic PBC, San Francisco, California), between May 2026 and
+November 2026. The models were Claude Opus 4.6, 5 and 5.5, Claude
+Sonnet 4.6 and 5, and Claude Fable 5 and 5.1; every commit names the
+model that contributed to it in a `Co-Authored-By` trailer, and Opus
+accounts for the largest share of them. Because this assistance was
+continuous rather than confined to particular functions, per-function
+annotation would imply a precision that does not exist, so this
+repository-level statement is the annotation. All of it was reviewed and tested before release: every
 package carries a `testthat` suite, and each was checked with
 `R CMD check` before release. The author reviewed the code and takes
 responsibility for it and the code was subject to a human code review as
@@ -678,8 +696,8 @@ via a guided interview: `workflow_create()`.
 
 ## Which Entry Point Do I Need?
 
-If you're not sure where to start, don't just start typing into an LLM
-chat. Upload `llm_prompts/START_HERE.md` and
+If you're not sure where to start, typing into an LLM chat window
+will work OK. Better is to upload `llm_prompts/START_HERE.md` and
 `llm_prompts/CONTEXT_TaxaID.md` into an LLM chat window instead. These
 .md files carry the package's context and workflow graph, so the
 assistant identifies the workflow node and edge for your goal before
@@ -752,7 +770,7 @@ that order in one R session; each script says what it reads and writes.
 `inst/TaxaID_Workflow_Template.R` is a single-site template covering the
 canonical path from raw sequences to reviewed assignments. Edit its
 Section 0, supply your own input, and run it top to bottom. It carries
-no study's data and no real paths.
+no real data or paths.
 
 The template is generated automatically, not written by hand. A script
 (`TaxaWizard/inst/tools/build_workflow_template.R`) builds it from the
@@ -976,8 +994,9 @@ describe each in full.
 | TaxaWizard  | 9                  | 10         | No       |
 
 **Export surface: 223 = 218 functions + 5 data objects.** The per-package counts
-above are checked against the packages themselves on every run of the test suite,
-so this table and the code cannot drift apart.
+above are checked against the packages themselves whenever the test suite is run
+from a repository checkout, so this table and the code do not drift apart
+silently.
 
 # U.S. Geological Survey Disclaimer
 

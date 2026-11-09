@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -390,14 +390,14 @@ public API exists at time of writing.
 ## Reference Accession Quality {#reference-accession-quality}
 
 A mislabeled reference in the underlying database produces confident
-wrong assignments that propagate to every query matching it. Yet
+but wrong assignments that propagate to every query matching it. Yet
 mislables are rare, and defining a mislabel is a serious accusation.
 Mistakenly removing evidence that is not mislabled can weaken downstream
 likelihood models by making evidence appear more discriminating than it
 is. Thus, I recommend taking time to assess suspicious references before
 condemning them.
 
-TaxaMatch screens the actual candidate accessions your queries match
+TaxaMatch can screen the actual candidate accessions your queries match
 against, before they're trusted as candidates or used to train a
 likelihood model, independent of whatever else happens to be in a
 caller's own taxon list. This applies equally to a training reference
@@ -407,7 +407,7 @@ have no built-in reference-quality screening of their own) and to the
 accessions your query candidates actually matched.
 
 Unfortunately, screening many thousands of references by for mislabeling
-can be very time consuming.
+can be very time consuming. Pack a lunch.
 
 ### The recommended screen: a free check first, then investigate only where needed
 
@@ -646,6 +646,8 @@ Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
 
+The repository URL above is provisional; see the root TaxaID README.
+
 A citable version with a DOI will be released through the USGS software
 release process.
 
@@ -662,7 +664,19 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San Francisco, California).
+## AI use and disclaimers
+
+AI-assisted coding tools were used to develop this package: Anthropic
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6 and 5; Fable 5 and 5.1)
+through Claude Code (Anthropic PBC, San Francisco, California), between
+May 2026 and November 2026, for code, tests, documentation and review.
+Every commit names the model that contributed to it in a
+`Co-Authored-By` trailer. All code was reviewed, tested and validated by
+the author to ensure correctness and reproducibility, and was also
+subject to a human code review.
+
+Any use of trade, firm, or product names is for descriptive purposes
+only and does not imply endorsement by the U.S. Government.
 
 ## References
 

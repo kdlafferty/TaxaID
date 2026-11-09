@@ -12,7 +12,7 @@ TaxaID package imports TaxaTools; it has no dependency on any of them,
 which makes it the ecosystem's foundation package. It can also be used
 standalone for cleaning and verifying taxon name lists, resolving
 synonyms across backbones, or calling an LLM from a plain R script with
-no other TaxaID package installed.
+no other TaxaID package installed. Use it to LLM-boost your R code!
 
 TaxaTools solves three largely independent problems that every
 downstream package needs solved consistently:
@@ -122,7 +122,7 @@ and terms; TaxaID has not validated these routes against its reference
 runs. Three cautions apply:
 
 -   **A different model gives different answers.** An LLM step (habitat
-    lookup, expert review, LLM priors) run on another model is a
+    lookup, expert review, reference-accession screen) run on another model is a
     different method. Compare its output with a run on your usual model
     before relying on it. Habitat weights feed the priors, so changing
     the habitat model changes calls.
@@ -187,23 +187,26 @@ runs. Three cautions apply:
 | `write_taxaid_manifest()` | Record that manifest beside a run's outputs. |
 | `check_taxaid_manifest()` | Compare the current library against a recorded manifest; errors by default. |
 
-Every TaxaID package sits at version 0.1.0 and is reinstalled constantly
+Every TaxaID package sits at version N.1.0 and can be altered
 during development, so a version string cannot tell you whether the
 library a run used is the library you think it used: two runs a week
 apart can report identical versions and have executed materially
-different code.
+different code. However, I have found run to run variation small enough
+that changes in final taxonomic assignments are rare compared with other
+aspects that can change (user settings, reference updates, workflow details).
 
-The signal is a hash of the installed code, not the `Built` timestamp.
-Rebuilding identical source moves `Built` and changes nothing that
-matters, so a `Built`-based check would fire on every harmless
-reinstall, and a guard that cries wolf is a guard someone switches off.
-Internals are hashed as well as exports, because a behaviour change need
-not touch an exported signature.
+That is why `check_taxaid_manifest()` compares a hash of each package's
+installed code rather than its `Built` timestamp. Reinstalling the same
+source changes `Built` without changing anything the code does, so a
+timestamp comparison would report a difference after every harmless
+reinstall -- and a check that reports differences which do not matter is
+one people stop running. The hash covers each package's internal
+functions as well as its exported ones, because behaviour can change
+without any exported signature changing.
 
 A package named in the manifest but missing from the library is reported
 first, and packages that are not installed are kept as rows rather than
-dropped: a checker that only compares what it finds on both sides cannot
-report what is gone.
+dropped.
 
 ``` r
 # in a workflow preamble
@@ -225,7 +228,7 @@ devtools::install("path/to/TaxaTools")
 Most of TaxaTools works with no key at all (`clean_taxon_names()`,
 `create_taxon_names()`, backbone verification via the public Global
 Names Verifier API, barcode/rank utilities). Two categories of function
-need one:
+need an LLM:
 
 -   LLM functions (`call_api()` and anything built on it,
     `common_to_scientific()`, `draft_methods_text()`, and every
@@ -245,7 +248,7 @@ Set keys in `~/.Renviron` (one per line, no quotes):
 usethis::edit_r_environ()
 ```
 
-```         
+```
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 ENTREZ_KEY=your_ncbi_api_key_here
 ```
@@ -351,7 +354,7 @@ rename_cols()             # align column names to DarwinCore
 TaxaTools is the foundation of the TaxaID ecosystem: every other package
 imports it, and it imports none of them:
 
-```         
+```
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
 TaxaTools -> TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 ```
@@ -364,6 +367,8 @@ ecosystem overview and installation instructions.
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
+
+The repository URL above is provisional; see the root TaxaID README.
 
 A citable version with a DOI will be released through the USGS software
 release process.
@@ -380,7 +385,19 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San Francisco, California).
+## AI use and disclaimers
+
+AI-assisted coding tools were used to develop this package: Anthropic
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6 and 5; Fable 5 and 5.1)
+through Claude Code (Anthropic PBC, San Francisco, California), between
+May 2026 and November 2026, for code, tests, documentation and review.
+Every commit names the model that contributed to it in a
+`Co-Authored-By` trailer. All code was reviewed, tested and validated by
+the author to ensure correctness and reproducibility, and was also
+subject to a human code review.
+
+Any use of trade, firm, or product names is for descriptive purposes
+only and does not imply endorsement by the U.S. Government.
 
 ## References
 

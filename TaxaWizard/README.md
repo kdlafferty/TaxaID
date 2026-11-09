@@ -1,19 +1,19 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
 # TaxaWizard
 
-TaxaID is a complex ecosystem and workflows may use dozens of functions
-and hundreds of lines of code. TaxaWizard is designed to help an LLM
-guide a user through it.
+TaxaID is a complex ecosystem with hundreds of functions. So workflows
+may use dozens of functions and hundreds of lines of code. TaxaWizard
+is designed to help an LLM guide a user through a workflow.
 
 An LLM can read any R package and list its functions, inputs, and
-outputs to help a user write code. TaxaWizard adds a workflow map: which
-functions flow into which, and the order that connects an input to one
-of the outputs a user might want. TaxaWizard uses this map to run an
+outputs to help a user write code. To help, TaxaWizard adds a workflow
+map: which functions flow into which, and the order that connects an input
+to one of the outputs a user might want. TaxaWizard uses this map to run an
 LLM-powered interview that identifies inputs, parameters, and pipeline
 steps, then generates a self-contained R script. There are three ways to
 reach that interview, plus a separate capability for turning a finished
@@ -252,6 +252,8 @@ Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
 
+The repository URL above is provisional; see the root TaxaID README.
+
 A citable version with a DOI will be released through the USGS software
 release process.
 
@@ -266,7 +268,19 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San Francisco, California).
+## AI use and disclaimers
+
+AI-assisted coding tools were used to develop this package: Anthropic
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6 and 5; Fable 5 and 5.1)
+through Claude Code (Anthropic PBC, San Francisco, California), between
+May 2026 and November 2026, for code, tests, documentation and review.
+Every commit names the model that contributed to it in a
+`Co-Authored-By` trailer. All code was reviewed, tested and validated by
+the author to ensure correctness and reproducibility, and was also
+subject to a human code review.
+
+Any use of trade, firm, or product names is for descriptive purposes
+only and does not imply endorsement by the U.S. Government.
 
 ## References
 

@@ -1,6 +1,6 @@
 ---
-editor_options: 
-  markdown: 
+editor_options:
+  markdown:
     wrap: 72
 ---
 
@@ -9,8 +9,8 @@ editor_options:
 Habitat assignment and spatial quality control for the
 [TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Classifies
 species into habitat categories using LLM-based biological consensus,
-assigns habitats to sampling sites, and flags spatial outliers. It
-accepts that species can occur in multiple habitats, but assumes that a
+assigns habitats to sampling sites, and let's users flag spatial outliers.
+It accepts that species can occur in multiple habitats, but assumes that a
 particular sampling location can be defined as a single habitat
 category. In other words, it uses the species collected at a location to
 guess the habitat at the site where the species was observed. It gets
@@ -18,7 +18,7 @@ this right most of the time, and indicates its uncertainty when it can't
 decide.
 
 Habitat (e.g., terrestrial, marine, freshwater) is a key predictor of
-which species are plausible at a sampling location. In TaxaID, I
+which species are plausible at a sampling location. In TaxaHabitat, I
 recommend a few coarse habitat types rather than a long list of subtle
 ones. Incorrect habitat classification leads to false positives when
 species from the wrong habitat receive inflated priors. Ideally, a
@@ -28,7 +28,7 @@ basic habitat categories. As with any LLM output, users should review
 the results. `flag_habitat_inconsistencies()` provides an interactive
 map that makes errant classifications easier to spot and correct.
 
-The interactive map makes it easier to review and proof occupancy data.
+The interactive map also makes it easier to review and proof occupancy data.
 Even well-curated data like GBIF (Global Biodiversity Information
 Facility; GBIF Secretariat, Copenhagen, Denmark) have a high frequency
 of location errors. By mapping points by habitat type, users can easily
@@ -343,6 +343,8 @@ Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
 
+The repository URL above is provisional; see the root TaxaID README.
+
 A citable version with a DOI will be released through the USGS software
 release process.
 
@@ -356,7 +358,19 @@ release process.
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with Claude Code (Anthropic PBC, San Francisco, California).
+## AI use and disclaimers
+
+AI-assisted coding tools were used to develop this package: Anthropic
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6 and 5; Fable 5 and 5.1)
+through Claude Code (Anthropic PBC, San Francisco, California), between
+May 2026 and November 2026, for code, tests, documentation and review.
+Every commit names the model that contributed to it in a
+`Co-Authored-By` trailer. All code was reviewed, tested and validated by
+the author to ensure correctness and reproducibility, and was also
+subject to a human code review.
+
+Any use of trade, firm, or product names is for descriptive purposes
+only and does not imply endorsement by the U.S. Government.
 
 ## References
 
