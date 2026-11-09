@@ -137,9 +137,12 @@ carry a time, because an unstamped group could be older still.}
 \item{\code{attr(x, "census_resumed")}}{\code{TRUE} when any group was served from
 a checkpoint rather than queried in this run.}
 }
-\code{census_date} is derived from \code{census_time} in the local timezone rather
-than read from the clock separately, so the two cannot disagree across
-midnight.
+\code{census_date} is derived from \code{census_time} in the machine's local time
+zone rather than read from the clock separately, so the two cannot disagree
+across midnight. On a machine whose time zone cannot be resolved, R falls
+back to UTC, so \code{census_date} can then be the UTC date -- up to a day ahead
+of the local one. \code{census_time} is exact either way and is the value to
+compare two censuses on.
 }
 \description{
 An \strong{unreferenced species} is a described taxon that has \strong{no barcode sequence}

@@ -21,11 +21,16 @@ utils::globalVariables(c(
   attr(x, "census_time") <- t_now
   # tz is REQUIRED: as.Date() on a POSIXct converts in UTC, so without it the
   # date reads as tomorrow for the whole local evening -- a worse error than
-  # the midnight race that two clock reads could hit. It is "" and NOT
-  # Sys.timezone(): where the zone cannot be determined Sys.timezone() returns
-  # NA, and as.Date() then warns "unknown timezone 'NA'" and falls back to UTC,
-  # silently restoring the very error this line exists to prevent. "" asks R
-  # for the current zone directly and has no NA to fall back from.
+  # the midnight race that two clock reads could hit. "" asks R for the
+  # machine's current zone, which is what a reader of a census date means.
+  #
+  # What "" does NOT do, measured rather than assumed: where the zone cannot
+  # be resolved -- TZ naming a zone the OS does not know -- R falls back to
+  # UTC here and issues no warning, so the date is the UTC date again. No
+  # argument can do better, because the OS cannot supply an offset it does
+  # not have. Nor can the case be detected from Sys.timezone(), which returns
+  # the unknown NAME rather than NA. The authoritative stamp in that
+  # situation is census_time, which is exact on any machine.
   attr(x, "census_date") <- as.Date(t_now, tz = "")
   attr(x, "census_oldest_query_time") <- oldest
   attr(x, "census_resumed") <- isTRUE(resumed)
@@ -437,9 +442,12 @@ audit_reference_coverage <- function(reference_df,
 #'   \item{`attr(x, "census_resumed")`}{`TRUE` when any group was served from
 #'     a checkpoint rather than queried in this run.}
 #' }
-#' `census_date` is derived from `census_time` in the local timezone rather
-#' than read from the clock separately, so the two cannot disagree across
-#' midnight.
+#' `census_date` is derived from `census_time` in the machine's local time
+#' zone rather than read from the clock separately, so the two cannot disagree
+#' across midnight. On a machine whose time zone cannot be resolved, R falls
+#' back to UTC, so `census_date` can then be the UTC date -- up to a day ahead
+#' of the local one. `census_time` is exact either way and is the value to
+#' compare two censuses on.
 #'
 #' @note Requires an internet connection and the `rentrez` package.  NCBI
 #'   enforces rate limits (3 req/s without an API key; 10 req/s with one).
