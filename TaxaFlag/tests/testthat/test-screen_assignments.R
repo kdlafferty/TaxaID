@@ -572,8 +572,10 @@ test_that("R6 is NOT EVALUABLE when neither the sequence vote nor prior_driven c
   # different facts about the same row.
   expect_equal(x$flag_resolution, "upheld")
   expect_false(rc$evaluated[rc$rule == "R7"])
-  expect_true(is.na(rc$n_rows[rc$rule == "R7"]))
   expect_equal(rc$n_evaluable[rc$rule == "R7"], 0L)
+  # The row WAS answered, so the count is reported rather than blanked: not
+  # evaluable and answered nothing are different states.
+  expect_equal(rc$n_rows[rc$rule == "R7"], 1L)
 })
 
 test_that("R7 IS evaluable once its confirm clause can be decided", {
@@ -763,4 +765,42 @@ test_that("the fall-through answers rows it could not ask, and the counts say so
 
   # Both numbers reach the user.
   expect_message(screen_assignments(d), "R7 = 2 \\(1 asked\\)")
+})
+
+test_that("a rule that could not be asked still reports the rows it answered", {
+  # The fall-through upholds every keep row reaching it, including rows whose
+  # confirm test it could not put. Blanking its count because it was not
+  # evaluable dropped those rows out of a total the help says accounts for
+  # every resolved row: on this frame the sum read 0 while two rows had been
+  # resolved. NA now means "answered nothing AND could not be asked".
+  d <- rv(.drop = c("likelihood_support", "prior_role", "consensus_posterior",
+                    "consensus_confidence_score", "robust_lower_posterior"))
+  d <- rbind(d, d)
+  d$observation_id <- c("a", "b")
+  x <- scr(d)
+  rc <- attr(x, "resolution_counts")
+
+  # Both rows were resolved, and by R7.
+  expect_equal(sum(!is.na(x$flag_resolution)), 2L)
+  expect_true(all(x$flag_resolution == "upheld"))
+  expect_true(all(grepl("^R7", x$flag_resolution_basis)))
+
+  # R7: answered 2, asked 0, not evaluable -- three facts, none hidden.
+  expect_equal(rc$n_rows[rc$rule == "R7"], 2L)
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 0L)
+  expect_false(rc$evaluated[rc$rule == "R7"])
+
+  # The sentence the help makes: the counts account for every resolved row.
+  expect_equal(sum(rc$n_rows, na.rm = TRUE), 2L)
+
+  # R7 is the only rule that can answer a row it could not ask, because it is
+  # the only one that fires unconditionally. Every other rule is either
+  # evaluable or has nothing to report.
+  oth <- rc[rc$rule != "R7", ]
+  expect_true(all(oth$evaluated | is.na(oth$n_rows) | oth$n_rows == 0L))
+
+  # Both numbers reach the user, and "not evaluable" is reserved for a rule
+  # with nothing to report.
+  expect_message(screen_assignments(d), "R7 = 2 \\(0 asked\\)")
+  expect_message(screen_assignments(d), "R1 = not evaluable")
 })

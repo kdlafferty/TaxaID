@@ -152,9 +152,13 @@ number of rows upheld without the confirm test being put. \verb{R7 = 2 (1 asked)
 them the two are the same question.
 }
 \code{n_rows} across the rules sums to the rows the cascade resolved, whichever
-rule answered each. Where \code{evaluated} is FALSE, \code{n_rows} is NA rather than
-0, because a rule that could not fire has not fired on nothing -- it was
-never put. Every rule that was asked reports its count, zeros included.
+rule answered each, and no rule's count is ever blanked while it has rows
+to report. \code{n_rows} is NA only where a rule answered nothing AND could not
+be asked, because a rule that could not fire has not fired on nothing --
+it was never put. A rule that could not be asked but answered anyway
+reports its count with \code{n_evaluable} 0, which only R7 can do: \verb{R7 = 2 (0 asked)} means two rows were upheld by the fall-through without its
+confirm test being put to either. Every rule that was asked reports its
+count, zeros included.
 
 The two columns differ because being asked has two parts. Reaching: the
 rules are a cascade down one branch per \code{suggested_action}, so a "keep" row

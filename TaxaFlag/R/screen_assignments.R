@@ -279,9 +279,14 @@
 #'     them the two are the same question.
 #' }
 #' `n_rows` across the rules sums to the rows the cascade resolved, whichever
-#' rule answered each. Where `evaluated` is FALSE, `n_rows` is NA rather than
-#' 0, because a rule that could not fire has not fired on nothing -- it was
-#' never put. Every rule that was asked reports its count, zeros included.
+#' rule answered each, and no rule's count is ever blanked while it has rows
+#' to report. `n_rows` is NA only where a rule answered nothing AND could not
+#' be asked, because a rule that could not fire has not fired on nothing --
+#' it was never put. A rule that could not be asked but answered anyway
+#' reports its count with `n_evaluable` 0, which only R7 can do: `R7 = 2
+#' (0 asked)` means two rows were upheld by the fall-through without its
+#' confirm test being put to either. Every rule that was asked reports its
+#' count, zeros included.
 #'
 #' The two columns differ because being asked has two parts. Reaching: the
 #' rules are a cascade down one branch per `suggested_action`, so a "keep" row
@@ -558,7 +563,16 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     rn <- paste0("R", 0:7)
     rn_eval <- unname(res$evaluated[rn])
     rc_n <- vapply(rn, function(r) sum(res$rule == r), integer(1))
-    rc_n[!rn_eval] <- NA_integer_
+    # NA means "answered nothing AND could not be asked", not merely "could
+    # not be asked". R7 is the cascade's fall-through: it upholds every keep
+    # row reaching it, including rows whose confirm test it could not put, so
+    # blanking its count would drop those rows out of a total that is supposed
+    # to account for every resolved row. R7 is the only rule this can happen
+    # to, because it is the only one that fires unconditionally -- R1 needs a
+    # blank or validity verdict to fire at all, R4 needs the local-record
+    # count and the second scale, and R6 needs the sequence vote or a known
+    # prior_driven, so none of them can answer a row it could not ask.
+    rc_n[!rn_eval & rc_n == 0L] <- NA_integer_
     rc <- data.frame(rule = rn, n_rows = rc_n, evaluated = rn_eval,
                      n_evaluable = unname(res$n_evaluable[rn]),
                      stringsAsFactors = FALSE, row.names = NULL)
@@ -567,9 +581,8 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
     # "asked and declined" whether 0 rows or 40 were actually put to the rule.
     message("screen_assignments(): resolution by rule: ",
             paste0(rc$rule, " = ",
-                   ifelse(rc$evaluated,
-                          sprintf("%d (%d asked)", rc$n_rows, rc$n_evaluable),
-                          "not evaluable"),
+                   ifelse(is.na(rc$n_rows), "not evaluable",
+                          sprintf("%d (%d asked)", rc$n_rows, rc$n_evaluable)),
                    collapse = ", "), ".")
   }
   d
