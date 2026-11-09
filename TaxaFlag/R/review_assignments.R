@@ -64,7 +64,12 @@
 #'   \code{irreducible_consensus == TRUE} are reviewed. Non-irreducible rows
 #'   receive \code{NA} review columns. When \code{irreducible_consensus} is
 #'   absent, all unique candidate sets are reviewed with a message. Ignored
-#'   when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.
+#'   when \code{plausible_taxa_col = NULL}. Default \code{TRUE}, because the
+#'   review costs one LLM call per distinct candidate set and a set with
+#'   \code{irreducible_consensus == FALSE} is one the dataset resolves
+#'   elsewhere, so reviewing it cannot change a call that gets reported.
+#'   \code{FALSE} reviews every unique set: the more thorough choice, and the
+#'   more expensive one.
 #' @param consensus_posterior_col Character or \code{NULL}. Column name for
 #'   \code{TaxaAssign::posterior_consensus()}'s \code{consensus_posterior} --
 #'   the pipeline's own statistical confidence in the winning taxon. When
@@ -285,6 +290,9 @@
 #'   Production workflows pass \code{"error"}: an unreviewed row is dropped by
 #'   any export filter that tests \code{llm_* != "unlikely"}, so under one of
 #'   those a run with residue produces a species list that is silently short.
+#'   The default is \code{"warn"} because the residue is recorded on the
+#'   result either way, so a caller who reads the output can see it and
+#'   choose; \code{"error"} is for the run where nobody will read it.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls.
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.

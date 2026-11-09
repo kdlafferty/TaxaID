@@ -66,7 +66,11 @@ integrates over presence states (see \code{compute_posterior()}).}
 \item{lookup_missing_taxonomy}{Logical. If \code{TRUE}, calls
 \code{TaxaTools::verify_taxon_names()} to fill in taxonomy columns for
 \code{"unreferenced_species"} rows that have \code{NA} in those columns. Requires
-TaxaTools to be installed and may make network requests. Default \code{FALSE}.}
+TaxaTools to be installed and may make network requests. Default
+\code{FALSE}, and for those two reasons: a consensus call should acquire
+neither an optional dependency nor a network round trip without being
+asked, and the rows it fills are the ones a caller is least likely to be
+waiting on. The canonical workflow template passes \code{TRUE}.}
 
 \item{backbone_id}{Integer. Taxonomic backbone to use when
 \code{lookup_missing_taxonomy = TRUE}. Passed to

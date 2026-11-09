@@ -120,6 +120,26 @@ gains and loses described species. Two runs that disagree are therefore
 not evidence of a changed argument until their census dates are compared.
 The resume checkpoint cannot answer this -- it is deleted on clean
 completion -- so the date is recorded on the result itself.
+
+\code{attr(x, "census_time")} is when the audit FINISHED, which is not the same
+as how old its numbers are. A resumed audit serves groups from a checkpoint
+that may be days or weeks old, so a finish stamp on its own hides exactly
+the drift the stamp exists to expose. Two further attributes answer the age
+question directly:
+\itemize{
+\item{\code{attr(x, "census_oldest_query_time")}}{The earliest per-group query
+time contributing to this census -- the age of its oldest number. \code{NA}
+when any contributing group came from a checkpoint written before
+per-group times were recorded: an unknown age is reported as unknown
+rather than inheriting the finish time, and a warning names how many
+groups were affected. It is NOT the oldest of the groups that happen to
+carry a time, because an unstamped group could be older still.}
+\item{\code{attr(x, "census_resumed")}}{\code{TRUE} when any group was served from
+a checkpoint rather than queried in this run.}
+}
+\code{census_date} is derived from \code{census_time} in the local timezone rather
+than read from the clock separately, so the two cannot disagree across
+midnight.
 }
 \description{
 An \strong{unreferenced species} is a described taxon that has \strong{no barcode sequence}

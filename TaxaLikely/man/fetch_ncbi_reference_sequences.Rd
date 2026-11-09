@@ -62,7 +62,14 @@ capping. See \verb{@section Choosing max_per_species and max_per_genus}.}
 
 \item{max_per_genus}{Integer or NULL (default 500).
 Maximum sequences per genus after species-level capping. NULL disables
-the cap. See \verb{@section Choosing max_per_species and max_per_genus}.}
+the cap. The default is 500 and not \code{NULL} because an uncapped build's
+memory cost is unbounded in the data: it is set by the most heavily
+sequenced genus in the taxon list, which the caller cannot know until
+after the fetch they would lose. A cap that was not needed costs some
+thinning, and it reports what it thinned; no cap costs the whole run,
+after the fetch has already been paid for. Choose the value from
+\code{dry_run = TRUE} rather than from this default.
+See \verb{@section Choosing max_per_species and max_per_genus}.}
 
 \item{priority_taxa}{Character vector or NULL (default NULL).
 Species names that should be fully represented in the reference.
@@ -171,7 +178,10 @@ queried, after which every remaining query succeeded), silently costing
 352 species-level consensus rows their own reference data, including
 \emph{Medialuna californiensis}, \emph{Zalophus californianus} and \emph{Tursiops
 truncatus}. Re-issuing the identical queries afterwards succeeded for all
-7, confirming the failures were transient. \code{"warn"} keeps the run alive
+7, confirming the failures were transient. That is also why \code{"warn"} is
+the default: a stop would have discarded a fetch that re-issuing the
+same queries completed, and the default assumes a caller who reads the
+output. \code{"error"} is for the case where nobody will. \code{"warn"} keeps the run alive
 but reports the affected taxa by name in one consolidated warning and
 message, because per-taxon warnings are easy to miss in a large log (a
 real 17,000-line log missed all 7). Use \code{"error"} for an unattended

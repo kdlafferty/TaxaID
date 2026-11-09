@@ -67,7 +67,11 @@ the within-species distribution and thereby distorting model training.
 For typical vertebrate barcode databases a value of \code{10L}-\code{20L} is
 sufficient; the resulting within-species pair counts per taxon are at most
 \code{max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2}.  \code{NULL} disables
-the cap (current behaviour).}
+the cap, and is the default because the cap REMOVES reference sequences
+by a random draw: a default that quietly thinned every build would make
+the calibration, and every likelihood resting on it, depend on a number
+the caller never chose and a draw they never saw. The canonical workflow
+template passes \code{20L}.}
 
 \item{barcode_term}{Character or \code{NULL} (default \code{NULL}).  When supplied
 AND \code{min_seq_len}/\code{max_seq_len} are both left at their defaults, resolves
@@ -156,7 +160,14 @@ floored pair of each out-of-genus family's SECOND partner species, which
 is what H3's gap needs: it is the only policy other than \code{"all"} under
 which \code{\link[=train_likelihood_model]{train_likelihood_model()}} measures H3's gap rather than assuming
 it. See \verb{@section Pair retention} for which quantities each policy
-reproduces exactly and what each changes elsewhere.}
+reproduces exactly and what each changes elsewhere. The default is
+\code{"all"} because it is the unabridged pair table: every quantity named in
+that section is exact under it by construction, where each capping
+policy is exact only for the quantities listed against it, and
+\code{"best_per_partner"} in particular turns H3's gap from measured into
+assumed. So the default is the policy that cannot be wrong, and a cap is
+opted into once \code{\link[=estimate_sequence_matrix_size]{estimate_sequence_matrix_size()}} shows one is needed.
+The canonical workflow template passes \code{"best_per_partner"}.}
 
 \item{min_pair_coverage}{Numeric in (0, 1] or \code{NULL} (default \code{0.8}). Only
 used when \code{pair_retention} is not \code{"all"}: the coverage floor the

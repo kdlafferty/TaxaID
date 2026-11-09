@@ -100,7 +100,11 @@ utils::globalVariables(c(
 #'   For typical vertebrate barcode databases a value of `10L`-`20L` is
 #'   sufficient; the resulting within-species pair counts per taxon are at most
 #'   `max_seqs_per_taxon * (max_seqs_per_taxon - 1) / 2`.  `NULL` disables
-#'   the cap (current behaviour).
+#'   the cap, and is the default because the cap REMOVES reference sequences
+#'   by a random draw: a default that quietly thinned every build would make
+#'   the calibration, and every likelihood resting on it, depend on a number
+#'   the caller never chose and a draw they never saw. The canonical workflow
+#'   template passes `20L`.
 #' @param verbose Logical (default `TRUE`).  Passed straight through to
 #'   `DECIPHER::AlignSeqs()`/`DECIPHER::DistanceMatrix()`'s own native
 #'   progress reporting (percent-complete, ETA) for the two
@@ -156,7 +160,14 @@ utils::globalVariables(c(
 #'   is what H3's gap needs: it is the only policy other than `"all"` under
 #'   which [train_likelihood_model()] measures H3's gap rather than assuming
 #'   it. See `@section Pair retention` for which quantities each policy
-#'   reproduces exactly and what each changes elsewhere.
+#'   reproduces exactly and what each changes elsewhere. The default is
+#'   `"all"` because it is the unabridged pair table: every quantity named in
+#'   that section is exact under it by construction, where each capping
+#'   policy is exact only for the quantities listed against it, and
+#'   `"best_per_partner"` in particular turns H3's gap from measured into
+#'   assumed. So the default is the policy that cannot be wrong, and a cap is
+#'   opted into once [estimate_sequence_matrix_size()] shows one is needed.
+#'   The canonical workflow template passes `"best_per_partner"`.
 #' @param min_pair_coverage Numeric in (0, 1] or `NULL` (default `0.8`). Only
 #'   used when `pair_retention` is not `"all"`: the coverage floor the
 #'   retained best-clearing pair is chosen under. Must equal the

@@ -221,7 +221,11 @@
 #' @param lookup_missing_taxonomy Logical. If `TRUE`, calls
 #'   `TaxaTools::verify_taxon_names()` to fill in taxonomy columns for
 #'   `"unreferenced_species"` rows that have `NA` in those columns. Requires
-#'   TaxaTools to be installed and may make network requests. Default `FALSE`.
+#'   TaxaTools to be installed and may make network requests. Default
+#'   `FALSE`, and for those two reasons: a consensus call should acquire
+#'   neither an optional dependency nor a network round trip without being
+#'   asked, and the rows it fills are the ones a caller is least likely to be
+#'   waiting on. The canonical workflow template passes `TRUE`.
 #' @param backbone_id Integer. Taxonomic backbone to use when
 #'   `lookup_missing_taxonomy = TRUE`. Passed to
 #'   `TaxaTools::verify_taxon_names()`. Required (errors) when

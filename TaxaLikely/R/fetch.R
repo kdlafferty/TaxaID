@@ -1671,7 +1671,14 @@ utils::globalVariables(c(
 #'   capping. See `@section Choosing max_per_species and max_per_genus`.
 #' @param max_per_genus Integer or NULL (default 500).
 #'   Maximum sequences per genus after species-level capping. NULL disables
-#'   the cap. See `@section Choosing max_per_species and max_per_genus`.
+#'   the cap. The default is 500 and not `NULL` because an uncapped build's
+#'   memory cost is unbounded in the data: it is set by the most heavily
+#'   sequenced genus in the taxon list, which the caller cannot know until
+#'   after the fetch they would lose. A cap that was not needed costs some
+#'   thinning, and it reports what it thinned; no cap costs the whole run,
+#'   after the fetch has already been paid for. Choose the value from
+#'   `dry_run = TRUE` rather than from this default.
+#'   See `@section Choosing max_per_species and max_per_genus`.
 #' @param dry_run Logical (default `FALSE`). `TRUE` stops after the metadata
 #'   step, before any sequence is downloaded, and returns the memory the
 #'   sequence matrix would need under a grid of caps instead of a
@@ -1773,7 +1780,10 @@ utils::globalVariables(c(
 #'   352 species-level consensus rows their own reference data, including
 #'   *Medialuna californiensis*, *Zalophus californianus* and *Tursiops
 #'   truncatus*. Re-issuing the identical queries afterwards succeeded for all
-#'   7, confirming the failures were transient. `"warn"` keeps the run alive
+#'   7, confirming the failures were transient. That is also why `"warn"` is
+#'   the default: a stop would have discarded a fetch that re-issuing the
+#'   same queries completed, and the default assumes a caller who reads the
+#'   output. `"error"` is for the case where nobody will. `"warn"` keeps the run alive
 #'   but reports the affected taxa by name in one consolidated warning and
 #'   message, because per-taxon warnings are easy to miss in a large log (a
 #'   real 17,000-line log missed all 7). Use `"error"` for an unattended

@@ -68,7 +68,12 @@ by \code{TaxaAssign::add_slash_taxon()}), only candidate sets where
 \code{irreducible_consensus == TRUE} are reviewed. Non-irreducible rows
 receive \code{NA} review columns. When \code{irreducible_consensus} is
 absent, all unique candidate sets are reviewed with a message. Ignored
-when \code{plausible_taxa_col = NULL}. Default \code{TRUE}.}
+when \code{plausible_taxa_col = NULL}. Default \code{TRUE}, because the
+review costs one LLM call per distinct candidate set and a set with
+\code{irreducible_consensus == FALSE} is one the dataset resolves
+elsewhere, so reviewing it cannot change a call that gets reported.
+\code{FALSE} reviews every unique set: the more thorough choice, and the
+more expensive one.}
 
 \item{consensus_posterior_col}{Character or \code{NULL}. Column name for
 \code{TaxaAssign::posterior_consensus()}'s \code{consensus_posterior} --
@@ -332,7 +337,10 @@ after the re-asks: \code{"warn"} (default) reports them and continues,
 recorded on the result either way (see \code{@section Unreviewed rows}).
 Production workflows pass \code{"error"}: an unreviewed row is dropped by
 any export filter that tests \code{llm_* != "unlikely"}, so under one of
-those a run with residue produces a species list that is silently short.}
+those a run with residue produces a species list that is silently short.
+The default is \code{"warn"} because the residue is recorded on the
+result either way, so a caller who reads the output can see it and
+choose; \code{"error"} is for the run where nobody will read it.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 
