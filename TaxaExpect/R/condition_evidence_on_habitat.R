@@ -40,7 +40,10 @@ utils::globalVariables(c("taxon_name"))
 #' information, no change.
 #'
 #' @param evidence Data frame with \code{taxon_name} and \code{weight}
-#'   columns (any evidence generator's output).
+#'   columns (any evidence generator's output). A negative \code{weight} is an
+#'   error: a weight is an evidence mass, so a negative one has no meaning
+#'   here, and it is the only way a row could be both floored and reduced to
+#'   zero.
 #' @param habitat_lookup Data frame from
 #'   \code{TaxaHabitat::build_habitat_lookup()}: \code{taxon_name} plus one
 #'   numeric weight column per habitat class.
@@ -55,8 +58,10 @@ utils::globalVariables(c("taxon_name"))
 #'   \code{NA} when unknown), \code{weight_unconditioned} (the generator's
 #'   original weight), \code{habitat_floored} (\code{TRUE} where the product
 #'   fell below \code{w_floor} and was raised to it) and
-#'   \code{habitat_zeroed} (\code{TRUE} where the conditioned weight is
-#'   exactly 0). The two are mutually exclusive by construction: a positive
+#'   \code{habitat_zeroed} (\code{TRUE} where the row HAD weight and now has
+#'   none -- the conditioned weight is exactly 0 and the unconditioned one was
+#'   above it, so a row that arrived at 0 is not reported as zeroed by
+#'   habitat). The two are mutually exclusive by construction: a positive
 #'   \code{w_floor} makes a zero impossible, and the default
 #'   \code{w_floor = 0} makes flooring impossible. A zeroed row contributes
 #'   nothing to the prior and so is indistinguishable downstream from a row
