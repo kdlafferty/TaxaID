@@ -520,31 +520,26 @@ test_that("the census date is the LOCAL date, not the UTC date", {
   # The defect: as.Date() on a POSIXct converts in UTC, so a census taken in
   # the local evening west of UTC carried tomorrow's date.
   #
-  # The instant is chosen from the machine's OWN offset so that UTC and local
-  # fall on different days -- that difference is what lets this assertion
-  # fail. On a machine running UTC no such instant exists and there is nothing
-  # to test, which is the only case skipped here.
+  # The zone is PINNED rather than read from the machine. An earlier version
+  # of this test took the offset from the host and skipped when it was zero --
+  # which is exactly where CI runs (ubuntu-latest, no TZ), so CI could never
+  # catch a regression here. Pinning makes the test identical on a developer
+  # box and on a UTC runner.
   #
   # Measured, and deliberately NOT asserted: tz = "" does not rescue a machine
   # whose zone the OS cannot resolve. R falls back to UTC there, silently, and
   # no argument can do better because there is no offset to be had. That case
   # is also undetectable from Sys.timezone(), which returns the unknown name
   # rather than NA. See .stamp_census().
-  off <- as.POSIXlt(Sys.time())$gmtoff
-  skip_if(is.na(off) || off == 0L,
-          "machine runs on UTC; a local-vs-UTC date difference cannot exist")
-  # West of UTC, just after UTC midnight is still the previous local day;
-  # east of UTC, just before it is already the next one.
-  instant <- if (off < 0L) {
-    as.POSIXct("2026-11-10 00:30:00", tz = "UTC")
-  } else {
-    as.POSIXct("2026-11-09 23:30:00", tz = "UTC")
-  }
+  withr::local_timezone("America/Los_Angeles")
+  # 00:30 UTC on the 10th is 16:30 local on the 9th: different calendar days.
+  instant <- as.POSIXct("2026-11-10 00:30:00", tz = "UTC")
   utc_date <- as.Date(instant, tz = "UTC")
   local_date <- as.Date(format(instant, "%Y-%m-%d", tz = ""))
   # The precondition, asserted rather than assumed: if these agreed, every
   # assertion below would pass on the broken code too.
-  expect_false(identical(local_date, utc_date))
+  expect_identical(local_date, as.Date("2026-11-09"))
+  expect_identical(utc_date, as.Date("2026-11-10"))
 
   local_mocked_bindings(Sys.time = function() instant, .package = "base")
   out <- .stamp_census(data.frame(a = 1), oldest = .POSIXct(NA_real_),

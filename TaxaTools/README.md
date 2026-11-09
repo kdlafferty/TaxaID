@@ -228,7 +228,7 @@ devtools::install("path/to/TaxaTools")
 Most of TaxaTools works with no key at all (`clean_taxon_names()`,
 `create_taxon_names()`, backbone verification via the public Global
 Names Verifier API, barcode/rank utilities). Two categories of function
-need an API key:
+involve an API key, and only the first requires one:
 
 -   LLM functions (`call_api()` and anything built on it,
     `common_to_scientific()`, `draft_methods_text()`, and every

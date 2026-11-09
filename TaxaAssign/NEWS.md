@@ -8,7 +8,8 @@
   where the lineage columns carry it, and reports the candidate set behind
   each call.
 * Combines priors across sites for multi-site studies.
-* Updates assignments after new reference data without a full rerun. The
+* Supports updating assignments after new reference data without a full
+  rerun: a documented sequence of existing calls, not a single function. The
   taxonomic-assignment vignette gives the steps, including when the likelihood
   model must be retrained, and `posterior_consensus(reference_snapshot = )`
   labels each row with the reference state it was computed against.

@@ -135,9 +135,10 @@ relevant taxonomic hypotheses. Although grouping improves accuracy in
 the prior, overly fine grouping reduces the effective sample size and
 widens the standard deviations of the estimate.
 
-Fortunately, the priors per observation are robust to group definitions,
-because the posterior is renormalized within each observation (which are
-usually related). Inaccuracies remain when an observation's candidates come
+The posterior per observation is more robust to group definitions than the
+prior itself, because the posterior is renormalized within each observation
+and an observation's candidates are usually related. Inaccuracies remain when
+an observation's candidates come
 from different detection processes (a marine and a terrestrial candidate for
 the same read). If possible, avoid pooling highly dissimilar taxa sampled by
 highly dissimilar methods.

@@ -297,10 +297,13 @@ consensus_merged <- rbind(
 ```
 
 `reference_snapshot` is a column as well as an attribute because `rbind()`
-keeps only its first piece's attributes. After the merge, the attribute names
-one snapshot for both pieces, while the column still records which row came
-from which. For the same reason, the merged table keeps the FIRST piece's
-`consensus_settings`, so merge only tables made with the same consensus
-settings. `update_prior_from_consensus()` warns when labelled rows sit beside
-unlabelled ones, and reports how many rows each snapshot holds when there are
-several.
+keeps only its first piece's attributes. The label above is assigned as a
+column, so `consensus_old` carries no `reference_snapshot` attribute and
+neither does the merge -- the column is what records which row came from
+which, and it is what to read. For the same reason, the merged table keeps the
+FIRST piece's `consensus_settings`, so merge only tables made with the same
+consensus settings. `update_prior_from_consensus()` warns when labelled rows
+sit beside unlabelled ones, and reports how many rows each snapshot holds when
+there are several. That warning is reachable through
+`dplyr::bind_rows()`; a base `rbind()` of a labelled and an unlabelled piece
+errors on the mismatched columns before it is reached.
