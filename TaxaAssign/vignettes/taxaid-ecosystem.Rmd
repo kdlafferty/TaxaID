@@ -370,9 +370,12 @@ H3 scores lower still.
 
 ### Consensus Methods
 
-- **posterior_consensus()**: Bayesian LCA (lowest common ancestor) among
-  hypotheses exceeding a cumulative posterior threshold. Accounts for
-  uncertainty.
+- **posterior_consensus()**: sums posterior mass under each taxon, rank by
+  rank from the finest, and reports the finest taxon holding at least
+  `cumulative_threshold` of the total (`consensus_method = "credible_node"`,
+  the default). `consensus_method = "lca"` instead takes the smallest top set
+  of hypotheses reaching the threshold and reports their lowest common
+  ancestor. Accounts for uncertainty.
 - **score_consensus()**: traditional rank thresholds (e.g., species at 98%,
   genus at 95%). Deterministic, no model needed.
 - **update_prior_from_consensus()**: empirical Bayes refinement -- confirmed
