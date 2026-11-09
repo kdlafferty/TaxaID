@@ -522,3 +522,30 @@ test_that("the Methods text describes the consensus rule that actually ran", {
   # The two must not be the same paragraph.
   expect_false(identical(node_text, lca_text))
 })
+
+test_that("generate_report reads the consensus rule from the result it was given", {
+  set.seed(1) # simulation path: seeded so other tests cannot shift its stream
+  # The paragraph is only right if the method reaches it from the actual
+  # object. report_params does not carry consensus_method, so it is read from
+  # the consensus_settings attribute posterior_consensus() attaches. Pinning
+  # the helper alone would not catch a caller that stopped passing it.
+  result <- .mock_bayesian_result()
+
+  cons_lca <- .mock_consensus()
+  attr(cons_lca, "consensus_settings") <- list(consensus_method = "lca")
+  rep_lca <- generate_report(result, cons_lca, llm_fn = NULL)
+  expect_match(rep_lca, "lowest common ancestor \\(LCA\\) algorithm")
+
+  cons_node <- .mock_consensus()
+  attr(cons_node, "consensus_settings") <- list(consensus_method = "credible_node")
+  rep_node <- generate_report(result, cons_node, llm_fn = NULL)
+  expect_match(rep_node, "summing posterior probability under each candidate taxon")
+  expect_false(grepl("lowest common ancestor", rep_node, fixed = TRUE))
+
+  # An object recording no settings falls back to the package default, which
+  # is what an unlabelled run actually used.
+  cons_bare <- .mock_consensus()
+  attr(cons_bare, "consensus_settings") <- NULL
+  rep_bare <- generate_report(result, cons_bare, llm_fn = NULL)
+  expect_match(rep_bare, "summing posterior probability under each candidate taxon")
+})

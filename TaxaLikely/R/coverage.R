@@ -28,9 +28,12 @@ utils::globalVariables(c(
   # be resolved -- TZ naming a zone the OS does not know -- R falls back to
   # UTC here and issues no warning, so the date is the UTC date again. No
   # argument can do better, because the OS cannot supply an offset it does
-  # not have. Nor can the case be detected from Sys.timezone(), which returns
-  # the unknown NAME rather than NA. The authoritative stamp in that
-  # situation is census_time, which is exact on any machine.
+  # not have. Nor is the case reliably detectable from Sys.timezone(): where
+  # TZ names a zone the OS does not know it returns that unknown NAME, not
+  # NA, so a guard testing for NA misses it. It CAN return NA, where TZ is
+  # unset and the system zone cannot be determined -- so neither value is a
+  # dependable signal. The authoritative stamp in that situation is
+  # census_time, which is exact on any machine.
   attr(x, "census_date") <- as.Date(t_now, tz = "")
   attr(x, "census_oldest_query_time") <- oldest
   attr(x, "census_resumed") <- isTRUE(resumed)

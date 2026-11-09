@@ -194,9 +194,11 @@ they did:
   west of UTC. One limit is documented rather than claimed away, because it
   was measured: on a machine whose time zone the operating system cannot
   resolve, R falls back to UTC regardless of what is passed, and the case
-  cannot be detected from `Sys.timezone()`, which returns the unresolvable
-  name rather than `NA`. `census_time` is exact on any machine and is the
-  value to compare two censuses on.
+  is not reliably detectable from `Sys.timezone()`: where `TZ` names a zone
+  the system does not know it returns that unknown name rather than `NA`,
+  though it can return `NA` where `TZ` is unset and the zone cannot be
+  determined, so neither value is a dependable signal. `census_time` is exact
+  on any machine and is the value to compare two censuses on.
 - `TaxaTools::fill_higher_ranks()` accepts a `cache_dir` to reuse backbone
   answers across calls. It defaults to no caching, so existing callers are
   unaffected; the package does not choose a cache location on the user's

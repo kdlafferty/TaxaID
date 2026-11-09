@@ -529,8 +529,10 @@ test_that("the census date is the LOCAL date, not the UTC date", {
   # Measured, and deliberately NOT asserted: tz = "" does not rescue a machine
   # whose zone the OS cannot resolve. R falls back to UTC there, silently, and
   # no argument can do better because there is no offset to be had. That case
-  # is also undetectable from Sys.timezone(), which returns the unknown name
-  # rather than NA. See .stamp_census().
+  # is not reliably detectable from Sys.timezone(): where TZ names a zone the
+  # OS does not know it returns that unknown name, not NA, though it CAN
+  # return NA where TZ is unset and the system zone cannot be determined. See
+  # .stamp_census().
   withr::local_timezone("America/Los_Angeles")
   # 00:30 UTC on the 10th is 16:30 local on the 9th: different calendar days.
   instant <- as.POSIXct("2026-11-10 00:30:00", tz = "UTC")
