@@ -384,7 +384,7 @@ test_that(".recover_higherrank() falls back to unfiltered voting when the kingdo
 
 test_that("live API: returns EXACT match for a well-known species", {
   skip_if_not_installed("rgbif")
-  skip_if_offline()
+  skip_if_live_off()
   out <- get_keys_from_context(data.frame(
     kingdom = "Animalia", species = "Homo sapiens",
     stringsAsFactors = FALSE
