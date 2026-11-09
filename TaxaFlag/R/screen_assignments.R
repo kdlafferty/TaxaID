@@ -25,7 +25,7 @@
 #'     `relative_score_gap` of the call's best member, the call moves up to
 #'     the genus (congener) or family (confamilial) they share. Otherwise the
 #'     row is marked "review" (range expansion or error cannot be told
-#'     apart) and the suggested action is "exclude". Without `posterior_df`
+#'     apart) and the suggested action is "verify_range". Without `posterior_df`
 #'     every I2 row is "review". Only species and genus calls are tested.
 #'   \item I3: poor fit and geography plausible. A call at `move_up_max_rank`
 #'     or finer moves up to `best_identity_rank` if that is coarser than the
@@ -52,8 +52,8 @@
 #' remove rows, rename taxa in place, or alter any input column. The
 #' appended columns are suggestions for the caller to act on; filtering is a
 #' separate, deliberate step. The suggested action for a "review" row is
-#' "exclude", the conservative reading, but `identity_action` keeps the
-#' distinction.
+#' "verify_range" -- settle the range question rather than drop the
+#' detection -- and `identity_action` keeps the distinction.
 #'
 #' @section Site-aware screening:
 #' `geography_col` may name a per-site column, such as
@@ -71,17 +71,24 @@
 #' any other column. Acting on it is left to the user.
 #'
 #' The evidence is read as three independent votes, each "support",
-#' "against", "neutral" or "not_evaluated" (the needed columns are absent):
+#' "against", "neutral" or "not_evaluated". A vote is "not_evaluated" where
+#' the evidence it reads is missing ON THAT ROW, whether because the column is
+#' absent from the table or because the row has no value in it:
 #' \itemize{
 #'   \item \strong{SEQ}, the sequence match: `likelihood_support` and
-#'     `poor_absolute_fit`. Support: `likelihood_support` >= 0.50 and no
-#'     poor fit that counts against. Against: `likelihood_support` < 0.10, or
-#'     a poor fit on a call finer than `best_identity_rank` (an unreferenced
-#'     species is expected to fit poorly, so for it only
-#'     `likelihood_support` counts).
+#'     `poor_absolute_fit`. `likelihood_support` is required: where the row
+#'     has none, SEQ is "not_evaluated" and casts no vote even if
+#'     `poor_absolute_fit` is present, because a poor fit on its own reports
+#'     that no reference matched well, which is as true of a correct call on
+#'     an unreferenced species as of a wrong one. Support:
+#'     `likelihood_support` >= 0.50 and no poor fit that counts against.
+#'     Against: `likelihood_support` < 0.10, or a poor fit on a call finer
+#'     than `best_identity_rank` (an unreferenced species is expected to fit
+#'     poorly, so for it only `likelihood_support` counts).
 #'   \item \strong{OCC}, occurrence: the occurrence-record side of the prior
 #'     (`consensus_has_occurrence_record`, which matches the call's rank; else
-#'     `winner_has_occurrence_record`; else `primary_plausibility`) and the
+#'     `winner_has_occurrence_record`; else `consensus_plausibility`, which
+#'     matches the call's rank in turn; else `primary_plausibility`) and the
 #'     reviewer's geography verdict together cast ONE vote,
 #'     because both rest on the same occurrence data and their agreement is
 #'     not two confirmations. If they disagree the vote is "split", counted
@@ -102,8 +109,10 @@
 #' is \emph{stable} when `consensus_confidence_score` and
 #' `robust_lower_posterior` (whichever are present, at least one) are all
 #' at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
-#' doubt but never create confidence: every route to "confirmed" or
-#' "softened" requires SEQ support.
+#' doubt but never create confidence: every route to a confirmed KEEP or a
+#' softened flag requires SEQ support. A confirmed EXCLUSION does not, because
+#' agreeing with an exclusion lowers confidence in the call rather than
+#' raising it.
 #'
 #' `flag_consistency_score` is (votes for - votes against) / votes cast over
 #' SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
@@ -119,9 +128,15 @@
 #'     else "upheld".
 #'   \item R4: advice "verify_range" where the taxon has at least 3 distinct
 #'     occurrence-record locations within 50 km of the row's site
-#'     (`geo_local_record_location_n`, see below), the study-wide
-#'     `llm_geographic_plausibility` is likely or possible, and SEQ
-#'     supports: "softened".
+#'     (`geo_local_record_location_n`, see below), the OTHER geographic scale
+#'     is likely or possible, and SEQ supports: "softened". The other scale is
+#'     `llm_geographic_plausibility_site` when the flag was raised on the
+#'     study-wide column and the study-wide column when it was raised on the
+#'     site one: re-reading the column named by `geography_col` could never
+#'     soften the flag, because a "verify_range" row reads "unlikely" there by
+#'     construction. R4 is asked of a row only where that row carries both
+#'     `geo_local_record_location_n` and a verdict on the other scale, and SEQ
+#'     was evaluated.
 #'   \item R5: advice "verify_range" otherwise: "upheld".
 #'   \item R6: advice "keep" with SEQ against, or advice "keep" or "move_up"
 #'     on a prior-driven call without SEQ support: "escalated". A "move_up"
@@ -164,7 +179,12 @@
 #' @param geography_col,habitat_col,scope_col Names of the reviewer's
 #'   geographic, habitat and scope plausibility columns, with values
 #'   "likely", "possible" or "unlikely" (anything else counts as missing
-#'   for geography, and as not plausible for habitat).
+#'   for geography, and as not plausible for habitat). Rule R4 needs a
+#'   SECOND geographic scale, and it picks the one `geography_col` does not
+#'   name: pass `"llm_geographic_plausibility"` and R4 reads
+#'   `"llm_geographic_plausibility_site"`, and the reverse. A
+#'   `geography_col` naming neither of those two falls back to
+#'   `"llm_geographic_plausibility"` as the second scale.
 #' @param poor_fit_col Name of the logical column that is TRUE when the best
 #'   match fits poorly in absolute terms.
 #' @param best_identity_rank_col Name of the column giving the rank at which
@@ -239,8 +259,53 @@
 #' `blank_flag_col = NULL`). Because `rule_counts` is an attribute, dplyr verbs
 #' drop it; read it straight off the value `screen_assignments()` returns.
 #' With `resolve = TRUE` the result also carries `attr(, "resolution_counts")`:
-#' one row per rule R0 to R7 with `n_rows`, and a message reports the same
-#' counts, zeros included.
+#' one row per rule R0 to R7 with `n_rows`, `evaluated` and `n_evaluable`, and
+#' a message reports both, as `R7 = 2 (1 asked)`.
+#'
+#' A rule was ASKED of a row when the row both reached it and carried what its
+#' test reads. `evaluated` is TRUE where some row could have been asked, and
+#' `n_evaluable` is how many rows were. `n_rows` is how many the rule
+#' ANSWERED, so the two relate differently for different rules, and the
+#' difference is the point:
+#' \itemize{
+#'   \item R1, R4 and R6 answer only rows they asked, so their `n_rows` never
+#'     exceeds their `n_evaluable`.
+#'   \item R7 is the fall-through: it answers every row reaching it, and a row
+#'     it could not ask is upheld by default rather than by test. Its `n_rows`
+#'     can therefore exceed its `n_evaluable`, and the gap is exactly the
+#'     number of rows upheld without the confirm test being put. `R7 = 2
+#'     (1 asked)` says two rows were resolved and one was tested.
+#'   \item R0, R2, R3 and R5 read only what every gated row carries, so for
+#'     them the two are the same question.
+#' }
+#' `n_rows` across the rules sums to the rows the cascade resolved, whichever
+#' rule answered each, and no rule's count is ever blanked while it has rows
+#' to report. `n_rows` is NA only where a rule answered nothing AND could not
+#' be asked, because a rule that could not fire has not fired on nothing --
+#' it was never put. A rule that could not be asked but answered anyway
+#' reports its count with `n_evaluable` 0, which only R7 can do: `R7 = 2
+#' (0 asked)` means two rows were upheld by the fall-through without its
+#' confirm test being put to either. Every rule that was asked reports its
+#' count, zeros included.
+#'
+#' The two columns differ because being asked has two parts. Reaching: the
+#' rules are a cascade down one branch per `suggested_action`, so a "keep" row
+#' is never asked R1, and a row R1 has already answered is never asked R2.
+#' `n_evaluable` can therefore be 0 with `evaluated` TRUE -- the rule could
+#' have fired, and no row put the question to it. Inputs: three rules read
+#' something a reviewed table need not carry, and where it is absent their
+#' test still returns FALSE, so the rule cannot fire however the evidence
+#' falls. R1 needs a blank verdict (`blank_flag_col`) or a `validity_flag`;
+#' R4 needs `geo_local_record_location_n` and a verdict on the geographic
+#' scale `geography_col` does not name; R6 needs the sequence vote for its
+#' "keep" clause, or a decidable `prior_role`/`consensus_posterior` pair for
+#' its prior-driven one. R7 resolves every row it reaches, but its confirm
+#' test needs the sequence vote, a decidable stability
+#' (`consensus_confidence_score` or `robust_lower_posterior`) and a decidable
+#' `prior_driven`; without them every row comes back "upheld" by default
+#' rather than by test, so those rows are not counted as asked. R0, R2, R3
+#' and R5 read only values every row past the two-vote gate already has, so
+#' for them reaching the rule is the whole of being asked.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -485,18 +550,40 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   message("screen_assignments(): rows by rule: ", paste0(rule_names, " = ", shown, collapse = ", "), ". ",
           "Relative move (relative_score_gap = ", relative_score_gap, ") ", rel_txt, ".")
   if (resolve) {
+    # A FALSE in blank_known is "no blank verdict for this row", which R1
+    # cannot tell from `bl`: bl reads `%in% TRUE`, so a missing column and an
+    # NA both arrive as FALSE, the same value an explicit "not blank" has.
+    bl_known <- if (is.null(blank_flag_col)) rep(FALSE, n) else !is.na(d[[blank_flag_col]])
     res <- .screen_resolution(d, advice = sugg, tx = tx, cr = cr, bir = bir, wht = wht,
                               blank = bl, poor_fit_col = poor_fit_col,
-                              geography_col = geography_col)
+                              geography_col = geography_col, blank_known = bl_known)
     d$flag_resolution <- res$resolution
     d$flag_resolution_basis <- res$basis
     d$flag_consistency_score <- res$score
     rn <- paste0("R", 0:7)
-    rc <- data.frame(rule = rn, n_rows = vapply(rn, function(r) sum(res$rule == r), integer(1)),
+    rn_eval <- unname(res$evaluated[rn])
+    rc_n <- vapply(rn, function(r) sum(res$rule == r), integer(1))
+    # NA means "answered nothing AND could not be asked", not merely "could
+    # not be asked". R7 is the cascade's fall-through: it upholds every keep
+    # row reaching it, including rows whose confirm test it could not put, so
+    # blanking its count would drop those rows out of a total that is supposed
+    # to account for every resolved row. R7 is the only rule this can happen
+    # to, because it is the only one that fires unconditionally -- R1 needs a
+    # blank or validity verdict to fire at all, R4 needs the local-record
+    # count and the second scale, and R6 needs the sequence vote or a known
+    # prior_driven, so none of them can answer a row it could not ask.
+    rc_n[!rn_eval & rc_n == 0L] <- NA_integer_
+    rc <- data.frame(rule = rn, n_rows = rc_n, evaluated = rn_eval,
+                     n_evaluable = unname(res$n_evaluable[rn]),
                      stringsAsFactors = FALSE, row.names = NULL)
     attr(d, "resolution_counts") <- rc
+    # n_evaluable is printed beside n_rows because a bare "R1 = 0" reads as
+    # "asked and declined" whether 0 rows or 40 were actually put to the rule.
     message("screen_assignments(): resolution by rule: ",
-            paste0(rc$rule, " = ", rc$n_rows, collapse = ", "), ".")
+            paste0(rc$rule, " = ",
+                   ifelse(is.na(rc$n_rows), "not evaluable",
+                          sprintf("%d (%d asked)", rc$n_rows, rc$n_evaluable)),
+                   collapse = ", "), ".")
   }
   d
 }
@@ -505,7 +592,8 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
 # only columns already on the row; every threshold below is named in the
 # roxygen section, and the habitat cuts are review_assignments()'s own.
 #' @noRd
-.screen_resolution <- function(d, advice, tx, cr, bir, wht, blank, poor_fit_col, geography_col) {
+.screen_resolution <- function(d, advice, tx, cr, bir, wht, blank, poor_fit_col,
+                               geography_col, blank_known) {
   RANKS <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
   rk <- function(x) match(x, RANKS)
   n <- nrow(d)
@@ -524,7 +612,13 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   pf_against <- pf %in% TRUE & finer & !unref
   ls_low <- !is.na(ls) & ls < 0.10
   ls_high <- !is.na(ls) & ls >= 0.50
-  seq_v <- ifelse(is.na(pf) & is.na(ls), "not_evaluated",
+  # SEQ is not evaluated for a row with no likelihood_support, PER ROW rather
+  # than per column: likelihood_support IS the sequence evidence, and a
+  # poor-fit flag alone is not enough to cast a sequence vote. A review-only
+  # table therefore casts no SEQ vote, which is what the design and the help
+  # both say, and n_cast then falls below 2 so R0 reports the row as not
+  # assessed instead of resolving it on two LLM verdicts dressed as three axes.
+  seq_v <- ifelse(is.na(ls), "not_evaluated",
            ifelse(pf_against | ls_low, "against",
            ifelse(ls_high, "support", "neutral")))
 
@@ -542,7 +636,11 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # reported group, so a genus or family call is not judged by one species.
   rec <- if ("consensus_has_occurrence_record" %in% names(d)) lgl("consensus_has_occurrence_record")
   else if ("winner_has_occurrence_record" %in% names(d)) lgl("winner_has_occurrence_record") else {
-    pp <- chr("primary_plausibility")
+    # Rank-matched first: consensus_plausibility describes the reported call,
+    # primary_plausibility the winning species, so a genus or family call is
+    # not judged by one species when the consensus column is present.
+    pp <- if ("consensus_plausibility" %in% names(d)) chr("consensus_plausibility")
+          else chr("primary_plausibility")
     ifelse(pp %in% c("expected", "unexpected"), TRUE, ifelse(pp %in% "unprecedented", FALSE, NA))
   }
   geo <- chr(geography_col)
@@ -576,8 +674,29 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # ---- rules ----
   invalid <- grepl("^invalid", chr("validity_flag"))
   lrn <- num("geo_local_record_location_n")
-  geo_study <- chr("llm_geographic_plausibility")
+  SITE_GEO_COL <- "llm_geographic_plausibility_site"
+  STUDY_GEO_COL <- "llm_geographic_plausibility"
+  # The flag was raised on `geography_col`. Softening it needs a SECOND,
+  # different scale -- "the study says plausible, this site does not", or the
+  # reverse -- because a verify_range row reads "unlikely" on the column that
+  # raised it, so re-reading that same column can never soften it.
+  # A geography_col naming neither standard column falls to the study-wide
+  # one, which is the only other scale this function knows. That is a real
+  # second scale, so R4 still works; it is simply not "the other one" relative
+  # to a custom column, and the help says so.
+  r4_col <- if (identical(geography_col, STUDY_GEO_COL)) SITE_GEO_COL else STUDY_GEO_COL
+  geo_other <- chr(r4_col)
   seq_sup <- seq_v == "support"
+  # R4 was ASKED of a row only if that row reached the test and every input the
+  # test reads had a value. Asking is per ROW, not per column: a second
+  # geography column that is present but NA on a row answers nothing for that
+  # row, and `geo_local_record_location_n` is as necessary as the column is --
+  # without it `!is.na(lrn)` is false everywhere and R4 cannot fire however
+  # many geography scales are present. If no row could be asked, R4's zero
+  # means "never asked", and resolution_counts says so rather than reporting a
+  # zero that reads as "asked on every row and fired on none".
+  seq_known <- seq_v != "not_evaluated"
+  r4_inputs <- !is.na(lrn) & !is.na(geo_other) & nzchar(geo_other) & seq_known
   eps <- 1e-9
   rule <- character(n); out <- character(n)
   for (i in seq_len(n)) {
@@ -589,7 +708,7 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       rule[i] <- "R3"; out[i] <- if (score[i] <= -1/3 + eps) "confirmed" else "upheld"; next
     }
     if (a %in% "verify_range") {
-      if (!is.na(lrn[i]) && lrn[i] >= 3 && geo_study[i] %in% c("likely", "possible") && seq_sup[i]) {
+      if (!is.na(lrn[i]) && lrn[i] >= 3 && geo_other[i] %in% c("likely", "possible") && seq_sup[i]) {
         rule[i] <- "R4"; out[i] <- "softened"; next }
       rule[i] <- "R5"; out[i] <- "upheld"; next
     }
@@ -601,11 +720,62 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       "confirmed" else "upheld"
   }
 
+  # ---- was each rule ASKED, and of how many rows? ----
+  # Being asked has two parts, and they answer different questions.
+  #
+  # INPUTS: does the row carry what the rule's test reads? Where it does not,
+  # the test still returns FALSE, so the rule cannot fire and a count of 0
+  # would read as "asked and declined". Four rules read something a reviewed
+  # table need not carry: R1 needs a blank verdict or a validity verdict, R4
+  # the other geographic scale and the local-record count, R6 the sequence
+  # vote (for its "keep" clause) or a known prior_driven (for its other), and
+  # R7 all three of the sequence vote, a decidable stability and a decidable
+  # prior_driven for its confirm test. R0, R2, R3 and R5 read only values
+  # every gated row has.
+  #
+  # REACHED: the rules are a cascade down one branch per suggested_action, so
+  # a row is only put to a rule it reaches -- a "keep" row is never asked R1,
+  # and a row R1 has already answered is never asked R2. R3, R5 and R7 are
+  # their branch's fall-through, so reaching them is the whole of being asked.
+  #
+  # `evaluated` is then "some row could have been asked" and `n_evaluable`
+  # "this many rows were", which is why n_evaluable can be 0 with evaluated
+  # TRUE: the rule could have fired, and no row put the question to it.
+  gate <- !is.na(tx) & n_cast >= 2
+  ex <- gate & advice %in% "exclude"
+  vr <- gate & advice %in% "verify_range"
+  km <- gate & !advice %in% c("exclude", "verify_range")
+  all_rows <- rep(TRUE, n)
+  r1_inputs <- blank_known | !is.na(chr("validity_flag"))
+  r6_inputs <- (advice %in% "keep" & seq_known) | !is.na(pdriven)
+  # R7 always RESOLVES a row it reaches, but its only discriminating question
+  # is confirmed-or-upheld, and that needs all three of the sequence vote,
+  # a decidable stability and a decidable prior_driven. Without them
+  # "confirmed" is unreachable -- seq_sup is FALSE, and NA %in% TRUE and
+  # NA %in% FALSE are both FALSE -- so every row comes back "upheld" by
+  # default rather than by test. Counting those rows as asked is the same
+  # zero-versus-not-asked confusion this column exists to remove.
+  r7_inputs <- seq_known & !is.na(stable) & !is.na(pdriven)
+  inputs <- list(R0 = all_rows, R1 = r1_inputs, R2 = all_rows, R3 = all_rows,
+                 R4 = r4_inputs, R5 = all_rows, R6 = r6_inputs, R7 = r7_inputs)
+  reached <- list(R0 = all_rows,                        # the gate is put to every row
+                  R1 = ex,
+                  R2 = ex & !rule %in% "R1",
+                  R3 = ex & !rule %in% c("R1", "R2"),
+                  R4 = vr,
+                  R5 = vr & !rule %in% "R4",
+                  R6 = km,
+                  R7 = km & !rule %in% "R6")
+  rules <- names(inputs)
+  n_evaluable <- vapply(rules, function(r) sum(reached[[r]] & inputs[[r]]), integer(1))
+  evaluated <- vapply(inputs, any, logical(1))
+
   yn <- function(x) ifelse(is.na(x), "unknown", ifelse(x, "yes", "no"))
   basis <- sprintf("%s; seq=%s(ls %s); occ=%s; eco=%s(p %s); prior_driven=%s; stable=%s",
                    rule, seq_v, f2(ls), occ_note, eco_v, f2(ph), yn(pdriven), yn(stable))
   basis[rule == "R4"] <- paste0(basis[rule == "R4"], sprintf("; local_record_locations=%s", lrn[rule == "R4"]))
   basis[rule == "R1"] <- paste0(basis[rule == "R1"], "; blank or invalid validity evidence")
   basis[is.na(tx)] <- "R0; no call"
-  list(resolution = out, basis = basis, score = score, rule = rule)
+  list(resolution = out, basis = basis, score = score, rule = rule,
+       evaluated = evaluated, n_evaluable = n_evaluable)
 }

@@ -34,7 +34,7 @@ state only.
 
 - `posterior_consensus(pool_tail = )` defaults to `FALSE`, dropping hypotheses below `min_posterior` and measuring `cumulative_threshold` against what remains. `TRUE` gathers them into one tail block measured against the total named mass. Pooled rows carry `pooled_n`, `pooled_mass` and `pooled_taxa`, with the row set in the `"pooled_rows"` attribute.
 - `add_unreferenced_prior_mass(named_rows = )` defaults to `FALSE`, folding a ring row's recorded unreferenced local species into that row's prior. `TRUE` emits one species-rank row each instead, so such a species can be reported by name rather than as anonymous mass.
-- `consensus_method = "credible_node"` with `robust_prior_s = 0` and `cross_phylum_eps = 0` is the weighted LCA (node summing). The PACKAGE default remains `"lca"`; the canonical workflow template sets the weighted form explicitly.
+- `consensus_method = "credible_node"` with `robust_prior_s = 0` and `cross_phylum_eps = 0` is the weighted LCA (node summing), and all three of those are the formals' own defaults, so a bare `posterior_consensus()` call IS the weighted form. `"lca"` is the opt-in alternative. The canonical workflow template names the method explicitly regardless, so reading the template never requires knowing the default.
 
 ## Conventions
 

@@ -1010,6 +1010,19 @@ utils::globalVariables(c(
 #' unreachable}, bare \code{"12S"}/\code{"16S"} names included. That is the
 #' point -- the term that produced it is not the term being asked now -- but
 #' it means the next run re-fetches that term.
+#'
+#' The digest is \code{rlang::hash()}, whose output is not guaranteed stable
+#' across rlang versions, so upgrading rlang can change every suffix and put
+#' every existing reference cache out of reach at once. That dependence is
+#' accepted rather than removed, because this suffix's whole job is to prove
+#' the question changed, and its two failure directions are not equal: a
+#' digest that changes when the question did not costs one re-fetch, while a
+#' digest that stayed the same when the question changed serves a stale cache
+#' as if it answered the new question. An rlang upgrade can only cause the
+#' first. Treat a mass re-fetch after a dependency upgrade as expected, not
+#' as a cache bug -- and do NOT pin the suffix by hand-rolling a digest to
+#' avoid it, because a stable-looking key that no longer tracks the query is
+#' the failure this component exists to prevent.
 #' @noRd
 .ref_cache_term_sfx <- function(barcode_term) {
   # Built against a fixed probe so the digest is per-marker, not per-taxon.
@@ -1658,7 +1671,14 @@ utils::globalVariables(c(
 #'   capping. See `@section Choosing max_per_species and max_per_genus`.
 #' @param max_per_genus Integer or NULL (default 500).
 #'   Maximum sequences per genus after species-level capping. NULL disables
-#'   the cap. See `@section Choosing max_per_species and max_per_genus`.
+#'   the cap. The default is 500 and not `NULL` because an uncapped build's
+#'   memory cost is unbounded in the data: it is set by the most heavily
+#'   sequenced genus in the taxon list, which the caller cannot know until
+#'   after the fetch they would lose. A cap that was not needed costs some
+#'   thinning, and it reports what it thinned; no cap costs the whole run,
+#'   after the fetch has already been paid for. Choose the value from
+#'   `dry_run = TRUE` rather than from this default.
+#'   See `@section Choosing max_per_species and max_per_genus`.
 #' @param dry_run Logical (default `FALSE`). `TRUE` stops after the metadata
 #'   step, before any sequence is downloaded, and returns the memory the
 #'   sequence matrix would need under a grid of caps instead of a
@@ -1760,7 +1780,10 @@ utils::globalVariables(c(
 #'   352 species-level consensus rows their own reference data, including
 #'   *Medialuna californiensis*, *Zalophus californianus* and *Tursiops
 #'   truncatus*. Re-issuing the identical queries afterwards succeeded for all
-#'   7, confirming the failures were transient. `"warn"` keeps the run alive
+#'   7, confirming the failures were transient. That is also why `"warn"` is
+#'   the default: a stop would have discarded a fetch that re-issuing the
+#'   same queries completed, and the default assumes a caller who reads the
+#'   output. `"error"` is for the case where nobody will. `"warn"` keeps the run alive
 #'   but reports the affected taxa by name in one consolidated warning and
 #'   message, because per-taxon warnings are easy to miss in a large log (a
 #'   real 17,000-line log missed all 7). Use `"error"` for an unattended

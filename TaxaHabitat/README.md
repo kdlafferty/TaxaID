@@ -9,7 +9,7 @@ editor_options:
 Habitat assignment and spatial quality control for the
 [TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Classifies
 species into habitat categories using LLM-based biological consensus,
-assigns habitats to sampling sites, and let's users flag spatial outliers.
+assigns habitats to sampling sites, and lets users flag spatial outliers.
 It accepts that species can occur in multiple habitats, but assumes that a
 particular sampling location can be defined as a single habitat
 category. In other words, it uses the species collected at a location to

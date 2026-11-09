@@ -696,9 +696,9 @@ via a guided interview: `workflow_create()`.
 
 ## Which Entry Point Do I Need?
 
-If you're not sure where to start, typing into an LLM chat window
-will work OK. Better is to upload `llm_prompts/START_HERE.md` and
-`llm_prompts/CONTEXT_TaxaID.md` into an LLM chat window instead. These
+If you're not sure where to start, describing your goal to an LLM chat
+window will work OK. Better is to upload `llm_prompts/START_HERE.md` and
+`llm_prompts/CONTEXT_TaxaID.md` into that chat window first. These
 .md files carry the package's context and workflow graph, so the
 assistant identifies the workflow node and edge for your goal before
 guessing at individual functions. If you have an API key set up,

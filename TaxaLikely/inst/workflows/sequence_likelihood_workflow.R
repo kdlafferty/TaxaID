@@ -164,10 +164,10 @@ message(sprintf("  %d pairwise comparison(s) built.", nrow(ref_matrix)))
 # ==============================================================================
 # 3.  (a calibrated coverage filter is not part of this pathway)
 # ==============================================================================
-# calibrate_coverage_filter()/coverage_threshold() are retired --
-# a real A/B test found the accuracy win on queries the filter is willing to
-# answer was real, but so was the cost (~19% of species lose every training
-# pair; ~25% of real queries end up unresolved). Training proceeds on the full,
+# No calibrated coverage filter is offered here. A real A/B test found the
+# accuracy win on queries such a filter is willing to answer was real, but so
+# was the cost: about 19% of species lose every training pair, and about 25%
+# of real queries end up unresolved. Training proceeds on the full,
 # unfiltered ref_matrix below.
 # ==============================================================================
 

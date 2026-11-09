@@ -515,3 +515,150 @@ test_that("apply_coverage_constraints(relabel) marks a closed genus's placeholde
   expect_identical(z$score_likelihood_sd[!i], c(0.05, 0.01))
   expect_identical(z$hypothesis_type[i], "unreferenced_species")
 })
+
+test_that("the census date is the LOCAL date, not the UTC date", {
+  # The defect: as.Date() on a POSIXct converts in UTC, so a census taken in
+  # the local evening west of UTC carried tomorrow's date.
+  #
+  # The zone is PINNED rather than read from the machine. An earlier version
+  # of this test took the offset from the host and skipped when it was zero --
+  # which is exactly where CI runs (ubuntu-latest, no TZ), so CI could never
+  # catch a regression here. Pinning makes the test identical on a developer
+  # box and on a UTC runner.
+  #
+  # Measured, and deliberately NOT asserted: tz = "" does not rescue a machine
+  # whose zone the OS cannot resolve. R falls back to UTC there, silently, and
+  # no argument can do better because there is no offset to be had. That case
+  # is not reliably detectable from Sys.timezone(): where TZ names a zone the
+  # OS does not know it returns that unknown name, not NA, though it CAN
+  # return NA where TZ is unset and the system zone cannot be determined. See
+  # .stamp_census().
+  withr::local_timezone("America/Los_Angeles")
+  # 00:30 UTC on the 10th is 16:30 local on the 9th: different calendar days.
+  instant <- as.POSIXct("2026-11-10 00:30:00", tz = "UTC")
+  utc_date <- as.Date(instant, tz = "UTC")
+  local_date <- as.Date(format(instant, "%Y-%m-%d", tz = ""))
+  # The precondition, asserted rather than assumed: if these agreed, every
+  # assertion below would pass on the broken code too.
+  expect_identical(local_date, as.Date("2026-11-09"))
+  expect_identical(utc_date, as.Date("2026-11-10"))
+
+  local_mocked_bindings(Sys.time = function() instant, .package = "base")
+  out <- .stamp_census(data.frame(a = 1), oldest = .POSIXct(NA_real_),
+                       resumed = FALSE)
+  expect_identical(attr(out, "census_date"), local_date)
+  expect_false(identical(attr(out, "census_date"), utc_date))
+  # Derived from the SAME clock read the time stamp used, so the two cannot
+  # disagree across midnight.
+  expect_identical(attr(out, "census_date"),
+                   as.Date(attr(out, "census_time"), tz = ""))
+  expect_s3_class(attr(out, "census_date"), "Date")
+})
+
+
+# ---- The census stamp, on every return path ---------------------------------
+# Fully offline: rentrez and TaxaTools::resolve_ncbi_taxid() are mocked at the
+# network boundary, matching test-coverage-lookup-failure.R.
+
+.census_summ <- function(uid, name) {
+  structure(list(uid = uid, rank = "species", scientificname = name),
+            class = c("esummary", "list"))
+}
+
+.mock_census_ncbi <- function() {
+  taxid_of <- c(Aa = "100", Bb = "200", Cc = "300")
+  testthat::local_mocked_bindings(
+    resolve_ncbi_taxid = function(name, ...) list(taxid = unname(taxid_of[[name]])),
+    .package = "TaxaTools", .env = parent.frame()
+  )
+  species_of <- list(`100` = c("1", "2"), `200` = c("3", "4"), `300` = "5")
+  name_of <- c(`1` = "Aa one", `2` = "Aa two", `3` = "Bb one",
+               `4` = "Bb two", `5` = "Cc one")
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, ...) {
+      tid <- sub(".*txid([0-9]+).*", "\\1", term)
+      if (db == "taxonomy") {
+        return(list(count = as.character(length(species_of[[tid]])),
+                    ids = species_of[[tid]]))
+      }
+      list(count = "0", ids = character(0L))
+    },
+    entrez_summary = function(db, id, ...) lapply(id, function(i) .census_summ(i, name_of[[i]])),
+    .package = "rentrez", .env = parent.frame()
+  )
+  testthat::local_mocked_bindings(.ncbi_delay = function() 0, .env = parent.frame())
+}
+
+.census_match_df <- data.frame(
+  genus = c("Aa", "Bb", "Cc"),
+  species = c("Aa one", "Bb one", "Cc one"),
+  stringsAsFactors = FALSE
+)
+
+test_that("a checkpoint record with no queried_at makes the census age UNKNOWN, not the age of the rest", {
+  # The defect: taking min() over the records that happen to carry a
+  # queried_at reports a RECENT age for a census that also served a group
+  # counted at an unknown -- possibly far earlier -- time. The unstamped
+  # record is the one that could be oldest, so the age is not knowable.
+  .mock_census_ncbi()
+  cd <- tempfile("covcache_"); dir.create(cd)
+  on.exit(unlink(cd, recursive = TRUE), add = TRUE)
+  cp <- file.path(cd, "checkpoint.rds")
+  # The checkpoint KEY is not what is under test, so it is pinned rather than
+  # reconstructed from the barcode, length range and exclude_predicted.
+  local_mocked_bindings(.coverage_checkpoint_path = function(...) cp)
+  # A record as written before per-group query times existed: every field the
+  # assembly step reads, and no queried_at.
+  legacy <- list(group = "Aa", total = 2L, in_reference = 1L,
+                 has_seqs_not_in_ref = 0L, has_predicted_only = 0L,
+                 unreferenced_count = 0L, unreferenced_names = character(0L),
+                 lookup_failed = FALSE)
+  saveRDS(list(Aa = legacy), cp)
+
+  expect_warning(
+    out <- suppressMessages(
+      audit_barcode_coverage(.census_match_df, barcode_term = "12S", cache_dir = cd)),
+    "1 of 3 group\\(s\\) came from a checkpoint"
+  )
+  expect_true(is.na(attr(out, "census_oldest_query_time")))
+  expect_s3_class(attr(out, "census_oldest_query_time"), "POSIXct")
+  # Bb and Cc were queried in this run and DO carry a time; the assertion is
+  # that their time is not reported as the age of the whole census.
+  expect_true(attr(out, "census_resumed"))
+  expect_false(is.na(attr(out, "census_time")))
+})
+
+test_that("both audit_barcode_coverage return paths carry the four census attributes", {
+  # .audit_barcode_coverage_impl() has exactly two paths that return a census:
+  # the no-valid-groups early return, and completion. Both are walked here.
+  nms <- c("census_time", "census_date", "census_oldest_query_time",
+           "census_resumed")
+
+  # Path 1 -- no valid groups. Nothing was queried, so the oldest contributing
+  # time is NA rather than "now", and the result is not a resumed one.
+  expect_warning(
+    empty <- suppressMessages(audit_barcode_coverage(
+      data.frame(genus = c(NA_character_, "   "), species = c("x", "y"),
+                 stringsAsFactors = FALSE),
+      barcode_term = "12S", cache_dir = NULL)),
+    "No valid groups"
+  )
+  expect_true(all(nms %in% names(attributes(empty))))
+  expect_equal(nrow(empty$census), 0L)
+  expect_true(is.na(attr(empty, "census_oldest_query_time")))
+  expect_false(attr(empty, "census_resumed"))
+  expect_identical(attr(empty, "census_date"),
+                   as.Date(attr(empty, "census_time"), tz = ""))
+
+  # Path 2 -- completion, nothing resumed. The oldest contributing time is a
+  # real instant, and it is at or before the finish.
+  .mock_census_ncbi()
+  full <- suppressMessages(audit_barcode_coverage(
+    .census_match_df, barcode_term = "12S", cache_dir = NULL))
+  expect_true(all(nms %in% names(attributes(full))))
+  expect_false(attr(full, "census_resumed"))
+  expect_false(is.na(attr(full, "census_oldest_query_time")))
+  expect_lte(attr(full, "census_oldest_query_time"), attr(full, "census_time"))
+  expect_identical(attr(full, "census_date"),
+                   as.Date(attr(full, "census_time"), tz = ""))
+})

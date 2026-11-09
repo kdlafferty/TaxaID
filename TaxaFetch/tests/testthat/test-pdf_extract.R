@@ -9,7 +9,7 @@
 # pdf_characterize.R). This package's shared %||% operator (from
 # TaxaTools) only substitutes on NULL by design, so defaulting these axis
 # fields via %||% silently left NA unresolved instead of falling back to
-# a sensible default -- confirmed live against a real bundled PDF in the
+# a sensible default -- confirmed live against a real PDF in the
 # review (every one of these fields came back NA). Not a full test file
 # for the whole pdf_extract.R pipeline (the CSV-parsing/DwC-mapping
 # machinery is untested here) -- scoped to the specific fix.
@@ -23,7 +23,7 @@ test_that(".axis_or_default() substitutes for both NULL and NA", {
 })
 
 test_that(".build_axis_instructions() falls back correctly when every axis is NA (real bug)", {
-  # Real case from the human review: a bundled PDF whose LLM
+  # Real case from the human review: a real PDF whose LLM
   # characterization produced NA for all four axis fields. Before the fix,
   # `%||%` left these NA, and the instruction-building if/else chains
   # (`if (obs == "field_survey")` etc.) would have compared against NA,

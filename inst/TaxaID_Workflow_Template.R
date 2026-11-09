@@ -155,7 +155,12 @@ if (isTRUE(SCREEN_REFERENCE_ACCESSIONS)) {
   if (isTRUE(REVIEW_FLAGGED_REFERENCES)) {
     accession_review <- TaxaMatch::review_flagged_accessions(
       accession_eval,
-      llm_fn = LLM_FN
+      llm_fn = LLM_FN,
+      # A production run stops rather than carry on with accessions the screen
+      # never ruled on: no verdict means no override, so the removal step
+      # below -- if it is enabled -- would decide on the screen's own verdict,
+      # as if the review had never run.
+      on_unreviewed = "error"
     )
     accession_overrides <- TaxaMatch::resolve_review_overrides(accession_review)
     message(

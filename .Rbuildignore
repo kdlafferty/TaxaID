@@ -75,3 +75,9 @@
 # is the narrow fix -- they stay in the repository, they just do not ship
 # inside the tarball.
 ^inst/Code and Domain Review
+
+# A standalone driver for the reference-screening run, invoked as Rscript with
+# one site name. It is operational tooling for this repository's own validation
+# runs, not part of the meta-package; it stays in the repository and does not
+# ship.
+^inst/screen_training_references_standalone\.R$

@@ -33,8 +33,8 @@
 # extract_pdf_text(), search_dataone(), and fetch_dataone_eml() have zero
 # existing test-file coverage in the package; this file is their first
 # example input. The PDF-pipeline functions chain off each other (see
-# Section 6) and use the two real PDFs already bundled at
-# inst/extdata/pdfs/*.pdf.
+# Section 6) and read one PDF, which you supply: no PDF is bundled with the
+# package. Section 6 says how to point them at yours.
 #
 # NON-DETERMINISM NOTE (Section 6, RUN_LLM_CALLS): the whole chain was
 # live-verified end to end while preparing this file, but two things vary
@@ -61,7 +61,7 @@ library(tibble)
 # no-credential NETWORK calls.
 RUN_GBIF_ACCOUNT_DOWNLOAD <- FALSE # download_gbif_occurrences() -- needs GBIF_USER/PWD/EMAIL
 RUN_OPENALEX_LITERATURE <- FALSE # search_literature() / download_literature_pdfs() -- needs OPENALEX_API_KEY
-RUN_LLM_CALLS <- TRUE # screen_pdf_structure() / call_api_pdf() -- needs ANTHROPIC_API_KEY, costs money
+RUN_LLM_CALLS <- FALSE # screen_pdf_structure() / call_api_pdf() -- needs ANTHROPIC_API_KEY, costs money
 
 
 # ==============================================================================
@@ -391,10 +391,13 @@ head(dataone_occ)
 #   -> screen_pdf_structure() -> build_pdf_extract_prompt() -> call_api_pdf()
 #   -> parse_pdf_extract_response()
 #
-# extract_pdf_text() runs against the two real bundled PDFs at
-# inst/extdata/pdfs/*.pdf (OpenAlex works, already shipped with the package --
-# no download needed for this step). Everything past screen_pdf_structure()
-# needs a real Anthropic API call; guarded behind RUN_LLM_CALLS.
+# extract_pdf_text() needs one PDF of a paper that reports occurrence
+# records. No PDF is bundled with the package, so you supply your own: set
+# REVIEW_PDF below, or TAXAID_REVIEW_PDF in the environment, to its path.
+# Without one the PDF chain is skipped and every section above still runs.
+# download_literature_pdfs() above will fetch one from OpenAlex if you have
+# an OPENALEX_API_KEY. Everything past screen_pdf_structure() needs a real
+# Anthropic API call; guarded behind RUN_LLM_CALLS.
 # ==============================================================================
 
 ## ---- search_literature() ---- NETWORK+AUTH (OPENALEX_API_KEY) --------------
@@ -417,14 +420,27 @@ if (RUN_OPENALEX_LITERATURE) {
   lit_downloaded
 }
 
-## ---- extract_pdf_text() ---- OFFLINE (uses bundled real PDF) ---------------
-bundled_pdf <- system.file("extdata", "pdfs", "W2403944014.pdf", package = "TaxaFetch")
-pdf_text_result <- extract_pdf_text(bundled_pdf)
-names(pdf_text_result)
-pdf_text_result$n_pages
+## ---- extract_pdf_text() ---- OFFLINE, on a PDF you supply -----------------
+# Any PDF of a paper reporting occurrence records will do. This chain was
+# verified against a single-site field survey, which is why
+# build_pdf_extract_prompt() below needs single_site_coords.
+REVIEW_PDF <- Sys.getenv("TAXAID_REVIEW_PDF", "") # or set the path here
+RUN_PDF_CHAIN <- nzchar(REVIEW_PDF) && file.exists(REVIEW_PDF)
+if (!RUN_PDF_CHAIN) {
+  message(
+    "Section 6 PDF chain skipped: no PDF is bundled; supply your own by ",
+    "setting REVIEW_PDF, or TAXAID_REVIEW_PDF in the environment, to the ",
+    "path of a PDF."
+  )
+}
+if (RUN_PDF_CHAIN) {
+  pdf_text_result <- extract_pdf_text(REVIEW_PDF)
+  names(pdf_text_result)
+  pdf_text_result$n_pages
+}
 
 ## ---- screen_pdf_structure() ---- LLM_CALL -----------------------------------
-if (RUN_LLM_CALLS) {
+if (RUN_PDF_CHAIN && RUN_LLM_CALLS) {
   # A real footgun: library(TaxaTools) alone does
   # NOT activate provider auto-detection in a plain Rscript session (only in
   # RStudio) -- call_api()'s default llm_fn then errors "no LLM provider
@@ -442,9 +458,9 @@ if (RUN_LLM_CALLS) {
   pdf_structure # exercises print.pdf_structure()
 
   ## ---- build_pdf_extract_prompt() ---- OFFLINE once pdf_structure exists ----
-  # For this bundled PDF, the real LLM classification comes back
-  # single_site_rule = TRUE (a single-site field survey), which
-  # build_pdf_extract_prompt() correctly refuses to proceed on without
+  # For the paper this chain was prepared against, the real LLM
+  # classification comes back single_site_rule = TRUE (a single-site field
+  # survey), which build_pdf_extract_prompt() refuses to proceed on without
   # single_site_coords -- it needs somewhere to inject the site's lat/lon
   # into the extraction prompt since the paper itself may not repeat
   # coordinates on every occurrence row. In real use this comes from the
@@ -465,10 +481,11 @@ if (RUN_LLM_CALLS) {
   # reproducibly makes the real 3-image extraction prompt below come back as
   # "call_api (anthropic): response contained no text blocks" -- the model's
   # full CSV response for this real paper needs more headroom than 1000
-  # tokens. 2000L is confirmed working against this exact bundled PDF.
+  # tokens. 2000L is confirmed working for one real paper's 3-image call; a
+  # longer paper may need more.
   pdf_api_raw <- call_api_pdf(
     prompt     = pdf_extract_prompt$prompts[[1]],
-    pdf_path   = bundled_pdf,
+    pdf_path   = REVIEW_PDF,
     provider   = "anthropic",
     max_tokens = 2000L
   )

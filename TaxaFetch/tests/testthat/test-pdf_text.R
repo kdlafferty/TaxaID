@@ -6,7 +6,7 @@
 # "^[A-Z]" anchor since the line started with a digit, so Pass 1's leading-
 # section-number strip was applied to Pass 2 too. Not a full test file for
 # the whole pdf_text.R pipeline (extract_pdf_text() itself needs a real or
-# realistic bundled PDF and is not covered here) -- scoped to the specific
+# realistic PDF and is not covered here) -- scoped to the specific
 # fix.
 
 library(testthat)

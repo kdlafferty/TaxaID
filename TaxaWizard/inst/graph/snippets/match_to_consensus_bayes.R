@@ -72,7 +72,8 @@ result <- TaxaAssign::compute_posterior(likelihoods_ready)
 
 # 3. Round 1 consensus
 # "credible_node" with robust_prior_s = 0 and cross_phylum_eps = 0 is the
-# weighted LCA (node summing); the package default remains "lca".
+# weighted LCA (node summing), and it is the package default. Pass
+# consensus_method = "lca" for the unweighted top-set rule instead.
 consensus <- TaxaAssign::posterior_consensus(
   result,
   rank_system      = detected_ranks,

@@ -109,7 +109,8 @@ checked -- not restructured further this session.
 deferred by design.** This package already has `inst/review_function_inputs.R`, a genuinely
 runnable, section-by-section demonstration of every exported function using real/synthetic
 fixtures (built in an earlier session specifically to answer this exact class of complaint --
-see that file's own header). Rather than rewrite every `@examples` block into a full runnable
+see that file's own header). *Correction, 2026-11-09: that file does not in fact cover every
+export -- seven have no section, and its own header now names them.* Rather than rewrite every `@examples` block into a full runnable
 example (out of scope per the task's own guidance, and duplicative of that file), **every
 flagged function this session gained a `@note` pointing at the exact
 `inst/review_function_inputs.R` section that demonstrates it**, and two real doc *bugs* found

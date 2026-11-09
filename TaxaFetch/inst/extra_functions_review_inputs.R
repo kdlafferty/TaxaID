@@ -68,10 +68,10 @@ axis_default_null
 axis_default_na
 axis_default_real
 
-## ---- .render_one_page_b64() ---- OFFLINE, uses bundled real PDF ------------
-# Renders one page of a real bundled PDF (inst/extdata/pdfs/, same PDFs
-# extract_pdf_text() uses in review_function_inputs.R Section 6) to a base64
-# PNG string. dpi = 100L (lower than call_api_pdf()'s own 150L default) to
+## ---- .render_one_page_b64() ---- OFFLINE, on a PDF you supply -------------
+# Renders one page of a PDF you supply to a base64 PNG string -- the same PDF
+# extract_pdf_text() reads in review_function_inputs.R Section 6, since no PDF
+# is bundled with the package. dpi = 100L (lower than call_api_pdf()'s own 150L default) to
 # keep this section's output small/fast -- the exact resolution doesn't
 # matter for exercising the function itself. Shared by both branches of
 # .render_pdf_pages() (the callr-subprocess path and the in-process
@@ -87,16 +87,21 @@ axis_default_real
 # is exactly the real risk that design exists to guard against, not a bug
 # in .render_one_page_b64() itself; running it the same way
 # .render_pdf_pages() does is the correct way to exercise it safely.
-bundled_pdf_for_render <- system.file(
-  "extdata", "pdfs", "W2403944014.pdf",
-  package = "TaxaFetch"
-)
-page1_b64 <- callr::r(
-  TaxaFetch:::.render_one_page_b64,
-  args = list(pdf_path = bundled_pdf_for_render, pg = 1L, dpi = 100L)
-)
-nchar(page1_b64) # length of the base64 string
-substr(page1_b64, 1, 40) # just the start; it's a full PNG, base64-encoded
+render_pdf <- Sys.getenv("TAXAID_REVIEW_PDF", "") # or set the path here
+if (!nzchar(render_pdf) || !file.exists(render_pdf)) {
+  message(
+    ".render_one_page_b64() skipped: no PDF is bundled; supply your own by ",
+    "setting render_pdf, or TAXAID_REVIEW_PDF in the environment, to the ",
+    "path of a PDF."
+  )
+} else {
+  page1_b64 <- callr::r(
+    TaxaFetch:::.render_one_page_b64,
+    args = list(pdf_path = render_pdf, pg = 1L, dpi = 100L)
+  )
+  nchar(page1_b64) # length of the base64 string
+  substr(page1_b64, 1, 40) # just the start; it's a full PNG, base64-encoded
+}
 
 
 # ==============================================================================

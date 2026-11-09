@@ -138,13 +138,13 @@ Multiplies each evidence row's presence weight by the taxon's own weight for the
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| evidence | yes |  | Data frame with taxon_name and weight columns (any evidence generator's output). |
+| evidence | yes |  | Data frame with taxon_name and weight columns (any evidence generator's output). A negative weight is an error: a weight is an evidence mass, so a negative one has no meaning here, and it is the only way a row could be both floored and reduced to zero. |
 | habitat_lookup | yes |  | Data frame from TaxaHabitat::build_habitat_lookup(): taxon_name plus one numeric weight column per habitat class. |
 | site_habitat | yes |  | Character scalar naming the site's habitat column in habitat_lookup. |
 | w_floor | no | 0 | Numeric in [0, 1). The weight below which no evidence row may fall -- pass the run's clamp weight (w_scale * exp(-d_cap / d_half) under curve pricing). Default 0. |
 | verbose | no | TRUE | Logical. Report counts. Default TRUE. |
 
-**Value:** 'evidence' with 'weight' replaced by the conditioned weight and three added columns: 'habitat_weight' (H_{site}, 'NA' when unknown), 'weight_unconditioned' (the generator's original weight), 'habitat_floored' ('TRUE' where the product fell below 'w_floor' and was raised to it) and 'habitat_zeroed' ('TRUE' where the conditioned weight is exactly 0). The two are mutually exclusive by construction: a positive 'w_floor' makes a zero impossible, and the default 'w_floor = 0' makes flooring impossible. A zeroed row contributes nothing to the prior and so is indistinguishable downstream from a row that was never generated, which is why it is both flagged and warned about.
+**Value:** 'evidence' with 'weight' replaced by the conditioned weight and three added columns: 'habitat_weight' (H_{site}, 'NA' when unknown), 'weight_unconditioned' (the generator's original weight), 'habitat_floored' ('TRUE' where the product fell below 'w_floor' and was raised to it) and 'habitat_zeroed' ('TRUE' where the row HAD weight and now has none - the conditioned weight is exactly 0 and the unconditioned one was above it, so a row that arrived at 0 is not reported as zeroed by habitat). The two are mutually exclusive by construction: a positive 'w_floor' makes a zero impossible, and the default 'w_floor = 0' makes flooring impossible. A zeroed row contributes nothing to the prior and so is indistinguishable downstream from a row that was never generated, which is why it is both flagged and warned about.
 
 #### Details
 

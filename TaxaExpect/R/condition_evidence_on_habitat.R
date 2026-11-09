@@ -40,7 +40,10 @@ utils::globalVariables(c("taxon_name"))
 #' information, no change.
 #'
 #' @param evidence Data frame with \code{taxon_name} and \code{weight}
-#'   columns (any evidence generator's output).
+#'   columns (any evidence generator's output). A negative \code{weight} is an
+#'   error: a weight is an evidence mass, so a negative one has no meaning
+#'   here, and it is the only way a row could be both floored and reduced to
+#'   zero.
 #' @param habitat_lookup Data frame from
 #'   \code{TaxaHabitat::build_habitat_lookup()}: \code{taxon_name} plus one
 #'   numeric weight column per habitat class.
@@ -55,8 +58,10 @@ utils::globalVariables(c("taxon_name"))
 #'   \code{NA} when unknown), \code{weight_unconditioned} (the generator's
 #'   original weight), \code{habitat_floored} (\code{TRUE} where the product
 #'   fell below \code{w_floor} and was raised to it) and
-#'   \code{habitat_zeroed} (\code{TRUE} where the conditioned weight is
-#'   exactly 0). The two are mutually exclusive by construction: a positive
+#'   \code{habitat_zeroed} (\code{TRUE} where the row HAD weight and now has
+#'   none -- the conditioned weight is exactly 0 and the unconditioned one was
+#'   above it, so a row that arrived at 0 is not reported as zeroed by
+#'   habitat). The two are mutually exclusive by construction: a positive
 #'   \code{w_floor} makes a zero impossible, and the default
 #'   \code{w_floor = 0} makes flooring impossible. A zeroed row contributes
 #'   nothing to the prior and so is indistinguishable downstream from a row
@@ -111,10 +116,20 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
     stop(sprintf("condition_evidence_on_habitat: %d habitat weight(s) outside [0, 1].", sum(bad_h)), call. = FALSE)
   }
   w0 <- as.numeric(evidence$weight)
+  bad_w <- !is.na(w0) & w0 < 0
+  if (any(bad_w)) {
+    stop(sprintf(
+      paste0(
+        "condition_evidence_on_habitat: %d evidence weight(s) are negative. ",
+        "A weight is an evidence mass; a negative one has no meaning here, and ",
+        "it is the only way a row can be both floored and reduced to zero."
+      ), sum(bad_w)
+    ), call. = FALSE)
+  }
   w1 <- ifelse(is.na(h), w0, pmax(w0 * h, w_floor))
   evidence$habitat_weight <- h
   evidence$weight_unconditioned <- w0
-  evidence$habitat_floored <- !is.na(h) & (w0 * h < w_floor)
+  evidence$habitat_floored <- !is.na(h) & !is.na(w0) & (w0 * h < w_floor)
   # A weight of exactly 0 is a DIFFERENT event from being raised to the floor,
   # and the two cannot both happen: w_floor > 0 makes a zero impossible, and
   # w_floor = 0 -- the default -- makes `w0 * h < w_floor` unsatisfiable for
@@ -123,8 +138,15 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
   # habitat weight of 0 annihilates the row: it contributes nothing to the
   # prior, which is indistinguishable downstream from a row that was never
   # generated. Reported separately so neither event can hide inside the other.
-  evidence$habitat_zeroed <- !is.na(h) & w1 == 0
+  # Test the RESULTING weight, not the habitat weight: with w_floor > 0 a
+  # habitat weight of 0 raises the row to the floor rather than annihilating
+  # it, so h == 0 alone would claim a zero that did not happen -- and would
+  # break the invariant that a row is never both floored and zeroed. The
+  # event is: the row HAD mass (w0 > 0) and now has none (w1 == 0).
+  evidence$habitat_zeroed <- !is.na(w1) & w1 == 0 & !is.na(w0) & w0 > 0
   evidence$weight <- w1
+  w_unchanged <- (is.na(w0) & is.na(w1)) |
+    (!is.na(w0) & !is.na(w1) & w1 == w0)
   if (isTRUE(verbose)) {
     message(sprintf(
       paste0(
@@ -133,8 +155,8 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
         "%d floored at %.3g, %d reduced to zero."
       ),
       nrow(evidence), site_habitat,
-      sum(is.na(h) | h >= 1), sum(is.na(h)),
-      sum(!is.na(h) & h < 1 & !evidence$habitat_floored & !evidence$habitat_zeroed),
+      sum(w_unchanged), sum(is.na(h)),
+      sum(!w_unchanged & !evidence$habitat_floored & !evidence$habitat_zeroed),
       sum(evidence$habitat_floored), w_floor,
       sum(evidence$habitat_zeroed)
     ))

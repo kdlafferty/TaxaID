@@ -45,7 +45,12 @@ no relatives are found and every I2 row is "review".}
 \item{geography_col, habitat_col, scope_col}{Names of the reviewer's
 geographic, habitat and scope plausibility columns, with values
 "likely", "possible" or "unlikely" (anything else counts as missing
-for geography, and as not plausible for habitat).}
+for geography, and as not plausible for habitat). Rule R4 needs a
+SECOND geographic scale, and it picks the one \code{geography_col} does not
+name: pass \code{"llm_geographic_plausibility"} and R4 reads
+\code{"llm_geographic_plausibility_site"}, and the reverse. A
+\code{geography_col} naming neither of those two falls back to
+\code{"llm_geographic_plausibility"} as the second scale.}
 
 \item{poor_fit_col}{Name of the logical column that is TRUE when the best
 match fits poorly in absolute terms.}
@@ -128,8 +133,51 @@ poor_fit_habitat_exclude without the habitat column, blank_evidence with
 \code{blank_flag_col = NULL}). Because \code{rule_counts} is an attribute, dplyr verbs
 drop it; read it straight off the value \code{screen_assignments()} returns.
 With \code{resolve = TRUE} the result also carries \code{attr(, "resolution_counts")}:
-one row per rule R0 to R7 with \code{n_rows}, and a message reports the same
-counts, zeros included.
+one row per rule R0 to R7 with \code{n_rows}, \code{evaluated} and \code{n_evaluable}, and
+a message reports both, as \verb{R7 = 2 (1 asked)}.
+
+A rule was ASKED of a row when the row both reached it and carried what its
+test reads. \code{evaluated} is TRUE where some row could have been asked, and
+\code{n_evaluable} is how many rows were. \code{n_rows} is how many the rule
+ANSWERED, so the two relate differently for different rules, and the
+difference is the point:
+\itemize{
+\item R1, R4 and R6 answer only rows they asked, so their \code{n_rows} never
+exceeds their \code{n_evaluable}.
+\item R7 is the fall-through: it answers every row reaching it, and a row
+it could not ask is upheld by default rather than by test. Its \code{n_rows}
+can therefore exceed its \code{n_evaluable}, and the gap is exactly the
+number of rows upheld without the confirm test being put. \verb{R7 = 2 (1 asked)} says two rows were resolved and one was tested.
+\item R0, R2, R3 and R5 read only what every gated row carries, so for
+them the two are the same question.
+}
+\code{n_rows} across the rules sums to the rows the cascade resolved, whichever
+rule answered each, and no rule's count is ever blanked while it has rows
+to report. \code{n_rows} is NA only where a rule answered nothing AND could not
+be asked, because a rule that could not fire has not fired on nothing --
+it was never put. A rule that could not be asked but answered anyway
+reports its count with \code{n_evaluable} 0, which only R7 can do: \verb{R7 = 2 (0 asked)} means two rows were upheld by the fall-through without its
+confirm test being put to either. Every rule that was asked reports its
+count, zeros included.
+
+The two columns differ because being asked has two parts. Reaching: the
+rules are a cascade down one branch per \code{suggested_action}, so a "keep" row
+is never asked R1, and a row R1 has already answered is never asked R2.
+\code{n_evaluable} can therefore be 0 with \code{evaluated} TRUE -- the rule could
+have fired, and no row put the question to it. Inputs: three rules read
+something a reviewed table need not carry, and where it is absent their
+test still returns FALSE, so the rule cannot fire however the evidence
+falls. R1 needs a blank verdict (\code{blank_flag_col}) or a \code{validity_flag};
+R4 needs \code{geo_local_record_location_n} and a verdict on the geographic
+scale \code{geography_col} does not name; R6 needs the sequence vote for its
+"keep" clause, or a decidable \code{prior_role}/\code{consensus_posterior} pair for
+its prior-driven one. R7 resolves every row it reaches, but its confirm
+test needs the sequence vote, a decidable stability
+(\code{consensus_confidence_score} or \code{robust_lower_posterior}) and a decidable
+\code{prior_driven}; without them every row comes back "upheld" by default
+rather than by test, so those rows are not counted as asked. R0, R2, R3
+and R5 read only values every row past the two-vote gate already has, so
+for them reaching the rule is the whole of being asked.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table
@@ -157,7 +205,7 @@ the same \code{observation_id}, whose best \code{score_likelihood} is within
 \code{relative_score_gap} of the call's best member, the call moves up to
 the genus (congener) or family (confamilial) they share. Otherwise the
 row is marked "review" (range expansion or error cannot be told
-apart) and the suggested action is "exclude". Without \code{posterior_df}
+apart) and the suggested action is "verify_range". Without \code{posterior_df}
 every I2 row is "review". Only species and genus calls are tested.
 \item I3: poor fit and geography plausible. A call at \code{move_up_max_rank}
 or finer moves up to \code{best_identity_rank} if that is coarser than the
@@ -186,8 +234,8 @@ The function returns every input row in the input order. It does not
 remove rows, rename taxa in place, or alter any input column. The
 appended columns are suggestions for the caller to act on; filtering is a
 separate, deliberate step. The suggested action for a "review" row is
-"exclude", the conservative reading, but \code{identity_action} keeps the
-distinction.
+"verify_range" -- settle the range question rather than drop the
+detection -- and \code{identity_action} keeps the distinction.
 }
 
 \section{Site-aware screening}{
@@ -209,17 +257,24 @@ review prompt or its cache key, and never changes \code{suggested_action} or
 any other column. Acting on it is left to the user.
 
 The evidence is read as three independent votes, each "support",
-"against", "neutral" or "not_evaluated" (the needed columns are absent):
+"against", "neutral" or "not_evaluated". A vote is "not_evaluated" where
+the evidence it reads is missing ON THAT ROW, whether because the column is
+absent from the table or because the row has no value in it:
 \itemize{
 \item \strong{SEQ}, the sequence match: \code{likelihood_support} and
-\code{poor_absolute_fit}. Support: \code{likelihood_support} >= 0.50 and no
-poor fit that counts against. Against: \code{likelihood_support} < 0.10, or
-a poor fit on a call finer than \code{best_identity_rank} (an unreferenced
-species is expected to fit poorly, so for it only
-\code{likelihood_support} counts).
+\code{poor_absolute_fit}. \code{likelihood_support} is required: where the row
+has none, SEQ is "not_evaluated" and casts no vote even if
+\code{poor_absolute_fit} is present, because a poor fit on its own reports
+that no reference matched well, which is as true of a correct call on
+an unreferenced species as of a wrong one. Support:
+\code{likelihood_support} >= 0.50 and no poor fit that counts against.
+Against: \code{likelihood_support} < 0.10, or a poor fit on a call finer
+than \code{best_identity_rank} (an unreferenced species is expected to fit
+poorly, so for it only \code{likelihood_support} counts).
 \item \strong{OCC}, occurrence: the occurrence-record side of the prior
 (\code{consensus_has_occurrence_record}, which matches the call's rank; else
-\code{winner_has_occurrence_record}; else \code{primary_plausibility}) and the
+\code{winner_has_occurrence_record}; else \code{consensus_plausibility}, which
+matches the call's rank in turn; else \code{primary_plausibility}) and the
 reviewer's geography verdict together cast ONE vote,
 because both rest on the same occurrence data and their agreement is
 not two confirmations. If they disagree the vote is "split", counted
@@ -240,8 +295,10 @@ chose the call from the same records the geography verdict reads. A call
 is \emph{stable} when \code{consensus_confidence_score} and
 \code{robust_lower_posterior} (whichever are present, at least one) are all
 at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
-doubt but never create confidence: every route to "confirmed" or
-"softened" requires SEQ support.
+doubt but never create confidence: every route to a confirmed KEEP or a
+softened flag requires SEQ support. A confirmed EXCLUSION does not, because
+agreeing with an exclusion lowers confidence in the call rather than
+raising it.
 
 \code{flag_consistency_score} is (votes for - votes against) / votes cast over
 SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
@@ -257,9 +314,15 @@ records against an unlikely geography verdict and SEQ support:
 else "upheld".
 \item R4: advice "verify_range" where the taxon has at least 3 distinct
 occurrence-record locations within 50 km of the row's site
-(\code{geo_local_record_location_n}, see below), the study-wide
-\code{llm_geographic_plausibility} is likely or possible, and SEQ
-supports: "softened".
+(\code{geo_local_record_location_n}, see below), the OTHER geographic scale
+is likely or possible, and SEQ supports: "softened". The other scale is
+\code{llm_geographic_plausibility_site} when the flag was raised on the
+study-wide column and the study-wide column when it was raised on the
+site one: re-reading the column named by \code{geography_col} could never
+soften the flag, because a "verify_range" row reads "unlikely" there by
+construction. R4 is asked of a row only where that row carries both
+\code{geo_local_record_location_n} and a verdict on the other scale, and SEQ
+was evaluated.
 \item R5: advice "verify_range" otherwise: "upheld".
 \item R6: advice "keep" with SEQ against, or advice "keep" or "move_up"
 on a prior-driven call without SEQ support: "escalated". A "move_up"

@@ -150,8 +150,14 @@ test_that("an offshore point resolves to Marine and is labelled geography -- off
     x$spatial_flag_reason <- NA_character_
     x
   }
+  # No .env: local_mocked_bindings() defaults to the caller's environment,
+  # which inside test_that() IS this test's frame. Passing parent.frame()
+  # scoped the mock to a WIDER frame than the test, so it could outlive the
+  # block it belongs to. expect_gt(used$n, 0L) below is what makes this
+  # testable: if the binding does not take, the real NOAA path runs and the
+  # counter stays 0.
   testthat::local_mocked_bindings(
-    flag_habitat_inconsistencies = fake_geo, .env = parent.frame()
+    flag_habitat_inconsistencies = fake_geo
   )
 
   occ <- data.frame(

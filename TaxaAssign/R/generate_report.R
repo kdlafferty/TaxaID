@@ -192,7 +192,14 @@ generate_report <- function(result,
     llm_model_name,
     kernel_priors = identical(prior_kind, "kernel"),
     prior_kind = prior_kind,
-    beta_priors = all(c("prior_alpha", "prior_beta") %in% names(result))
+    beta_priors = all(c("prior_alpha", "prior_beta") %in% names(result)),
+    # consensus_settings records the arguments the call actually used;
+    # report_params does not carry the method. An object with neither falls
+    # back to the package default, which is what an unlabelled run used.
+    consensus_method = {
+      cm <- attr(consensus, "consensus_settings")$consensus_method
+      if (is.null(cm) || !length(cm)) "credible_node" else as.character(cm)[[1L]]
+    }
   )
 
   # --- Build Results ----------------------------------------------------------
@@ -525,7 +532,8 @@ generate_report <- function(result,
                                 llm_model_name = NULL,
                                 kernel_priors = FALSE,
                                 prior_kind = "occurrence",
-                                beta_priors = TRUE) {
+                                beta_priors = TRUE,
+                                consensus_method = "credible_node") {
   sections <- character(0)
 
   # --- Data type preamble ---
@@ -805,19 +813,39 @@ generate_report <- function(result,
   if (is.null(confirm_q)) confirm_q <- 0.9 # default
   if (is.null(confirm_a0)) confirm_a0 <- 0.25 # default
 
-  cons_text <- sprintf(
-    paste0(
-      "A consensus taxonomic assignment was determined for each observation using a ",
-      "lowest common ancestor (LCA) algorithm. Candidate taxa with individual ",
-      "posterior probabilities below %s were excluded. Among the remaining ",
-      "candidates, hypotheses were accumulated in decreasing order of posterior ",
-      "probability until their cumulative sum reached %s. The consensus was set ",
-      "to the most specific taxonomic rank at which all retained hypotheses agreed. ",
-      "When all plausible hypotheses belonged to the same species, the assignment ",
-      "was considered resolved to species level."
-    ),
-    min_post, cum_thresh
-  )
+  # Which rule actually ran, passed in by the caller: the two methods are
+  # different algorithms and min_posterior does not apply to the default one,
+  # so one paragraph cannot describe both. A Methods section that named the
+  # wrong rule would misdescribe the analysis in print.
+  cons_text <- if (identical(consensus_method, "lca")) {
+    sprintf(
+      paste0(
+        "A consensus taxonomic assignment was determined for each observation using a ",
+        "lowest common ancestor (LCA) algorithm. Candidate taxa with individual ",
+        "posterior probabilities below %s were excluded. Among the remaining ",
+        "candidates, hypotheses were accumulated in decreasing order of posterior ",
+        "probability until their cumulative sum reached %s. The consensus was set ",
+        "to the most specific taxonomic rank at which all retained hypotheses agreed. ",
+        "When all plausible hypotheses belonged to the same species, the assignment ",
+        "was considered resolved to species level."
+      ),
+      min_post, cum_thresh
+    )
+  } else {
+    sprintf(
+      paste0(
+        "A consensus taxonomic assignment was determined for each observation by ",
+        "summing posterior probability under each candidate taxon, rank by rank from ",
+        "the finest, and reporting the finest taxon holding at least %s of the total ",
+        "posterior mass. No candidate was excluded on its individual posterior, and a ",
+        "hypothesis named only at a coarser rank counted toward that taxon and its ",
+        "ancestors. Where no taxon at any rank reached that share, the observation was ",
+        "reported unresolved. When the mass resolved to a single species, the ",
+        "assignment was considered resolved to species level."
+      ),
+      cum_thresh
+    )
+  }
   sections <- c(sections, cons_text)
 
   # --- Empirical Bayes ---

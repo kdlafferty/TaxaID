@@ -123,3 +123,57 @@ test_that("the zero-row early return carries every flag column", {
   ))
   expect_equal(nrow(out), 0L)
 })
+
+test_that("a negative evidence weight is an error, not a silent conditioning", {
+  # A weight is an evidence mass. A negative one has no meaning, and it is the
+  # only input that could make a row both floored and zeroed -- the two states
+  # the @return calls mutually exclusive. Caught on the way in rather than
+  # producing a prior nobody can interpret.
+  ev <- .ev()
+  ev$weight[2] <- -0.01
+  expect_error(
+    condition_evidence_on_habitat(ev, .hab(), "Marine"),
+    "1 evidence weight\\(s\\) are negative"
+  )
+  # Two bad rows are counted, not just the first.
+  ev$weight[3] <- -1
+  expect_error(
+    condition_evidence_on_habitat(ev, .hab(), "Marine"),
+    "2 evidence weight\\(s\\) are negative"
+  )
+  # NA is not negative and must still pass through.
+  ev2 <- .ev()
+  ev2$weight[1] <- NA_real_
+  expect_no_error(suppressMessages(
+    condition_evidence_on_habitat(ev2, .hab(), "Marine")))
+})
+
+test_that("habitat_zeroed means the row HAD mass and lost it, not that it is now 0", {
+  # A row whose weight was already 0 still ends at 0, but habitat conditioning
+  # did not take anything from it: reporting it as zeroed would overstate what
+  # the habitat step did, and the warning names zeroed rows to the user.
+  ev <- .ev()
+  ev$weight[2] <- 0                                  # deer: terrestrial, weight 0
+  out <- suppressMessages(suppressWarnings(
+    condition_evidence_on_habitat(ev, .hab(), "Marine")))
+  expect_equal(out$weight[2], 0)                      # still zero
+  expect_false(out$habitat_zeroed[2])                 # but not ZEROED by habitat
+  expect_equal(out$weight_unconditioned[2], 0)
+  # The steelhead row did lose mass but keeps some, so it is neither.
+  expect_false(out$habitat_zeroed[1])
+  expect_gt(out$weight[1], 0)
+})
+
+test_that("the conditioning message counts unchanged, reduced and zeroed rows", {
+  # The three counts must partition the rows: a reader adding them up and
+  # finding they miss the row total cannot tell which bucket is wrong.
+  ev <- .ev()
+  ev$weight[2] <- 0                                   # already-zero row
+  msg <- capture_messages(suppressWarnings(
+    condition_evidence_on_habitat(ev, .hab(), "Marine")))
+  txt <- paste(msg, collapse = " ")
+  expect_match(txt, "4 row\\(s\\) conditioned on 'Marine'")
+  expect_match(txt, "1 unknown")                      # Unknownus has no lookup row
+  # The already-zero row is NOT in the zeroed count.
+  expect_match(txt, "0 reduced to zero")
+})

@@ -104,7 +104,12 @@ bbox <- c(
   lat_max =   34.5
 )
 
-pdf_dir <- system.file("extdata/pdfs", package = "TaxaFetch")
+# No PDF is bundled with the package: supply your own. Stage 12 downloads
+# into this directory, and Stage 13 reads every .pdf in it. The fallback is
+# not cosmetic -- system.file() returns "" for a path that is not installed,
+# and list.files("") lists the working directory rather than nothing.
+pdf_dir <- Sys.getenv("TAXAID_PDF_DIR", "")
+if (!nzchar(pdf_dir)) pdf_dir <- file.path(getwd(), "pdfs")
 
 message(sprintf("Taxon scope : %s", taxon_scope))
 message(sprintf("Geo scope   : %s", geo_scope))
@@ -112,6 +117,7 @@ message(sprintf(
   "bbox        : lon [%.2f, %.2f]  lat [%.2f, %.2f]",
   bbox[1], bbox[2], bbox[3], bbox[4]
 ))
+message(sprintf("PDF dir     : %s", pdf_dir))
 
 
 # ==============================================================================

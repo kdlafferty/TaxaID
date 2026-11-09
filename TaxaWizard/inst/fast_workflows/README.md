@@ -26,6 +26,31 @@ These scripts exercise code paths. Their numbers are not results.
 | `ptcon12s_r2_fast_match_obj.rds` | A second, later Point Conception 12S run, curated around eleven known downranking cases. Companions: `ptcon12s_r2_fast_lik_model_calibrated.rds` and `ptcon12s_r2_fast_taxaexpect_priors.rds` (the whole priors table, 783 rows: 258 named-evidence and 37 anonymous `resident_undetected` rows, 479 `kernel_estimated`, 9 `transport`). Do not mix these with the `ptcon12s_fast_*` files; they are different runs. |
 | `run_review_fixes_fast_check.R` | Exercises specific consensus and downranking options (`species_reference`, `downrank_requires_candidate`) against the 18S and 12S run-2 fixtures and prints before/after counts. A scoped check, not a smoke test: it reconstructs only the first stages of the pipeline, so cases that enter through `restore_suppressed_candidates()` or `expand_unreferenced_hypotheses()` in production do not reach a downrank event here. |
 
+## Where the priors fixtures' numbers come from
+
+`ptcon12s_r2_fast_taxaexpect_priors.rds` (783 rows) and
+`ptcon18s_fast_taxaexpect_priors.rds` (1763 rows) hold fitted prior
+parameters, not occurrence records. There is no `gbifID`, `occurrenceID`,
+`datasetKey`, per-record coordinate, collector or catalogue number in either
+file.
+
+`prior_branch` says how each row's prior was arrived at, and is the column to
+read first: `kernel_estimated` (479 and 1522 rows), `resident_undetected`
+(295 and 238) and `transport` (9 and 3). Occurrence counts back only a
+minority of rows -- `n_obs` is present on 37 of 783 and 238 of 1763 -- and
+`inat_n_observations_local` is present on 0 and 1 row respectively, so these
+two fixtures are almost entirely model-estimated rather than count-driven.
+`prior_source_type` is not a provenance column: it is `NA` on 774 of 783 and
+1760 of 1763 rows, and marks only domestic or food species.
+
+Where occurrence counts do back a row they are aggregates over GBIF records,
+per taxon, grid cell and habitat. GBIF records carry the licence each
+publishing institution chose -- CC0, CC BY or CC BY-NC -- and neither file
+records which download it came from, so no licence or DOI is stated here for
+these specific numbers; the maintainer can supply the download DOIs on
+request. `grid_id` is `"Site_34.40_-120.40"` or `NA` only: the study's own
+site coordinates rounded to 0.01 degrees, not record localities.
+
 ## Building a fixture
 
 Run `build_fast_fixture.R` against a checkpoint that no workflow is currently

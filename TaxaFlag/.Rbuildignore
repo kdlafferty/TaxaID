@@ -21,3 +21,7 @@
 # these lines must stay free of regex-special characters.
 ^inst/.*_review\.Rmd$
 ^inst/.*_review_response\.md$
+# A development harness that calls every exported function in sequence, used
+# to confirm nothing errors after a change. It is not an example and not user
+# documentation; it stays in the repository and does not ship.
+^inst/run_all_functions\.R$

@@ -11,8 +11,9 @@
 # update the grammar IN THE SAME CHANGE, never to relax the test.
 # ==============================================================================
 
-# testthat's withr is not a declared dependency of this package, so tests use
-# a plain session-temp directory instead of withr::local_tempdir().
+# A plain session-temp directory rather than withr::local_tempdir(): these
+# caches are asserted on across several tests in this file, so they are
+# created and removed explicitly rather than tied to one test's scope.
 .cache_tmpdir <- function() {
   d <- tempfile("taxalikely_cache_")
   dir.create(d)

@@ -221,7 +221,11 @@
 #' @param lookup_missing_taxonomy Logical. If `TRUE`, calls
 #'   `TaxaTools::verify_taxon_names()` to fill in taxonomy columns for
 #'   `"unreferenced_species"` rows that have `NA` in those columns. Requires
-#'   TaxaTools to be installed and may make network requests. Default `FALSE`.
+#'   TaxaTools to be installed and may make network requests. Default
+#'   `FALSE`, and for those two reasons: a consensus call should acquire
+#'   neither an optional dependency nor a network round trip without being
+#'   asked, and the rows it fills are the ones a caller is least likely to be
+#'   waiting on. The canonical workflow template passes `TRUE`.
 #' @param backbone_id Integer. Taxonomic backbone to use when
 #'   `lookup_missing_taxonomy = TRUE`. Passed to
 #'   `TaxaTools::verify_taxon_names()`. Required (errors) when
@@ -401,8 +405,9 @@
 #' defensible rules is opt-in until its trade is measured.
 #' `unnamed_in_threshold = TRUE` is a correction: leaving unnamed mass out of
 #' the denominator makes `cumulative_threshold` mean something other than it
-#' says. `pool_tail` and `consensus_method = "credible_node"` are choices of
-#' rule, so they default off (`FALSE`, `"lca"`).
+#' says. `pool_tail` is a choice of rule, so it defaults off (`FALSE`).
+#' `consensus_method` defaults to `"credible_node"`, the node-summing call;
+#' `"lca"` is the opt-in.
 #'
 #' @section What a call is a call ABOUT:
 #' A call is made for one `observation_id`, so when observations are formed

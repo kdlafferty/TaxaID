@@ -375,6 +375,9 @@ review_flagged_accessions <- function(evaluated_df,
   }
 
   n_scope <- sum(in_scope)
+  # Unique accessions, not rows: one accession can hold several evaluated rows,
+  # so a row count as the denominator understates the unreviewed fraction.
+  n_scope_acc <- length(unique(evaluated_df$accession[in_scope]))
   if (verbose) {
     message(sprintf(
       "review_flagged_accessions(): %d of %d row(s) in scope for LLM review.",
@@ -552,7 +555,7 @@ review_flagged_accessions <- function(evaluated_df,
       "to %d re-ask(s) per batch; a batch stops early when a re-ask recovers ",
       "nothing, so the per-batch messages above report what each actually ",
       "spent):\n  %s"
-    ), length(unreviewed_acc), n_scope, max_retries,
+    ), length(unreviewed_acc), n_scope_acc, max_retries,
     paste(utils::head(unreviewed_acc, 10L), collapse = "\n  ")
     )
     if (length(unreviewed_acc) > 10L) {
@@ -563,10 +566,15 @@ review_flagged_accessions <- function(evaluated_df,
     }
     what_to_do <- paste0(
       "\nThese rows carry NA in every accession_review_ column, which reads as\n",
-      "  \"not reviewed\" and not as \"reviewed and found acceptable\" -- a filter\n",
-      "  that keeps accessions whose explanation is not \"unlikely\" will keep\n",
-      "  them. Re-running normally recovers them (an unreviewed accession is\n",
-      "  never cached). They are named here and in\n",
+      "  \"not reviewed\" and not as \"reviewed and found acceptable\". No verdict\n",
+      "  means NO override: resolve_review_overrides() returns only accessions\n",
+      "  with an affirmative keep explanation, so removal -- if it is enabled --\n",
+      "  decides on the screen's own verdict, as if the review had never run.\n",
+      "  Under the default gate = \"action\" that means an accession goes only if\n",
+      "  its reference_action is \"remove\"; an \"insufficient_independent_evidence\"\n",
+      "  flag alone removes nothing unless remove_insufficient_evidence = TRUE.\n",
+      "  Re-running normally recovers them (an unreviewed accession is never\n",
+      "  cached). They are named here and in\n",
       "  attr(result, \"unreviewed_accessions\")."
     )
     stop_advice <- paste0(
@@ -577,7 +585,14 @@ review_flagged_accessions <- function(evaluated_df,
       stop(paste0(what_happened, what_to_do, stop_advice), call. = FALSE)
     }
     warning(paste0(what_happened, what_to_do), call. = FALSE)
-    if (verbose) message("\n!! ", what_happened, "\n")
+    # warning() is deferred to the end of the run under Rscript, so this is
+    # the only timely signal; a pointer, not a second copy of the list.
+    if (verbose) {
+      message(sprintf(
+        "\n!! %d accession(s) in scope have NO LLM review verdict -- see the warning for the list, or attr(result, \"unreviewed_accessions\").\n",
+        length(unreviewed_acc)
+      ))
+    }
   }
 
   evaluated_df

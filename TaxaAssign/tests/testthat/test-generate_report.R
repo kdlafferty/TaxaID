@@ -490,3 +490,62 @@ test_that("generate_report keeps the Beta-draw sentence when alpha and beta are 
   expect_true(grepl("sampled from their Beta distributions", report))
   expect_false(grepl("prior was held fixed", report))
 })
+
+test_that("the Methods text describes the consensus rule that actually ran", {
+  set.seed(1) # simulation path: seeded so other tests cannot shift its stream
+  # Found by an independent pre-tag reader. The consensus paragraph is
+  # publication-ready Methods text, and it unconditionally described a lowest
+  # common ancestor algorithm that excludes candidates below min_posterior.
+  # Under the default consensus_method = "credible_node" no candidate is
+  # dropped below min_posterior at all (posterior_consensus()'s own help says
+  # so), so the paragraph described an analysis that had not been run. Nothing
+  # asserted this paragraph, which is why it survived to a human reader.
+  base_params <- list(n_sims = 1000L, cumulative_threshold = 0.9, min_posterior = 0.05)
+  args <- list("bayesian", base_params, "eDNA", NULL,
+               has_unreferenced = FALSE, has_family_expansion = FALSE,
+               has_empirical_bayes = FALSE)
+
+  # The default rule: node summing, and no exclusion claim.
+  node_text <- do.call(.build_methods_text, args)
+  expect_match(node_text, "summing posterior probability under each candidate taxon")
+  expect_match(node_text, "No candidate was excluded on its individual posterior")
+  expect_false(grepl("lowest common ancestor", node_text, fixed = TRUE))
+  # The threshold is still reported, because it is what the rule tests.
+  expect_match(node_text, "0.9")
+
+  # The opt-in rule keeps its own, correct description.
+  lca_text <- do.call(.build_methods_text, c(args, list(consensus_method = "lca")))
+  expect_match(lca_text, "lowest common ancestor \\(LCA\\) algorithm")
+  expect_match(lca_text, "posterior probabilities below 0.05 were excluded")
+  expect_false(grepl("No candidate was excluded", lca_text, fixed = TRUE))
+
+  # The two must not be the same paragraph.
+  expect_false(identical(node_text, lca_text))
+})
+
+test_that("generate_report reads the consensus rule from the result it was given", {
+  set.seed(1) # simulation path: seeded so other tests cannot shift its stream
+  # The paragraph is only right if the method reaches it from the actual
+  # object. report_params does not carry consensus_method, so it is read from
+  # the consensus_settings attribute posterior_consensus() attaches. Pinning
+  # the helper alone would not catch a caller that stopped passing it.
+  result <- .mock_bayesian_result()
+
+  cons_lca <- .mock_consensus()
+  attr(cons_lca, "consensus_settings") <- list(consensus_method = "lca")
+  rep_lca <- generate_report(result, cons_lca, llm_fn = NULL)
+  expect_match(rep_lca, "lowest common ancestor \\(LCA\\) algorithm")
+
+  cons_node <- .mock_consensus()
+  attr(cons_node, "consensus_settings") <- list(consensus_method = "credible_node")
+  rep_node <- generate_report(result, cons_node, llm_fn = NULL)
+  expect_match(rep_node, "summing posterior probability under each candidate taxon")
+  expect_false(grepl("lowest common ancestor", rep_node, fixed = TRUE))
+
+  # An object recording no settings falls back to the package default, which
+  # is what an unlabelled run actually used.
+  cons_bare <- .mock_consensus()
+  attr(cons_bare, "consensus_settings") <- NULL
+  rep_bare <- generate_report(result, cons_bare, llm_fn = NULL)
+  expect_match(rep_bare, "summing posterior probability under each candidate taxon")
+})

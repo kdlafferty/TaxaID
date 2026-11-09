@@ -380,6 +380,224 @@ test_that("R4/R5: verify_range is softened only by the CalIntertidal local-recor
   expect_equal(res(d3, geography_col = g)$flag_resolution, "upheld")
 })
 
+test_that("R4 is NOT EVALUABLE when only one geographic scale is present", {
+  # A verify_range row reads "unlikely" on the column that RAISED it, so
+  # re-reading that same column could never soften it. Under the default
+  # geography_col, with no per-site column in the frame, R4 cannot fire at
+  # all -- and a count of 0 would read as "fired on nothing", which is a
+  # different claim from "could not be asked".
+  d <- rv(geo = "unlikely")
+  d$geo_local_record_location_n <- 3
+  x <- scr(d)
+  expect_equal(x$suggested_action, "verify_range")
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_false(identical(x$flag_resolution, "softened"))
+  # R1 is the only other rule this frame cannot ask: it reads a blank verdict
+  # or a validity_flag and the frame has neither. Naming both keeps the test
+  # specific -- an "everything else is evaluable" assertion would have gone
+  # vacuously green the moment another rule started reporting honestly.
+  expect_false(rc$evaluated[rc$rule == "R1"])
+  expect_true(all(rc$evaluated[!rc$rule %in% c("R1", "R4")]))
+})
+
+test_that("R4 softens a verify_range row via the SECOND geographic scale", {
+  # The study scale raised the flag; the per-site scale is a DIFFERENT reading
+  # and can soften it. Under the old rule R4 re-read the study column, which
+  # is "unlikely" by construction here, so this row was always upheld.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "likely"
+  d$geo_local_record_location_n <- 3
+  r <- res(d)
+  expect_equal(r$flag_resolution, "softened")
+  expect_match(r$flag_resolution_basis, "^R4;.*local_record_locations=3")
+  rc <- attr(scr(d), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R4"])
+  expect_equal(rc$n_rows[rc$rule == "R4"], 1L)
+})
+
+test_that("R4 is NOT EVALUABLE without the local-record count, however many geographic scales are present", {
+  # BOTH geographic scales are here, so a check that only asks "is there a
+  # second geography column?" calls R4 evaluable. But R4 also reads
+  # geo_local_record_location_n, and without it `!is.na(lrn)` is FALSE on
+  # every row, so R4 cannot fire whatever the geography says. "R4 = 0" would
+  # be the same zero-versus-never-asked confusion as a missing column.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "likely"
+  expect_false("geo_local_record_location_n" %in% names(d))   # the missing input
+  x <- scr(d)
+  expect_equal(x$suggested_action, "verify_range")             # the row reached R4's branch
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_equal(x$flag_resolution, "upheld")                    # R5, not a softening
+})
+
+test_that("R4 is NOT EVALUABLE when the second scale is present but says nothing on the row", {
+  # Evaluability is per ROW, not per column. The column exists and carries no
+  # verdict for this row, so no question was put to the row -- a column-level
+  # check would call it evaluable and report a zero it did not earn.
+  for (silent in list(NA_character_, "")) {
+    d <- rv(geo = "unlikely")
+    d$llm_geographic_plausibility_site <- silent
+    d$geo_local_record_location_n <- 3
+    rc <- attr(scr(d), "resolution_counts")
+    expect_false(rc$evaluated[rc$rule == "R4"])
+    expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  }
+  # Same again for a present-but-silent local-record count.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "likely"
+  d$geo_local_record_location_n <- NA_real_
+  rc <- attr(scr(d), "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R4"])
+})
+
+test_that("R4 reports a real zero when a row WAS asked and the answer was no", {
+  # Every input is present, the row reached the test, and the other scale
+  # simply does not support softening. That is a 0 the reader can trust, and
+  # the fix for the never-asked case must not swallow it.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "unlikely"
+  d$geo_local_record_location_n <- 3
+  x <- scr(d)
+  rc <- attr(x, "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R4"])
+  expect_equal(rc$n_rows[rc$rule == "R4"], 0L)
+  expect_equal(x$flag_resolution, "upheld")
+  expect_message(screen_assignments(d), "R4 = 0")
+})
+
+test_that("n_evaluable counts the rows each rule was ASKED, not the rows it fired on", {
+  # Three verify_range rows: two carry both of R4's inputs, the third has no
+  # verdict on the second scale. n_evaluable is the denominator n_rows is a
+  # numerator of, so it must be 2 -- counting the unaskable row would restate
+  # the very confusion the column exists to remove.
+  d <- rbind(rv(geo = "unlikely"), rv(geo = "unlikely"), rv(geo = "unlikely"))
+  d$observation_id <- c("o1", "o2", "o3")
+  d$llm_geographic_plausibility_site <- c("likely", "unlikely", NA_character_)
+  d$geo_local_record_location_n <- c(3, 3, 3)
+  rc <- attr(scr(d), "resolution_counts")
+  expect_equal(rc$n_evaluable[rc$rule == "R4"], 2L)
+  expect_true(rc$evaluated[rc$rule == "R4"])
+  expect_equal(rc$n_rows[rc$rule == "R4"], 1L)        # only the "likely" row softens
+  # R5 is R4's fall-through: the row R4 declined and the row it could not ask.
+  expect_equal(rc$n_evaluable[rc$rule == "R5"], 2L)
+  expect_equal(rc$n_rows[rc$rule == "R5"], 2L)
+  # The gate is put to every row, whatever branch the row then takes.
+  expect_equal(rc$n_evaluable[rc$rule == "R0"], 3L)
+  # No row took the exclude or keep branch. Those rules could still have
+  # fired on a row that reached them, so they are 0 with evaluated TRUE --
+  # "nothing asked", which is not "cannot be asked".
+  for (r in c("R2", "R3", "R6", "R7")) {
+    expect_equal(rc$n_evaluable[rc$rule == r], 0L)
+    expect_true(rc$evaluated[rc$rule == r])
+    expect_equal(rc$n_rows[rc$rule == r], 0L)
+  }
+  # R1 is the other way round: no row reached it AND the frame carries
+  # neither verdict it reads, so it could not have been asked at all.
+  expect_false(rc$evaluated[rc$rule == "R1"])
+  expect_equal(rc$n_evaluable[rc$rule == "R1"], 0L)
+  expect_true(is.na(rc$n_rows[rc$rule == "R1"]))
+  # The invariant that makes the pair readable at all.
+  # R7 excluded deliberately: it is the fall-through and answers rows it could
+  # not ask, so n_rows > n_evaluable is correct there. See the mixed-row test.
+  ev <- rc$evaluated & rc$rule != "R7"
+  expect_true(all(rc$n_rows[ev] <= rc$n_evaluable[ev]))
+})
+
+test_that("n_evaluable is 0 with evaluated FALSE where R4's inputs are absent", {
+  d <- rv(geo = "unlikely")
+  d$geo_local_record_location_n <- 3                   # present; the scale is not
+  rc <- attr(scr(d), "resolution_counts")
+  expect_equal(rc$n_evaluable[rc$rule == "R4"], 0L)
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_identical(names(rc), c("rule", "n_rows", "evaluated", "n_evaluable"))
+})
+
+test_that("R1 is NOT EVALUABLE without a blank verdict or a validity verdict", {
+  # R1 asks whether there is POSITIVE evidence of a problem, from
+  # blank_flag_col or validity_flag. With neither, `blank | invalid` is FALSE
+  # on every row from absence alone, so R1 cannot fire however the evidence
+  # falls -- the same shape as the R4 defect, in a second place.
+  d <- rv(poor = TRUE, geo = "unlikely")
+  x <- scr(d)
+  expect_equal(x$suggested_action, "exclude")       # the row does reach R1
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R1"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R1"]))
+  expect_equal(rc$n_evaluable[rc$rule == "R1"], 0L)
+})
+
+test_that("either verdict alone makes R1 evaluable, and it then reports a real zero", {
+  # "valid" is a verdict: R1 asked and declined, which is 0, not NA.
+  d <- rv(poor = TRUE, geo = "unlikely")
+  d$validity_flag <- "valid"
+  rc <- attr(scr(d), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R1"])
+  expect_equal(rc$n_evaluable[rc$rule == "R1"], 1L)
+  expect_equal(rc$n_rows[rc$rule == "R1"], 0L)
+  # A blank verdict alone does the same, and FALSE is as much a verdict as TRUE.
+  d2 <- rv(poor = TRUE, geo = "unlikely")
+  d2$blank_flag <- FALSE
+  rc2 <- attr(scr(d2, blank_flag_col = "blank_flag"), "resolution_counts")
+  expect_true(rc2$evaluated[rc2$rule == "R1"])
+  expect_equal(rc2$n_evaluable[rc2$rule == "R1"], 1L)
+  expect_equal(rc2$n_rows[rc2$rule == "R1"], 0L)
+  # But an NA in a supplied column is not a verdict.
+  d3 <- rv(poor = TRUE, geo = "unlikely")
+  d3$blank_flag <- NA
+  rc3 <- attr(scr(d3, blank_flag_col = "blank_flag"), "resolution_counts")
+  expect_false(rc3$evaluated[rc3$rule == "R1"])
+})
+
+test_that("R6 is NOT EVALUABLE when neither the sequence vote nor prior_driven can be decided", {
+  # R6 fires on a keep whose SEQ votes against, or on a prior-driven call
+  # without SEQ support. With no likelihood_support there is no SEQ vote, and
+  # with no prior_role and no consensus_posterior prior_driven is NA, so both
+  # clauses read FALSE from absence and R6 cannot fire.
+  d <- rv(.drop = c("likelihood_support", "prior_role", "consensus_posterior"))
+  x <- scr(d)
+  expect_equal(x$suggested_action, "keep")         # reaches the keep/move_up branch
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R6"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R6"]))
+  expect_equal(rc$n_evaluable[rc$rule == "R6"], 0L)
+  # R7 still RESOLVES the row -- the fall-through always answers -- but it
+  # answers "upheld" by default, not by test: its confirm clause needs the
+  # sequence vote and a decidable prior_driven, the very columns dropped
+  # here. So the row is resolved and R7 is not evaluable, which are
+  # different facts about the same row.
+  expect_equal(x$flag_resolution, "upheld")
+  expect_false(rc$evaluated[rc$rule == "R7"])
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 0L)
+  # The row WAS answered, so the count is reported rather than blanked: not
+  # evaluable and answered nothing are different states.
+  expect_equal(rc$n_rows[rc$rule == "R7"], 1L)
+})
+
+test_that("R7 IS evaluable once its confirm clause can be decided", {
+  # The counterpart to the case above: with the sequence vote, stability and
+  # prior_role all present, R7's confirm test can be put to the row, so the
+  # rule is evaluable whether or not it confirms. Without this, the check
+  # above would pass on code that reported R7 unevaluable always.
+  rc <- attr(scr(rv()), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R7"])
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 1L)
+})
+
+test_that("a decidable prior_driven alone makes R6 evaluable with no sequence vote", {
+  # prior_role is present, so prior_driven is FALSE rather than NA -- a known
+  # answer, and R6's second clause can be put to the row.
+  d <- rv(.drop = "likelihood_support")
+  rc <- attr(scr(d), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R6"])
+  expect_equal(rc$n_evaluable[rc$rule == "R6"], 1L)
+  expect_equal(rc$n_rows[rc$rule == "R6"], 0L)
+})
+
 test_that("R6: a keep resting on weak sequence or on the prior is escalated", {
   expect_equal(res(rv(likelihood_support = 0.05))$flag_resolution, "escalated")
   r <- res(rv(likelihood_support = 0.4, prior_role = "narrowed"))
@@ -488,7 +706,7 @@ test_that("resolve = FALSE returns exactly the pre-resolution result", {
   expect_error(screen_assignments(d, resolve = NA), "resolve")
 })
 
-test_that("resolution keeps every row in order and counts every rule, zeros included", {
+test_that("resolution keeps every row in order and distinguishes a zero from a rule that could not be asked", {
   d <- rbind(rv(), rv(poor = TRUE, geo = "unlikely"), rv(likelihood_support = 0.05),
              rv(taxon = NA_character_))
   d$observation_id <- c("o4", "o1", "o3", "o2")
@@ -497,7 +715,92 @@ test_that("resolution keeps every row in order and counts every rule, zeros incl
   expect_identical(r$observation_id, d$observation_id)
   rc <- attr(r, "resolution_counts")
   expect_identical(rc$rule, paste0("R", 0:7))
-  expect_equal(sum(rc$n_rows), 4L)
-  expect_true(any(rc$n_rows == 0L))
-  expect_message(screen_assignments(d), "resolution by rule: R0 = 1, R1 = 0")
+  # Every row is accounted for among the rules that COULD be evaluated.
+  expect_equal(sum(rc$n_rows, na.rm = TRUE), 4L)
+  # A rule that fired on nothing reports 0; a rule that could not be asked
+  # reports NA and evaluated = FALSE. Conflating the two is what this test
+  # now guards: R4 needs a second geographic scale, and this frame has only
+  # the default column, so it is not evaluable rather than zero.
+  expect_true(any(rc$n_rows[rc$evaluated] == 0L))
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_false(rc$evaluated[rc$rule == "R1"])      # no blank or validity verdict
+  expect_true(all(rc$evaluated[!rc$rule %in% c("R1", "R4")]))
+  # The count and the denominator are both printed, and this frame is exactly
+  # why: R0 fired on 1 row of the 4 it was asked, so "R0 = 1" alone would not
+  # say whether the other three failed the gate or never reached it.
+  expect_equal(rc$n_rows[rc$rule == "R0"], 1L)
+  expect_equal(rc$n_evaluable[rc$rule == "R0"], 4L)
+  expect_message(screen_assignments(d),
+                 "resolution by rule: R0 = 1 \\(4 asked\\), R1 = not evaluable")
+  expect_message(screen_assignments(d), "R4 = not evaluable")
+})
+
+test_that("the fall-through answers rows it could not ask, and the counts say so", {
+  # R7 is the only rule that resolves a row it could not ask. It is the
+  # cascade's fall-through, so a keep row carrying no sequence vote is upheld
+  # by DEFAULT rather than by test, and it would be wrong to drop it from
+  # n_rows: the counts have to account for every row the cascade resolved.
+  # So n_rows > n_evaluable is correct for R7 and only for R7, and the message
+  # prints both numbers rather than hiding the difference.
+  #
+  # Two keep rows reach R7; only the first carries likelihood_support, so only
+  # the first can be asked the confirm test.
+  d <- rbind(rv(), rv(likelihood_support = NA_real_))
+  d$observation_id <- c("o1", "o2")
+  rc <- attr(scr(d), "resolution_counts")
+
+  expect_equal(rc$n_rows[rc$rule == "R7"], 2L)        # both answered
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 1L)   # one asked
+  expect_gt(rc$n_rows[rc$rule == "R7"], rc$n_evaluable[rc$rule == "R7"])
+
+  # Every OTHER evaluated rule answers only rows it asked. Asserted here so
+  # the exception cannot quietly spread to the rest of the cascade.
+  oth <- rc[rc$evaluated & rc$rule != "R7", ]
+  expect_true(all(oth$n_rows <= oth$n_evaluable))
+
+  # The counts still account for every row, which is why n_rows stays the
+  # answered count rather than being reduced to the asked count.
+  expect_equal(sum(rc$n_rows, na.rm = TRUE), 2L)
+
+  # Both numbers reach the user.
+  expect_message(screen_assignments(d), "R7 = 2 \\(1 asked\\)")
+})
+
+test_that("a rule that could not be asked still reports the rows it answered", {
+  # The fall-through upholds every keep row reaching it, including rows whose
+  # confirm test it could not put. Blanking its count because it was not
+  # evaluable dropped those rows out of a total the help says accounts for
+  # every resolved row: on this frame the sum read 0 while two rows had been
+  # resolved. NA now means "answered nothing AND could not be asked".
+  d <- rv(.drop = c("likelihood_support", "prior_role", "consensus_posterior",
+                    "consensus_confidence_score", "robust_lower_posterior"))
+  d <- rbind(d, d)
+  d$observation_id <- c("a", "b")
+  x <- scr(d)
+  rc <- attr(x, "resolution_counts")
+
+  # Both rows were resolved, and by R7.
+  expect_equal(sum(!is.na(x$flag_resolution)), 2L)
+  expect_true(all(x$flag_resolution == "upheld"))
+  expect_true(all(grepl("^R7", x$flag_resolution_basis)))
+
+  # R7: answered 2, asked 0, not evaluable -- three facts, none hidden.
+  expect_equal(rc$n_rows[rc$rule == "R7"], 2L)
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 0L)
+  expect_false(rc$evaluated[rc$rule == "R7"])
+
+  # The sentence the help makes: the counts account for every resolved row.
+  expect_equal(sum(rc$n_rows, na.rm = TRUE), 2L)
+
+  # R7 is the only rule that can answer a row it could not ask, because it is
+  # the only one that fires unconditionally. Every other rule is either
+  # evaluable or has nothing to report.
+  oth <- rc[rc$rule != "R7", ]
+  expect_true(all(oth$evaluated | is.na(oth$n_rows) | oth$n_rows == 0L))
+
+  # Both numbers reach the user, and "not evaluable" is reserved for a rule
+  # with nothing to report.
+  expect_message(screen_assignments(d), "R7 = 2 \\(0 asked\\)")
+  expect_message(screen_assignments(d), "R1 = not evaluable")
 })
