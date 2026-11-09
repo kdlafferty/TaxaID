@@ -295,14 +295,14 @@ what should have changed, and corrected before release.
   harness that calls every exported function in sequence, a hand-run remote
   BLAST field test, and a single-site reference-screening driver. They stay in
   the repository.
-- A review-input script that DOES ship, `TaxaFetch`'s, had its billed-LLM flag
+- A review-input script that shipped, `TaxaFetch`'s, had its billed-LLM flag
   set to `TRUE`, while its own header four lines above stated that all such
   flags default to `FALSE`. A reviewer running the file top to bottom made
-  real, billed Anthropic calls, and because the file ships that reached users
-  rather than staying inside the repository. The flag was corrected, and the
-  script itself has since been removed: it also called `fetch_dataone_eml()`,
-  which no package exports any more, and no `TaxaFetch` help page pointed at
-  it, so nothing was relying on it.
+  real, billed Anthropic calls, and because the file shipped, that reached
+  users rather than staying inside the repository. The flag was corrected, and
+  the script itself has since been removed: it also called
+  `fetch_dataone_eml()`, which no package exports any more, and no `TaxaFetch`
+  help page pointed at it, so nothing was relying on it.
 - A licence and provenance sweep of every other non-code file found no further
   rights problem. The images are the maintainer's own, and no object anywhere
   in the nine packages carries record-level occurrence data: the two files
