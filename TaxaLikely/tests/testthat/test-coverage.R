@@ -515,3 +515,27 @@ test_that("apply_coverage_constraints(relabel) marks a closed genus's placeholde
   expect_identical(z$score_likelihood_sd[!i], c(0.05, 0.01))
   expect_identical(z$hypothesis_type[i], "unreferenced_species")
 })
+
+test_that("the census date is the LOCAL date even where the time zone cannot be resolved", {
+  # Sys.timezone() returns NA where the zone cannot be determined -- a
+  # container or CI box with no zone set. as.Date(t, tz = NA) does NOT fail:
+  # it warns "unknown timezone 'NA'" and falls back to UTC, silently
+  # reinstating the very defect the tz argument is there to prevent, so that
+  # for the whole local evening the census carries tomorrow's date. tz = ""
+  # asks R for the current zone and has no NA to fall back from.
+  #
+  # The warning, not the date, is what this test turns on: UTC and local agree
+  # on the calendar date for part of every day, so a date comparison would
+  # pass on the broken code depending on the hour the suite happened to run.
+  local_mocked_bindings(Sys.timezone = function(location = TRUE) NA_character_,
+                        .package = "base")
+  expect_true(is.na(Sys.timezone()))                     # the mock is in force
+  out <- expect_no_warning(
+    .stamp_census(data.frame(a = 1), oldest = .POSIXct(NA_real_), resumed = FALSE))
+  # Derived from the SAME clock read the stamp used, so there is no midnight
+  # race in the assertion itself.
+  expect_identical(attr(out, "census_date"),
+                   as.Date(attr(out, "census_time"), tz = ""))
+  expect_s3_class(attr(out, "census_date"), "Date")
+  expect_true(abs(as.numeric(attr(out, "census_date") - Sys.Date())) <= 1)
+})

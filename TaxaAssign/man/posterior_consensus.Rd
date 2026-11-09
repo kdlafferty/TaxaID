@@ -782,8 +782,9 @@ A setting that corrects a defect defaults on; one that chooses between
 defensible rules is opt-in until its trade is measured.
 \code{unnamed_in_threshold = TRUE} is a correction: leaving unnamed mass out of
 the denominator makes \code{cumulative_threshold} mean something other than it
-says. \code{pool_tail} and \code{consensus_method = "credible_node"} are choices of
-rule, so they default off (\code{FALSE}, \code{"lca"}).
+says. \code{pool_tail} is a choice of rule, so it defaults off (\code{FALSE}).
+\code{consensus_method} defaults to \code{"credible_node"}, the node-summing call;
+\code{"lca"} is the opt-in.
 }
 
 \section{What a call is a call ABOUT}{

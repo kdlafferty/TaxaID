@@ -21,8 +21,12 @@ utils::globalVariables(c(
   attr(x, "census_time") <- t_now
   # tz is REQUIRED: as.Date() on a POSIXct converts in UTC, so without it the
   # date reads as tomorrow for the whole local evening -- a worse error than
-  # the midnight race that two clock reads could hit.
-  attr(x, "census_date") <- as.Date(t_now, tz = Sys.timezone())
+  # the midnight race that two clock reads could hit. It is "" and NOT
+  # Sys.timezone(): where the zone cannot be determined Sys.timezone() returns
+  # NA, and as.Date() then warns "unknown timezone 'NA'" and falls back to UTC,
+  # silently restoring the very error this line exists to prevent. "" asks R
+  # for the current zone directly and has no NA to fall back from.
+  attr(x, "census_date") <- as.Date(t_now, tz = "")
   attr(x, "census_oldest_query_time") <- oldest
   attr(x, "census_resumed") <- isTRUE(resumed)
   x

@@ -413,6 +413,58 @@ test_that("R4 softens a verify_range row via the SECOND geographic scale", {
   expect_equal(rc$n_rows[rc$rule == "R4"], 1L)
 })
 
+test_that("R4 is NOT EVALUABLE without the local-record count, however many geographic scales are present", {
+  # BOTH geographic scales are here, so a check that only asks "is there a
+  # second geography column?" calls R4 evaluable. But R4 also reads
+  # geo_local_record_location_n, and without it `!is.na(lrn)` is FALSE on
+  # every row, so R4 cannot fire whatever the geography says. "R4 = 0" would
+  # be the same zero-versus-never-asked confusion as a missing column.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "likely"
+  expect_false("geo_local_record_location_n" %in% names(d))   # the missing input
+  x <- scr(d)
+  expect_equal(x$suggested_action, "verify_range")             # the row reached R4's branch
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R4"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  expect_equal(x$flag_resolution, "upheld")                    # R5, not a softening
+})
+
+test_that("R4 is NOT EVALUABLE when the second scale is present but says nothing on the row", {
+  # Evaluability is per ROW, not per column. The column exists and carries no
+  # verdict for this row, so no question was put to the row -- a column-level
+  # check would call it evaluable and report a zero it did not earn.
+  for (silent in list(NA_character_, "")) {
+    d <- rv(geo = "unlikely")
+    d$llm_geographic_plausibility_site <- silent
+    d$geo_local_record_location_n <- 3
+    rc <- attr(scr(d), "resolution_counts")
+    expect_false(rc$evaluated[rc$rule == "R4"])
+    expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
+  }
+  # Same again for a present-but-silent local-record count.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "likely"
+  d$geo_local_record_location_n <- NA_real_
+  rc <- attr(scr(d), "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R4"])
+})
+
+test_that("R4 reports a real zero when a row WAS asked and the answer was no", {
+  # Every input is present, the row reached the test, and the other scale
+  # simply does not support softening. That is a 0 the reader can trust, and
+  # the fix for the never-asked case must not swallow it.
+  d <- rv(geo = "unlikely")
+  d$llm_geographic_plausibility_site <- "unlikely"
+  d$geo_local_record_location_n <- 3
+  x <- scr(d)
+  rc <- attr(x, "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R4"])
+  expect_equal(rc$n_rows[rc$rule == "R4"], 0L)
+  expect_equal(x$flag_resolution, "upheld")
+  expect_message(screen_assignments(d), "R4 = 0")
+})
+
 test_that("R6: a keep resting on weak sequence or on the prior is escalated", {
   expect_equal(res(rv(likelihood_support = 0.05))$flag_resolution, "escalated")
   r <- res(rv(likelihood_support = 0.4, prior_role = "narrowed"))

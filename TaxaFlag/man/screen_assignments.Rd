@@ -128,8 +128,12 @@ poor_fit_habitat_exclude without the habitat column, blank_evidence with
 \code{blank_flag_col = NULL}). Because \code{rule_counts} is an attribute, dplyr verbs
 drop it; read it straight off the value \code{screen_assignments()} returns.
 With \code{resolve = TRUE} the result also carries \code{attr(, "resolution_counts")}:
-one row per rule R0 to R7 with \code{n_rows}, and a message reports the same
-counts, zeros included.
+one row per rule R0 to R7 with \code{n_rows} and \code{evaluated}, and a message
+reports the same counts. \code{evaluated} is FALSE where no row could be asked
+the rule at all -- R4 reads inputs a reviewed table need not carry -- and
+\code{n_rows} is then NA, not 0, so a rule that was asked and fired on nothing
+is never read as one that was never asked. Every rule that was asked
+reports its count, zeros included.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table
@@ -157,7 +161,7 @@ the same \code{observation_id}, whose best \code{score_likelihood} is within
 \code{relative_score_gap} of the call's best member, the call moves up to
 the genus (congener) or family (confamilial) they share. Otherwise the
 row is marked "review" (range expansion or error cannot be told
-apart) and the suggested action is "exclude". Without \code{posterior_df}
+apart) and the suggested action is "verify_range". Without \code{posterior_df}
 every I2 row is "review". Only species and genus calls are tested.
 \item I3: poor fit and geography plausible. A call at \code{move_up_max_rank}
 or finer moves up to \code{best_identity_rank} if that is coarser than the
@@ -186,8 +190,8 @@ The function returns every input row in the input order. It does not
 remove rows, rename taxa in place, or alter any input column. The
 appended columns are suggestions for the caller to act on; filtering is a
 separate, deliberate step. The suggested action for a "review" row is
-"exclude", the conservative reading, but \code{identity_action} keeps the
-distinction.
+"verify_range" -- settle the range question rather than drop the
+detection -- and \code{identity_action} keeps the distinction.
 }
 
 \section{Site-aware screening}{
@@ -209,17 +213,24 @@ review prompt or its cache key, and never changes \code{suggested_action} or
 any other column. Acting on it is left to the user.
 
 The evidence is read as three independent votes, each "support",
-"against", "neutral" or "not_evaluated" (the needed columns are absent):
+"against", "neutral" or "not_evaluated". A vote is "not_evaluated" where
+the evidence it reads is missing ON THAT ROW, whether because the column is
+absent from the table or because the row has no value in it:
 \itemize{
 \item \strong{SEQ}, the sequence match: \code{likelihood_support} and
-\code{poor_absolute_fit}. Support: \code{likelihood_support} >= 0.50 and no
-poor fit that counts against. Against: \code{likelihood_support} < 0.10, or
-a poor fit on a call finer than \code{best_identity_rank} (an unreferenced
-species is expected to fit poorly, so for it only
-\code{likelihood_support} counts).
+\code{poor_absolute_fit}. \code{likelihood_support} is required: where the row
+has none, SEQ is "not_evaluated" and casts no vote even if
+\code{poor_absolute_fit} is present, because a poor fit on its own reports
+that no reference matched well, which is as true of a correct call on
+an unreferenced species as of a wrong one. Support:
+\code{likelihood_support} >= 0.50 and no poor fit that counts against.
+Against: \code{likelihood_support} < 0.10, or a poor fit on a call finer
+than \code{best_identity_rank} (an unreferenced species is expected to fit
+poorly, so for it only \code{likelihood_support} counts).
 \item \strong{OCC}, occurrence: the occurrence-record side of the prior
 (\code{consensus_has_occurrence_record}, which matches the call's rank; else
-\code{winner_has_occurrence_record}; else \code{primary_plausibility}) and the
+\code{winner_has_occurrence_record}; else \code{consensus_plausibility}, which
+matches the call's rank in turn; else \code{primary_plausibility}) and the
 reviewer's geography verdict together cast ONE vote,
 because both rest on the same occurrence data and their agreement is
 not two confirmations. If they disagree the vote is "split", counted
@@ -240,8 +251,10 @@ chose the call from the same records the geography verdict reads. A call
 is \emph{stable} when \code{consensus_confidence_score} and
 \code{robust_lower_posterior} (whichever are present, at least one) are all
 at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
-doubt but never create confidence: every route to "confirmed" or
-"softened" requires SEQ support.
+doubt but never create confidence: every route to a confirmed KEEP or a
+softened flag requires SEQ support. A confirmed EXCLUSION does not, because
+agreeing with an exclusion lowers confidence in the call rather than
+raising it.
 
 \code{flag_consistency_score} is (votes for - votes against) / votes cast over
 SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
@@ -257,9 +270,15 @@ records against an unlikely geography verdict and SEQ support:
 else "upheld".
 \item R4: advice "verify_range" where the taxon has at least 3 distinct
 occurrence-record locations within 50 km of the row's site
-(\code{geo_local_record_location_n}, see below), the study-wide
-\code{llm_geographic_plausibility} is likely or possible, and SEQ
-supports: "softened".
+(\code{geo_local_record_location_n}, see below), the OTHER geographic scale
+is likely or possible, and SEQ supports: "softened". The other scale is
+\code{llm_geographic_plausibility_site} when the flag was raised on the
+study-wide column and the study-wide column when it was raised on the
+site one: re-reading the column named by \code{geography_col} could never
+soften the flag, because a "verify_range" row reads "unlikely" there by
+construction. R4 is asked of a row only where that row carries both
+\code{geo_local_record_location_n} and a verdict on the other scale, and SEQ
+was evaluated.
 \item R5: advice "verify_range" otherwise: "upheld".
 \item R6: advice "keep" with SEQ against, or advice "keep" or "move_up"
 on a prior-driven call without SEQ support: "escalated". A "move_up"

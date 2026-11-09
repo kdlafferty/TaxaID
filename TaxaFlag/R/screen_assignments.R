@@ -71,17 +71,24 @@
 #' any other column. Acting on it is left to the user.
 #'
 #' The evidence is read as three independent votes, each "support",
-#' "against", "neutral" or "not_evaluated" (the needed columns are absent):
+#' "against", "neutral" or "not_evaluated". A vote is "not_evaluated" where
+#' the evidence it reads is missing ON THAT ROW, whether because the column is
+#' absent from the table or because the row has no value in it:
 #' \itemize{
 #'   \item \strong{SEQ}, the sequence match: `likelihood_support` and
-#'     `poor_absolute_fit`. Support: `likelihood_support` >= 0.50 and no
-#'     poor fit that counts against. Against: `likelihood_support` < 0.10, or
-#'     a poor fit on a call finer than `best_identity_rank` (an unreferenced
-#'     species is expected to fit poorly, so for it only
-#'     `likelihood_support` counts).
+#'     `poor_absolute_fit`. `likelihood_support` is required: where the row
+#'     has none, SEQ is "not_evaluated" and casts no vote even if
+#'     `poor_absolute_fit` is present, because a poor fit on its own reports
+#'     that no reference matched well, which is as true of a correct call on
+#'     an unreferenced species as of a wrong one. Support:
+#'     `likelihood_support` >= 0.50 and no poor fit that counts against.
+#'     Against: `likelihood_support` < 0.10, or a poor fit on a call finer
+#'     than `best_identity_rank` (an unreferenced species is expected to fit
+#'     poorly, so for it only `likelihood_support` counts).
 #'   \item \strong{OCC}, occurrence: the occurrence-record side of the prior
 #'     (`consensus_has_occurrence_record`, which matches the call's rank; else
-#'     `winner_has_occurrence_record`; else `primary_plausibility`) and the
+#'     `winner_has_occurrence_record`; else `consensus_plausibility`, which
+#'     matches the call's rank in turn; else `primary_plausibility`) and the
 #'     reviewer's geography verdict together cast ONE vote,
 #'     because both rest on the same occurrence data and their agreement is
 #'     not two confirmations. If they disagree the vote is "split", counted
@@ -121,9 +128,15 @@
 #'     else "upheld".
 #'   \item R4: advice "verify_range" where the taxon has at least 3 distinct
 #'     occurrence-record locations within 50 km of the row's site
-#'     (`geo_local_record_location_n`, see below), the study-wide
-#'     `llm_geographic_plausibility` is likely or possible, and SEQ
-#'     supports: "softened".
+#'     (`geo_local_record_location_n`, see below), the OTHER geographic scale
+#'     is likely or possible, and SEQ supports: "softened". The other scale is
+#'     `llm_geographic_plausibility_site` when the flag was raised on the
+#'     study-wide column and the study-wide column when it was raised on the
+#'     site one: re-reading the column named by `geography_col` could never
+#'     soften the flag, because a "verify_range" row reads "unlikely" there by
+#'     construction. R4 is asked of a row only where that row carries both
+#'     `geo_local_record_location_n` and a verdict on the other scale, and SEQ
+#'     was evaluated.
 #'   \item R5: advice "verify_range" otherwise: "upheld".
 #'   \item R6: advice "keep" with SEQ against, or advice "keep" or "move_up"
 #'     on a prior-driven call without SEQ support: "escalated". A "move_up"
@@ -241,8 +254,12 @@
 #' `blank_flag_col = NULL`). Because `rule_counts` is an attribute, dplyr verbs
 #' drop it; read it straight off the value `screen_assignments()` returns.
 #' With `resolve = TRUE` the result also carries `attr(, "resolution_counts")`:
-#' one row per rule R0 to R7 with `n_rows`, and a message reports the same
-#' counts, zeros included.
+#' one row per rule R0 to R7 with `n_rows` and `evaluated`, and a message
+#' reports the same counts. `evaluated` is FALSE where no row could be asked
+#' the rule at all -- R4 reads inputs a reviewed table need not carry -- and
+#' `n_rows` is then NA, not 0, so a rule that was asked and fired on nothing
+#' is never read as one that was never asked. Every rule that was asked
+#' reports its count, zeros included.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -597,13 +614,22 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # The flag was raised on `geography_col`. Softening it needs a SECOND,
   # different scale -- "the study says plausible, this site does not", or the
   # reverse -- because a verify_range row reads "unlikely" on the column that
-  # raised it, so re-reading that same column can never soften it. When no
-  # second scale is present R4 is NOT EVALUABLE, and resolution_counts says
-  # so rather than reporting a zero that looks like "fired on nothing".
+  # raised it, so re-reading that same column can never soften it.
   r4_col <- if (identical(geography_col, STUDY_GEO_COL)) SITE_GEO_COL else STUDY_GEO_COL
-  r4_evaluable <- r4_col %in% names(d)
-  geo_other <- if (r4_evaluable) chr(r4_col) else rep(NA_character_, nrow(d))
+  geo_other <- chr(r4_col)
   seq_sup <- seq_v == "support"
+  # R4 was ASKED of a row only if that row reached the test and every input the
+  # test reads had a value. Asking is per ROW, not per column: a second
+  # geography column that is present but NA on a row answers nothing for that
+  # row, and `geo_local_record_location_n` is as necessary as the column is --
+  # without it `!is.na(lrn)` is false everywhere and R4 cannot fire however
+  # many geography scales are present. If no row could be asked, R4's zero
+  # means "never asked", and resolution_counts says so rather than reporting a
+  # zero that reads as "asked on every row and fired on none".
+  r4_askable <- advice %in% "verify_range" & !is.na(tx) & n_cast >= 2 &
+    !is.na(lrn) & !is.na(geo_other) & nzchar(geo_other) &
+    seq_v != "not_evaluated"
+  r4_evaluable <- any(r4_askable)
   eps <- 1e-9
   rule <- character(n); out <- character(n)
   for (i in seq_len(n)) {
