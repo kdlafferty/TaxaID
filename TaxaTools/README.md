@@ -187,7 +187,7 @@ runs. Three cautions apply:
 | `write_taxaid_manifest()` | Record that manifest beside a run's outputs. |
 | `check_taxaid_manifest()` | Compare the current library against a recorded manifest; errors by default. |
 
-Every TaxaID package sits at version N.1.0 and can be altered
+A version string does not identify a build: a package can be altered
 during development, so a version string cannot tell you whether the
 library a run used is the library you think it used: two runs a week
 apart can report identical versions and have executed materially
@@ -228,7 +228,7 @@ devtools::install("path/to/TaxaTools")
 Most of TaxaTools works with no key at all (`clean_taxon_names()`,
 `create_taxon_names()`, backbone verification via the public Global
 Names Verifier API, barcode/rank utilities). Two categories of function
-need an LLM:
+need an API key:
 
 -   LLM functions (`call_api()` and anything built on it,
     `common_to_scientific()`, `draft_methods_text()`, and every

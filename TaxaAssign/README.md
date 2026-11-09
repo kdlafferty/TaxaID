@@ -22,7 +22,7 @@ TaxaExpect). After normalization and Monte Carlo simulation, each
 candidate receives a posterior probability. If a single candidate has
 strong posterior support, it is assigned as the consensus taxon;
 otherwise, a coarser rank (genus, family, etc.) is assigned, by default
-via lowest common ancestor (LCA). The contending candidates and their
+by summing posterior mass to a credible node. The contending candidates and their
 probabilities are retained in the output, together with diagnostic
 columns that say how much of each call rests on the likelihood and how
 much on the prior (see *Reading a consensus table* below). The user can
@@ -102,9 +102,9 @@ Core assignment:
 Consensus:
 
 -   `posterior_consensus()`: one call per observation from the posterior
-    table. Lowest common ancestor of the plausible set by default;
-    `consensus_method = "credible_node"` is the more conservative
-    option. Also reports the likelihood-only call, the prior's role in
+    table. Posterior mass is summed to a credible node by default;
+    `consensus_method = "lca"` takes the lowest common ancestor of the
+    plausible set instead. Also reports the likelihood-only call, the prior's role in
     the reported call, why a call stopped short of species, and (with
     `species_reference`) a downranking to the one locally plausible
     finer taxon
@@ -203,7 +203,7 @@ Consensus picks one call per observation from the candidates'
 posteriors. This becomes complicated when different taxa have
 competitive scores.
 
--   Lowest common ancestor, the conventional default
+-   Lowest common ancestor, the conventional rule and the opt-in here
     (`posterior_consensus(consensus_method = "lca")`): candidates below
     `min_posterior = 0.05` are dropped, then the rest are accumulated in
     decreasing order until they reach `cumulative_threshold = 0.90` of

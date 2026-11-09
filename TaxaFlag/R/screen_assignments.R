@@ -25,7 +25,7 @@
 #'     `relative_score_gap` of the call's best member, the call moves up to
 #'     the genus (congener) or family (confamilial) they share. Otherwise the
 #'     row is marked "review" (range expansion or error cannot be told
-#'     apart) and the suggested action is "exclude". Without `posterior_df`
+#'     apart) and the suggested action is "verify_range". Without `posterior_df`
 #'     every I2 row is "review". Only species and genus calls are tested.
 #'   \item I3: poor fit and geography plausible. A call at `move_up_max_rank`
 #'     or finer moves up to `best_identity_rank` if that is coarser than the
@@ -52,8 +52,8 @@
 #' remove rows, rename taxa in place, or alter any input column. The
 #' appended columns are suggestions for the caller to act on; filtering is a
 #' separate, deliberate step. The suggested action for a "review" row is
-#' "exclude", the conservative reading, but `identity_action` keeps the
-#' distinction.
+#' "verify_range" -- settle the range question rather than drop the
+#' detection -- and `identity_action` keeps the distinction.
 #'
 #' @section Site-aware screening:
 #' `geography_col` may name a per-site column, such as
@@ -102,8 +102,10 @@
 #' is \emph{stable} when `consensus_confidence_score` and
 #' `robust_lower_posterior` (whichever are present, at least one) are all
 #' at least 0.50; only a stable call can be "confirmed". An LLM verdict can raise
-#' doubt but never create confidence: every route to "confirmed" or
-#' "softened" requires SEQ support.
+#' doubt but never create confidence: every route to a confirmed KEEP or a
+#' softened flag requires SEQ support. A confirmed EXCLUSION does not, because
+#' agreeing with an exclusion lowers confidence in the call rather than
+#' raising it.
 #'
 #' `flag_consistency_score` is (votes for - votes against) / votes cast over
 #' SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
@@ -524,7 +526,13 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   pf_against <- pf %in% TRUE & finer & !unref
   ls_low <- !is.na(ls) & ls < 0.10
   ls_high <- !is.na(ls) & ls >= 0.50
-  seq_v <- ifelse(is.na(pf) & is.na(ls), "not_evaluated",
+  # SEQ is not evaluated for a row with no likelihood_support, PER ROW rather
+  # than per column: likelihood_support IS the sequence evidence, and a
+  # poor-fit flag alone is not enough to cast a sequence vote. A review-only
+  # table therefore casts no SEQ vote, which is what the design and the help
+  # both say, and n_cast then falls below 2 so R0 reports the row as not
+  # assessed instead of resolving it on two LLM verdicts dressed as three axes.
+  seq_v <- ifelse(is.na(ls), "not_evaluated",
            ifelse(pf_against | ls_low, "against",
            ifelse(ls_high, "support", "neutral")))
 
@@ -542,7 +550,11 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # reported group, so a genus or family call is not judged by one species.
   rec <- if ("consensus_has_occurrence_record" %in% names(d)) lgl("consensus_has_occurrence_record")
   else if ("winner_has_occurrence_record" %in% names(d)) lgl("winner_has_occurrence_record") else {
-    pp <- chr("primary_plausibility")
+    # Rank-matched first: consensus_plausibility describes the reported call,
+    # primary_plausibility the winning species, so a genus or family call is
+    # not judged by one species when the consensus column is present.
+    pp <- if ("consensus_plausibility" %in% names(d)) chr("consensus_plausibility")
+          else chr("primary_plausibility")
     ifelse(pp %in% c("expected", "unexpected"), TRUE, ifelse(pp %in% "unprecedented", FALSE, NA))
   }
   geo <- chr(geography_col)

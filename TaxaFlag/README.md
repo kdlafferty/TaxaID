@@ -185,7 +185,7 @@ geography (and, for a poor fit, habitat):
 | Rule | Fit | Geography | Suggested action |
 |------------------|------------------|------------------|------------------|
 | I1 | good | plausible | keep |
-| I2 | good | unlikely | move up to a genus or family shared with a local, referenced relative that scores nearly as well; otherwise "review", suggested exclude |
+| I2 | good | unlikely | move up to a genus or family shared with a local, referenced relative that scores nearly as well; otherwise "review", suggested `verify_range` -- settle the range question, do not drop the detection |
 | I3 | poor | plausible | move up one rank, for calls at `move_up_max_rank` or finer (`"genus"` by default); coarser calls are kept with `poor_fit_flag` |
 |  | poor | plausible, habitat unlikely | exclude, for calls at `poor_fit_habitat_exclude_max_rank` or finer (`"family"` by default) |
 | I4 | poor | unlikely | exclude |

@@ -12,6 +12,19 @@ utils::globalVariables(c(
   }, character(1L))
 }
 
+# Internal helper: stamp a census result. ONE clock read, with the date
+# derived from it -- two reads (Sys.Date() and Sys.time()) can disagree
+# across midnight, reporting a date the time does not fall in. Used by
+# every return path so none can omit the stamp or drift from another.
+.stamp_census <- function(x, oldest, resumed) {
+  t_now <- Sys.time()
+  attr(x, "census_time") <- t_now
+  attr(x, "census_date") <- as.Date(t_now)
+  attr(x, "census_oldest_query_time") <- oldest
+  attr(x, "census_resumed") <- isTRUE(resumed)
+  x
+}
+
 # Internal helper: build deterministic checkpoint path for audit_barcode_coverage()
 # Signature encodes genera (count + sum of nchar), barcode_term, len_range, max_date,
 # target_rank, and exclude_predicted so that changed parameters start fresh
@@ -931,7 +944,7 @@ audit_barcode_coverage <- function(match_df,
   genera <- genera[nchar(trimws(genera)) > 0L]
   if (length(genera) == 0L) {
     warning(sprintf("No valid groups in column '%s'. Census skipped.", target_rank))
-    return(list(
+    empty <- list(
       census = data.frame(
         group = character(), total = integer(),
         in_reference = integer(), has_seqs_not_in_ref = integer(),
@@ -939,7 +952,10 @@ audit_barcode_coverage <- function(match_df,
         stringsAsFactors = FALSE
       ),
       unreferenced = character(0L)
-    ))
+    )
+    # Every return path carries the stamp. Nothing was queried here, so the
+    # oldest contributing time is NA rather than "now".
+    return(.stamp_census(empty, oldest = .POSIXct(NA_real_), resumed = FALSE))
   }
 
   # ---- Checkpoint --------------------------------------------------------------
@@ -971,6 +987,7 @@ audit_barcode_coverage <- function(match_df,
   # ---- Per-genus loop --------------------------------------------------------
   full_census <- vector("list", length(genera))
   names(full_census) <- genera
+  any_resumed <- FALSE
 
   pb <- cli::cli_progress_bar("Auditing genera", total = length(genera))
 
@@ -980,6 +997,7 @@ audit_barcode_coverage <- function(match_df,
 
     if (grp %in% names(prior_census)) {
       full_census[[i]] <- prior_census[[grp]]
+      any_resumed <- TRUE
       next
     }
 
@@ -991,6 +1009,9 @@ audit_barcode_coverage <- function(match_df,
       exclude_predicted = exclude_predicted
     )
 
+    # Stamped before checkpointing, so a resumed record carries the time ITS
+    # query ran rather than the time the audit later finished.
+    rec$queried_at <- Sys.time()
     full_census[[i]] <- rec
 
     # Only checkpoint complete (non-NA) records the service actually answered
@@ -1051,8 +1072,29 @@ audit_barcode_coverage <- function(match_df,
   # row's primary taxon. Without a date on the result, a reader comparing two
   # runs cannot tell a drifted backbone from a changed argument. The resume
   # checkpoint is deleted on clean completion, so it cannot answer this either.
-  attr(out, "census_date") <- Sys.Date()
-  attr(out, "census_time") <- Sys.time()
+  # The age of the OLDEST contributing query, not of the finish: a resumed
+  # audit reuses groups counted days or weeks earlier, and a finish stamp
+  # alone hides exactly the drift it exists to expose. If ANY contributing
+  # record has no queried_at -- a checkpoint written before the field existed
+  # -- the oldest is UNKNOWN, not the oldest of those that happen to carry
+  # one, because the unstamped record could be the older.
+  q_num <- vapply(full_census, function(r) {
+    if (is.null(r$queried_at)) NA_real_ else as.numeric(r$queried_at)
+  }, numeric(1L))
+  n_unstamped <- sum(is.na(q_num))
+  if (n_unstamped > 0L) {
+    oldest_q <- .POSIXct(NA_real_)
+    warning(sprintf(paste0(
+      "audit_barcode_coverage: %d of %d group(s) came from a checkpoint ",
+      "written before per-group query times were recorded, so the age of ",
+      "this census is UNKNOWN: attr(x, 'census_oldest_query_time') is NA. ",
+      "Delete the checkpoint and re-run for a census whose age is known."
+    ), n_unstamped, length(q_num)), call. = FALSE)
+  } else {
+    oldest_q <- .POSIXct(min(q_num))
+  }
+  out <- .stamp_census(out, oldest = oldest_q,
+                       resumed = isTRUE(any_resumed) || n_unstamped > 0L)
   if (length(failed_groups) > 0L) {
     msg <- sprintf(
       "audit_barcode_coverage: NCBI lookup FAILED for %d of %d %s(s) (%s%s). Their species are absent from $unreferenced, so this result is INCOMPLETE and must not be cached or treated as a census; re-run once NCBI answers (failed groups are not checkpointed). attr(x, \"lookup_failures\") names them.",

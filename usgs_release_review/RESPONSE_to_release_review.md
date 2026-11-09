@@ -53,7 +53,7 @@ additions were subject to USGS code-review standards.
   reduction in surface rather than growth. The removals were the larger part
   of the work: several were functions no caller reached.
 - Test files: this response stated **174** when it was written. The tree now
-  holds **216**, 42 more. That figure was accurate at submission and is left
+  holds **217**, 43 more. That figure was accurate at submission and is left
   as written above.
 
 ### Functions added

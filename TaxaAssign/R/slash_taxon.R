@@ -231,6 +231,18 @@ add_slash_taxon <- function(consensus_df,
       # tied pair differently. No call changes -- tied species already back
       # off to their LCA for the consensus -- only which of several equals is
       # presented first.
+      # Exact equality is the right test and no floating-point tolerance is
+      # needed: measured 2026-11-08 over four production posterior tables
+      # (CalIntertidal 55,671 observations with two or more hypotheses, Mugu
+      # 622, GreatLakes v107f10r9 889, v106finalr8 889), the top-two gap is
+      # BIMODAL -- exactly zero (55 cases, all in CI and Mugu) or at least
+      # 2.64e-05, the smallest non-zero gap anywhere in the four. Not one
+      # observation fell within 1e-12, 1e-10 or 1e-8 of a tie without being
+      # exactly tied, so no tolerance would change any call. Equal evidence
+      # comes out bitwise equal here because the posteriors are normalised
+      # sums over the same terms. A tolerance large enough to ever bind
+      # (1e-4) would instead merge 14 CI observations whose posteriors
+      # genuinely differ, handing the lead to the alphabetically first name.
       x[order(-p, as.character(x), method = "radix")]
     } else {
       # Same byte order, for the same locale reason.

@@ -401,8 +401,9 @@
 #' defensible rules is opt-in until its trade is measured.
 #' `unnamed_in_threshold = TRUE` is a correction: leaving unnamed mass out of
 #' the denominator makes `cumulative_threshold` mean something other than it
-#' says. `pool_tail` and `consensus_method = "credible_node"` are choices of
-#' rule, so they default off (`FALSE`, `"lca"`).
+#' says. `pool_tail` is a choice of rule, so it defaults off (`FALSE`).
+#' `consensus_method` defaults to `"credible_node"`, the node-summing call;
+#' `"lca"` is the opt-in.
 #'
 #' @section What a call is a call ABOUT:
 #' A call is made for one `observation_id`, so when observations are formed
