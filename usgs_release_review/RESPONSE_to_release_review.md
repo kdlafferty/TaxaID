@@ -120,13 +120,13 @@ they did:
   warning. The existing `habitat_floored` column could not fire at the
   default floor of zero, so a zeroed weight previously had no column that
   named it.
-- `TaxaMatch::review_flagged_accessions()` now lets the caller decide what
+- `TaxaMatch::review_flagged_accessions(on_unreviewed = )` now lets the caller decide what
   happens when accessions in scope come back with no review verdict, and
   records the unreviewed accessions on the result either way. Previously a
   review that failed outright was indistinguishable in the output from one
   that found nothing wrong, because both left `NA`.
 - `TaxaLikely::audit_barcode_coverage()` now records when its census was
-  taken. A coverage census describes a reference database at a moment, and
+  taken, as `census_date` and `census_time`. A coverage census describes a reference database at a moment, and
   without a timestamp a saved census could not be told from a current one.
 - `TaxaTools::fill_higher_ranks()` accepts a `cache_dir` to reuse backbone
   answers across calls. It defaults to no caching, so existing callers are
@@ -182,6 +182,30 @@ function returns in dry-run mode -- out of the return value and into that
 section. The return value no longer documented a supported mode. It was found
 by comparing the generated LLM-context files against a written prediction of
 what should have changed, and corrected before release.
+
+### Documentation and packaging
+
+- The ten READMEs were reviewed by the maintainer and corrected. Three places
+  still described an LLM-Bayesian assignment workflow that was removed in
+  October: TaxaAssign's README offered it as one of three workflows, the
+  ecosystem vignette listed "LLM priors" as a prior source, and TaxaTools'
+  README named it as an LLM step to compare across models. A user following
+  any of them would have looked for a function that is not there. The identity
+  rule table in TaxaFlag's README stated two configurable arguments as if they
+  were fixed, and now names them.
+- The repository URL is marked provisional throughout, with every file holding
+  it listed in `usgs_release_review/REPO_URL_SWAP.md`, so the USGS-issued URL
+  can be substituted in one verifiable pass.
+- TaxaFetch's 28 test files had never run under `R CMD check`: the package had
+  no `tests/testthat.R`, so its check reported no errors because nothing was
+  tested. A driver was added. On its first CI run it immediately surfaced a
+  test that calls GBIF live on every build, which is now skipped there through
+  the mechanism the other packages already used.
+- Development material no longer ships to users. The reviewer comments and our
+  responses stay in the repository as the record of the review, but they were
+  installed inside each package -- 763 KB across the nine -- and are now
+  excluded from the build. Stale planning documents, session notes and one-off
+  validation scripts were removed from the repository.
 
 ### NEWS
 

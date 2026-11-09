@@ -39,6 +39,7 @@ of lines by eye is tedious, so TaxaFlag provides three independent
 | Handler artifacts | `flag_handler()` | Timestamps + setup/retrieval times |
 | Expert review | `review_assignments()` | Assignments + LLM API key (+ site coordinates for site-aware geography) |
 | Identity and presence screen | `screen_assignments()` | Reviewed assignments (+ posterior table) |
+| Resolution across the evidence | `screen_assignments(resolve = TRUE)` | adds `flag_resolution`, `flag_resolution_basis`, `flag_consistency_score` |
 
 Each method is independent; use any combination depending on your data
 type and available metadata. Flags are additive columns, not filters.

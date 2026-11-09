@@ -118,7 +118,11 @@ match_df <- filter_redundant_hypotheses(match_df)
     annotate or remove candidates flagged by
     `evaluate_reference_accessions()`
 -   `review_flagged_accessions()`: LLM second-look review of
-    flagged/borderline reference accessions
+    flagged/borderline reference accessions. `on_unreviewed` decides what happens when
+    accessions in scope come back with no verdict -- `"warn"` (default),
+    `"error"` or `"ignore"` -- and the unreviewed accessions are recorded
+    on the result either way, because `NA` in the appended columns cannot
+    distinguish "not reviewed" from "reviewed and found acceptable"
 
 Site and spatial grouping:
 

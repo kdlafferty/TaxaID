@@ -798,6 +798,16 @@ west).}
 \item{\code{p_inside_range}, \code{p_outside_range}: the probability of
 occurrence at a site inside, and at a site outside, those limits.}
 }
+
+\strong{What the study span decides}: a limit comes back only where a range
+edge falls INSIDE the latitudes the sites cover, because a range running
+past the study on that side is \code{null} by the definition above. Measured
+on this prompt: three sites 7.4 km apart yielded a limit for 3 of 40 taxa,
+and six sites spanning 11.7 degrees yielded one for 8 of 15 taxa whose
+occurrence records show an edge inside that span. A narrow study returning
+nothing is not a failed review; it is a study no latitude limit describes.
+The site verdict can then only equal the study verdict, and
+\code{sites_outside_range} stays empty for the same reason.
 The site probability is then computed here: a site beyond a stated limit, or
 named in \code{sites_outside_range}, takes \code{p_outside_range}; every
 other site takes \code{p_inside_range}. The cuts turn that into the site
