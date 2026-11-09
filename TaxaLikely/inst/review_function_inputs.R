@@ -8,7 +8,6 @@
 # input for the package's exported functions so each can actually be
 # run/tested, without having to reverse-engineer arguments from source or from
 # production workflows that fetch/train on thousands of real sequences.
-# Modeled on TaxaFetch/inst/review_function_inputs.R (same monorepo).
 #
 # Seven of the 33 exports have no section below: annotate_reference_support,
 # check_cross_genus_sampling_noise, compute_rank_thresholds,
@@ -56,7 +55,7 @@
 # tryCatch and did not affect the final result (real, non-NA census row
 # still returned). Occasional transient NCBI errors are a real, expected
 # property of live network calls, not a code bug; re-running usually clears
-# it, same as TaxaFetch's own review_function_inputs.R documents.
+# it.
 # ==============================================================================
 
 # devtools::load_all()   # or: library(TaxaLikely)
