@@ -13,3 +13,12 @@
 ^inst/extra_functions_review_inputs\.R$
 ^inst/test_api_keys\.R$
 ^inst/draft_text_workflow\.R$
+# The per-package review correspondence: the reviewer comments and our
+# responses. They stay in the repository as the record of the review, but
+# they are development history rather than documentation and were shipping
+# inside the installed package -- 763 KB across the nine, delivered to every
+# user. Excluded from the build so the record survives without shipping.
+# NOTE: .Rbuildignore has no comment syntax; every line here is a regex, so
+# these lines must stay free of regex-special characters.
+^inst/.*_review\.Rmd$
+^inst/.*_review_response\.md$
