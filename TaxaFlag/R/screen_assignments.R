@@ -255,23 +255,30 @@
 #' drop it; read it straight off the value `screen_assignments()` returns.
 #' With `resolve = TRUE` the result also carries `attr(, "resolution_counts")`:
 #' one row per rule R0 to R7 with `n_rows`, `evaluated` and `n_evaluable`, and
-#' a message reports the `n_rows` counts. `evaluated` is FALSE where no row
-#' could be asked the rule at all -- R4 reads inputs a reviewed table need not
-#' carry -- and `n_rows` is then NA, not 0, so a rule that was asked and fired
-#' on nothing is never read as one that was never asked. Every rule that was
-#' asked reports its count, zeros included.
+#' a message reports the `n_rows` counts.
 #'
-#' `n_evaluable` is how many rows were ASKED the rule, which is the
-#' denominator `n_rows` is a numerator of. The two columns answer different
-#' questions: `evaluated` is about the table's COLUMNS (could this rule fire
-#' at all here?), `n_evaluable` about its ROWS. The rules are a cascade down
-#' one branch per `suggested_action`, so a row is only asked a rule it
-#' reaches: a "keep" row is never asked R1, and a row R1 has already answered
-#' is never asked R2. `n_evaluable` can therefore be 0 with `evaluated` TRUE
-#' -- the rule could have fired, no row put the question -- and `n_rows` is
-#' never greater than `n_evaluable`. R3, R5 and R7 are the fall-through of
-#' their branch, so for them reaching the rule is the whole of being asked;
-#' R4 is additionally counted only where the row carries the inputs R4 reads.
+#' A rule was ASKED of a row when the row both reached it and carried what its
+#' test reads. `evaluated` is TRUE where some row could have been asked;
+#' `n_evaluable` is how many rows were, and is the denominator `n_rows` is a
+#' numerator of, so `n_rows` never exceeds it. Where `evaluated` is FALSE,
+#' `n_rows` is NA rather than 0, because a rule that could not fire has not
+#' fired on nothing -- it was never put. Every rule that was asked reports its
+#' count, zeros included.
+#'
+#' The two columns differ because being asked has two parts. Reaching: the
+#' rules are a cascade down one branch per `suggested_action`, so a "keep" row
+#' is never asked R1, and a row R1 has already answered is never asked R2.
+#' `n_evaluable` can therefore be 0 with `evaluated` TRUE -- the rule could
+#' have fired, and no row put the question to it. Inputs: three rules read
+#' something a reviewed table need not carry, and where it is absent their
+#' test still returns FALSE, so the rule cannot fire however the evidence
+#' falls. R1 needs a blank verdict (`blank_flag_col`) or a `validity_flag`;
+#' R4 needs `geo_local_record_location_n` and a verdict on the geographic
+#' scale `geography_col` does not name; R6 needs the sequence vote for its
+#' "keep" clause, or a decidable `prior_role`/`consensus_posterior` pair for
+#' its prior-driven one. R0, R2, R3, R5 and R7 read only values every row
+#' past the two-vote gate already has, so for them reaching the rule is the
+#' whole of being asked.
 #'
 #' @examples
 #' reviewed <- data.frame(
@@ -516,14 +523,18 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   message("screen_assignments(): rows by rule: ", paste0(rule_names, " = ", shown, collapse = ", "), ". ",
           "Relative move (relative_score_gap = ", relative_score_gap, ") ", rel_txt, ".")
   if (resolve) {
+    # A FALSE in blank_known is "no blank verdict for this row", which R1
+    # cannot tell from `bl`: bl reads `%in% TRUE`, so a missing column and an
+    # NA both arrive as FALSE, the same value an explicit "not blank" has.
+    bl_known <- if (is.null(blank_flag_col)) rep(FALSE, n) else !is.na(d[[blank_flag_col]])
     res <- .screen_resolution(d, advice = sugg, tx = tx, cr = cr, bir = bir, wht = wht,
                               blank = bl, poor_fit_col = poor_fit_col,
-                              geography_col = geography_col)
+                              geography_col = geography_col, blank_known = bl_known)
     d$flag_resolution <- res$resolution
     d$flag_resolution_basis <- res$basis
     d$flag_consistency_score <- res$score
     rn <- paste0("R", 0:7)
-    rn_eval <- !rn %in% "R4" | isTRUE(res$r4_evaluable)
+    rn_eval <- unname(res$evaluated[rn])
     rc_n <- vapply(rn, function(r) sum(res$rule == r), integer(1))
     rc_n[!rn_eval] <- NA_integer_
     rc <- data.frame(rule = rn, n_rows = rc_n, evaluated = rn_eval,
@@ -541,7 +552,8 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
 # only columns already on the row; every threshold below is named in the
 # roxygen section, and the habitat cuts are review_assignments()'s own.
 #' @noRd
-.screen_resolution <- function(d, advice, tx, cr, bir, wht, blank, poor_fit_col, geography_col) {
+.screen_resolution <- function(d, advice, tx, cr, bir, wht, blank, poor_fit_col,
+                               geography_col, blank_known) {
   RANKS <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
   rk <- function(x) match(x, RANKS)
   n <- nrow(d)
@@ -639,10 +651,8 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   # many geography scales are present. If no row could be asked, R4's zero
   # means "never asked", and resolution_counts says so rather than reporting a
   # zero that reads as "asked on every row and fired on none".
-  r4_askable <- advice %in% "verify_range" & !is.na(tx) & n_cast >= 2 &
-    !is.na(lrn) & !is.na(geo_other) & nzchar(geo_other) &
-    seq_v != "not_evaluated"
-  r4_evaluable <- any(r4_askable)
+  seq_known <- seq_v != "not_evaluated"
+  r4_inputs <- !is.na(lrn) & !is.na(geo_other) & nzchar(geo_other) & seq_known
   eps <- 1e-9
   rule <- character(n); out <- character(n)
   for (i in seq_len(n)) {
@@ -666,27 +676,45 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
       "confirmed" else "upheld"
   }
 
-  # ---- how many rows was each rule ASKED? ----
-  # The rules are a cascade, so a row is only put to a rule it reaches: a
-  # "keep" row is never asked R1, and a row that R1 already answered is never
-  # asked R2. Reaching is therefore a property of the ROW's suggested_action,
-  # where `evaluated` is a property of the table's COLUMNS -- the two answer
-  # different questions and a reader needs both. R3, R5 and R7 are the
-  # fall-through of their branch, so reaching them is the whole of being
-  # asked; R4 additionally needs its inputs present on the row.
+  # ---- was each rule ASKED, and of how many rows? ----
+  # Being asked has two parts, and they answer different questions.
+  #
+  # INPUTS: does the row carry what the rule's test reads? Where it does not,
+  # the test still returns FALSE, so the rule cannot fire and a count of 0
+  # would read as "asked and declined". Three rules read something a reviewed
+  # table need not carry: R1 needs a blank verdict or a validity verdict, R4
+  # the other geographic scale and the local-record count, and R6 the
+  # sequence vote (for its "keep" clause) or a known prior_driven (for its
+  # other). R0, R2, R3, R5 and R7 read only values every gated row has.
+  #
+  # REACHED: the rules are a cascade down one branch per suggested_action, so
+  # a row is only put to a rule it reaches -- a "keep" row is never asked R1,
+  # and a row R1 has already answered is never asked R2. R3, R5 and R7 are
+  # their branch's fall-through, so reaching them is the whole of being asked.
+  #
+  # `evaluated` is then "some row could have been asked" and `n_evaluable`
+  # "this many rows were", which is why n_evaluable can be 0 with evaluated
+  # TRUE: the rule could have fired, and no row put the question to it.
   gate <- !is.na(tx) & n_cast >= 2
   ex <- gate & advice %in% "exclude"
   vr <- gate & advice %in% "verify_range"
   km <- gate & !advice %in% c("exclude", "verify_range")
-  asked <- list(R0 = rep(TRUE, n),                      # the gate is put to every row
-                R1 = ex,
-                R2 = ex & !rule %in% "R1",
-                R3 = ex & !rule %in% c("R1", "R2"),
-                R4 = r4_askable,
-                R5 = vr & !rule %in% "R4",
-                R6 = km,
-                R7 = km & !rule %in% "R6")
-  n_evaluable <- vapply(asked, sum, integer(1))
+  all_rows <- rep(TRUE, n)
+  r1_inputs <- blank_known | !is.na(chr("validity_flag"))
+  r6_inputs <- (advice %in% "keep" & seq_known) | !is.na(pdriven)
+  inputs <- list(R0 = all_rows, R1 = r1_inputs, R2 = all_rows, R3 = all_rows,
+                 R4 = r4_inputs, R5 = all_rows, R6 = r6_inputs, R7 = all_rows)
+  reached <- list(R0 = all_rows,                        # the gate is put to every row
+                  R1 = ex,
+                  R2 = ex & !rule %in% "R1",
+                  R3 = ex & !rule %in% c("R1", "R2"),
+                  R4 = vr,
+                  R5 = vr & !rule %in% "R4",
+                  R6 = km,
+                  R7 = km & !rule %in% "R6")
+  rules <- names(inputs)
+  n_evaluable <- vapply(rules, function(r) sum(reached[[r]] & inputs[[r]]), integer(1))
+  evaluated <- vapply(inputs, any, logical(1))
 
   yn <- function(x) ifelse(is.na(x), "unknown", ifelse(x, "yes", "no"))
   basis <- sprintf("%s; seq=%s(ls %s); occ=%s; eco=%s(p %s); prior_driven=%s; stable=%s",
@@ -695,5 +723,5 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   basis[rule == "R1"] <- paste0(basis[rule == "R1"], "; blank or invalid validity evidence")
   basis[is.na(tx)] <- "R0; no call"
   list(resolution = out, basis = basis, score = score, rule = rule,
-       r4_evaluable = r4_evaluable, n_evaluable = n_evaluable)
+       evaluated = evaluated, n_evaluable = n_evaluable)
 }

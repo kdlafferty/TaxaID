@@ -216,11 +216,29 @@ jobs:
           )
           bad <- character(0)
           for (f in files) {
-            res <- as.data.frame(testthat::test_file(f, reporter = "silent"))
+            raw <- testthat::test_file(f, reporter = "silent")
+            res <- as.data.frame(raw)
             n_pass <- sum(res$passed); n_fail <- sum(res$failed)
             n_err <- sum(res$error);  n_skip <- sum(res$skipped)
             message(sprintf("%s: %d passed, %d failed, %d errors, %d skipped",
                             basename(f), n_pass, n_fail, n_err, n_skip))
+            # Print WHY. The counts alone sent a reader back to run the suite
+            # locally to learn which expectation broke, and the pack guard
+            # compares file against file, so "2 failed" does not even say
+            # which two. Reporting is additive: it cannot change `bad`, and
+            # it is wrapped so that a change in testthat's result shape
+            # degrades the message rather than the gate below.
+            tryCatch({
+              for (tr in raw) for (ex in tr$results) {
+                kind <- if (inherits(ex, "expectation_failure")) "FAILURE"
+                        else if (inherits(ex, "expectation_error")) "ERROR"
+                        else if (inherits(ex, "expectation_skip")) "SKIP"
+                        else next
+                message(sprintf("  %s in '%s'\n    %s", kind, tr$test,
+                                gsub("\n", "\n    ", conditionMessage(ex))))
+              }
+            }, error = function(e)
+              message("  (could not read expectation messages: ", conditionMessage(e), ")"))
             if (n_fail > 0L || n_err > 0L) {
               bad <- c(bad, sprintf("%s: %d failure(s), %d error(s)",
                                     basename(f), n_fail, n_err))

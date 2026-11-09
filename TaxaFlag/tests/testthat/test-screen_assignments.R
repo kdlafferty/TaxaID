@@ -394,8 +394,12 @@ test_that("R4 is NOT EVALUABLE when only one geographic scale is present", {
   expect_false(rc$evaluated[rc$rule == "R4"])
   expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
   expect_false(identical(x$flag_resolution, "softened"))
-  # every other rule stays evaluable, so the flag is specific to R4
-  expect_true(all(rc$evaluated[rc$rule != "R4"]))
+  # R1 is the only other rule this frame cannot ask: it reads a blank verdict
+  # or a validity_flag and the frame has neither. Naming both keeps the test
+  # specific -- an "everything else is evaluable" assertion would have gone
+  # vacuously green the moment another rule started reporting honestly.
+  expect_false(rc$evaluated[rc$rule == "R1"])
+  expect_true(all(rc$evaluated[!rc$rule %in% c("R1", "R4")]))
 })
 
 test_that("R4 softens a verify_range row via the SECOND geographic scale", {
@@ -486,11 +490,16 @@ test_that("n_evaluable counts the rows each rule was ASKED, not the rows it fire
   # No row took the exclude or keep branch. Those rules could still have
   # fired on a row that reached them, so they are 0 with evaluated TRUE --
   # "nothing asked", which is not "cannot be asked".
-  for (r in c("R1", "R2", "R3", "R6", "R7")) {
+  for (r in c("R2", "R3", "R6", "R7")) {
     expect_equal(rc$n_evaluable[rc$rule == r], 0L)
     expect_true(rc$evaluated[rc$rule == r])
     expect_equal(rc$n_rows[rc$rule == r], 0L)
   }
+  # R1 is the other way round: no row reached it AND the frame carries
+  # neither verdict it reads, so it could not have been asked at all.
+  expect_false(rc$evaluated[rc$rule == "R1"])
+  expect_equal(rc$n_evaluable[rc$rule == "R1"], 0L)
+  expect_true(is.na(rc$n_rows[rc$rule == "R1"]))
   # The invariant that makes the pair readable at all.
   expect_true(all(rc$n_rows[rc$evaluated] <= rc$n_evaluable[rc$evaluated]))
 })
@@ -503,6 +512,70 @@ test_that("n_evaluable is 0 with evaluated FALSE where R4's inputs are absent", 
   expect_false(rc$evaluated[rc$rule == "R4"])
   expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
   expect_identical(names(rc), c("rule", "n_rows", "evaluated", "n_evaluable"))
+})
+
+test_that("R1 is NOT EVALUABLE without a blank verdict or a validity verdict", {
+  # R1 asks whether there is POSITIVE evidence of a problem, from
+  # blank_flag_col or validity_flag. With neither, `blank | invalid` is FALSE
+  # on every row from absence alone, so R1 cannot fire however the evidence
+  # falls -- the same shape as the R4 defect, in a second place.
+  d <- rv(poor = TRUE, geo = "unlikely")
+  x <- scr(d)
+  expect_equal(x$suggested_action, "exclude")       # the row does reach R1
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R1"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R1"]))
+  expect_equal(rc$n_evaluable[rc$rule == "R1"], 0L)
+})
+
+test_that("either verdict alone makes R1 evaluable, and it then reports a real zero", {
+  # "valid" is a verdict: R1 asked and declined, which is 0, not NA.
+  d <- rv(poor = TRUE, geo = "unlikely")
+  d$validity_flag <- "valid"
+  rc <- attr(scr(d), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R1"])
+  expect_equal(rc$n_evaluable[rc$rule == "R1"], 1L)
+  expect_equal(rc$n_rows[rc$rule == "R1"], 0L)
+  # A blank verdict alone does the same, and FALSE is as much a verdict as TRUE.
+  d2 <- rv(poor = TRUE, geo = "unlikely")
+  d2$blank_flag <- FALSE
+  rc2 <- attr(scr(d2, blank_flag_col = "blank_flag"), "resolution_counts")
+  expect_true(rc2$evaluated[rc2$rule == "R1"])
+  expect_equal(rc2$n_evaluable[rc2$rule == "R1"], 1L)
+  expect_equal(rc2$n_rows[rc2$rule == "R1"], 0L)
+  # But an NA in a supplied column is not a verdict.
+  d3 <- rv(poor = TRUE, geo = "unlikely")
+  d3$blank_flag <- NA
+  rc3 <- attr(scr(d3, blank_flag_col = "blank_flag"), "resolution_counts")
+  expect_false(rc3$evaluated[rc3$rule == "R1"])
+})
+
+test_that("R6 is NOT EVALUABLE when neither the sequence vote nor prior_driven can be decided", {
+  # R6 fires on a keep whose SEQ votes against, or on a prior-driven call
+  # without SEQ support. With no likelihood_support there is no SEQ vote, and
+  # with no prior_role and no consensus_posterior prior_driven is NA, so both
+  # clauses read FALSE from absence and R6 cannot fire.
+  d <- rv(.drop = c("likelihood_support", "prior_role", "consensus_posterior"))
+  x <- scr(d)
+  expect_equal(x$suggested_action, "keep")         # reaches the keep/move_up branch
+  rc <- attr(x, "resolution_counts")
+  expect_false(rc$evaluated[rc$rule == "R6"])
+  expect_true(is.na(rc$n_rows[rc$rule == "R6"]))
+  expect_equal(rc$n_evaluable[rc$rule == "R6"], 0L)
+  # R7 is the fall-through and reads nothing optional, so it still answers.
+  expect_equal(x$flag_resolution, "upheld")
+  expect_true(rc$evaluated[rc$rule == "R7"])
+  expect_equal(rc$n_rows[rc$rule == "R7"], 1L)
+})
+
+test_that("a decidable prior_driven alone makes R6 evaluable with no sequence vote", {
+  # prior_role is present, so prior_driven is FALSE rather than NA -- a known
+  # answer, and R6's second clause can be put to the row.
+  d <- rv(.drop = "likelihood_support")
+  rc <- attr(scr(d), "resolution_counts")
+  expect_true(rc$evaluated[rc$rule == "R6"])
+  expect_equal(rc$n_evaluable[rc$rule == "R6"], 1L)
+  expect_equal(rc$n_rows[rc$rule == "R6"], 0L)
 })
 
 test_that("R6: a keep resting on weak sequence or on the prior is escalated", {
@@ -631,7 +704,8 @@ test_that("resolution keeps every row in order and distinguishes a zero from a r
   expect_true(any(rc$n_rows[rc$evaluated] == 0L))
   expect_false(rc$evaluated[rc$rule == "R4"])
   expect_true(is.na(rc$n_rows[rc$rule == "R4"]))
-  expect_true(all(rc$evaluated[rc$rule != "R4"]))
-  expect_message(screen_assignments(d), "resolution by rule: R0 = 1, R1 = 0")
+  expect_false(rc$evaluated[rc$rule == "R1"])      # no blank or validity verdict
+  expect_true(all(rc$evaluated[!rc$rule %in% c("R1", "R4")]))
+  expect_message(screen_assignments(d), "resolution by rule: R0 = 1, R1 = not evaluable")
   expect_message(screen_assignments(d), "R4 = not evaluable")
 })
