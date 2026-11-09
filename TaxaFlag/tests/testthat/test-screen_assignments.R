@@ -501,7 +501,10 @@ test_that("n_evaluable counts the rows each rule was ASKED, not the rows it fire
   expect_equal(rc$n_evaluable[rc$rule == "R1"], 0L)
   expect_true(is.na(rc$n_rows[rc$rule == "R1"]))
   # The invariant that makes the pair readable at all.
-  expect_true(all(rc$n_rows[rc$evaluated] <= rc$n_evaluable[rc$evaluated]))
+  # R7 excluded deliberately: it is the fall-through and answers rows it could
+  # not ask, so n_rows > n_evaluable is correct there. See the mixed-row test.
+  ev <- rc$evaluated & rc$rule != "R7"
+  expect_true(all(rc$n_rows[ev] <= rc$n_evaluable[ev]))
 })
 
 test_that("n_evaluable is 0 with evaluated FALSE where R4's inputs are absent", {
@@ -729,4 +732,35 @@ test_that("resolution keeps every row in order and distinguishes a zero from a r
   expect_message(screen_assignments(d),
                  "resolution by rule: R0 = 1 \\(4 asked\\), R1 = not evaluable")
   expect_message(screen_assignments(d), "R4 = not evaluable")
+})
+
+test_that("the fall-through answers rows it could not ask, and the counts say so", {
+  # R7 is the only rule that resolves a row it could not ask. It is the
+  # cascade's fall-through, so a keep row carrying no sequence vote is upheld
+  # by DEFAULT rather than by test, and it would be wrong to drop it from
+  # n_rows: the counts have to account for every row the cascade resolved.
+  # So n_rows > n_evaluable is correct for R7 and only for R7, and the message
+  # prints both numbers rather than hiding the difference.
+  #
+  # Two keep rows reach R7; only the first carries likelihood_support, so only
+  # the first can be asked the confirm test.
+  d <- rbind(rv(), rv(likelihood_support = NA_real_))
+  d$observation_id <- c("o1", "o2")
+  rc <- attr(scr(d), "resolution_counts")
+
+  expect_equal(rc$n_rows[rc$rule == "R7"], 2L)        # both answered
+  expect_equal(rc$n_evaluable[rc$rule == "R7"], 1L)   # one asked
+  expect_gt(rc$n_rows[rc$rule == "R7"], rc$n_evaluable[rc$rule == "R7"])
+
+  # Every OTHER evaluated rule answers only rows it asked. Asserted here so
+  # the exception cannot quietly spread to the rest of the cascade.
+  oth <- rc[rc$evaluated & rc$rule != "R7", ]
+  expect_true(all(oth$n_rows <= oth$n_evaluable))
+
+  # The counts still account for every row, which is why n_rows stays the
+  # answered count rather than being reduced to the asked count.
+  expect_equal(sum(rc$n_rows, na.rm = TRUE), 2L)
+
+  # Both numbers reach the user.
+  expect_message(screen_assignments(d), "R7 = 2 \\(1 asked\\)")
 })

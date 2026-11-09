@@ -260,15 +260,28 @@
 #' drop it; read it straight off the value `screen_assignments()` returns.
 #' With `resolve = TRUE` the result also carries `attr(, "resolution_counts")`:
 #' one row per rule R0 to R7 with `n_rows`, `evaluated` and `n_evaluable`, and
-#' a message reports the `n_rows` counts.
+#' a message reports both, as `R7 = 2 (1 asked)`.
 #'
 #' A rule was ASKED of a row when the row both reached it and carried what its
-#' test reads. `evaluated` is TRUE where some row could have been asked;
-#' `n_evaluable` is how many rows were, and is the denominator `n_rows` is a
-#' numerator of, so `n_rows` never exceeds it. Where `evaluated` is FALSE,
-#' `n_rows` is NA rather than 0, because a rule that could not fire has not
-#' fired on nothing -- it was never put. Every rule that was asked reports its
-#' count, zeros included.
+#' test reads. `evaluated` is TRUE where some row could have been asked, and
+#' `n_evaluable` is how many rows were. `n_rows` is how many the rule
+#' ANSWERED, so the two relate differently for different rules, and the
+#' difference is the point:
+#' \itemize{
+#'   \item R1, R4 and R6 answer only rows they asked, so their `n_rows` never
+#'     exceeds their `n_evaluable`.
+#'   \item R7 is the fall-through: it answers every row reaching it, and a row
+#'     it could not ask is upheld by default rather than by test. Its `n_rows`
+#'     can therefore exceed its `n_evaluable`, and the gap is exactly the
+#'     number of rows upheld without the confirm test being put. `R7 = 2
+#'     (1 asked)` says two rows were resolved and one was tested.
+#'   \item R0, R2, R3 and R5 read only what every gated row carries, so for
+#'     them the two are the same question.
+#' }
+#' `n_rows` across the rules sums to the rows the cascade resolved, whichever
+#' rule answered each. Where `evaluated` is FALSE, `n_rows` is NA rather than
+#' 0, because a rule that could not fire has not fired on nothing -- it was
+#' never put. Every rule that was asked reports its count, zeros included.
 #'
 #' The two columns differ because being asked has two parts. Reaching: the
 #' rules are a cascade down one branch per `suggested_action`, so a "keep" row

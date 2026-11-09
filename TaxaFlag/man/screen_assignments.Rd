@@ -134,15 +134,27 @@ poor_fit_habitat_exclude without the habitat column, blank_evidence with
 drop it; read it straight off the value \code{screen_assignments()} returns.
 With \code{resolve = TRUE} the result also carries \code{attr(, "resolution_counts")}:
 one row per rule R0 to R7 with \code{n_rows}, \code{evaluated} and \code{n_evaluable}, and
-a message reports the \code{n_rows} counts.
+a message reports both, as \verb{R7 = 2 (1 asked)}.
 
 A rule was ASKED of a row when the row both reached it and carried what its
-test reads. \code{evaluated} is TRUE where some row could have been asked;
-\code{n_evaluable} is how many rows were, and is the denominator \code{n_rows} is a
-numerator of, so \code{n_rows} never exceeds it. Where \code{evaluated} is FALSE,
-\code{n_rows} is NA rather than 0, because a rule that could not fire has not
-fired on nothing -- it was never put. Every rule that was asked reports its
-count, zeros included.
+test reads. \code{evaluated} is TRUE where some row could have been asked, and
+\code{n_evaluable} is how many rows were. \code{n_rows} is how many the rule
+ANSWERED, so the two relate differently for different rules, and the
+difference is the point:
+\itemize{
+\item R1, R4 and R6 answer only rows they asked, so their \code{n_rows} never
+exceeds their \code{n_evaluable}.
+\item R7 is the fall-through: it answers every row reaching it, and a row
+it could not ask is upheld by default rather than by test. Its \code{n_rows}
+can therefore exceed its \code{n_evaluable}, and the gap is exactly the
+number of rows upheld without the confirm test being put. \verb{R7 = 2 (1 asked)} says two rows were resolved and one was tested.
+\item R0, R2, R3 and R5 read only what every gated row carries, so for
+them the two are the same question.
+}
+\code{n_rows} across the rules sums to the rows the cascade resolved, whichever
+rule answered each. Where \code{evaluated} is FALSE, \code{n_rows} is NA rather than
+0, because a rule that could not fire has not fired on nothing -- it was
+never put. Every rule that was asked reports its count, zeros included.
 
 The two columns differ because being asked has two parts. Reaching: the
 rules are a cascade down one branch per \code{suggested_action}, so a "keep" row
