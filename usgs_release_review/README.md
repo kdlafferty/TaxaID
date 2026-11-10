@@ -170,10 +170,10 @@ worth saying because it is how this case was missed twice.
    the key.
 
 Separately, `rentrez::set_entrez_key()` hands the NCBI key to rentrez, which
-appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:2032`,
+appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:2028`,
 `R/coverage.R:184,955`, `R/suggest_unreferenced_species.R:975`;
-`TaxaMatch/R/blast_sequences.R:1962,2083,2237`,
-`R/investigate_flagged_accession.R:93`, `R/evaluate_reference_accessions.R:576`,
+`TaxaMatch/R/blast_sequences.R:1961,2082,2236`,
+`R/investigate_flagged_accession.R:93`, `R/evaluate_reference_accessions.R:575`,
 `R/check_marker_mismatch.R:114`. rentrez owns the request and the error text from
 that point, so the redaction above does not reach it; the exposure is an NCBI key
 in a URL inside a third-party package's condition message.
