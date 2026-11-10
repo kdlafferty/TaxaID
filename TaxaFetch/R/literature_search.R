@@ -128,7 +128,7 @@
 #' risk.
 #' @noRd
 .query_hash <- function(...) {
-  rlang::hash(paste(c(...), collapse = "|"))
+  .cache_hash(paste(c(...), collapse = "|"))
 }
 
 

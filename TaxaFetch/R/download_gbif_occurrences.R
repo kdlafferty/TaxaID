@@ -1281,7 +1281,7 @@ download_gbif_occurrences <- function(
   sig <- sprintf(
     "%dk_s%s_g%d_%s%s%s",
     length(keys),
-    rlang::hash(sort(keys)),
+    .cache_hash(sort(keys)),
     if (is.null(geometry)) 0L else nchar(geometry),
     gsub("[^0-9]", "", year_range),
     basis_tag,
