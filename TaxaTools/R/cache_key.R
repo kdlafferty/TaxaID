@@ -11,7 +11,16 @@
 #
 # enc2utf8() normalises the mark before hashing, and is a no-op both for ASCII
 # and for strings already marked UTF-8, so keys written before this helper
-# existed stay reachable. A test asserts that against a real pre-existing key.
+# existed stay reachable. A test asserts that against a real pre-existing key.#
+# Two limits, both measured, neither worked around. A data.frame key whose
+# string columns differ only in their MARK still hashes two ways, because
+# normalising a column reorders the frame's attributes and rlang::hash()
+# serializes that order; no site keys a data.frame on a non-ASCII string, and
+# the non-orphaning direction holds for every shape, which is the direction
+# that can destroy a cache. names() and factor levels are not normalised
+# either. The property is also stated for a UTF-8 native locale: in a C or
+# Latin-1 session enc2utf8() transcodes an "unknown" string from the native
+# encoding, so the guarantee does not carry there.
 #
 #' Normalise the strings inside a cache key before hashing
 #'
@@ -21,7 +30,11 @@
 #'
 #' @param x Any object. Character elements come back `enc2utf8()`-normalised,
 #'   lists are walked element by element, anything else is returned unchanged.
-#' @return `x`, with every character element marked UTF-8.
+#' @return `x`. Character vectors, and the character elements of plain, named,
+#'   nested and classed lists, come back UTF-8-marked; **data.frame columns,
+#'   `names()` and factor levels are not normalised** (see the note above), and
+#'   anything already correctly marked is returned untouched rather than
+#'   rebuilt.
 #' @noRd
 .cache_hash_input <- function(x) {
   if (is.character(x)) {
