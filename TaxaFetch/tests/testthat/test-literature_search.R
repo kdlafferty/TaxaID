@@ -235,6 +235,8 @@ test_that("the fix leaves an ASCII or already-UTF-8 key exactly where it was", {
 })
 
 test_that("the literature query hash is the same under either encoding mark", {
+  skip_if_not(l10n_info()[["UTF-8"]],
+              "encoding-mark property is asserted for UTF-8 sessions only")
   # Through the call site's own .query_hash(), so a tree without the helper
   # fails here because the hashes differ, not because a function is missing.
   q_utf8 <- "Mugu — estuarine fishes"

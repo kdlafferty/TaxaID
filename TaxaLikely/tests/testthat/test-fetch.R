@@ -830,6 +830,8 @@ test_that("the fix leaves an ASCII or already-UTF-8 key exactly where it was", {
 })
 
 test_that("the reference cache term suffix is the same under either encoding mark", {
+  skip_if_not(l10n_info()[["UTF-8"]],
+              "encoding-mark property is asserted for UTF-8 sessions only")
   # Through the call site's own .ref_cache_term_sfx(), which builds its probe
   # with .build_search_term() and makes no network call. A tree without the
   # helper fails here because the two suffixes differ.

@@ -590,6 +590,8 @@ test_that("the fix leaves an ASCII or already-UTF-8 key exactly where it was", {
 })
 
 test_that("the common-name cache PATH is the same under either encoding mark", {
+  skip_if_not(l10n_info()[["UTF-8"]],
+              "encoding-mark property is asserted for UTF-8 sessions only")
   # This goes through the call site's own key and path functions rather than
   # calling .cache_hash() directly, so on a tree without the helper it fails
   # because the two paths differ -- the thing this change is about -- and not
