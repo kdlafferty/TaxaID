@@ -7,7 +7,7 @@ editor_options:
 # TaxaMatch
 
 Store and standardize biological match data for the
-[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Ingests raw
+[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. Ingests raw
 match results from external classification tools and produces a
 canonical match object for input to TaxaLikely (likelihood conversion)
 or TaxaAssign (direct assignment).
@@ -643,14 +643,14 @@ TaxaMatch standardizes match data for two downstream paths: TaxaLikely
 
 Ecosystem: TaxaTools -\> TaxaMatch -\> TaxaLikely -\> TaxaAssign
 
-See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
+See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
 The repository URL above is provisional; see the root TaxaID README.
 

@@ -25,7 +25,7 @@ against reference-to-reference comparisons, can then be multiplied by priors
 (see TaxaExpect) to generate Bayesian posterior probabilities for each
 hypothesized assignment -- probabilities relative to the hypotheses offered,
 not calibrated probabilities that an assignment is correct. Part of the
-[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem.
+[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
 
 ## Overview
 
@@ -533,7 +533,7 @@ TaxaLikely has no built-in reference-quality screening.
 `train_likelihood_model()` trains on whatever `raw_df`/`ref_matrix` it's
 given. To avoid entering mislabeled references into the training set,
 screen it first, upstream, via TaxaMatch's [Reference Accession
-Quality](https://github.com/kdlafferty/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)
+Quality](https://github.com/DOI-USGS/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)
 section.
 
 ### Data types other than DNA sequences
@@ -875,14 +875,14 @@ calibrated against reference-to-reference comparisons for TaxaAssign (posterior 
 
 Ecosystem: TaxaMatch -\> TaxaLikely -\> TaxaAssign
 
-See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
+See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
 The repository URL above is provisional; see the root TaxaID README.
 

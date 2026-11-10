@@ -182,14 +182,14 @@ estimation).
 Ecosystem: TaxaTools -\> TaxaFetch -\> TaxaHabitat -\> TaxaExpect -\>
 TaxaAssign
 
-See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
+See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
 The repository URL above is provisional; see the root TaxaID README.
 

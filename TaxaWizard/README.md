@@ -213,7 +213,7 @@ a Copilot agent) and tell it to start with `START_HERE.md`; for a plain
 chat window, paste `START_HERE.md` and `CONTEXT_TaxaID.md` in first. A
 ready-to-use copy (with a placeholder setup report, since it isn't any
 one machine) ships at the repository root in
-[`llm_prompts/`](https://github.com/kdlafferty/TaxaID/tree/main/llm_prompts).
+[`llm_prompts/`](https://github.com/DOI-USGS/TaxaID/tree/main/llm_prompts).
 
 Example interaction, once an assistant has read `START_HERE.md`:
 
@@ -243,14 +243,14 @@ TaxaWizard sits outside the TaxaID dependency chain. It introspects the
 other TaxaID packages' installed functions (see `workflow_registry()`)
 and generates scripts that call them. It does not import them directly.
 
-See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
+See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
 The repository URL above is provisional; see the root TaxaID README.
 

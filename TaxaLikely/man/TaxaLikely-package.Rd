@@ -66,8 +66,8 @@ likelihoods and expand into named species
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/kdlafferty/TaxaID}
-  \item Report bugs at \url{https://github.com/kdlafferty/TaxaID/issues}
+  \item \url{https://github.com/DOI-USGS/TaxaID}
+  \item Report bugs at \url{https://github.com/DOI-USGS/TaxaID/issues}
 }
 
 }
