@@ -54,24 +54,20 @@ the reviewer before anything is deleted.
 
 ## Notes for the technical reviewer: security posture
 
-Checked against the WERC criteria at `0387e93a`. Every **count** below was
-verified there, and a reviewer can check out that commit to reproduce each one.
-
-**One claim below is deliberately not true at `0387e93a`, and it is said twice
-so nobody has to reconcile it:** the OpenAlex redaction (URL case 3) does not
-exist at `0387e93a` -- a reviewer who greps `REDACTED` in
-`TaxaFetch/R/literature_search.R` there finds nothing. It arrives with the same
-change that carries this statement, so it is present at the commit this file
-merges as, and at every commit after. The counts are unaffected: a redaction
-adds no credential site.
+Checked against the WERC criteria at `28f76da0`. Every **count** and every
+**line citation** below was verified there, and a reviewer can check out that
+commit to reproduce each one. The only commits between `28f76da0` and the
+release tag change documentation, not code; if that is ever not so, this
+statement is stale and must be re-verified before the tag.
 
 Scope: the nine package `R/` trees, plus the test placeholders and process calls
 noted where they fall outside it.
 
 **This statement must be re-verified at each release commit, and that is part of
 the release process rather than a courtesy.** Its predecessor named a commit,
-was never re-stated across 31 merged pull requests, and ended up contradicted by
-its own reader's first grep. Naming the commit is what makes the staleness
+was not re-stated across the merged pull requests that followed, and was
+contradicted by its own reader's first grep; this statement was re-stated at
+`28f76da0` after four line citations and one dependency sentence had drifted. Naming the commit is what makes the staleness
 visible; removing the name would only hide it.
 
 It is written down so the review does not have to rediscover it; where a check
@@ -111,7 +107,7 @@ not secrets. **The arithmetic, so a reviewer's own grep reconciles:** a sweep of
 **36** credential sites (the table), **3** identifier sites (`GBIF_EMAIL` 2,
 `NCBI_EMAIL` 1), and **3** that are not credentials at all -- `TAXAID_ROOT`,
 `HOME`, and `MY_KEY_VAR`, the last a variable name used as an example inside
-roxygen (`TaxaTools/R/llm_api_utils.R:658`). 36 + 3 + 3 = 42.
+roxygen (`TaxaTools/R/llm_api_utils.R:681`). 36 + 3 + 3 = 42.
 
 **That list cannot be closed by grep, and the reason matters more than the
 count.** Nine further call sites read a variable whose NAME is itself a value:
@@ -139,7 +135,7 @@ worth saying because it is how this case was missed twice.
 
 1. `TaxaTools/R/call_api.R:268` -- Gemini. A connection error raised by curl or
    httr2 can echo the full request URL into its condition message. The handler
-   strips the key before anything is surfaced (`:750-754`):
+   strips the key before anything is surfaced (`:747-755`):
 
    ```r
    msg <- conditionMessage(e)
@@ -155,21 +151,21 @@ worth saying because it is how this case was missed twice.
    suppression rather than redaction, which is worth stating because the two look
    different in a diff.
 
-3. `TaxaFetch/R/literature_search.R:84` -- OpenAlex. Its handler re-raised
-   `conditionMessage(e)` verbatim, so a connection error could have carried the
-   key into a `stop()` message. **This check found that, and the change carrying
-   this statement fixes it** (`:88-103`), by the same value-matching redaction as
-   case 1. Not present at `0387e93a`; see the note under the heading.
+3. `TaxaFetch/R/literature_search.R:84` -- OpenAlex. Its handler used to
+   re-raise `conditionMessage(e)` verbatim, so a connection error could have
+   carried the key into a `stop()` message. The handler now strips the key
+   (`:88-103`, the `gsub` at `:99`) by the same value-matching redaction as
+   case 1, before re-raising.
 
-4. `TaxaLikely/R/coverage.R:1506-1509` -- xeno-canto, `key = xc_key` inside a
+4. `TaxaLikely/R/coverage.R:1605-1608` -- xeno-canto, `key = xc_key` inside a
    multi-line `req_url_query()`. Handled as case 2: `tryCatch(..., error =
-   function(e) NULL)` at `:1512` discards the condition, so no message can carry
+   function(e) NULL)` at `:1611` discards the condition, so no message can carry
    the key.
 
 Separately, `rentrez::set_entrez_key()` hands the NCBI key to rentrez, which
-appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:1766`,
-`R/coverage.R:156,895`, `R/suggest_unreferenced_species.R:975`;
-`TaxaMatch/R/blast_sequences.R:1886,2007,2161`,
+appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:2032`,
+`R/coverage.R:184,955`, `R/suggest_unreferenced_species.R:975`;
+`TaxaMatch/R/blast_sequences.R:1962,2083,2237`,
 `R/investigate_flagged_accession.R:93`, `R/evaluate_reference_accessions.R:576`,
 `R/check_marker_mismatch.R:114`. rentrez owns the request and the error text from
 that point, so the redaction above does not reach it; the exposure is an NCBI key
@@ -188,9 +184,9 @@ same greps:
 
 * `system()` -- one: `TaxaFetch/R/plan_gbif_fetch.R:180`, `sysctl -n hw.memsize`.
 * `system2()` -- eight, every one a fixed binary with a fixed argument vector and
-  no interpolated user text: `TaxaLikely/R/build_sequence.R:1400` (`ps`),
+  no interpolated user text: `TaxaLikely/R/build_sequence.R:1487` (`ps`),
   `R/matrix_size.R:147,150` (`vm_stat`, `powershell`),
-  `TaxaMatch/R/blast_sequences.R:1459,1588` (`blastn -version`,
+  `TaxaMatch/R/blast_sequences.R:1536,1665` (`blastn -version`,
   `blastdbcmd -info`; the database path goes through `shQuote()`),
   `R/investigate_flagged_accession.R:241,250` (`blastdbcmd`, `makeblastdb`).
   The eighth, `TaxaWizard/R/setup.R:449`, is the one whose binary name is not a
@@ -202,12 +198,20 @@ same greps:
   acting on the app's own parameter fields as its `:1866` comment records, not on
   anything a remote client supplies.
 * **Bare `eval()`** -- on this software's own formals defaults, never on supplied
-  text: `TaxaAssign/R/generate_report.R:246` evaluates its own `default_model`
+  text: `TaxaAssign/R/generate_report.R:253` evaluates its own `default_model`
   default, falling back to `as.character()` on error; and
   `TaxaMatch/R/evaluate_reference_accessions.R:89,93-99` evaluate this function's
   own `formals()` to report the defaults it ran under. Listed because a reviewer
   grepping `eval(` rather than `eval(parse(` finds these, and a statement that
   mentions only the latter reads as incomplete.
+* `eval(` also appears in `TaxaWizard` as **text rather than as a call**: in the
+  scripts and apps it generates (`R/output.R:320,380`, `R/shiny.R:1210,1630`),
+  in one line of commentary it writes into generated output (`R/shiny.R:1866`)
+  and in one source comment (`R/shiny.R:1598`). Those are strings and comments;
+  the four real `eval(parse())` sites are the ones listed above. A reviewer who
+  greps `eval(` in `R/shiny.R` finds eight hits, and this accounts for all of
+  them.
+
 * **`parse(text = )` without `eval()`** -- two, both parse-only: at
   `TaxaWizard/R/shiny.R:413` a user-supplied script is parsed with
   `keep.source = TRUE` to read its source references, and the expressions are
@@ -240,9 +244,16 @@ match. A path this function cannot produce is also the definition of an
 evictable file, so the grammar does double duty as a filename invariant and as
 the eviction proof.
 
-**Dependencies and licences.** No package's `DESCRIPTION` gained an `Imports`,
-`Depends` or `Suggests` entry during the 1.0 cycle, so there is no new third-party
-surface to assess. All nine packages are `License: CC0`, matching `code.json`'s
+**Cache keys.** Keys are hashed through `.cache_hash()`, three internal copies
+(`TaxaTools`, `TaxaFetch`, `TaxaLikely` `R/cache_key.R`) that normalise string
+encodings before `rlang::hash()`. They read no environment variable, run no
+process and make no request.
+
+**Dependencies and licences.** The 1.0 cycle added no `Imports` or `Depends`
+entry to any package's `DESCRIPTION`. It added one `Suggests` entry: `withr` in
+`TaxaLikely` (commit `5995c1e1`), used only by a test, and already listed by
+`TaxaTools`, `TaxaMatch` and `TaxaHabitat`. So no new third-party package is
+installed for a user, and no new runtime surface exists to assess. All nine packages are `License: CC0`, matching `code.json`'s
 `CC0-1.0`. The USGS provisional disclaimer is present in the root README, and
 `code.json` carries `status: Preliminary`.
 
