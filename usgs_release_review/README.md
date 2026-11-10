@@ -54,9 +54,9 @@ the reviewer before anything is deleted.
 
 ## Notes for the technical reviewer: security posture
 
-Checked against the WERC criteria at `28f76da0`. Every **count** and every
+Checked against the WERC criteria at `4f75a008`. Every **count** and every
 **line citation** below was verified there, and a reviewer can check out that
-commit to reproduce each one. The only commits between `28f76da0` and the
+commit to reproduce each one. The only commits between `4f75a008` and the
 release tag change documentation, not code; if that is ever not so, this
 statement is stale and must be re-verified before the tag.
 
@@ -67,7 +67,7 @@ noted where they fall outside it.
 the release process rather than a courtesy.** Its predecessor named a commit,
 was not re-stated across the merged pull requests that followed, and was
 contradicted by its own reader's first grep; this statement was re-stated at
-`28f76da0` after four line citations and one dependency sentence had drifted. Naming the commit is what makes the staleness
+`4f75a008` after four line citations and one dependency sentence had drifted. Naming the commit is what makes the staleness
 visible; removing the name would only hide it.
 
 It is written down so the review does not have to rediscover it; where a check
