@@ -117,7 +117,9 @@ unlike an unsettled range question.}
 \item{presence}{"resident", "off_habitat" or "out_of_scope"; NA for
 identity-excluded rows and where habitat is missing.}
 \item{poor_fit_flag}{TRUE for poor-fit calls kept at a rank coarser than
-\code{move_up_max_rank}.}
+\code{move_up_max_rank}; FALSE where the fit was shown and the rule did not
+fire; NA throughout when \code{poor_fit_col} is \code{NULL}, because FALSE would
+report a fit verdict the screen was never shown.}
 \item{isolated_geography_unlikely}{Information only; never acts. TRUE if
 the taxon's total tubes across the input (summed \code{n_tubes}) is at most
 3 and geography is unlikely; FALSE otherwise; NA when \code{reviewed_df} has
