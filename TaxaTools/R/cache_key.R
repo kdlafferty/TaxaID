@@ -11,7 +11,8 @@
 #
 # enc2utf8() normalises the mark before hashing, and is a no-op both for ASCII
 # and for strings already marked UTF-8, so keys written before this helper
-# existed stay reachable. A test asserts that against a real pre-existing key.#
+# existed stay reachable. A test asserts that against a real pre-existing key.
+#
 # Two limits, both measured, neither worked around. A data.frame key whose
 # string columns differ only in their MARK still hashes two ways, because
 # normalising a column reorders the frame's attributes and rlang::hash()
@@ -21,6 +22,12 @@
 # either. The property is also stated for a UTF-8 native locale: in a C or
 # Latin-1 session enc2utf8() transcodes an "unknown" string from the native
 # encoding, so the guarantee does not carry there.
+#
+# TaxaFetch and TaxaLikely carry their own copies of these two functions.
+# Not shared through TaxaTools, although both Import it: .cache_hash() is
+# not exported, and R CMD check flags access to another package's
+# unexported objects via :::. The three are tested on the property rather
+# than on being identical text, so a copy that drifts fails its own test.
 #
 #' Normalise the strings inside a cache key before hashing
 #'

@@ -255,7 +255,14 @@ test_that("download_gbif_occurrences reports the total cache size after a run", 
   z <- file.path(d, "good.zip")
   old <- setwd(d)
   on.exit(setwd(old), add = TRUE)
-  utils::zip(z, "occ.csv", flags = "-q")
+  # Check the status. Without it the only signal is !file.exists(z), and the
+  # caller can do nothing but guess at the reason -- which cost a long
+  # diagnostic when the real cause was skip_on_cran() two lines below.
+  st <- utils::zip(z, "occ.csv", flags = "-q")
+  if (!identical(st, 0L)) {
+    testthat::skip(sprintf("utils::zip() failed with status %s (R_ZIPCMD=%s)",
+                           st, Sys.getenv("R_ZIPCMD")))
+  }
   z
 }
 

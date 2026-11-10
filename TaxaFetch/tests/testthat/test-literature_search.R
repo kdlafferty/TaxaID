@@ -182,7 +182,10 @@ test_that("a cache key ignores the encoding mark of its strings", {
   # The property is asserted for a UTF-8 native locale, which is what this
   # project runs and what CI runs. In a C or Latin-1 session enc2utf8()
   # transcodes an "unknown" string from the native encoding, so the guarantee
-  # is stated for UTF-8 sessions only.
+  # is stated for UTF-8 sessions only -- and this test declines there rather
+  # than failing, which is what the skip below is for.
+  skip_if_not(l10n_info()[["UTF-8"]],
+              "encoding-mark property is asserted for UTF-8 sessions only")
   s_utf8 <- "Pt. Mugu, California — estuarine and coastal"
   s_unk <- s_utf8
   Encoding(s_unk) <- "unknown"
