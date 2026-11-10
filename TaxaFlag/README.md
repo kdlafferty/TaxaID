@@ -232,40 +232,91 @@ so any table whose key columns carry those names can be screened, including a
 vendor's own result table (JV, Wilderlabs). What it checks for is exact, and
 there is no "similar column" fallback. `reviewed_df` must contain:
 
-| column | from argument | default name |
-|---|---|---|
-| observation id | *fixed* | `observation_id` |
-| the called name | `taxon_col` | `consensus_taxon` |
-| the call's rank | `rank_col` | `consensus_rank` |
-| geographic verdict | `geography_col` | `llm_geographic_plausibility` |
-| absolute-fit flag | `poor_fit_col` | `poor_absolute_fit` |
-| best match's rank | `best_identity_rank_col` | `best_identity_rank` |
+| column | from argument | default name | required |
+|---|---|---|---|
+| observation id | *fixed* | `observation_id` | yes |
+| the called name | `taxon_col` | `consensus_taxon` | yes |
+| the call's rank | `rank_col` | `consensus_rank` | yes |
+| geographic verdict | `geography_col` | `llm_geographic_plausibility` | yes |
+| absolute-fit flag | `poor_fit_col` | `poor_absolute_fit` | unless `NULL` |
+| best match's rank | `best_identity_rank_col` | `best_identity_rank` | unless `NULL` |
 
-Those six must be present or the call stops with
+The first four must be present or the call stops with
 `` `reviewed_df` is missing required column(s): ``. Pass a different name to
 the matching argument if your table spells it differently.
 `habitat_col`, `scope_col` and `blank_flag_col` are *not* required: a missing
 one simply disables the rules that use it.
 
-**Leaving the fit and geography columns `NA` is not neutral, and this is the
+**If your table has no absolute-fit quantity, say so with `NULL` rather than
+inventing the column.** A conventional match object -- a candidate list per
+observation with a score -- has no equivalent of TaxaLikely's absolute fit, and
+`poor_fit_col = NULL` is how you tell the screen that:
+
+``` r
+screened <- screen_assignments(
+  reviewed,
+  taxon_col              = "candidate_taxon",
+  poor_fit_col           = NULL,   # this table has no absolute-fit evidence
+  best_identity_rank_col = NULL
+)
+```
+
+I1 and I2 then run on geography alone, their `identity_reason` says the fit was
+not supplied, and the rules that read the fit -- I3, I4 and the habitat
+exclusion -- report `n_rows` `NA` with `evaluated` `FALSE` in `rule_counts`.
+Note what that costs: **with no fit evidence the screen cannot exclude
+anything**, because every rule that sets `exclude` reads the fit. A taxon the
+reviewer called unlikely on both geography and habitat comes back
+`verify_range`, and its habitat verdict lands in the presence layer as
+`off_habitat` rather than in an exclusion.
+
+**Supplying the column full of `NA` is not the same as `NULL`, and this is the
 part worth reading twice.** The screen does not skip a rule whose input is
 missing -- it takes the permissive reading. `poor_absolute_fit` is tested as
 `%in% TRUE`, so `NA` means **not a poor fit**, i.e. a good one; and an `NA`
 geographic verdict is treated as **plausible**. A table whose fit and
 geography columns are present but all `NA` therefore returns
 `I1: good fit, geography plausible: keep name` for every row. That output is a
-report of *no evidence*, and it reads exactly like an endorsement. If your
-table has no absolute-fit flag, the identity rules cannot do the work they
-describe, and the screen's `keep` means only "nothing contradicted this".
+report of *no evidence*, and it reads exactly like an endorsement.
 
 **Do not put vendor quantities in TaxaID's columns.** A vendor's percent
 identity or classifier confidence is not a posterior, a likelihood, or
 TaxaLikely's absolute fit, and the rules that read those columns assume the
-TaxaID quantity with its scale and meaning. Put a vendor's identity in
-`best_identity_col` on the review side, where it is reported rather than
-thresholded, and leave TaxaID's own quantity columns absent rather than
-filling them with a lookalike -- but see the paragraph above before deciding
-that absent is harmless.
+TaxaID quantity with its scale and meaning. Thresholding a percent identity
+into `poor_absolute_fit` does not add evidence, it renames one: the screen will
+move rows up ranks and exclude them on that threshold alone. Put a vendor's
+identity in `best_identity_col` on the review side, where it is reported rather
+than thresholded, and pass `NULL` for TaxaID's own quantity columns.
+
+#### What `resolve = TRUE` reports on such a table
+
+`flag_resolution` reads `not_assessed` for every row of a review-only table.
+The resolution reads three axes -- the sequence match, occurrence and habitat
+-- and a table built from a reviewer's verdicts alone supplies one instrument
+for two of them: without `likelihood_support` there is no sequence vote, and
+without an occurrence-record column the occurrence vote speaks for the
+reviewer's geography verdict. Counting those as agreement would report the
+review confirming itself, so the row is not assessed and
+`flag_consistency_score` is `NA`. `flag_resolution_basis` names the reason.
+
+To get a resolution on a non-TaxaID table, supply the evidence the axes
+actually read: `likelihood_support` for the sequence axis, or one of
+`consensus_has_occurrence_record` / `winner_has_occurrence_record` for the
+occurrence axis. One of the two is enough.
+
+One more thing worth knowing before you filter on it: `flag_resolution` is a
+label, not a ranking. `upheld` covers the whole score range, so a row every
+vote went against and a row every vote supported can both carry it. Filter on
+`flag_consistency_score` as well, or read `flag_resolution_basis`.
+
+#### Scope needs a target group
+
+`review_assignments()` scores scope only when `target_group` is supplied: with
+no target group there is no scope question, so `llm_p_scope` and
+`llm_scope_plausibility` are `NA` on every row. The screen's scope rule then
+never fires and `presence` can never read `out_of_scope`. Pass `target_group`
+if you want the presence layer to separate an out-of-scope taxon from an
+off-habitat one.
 
 ### Overriding a per-site verdict with local records
 

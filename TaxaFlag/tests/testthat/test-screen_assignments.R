@@ -804,3 +804,165 @@ test_that("a rule that could not be asked still reports the rows it answered", {
   expect_message(screen_assignments(d), "R7 = 2 \\(0 asked\\)")
   expect_message(screen_assignments(d), "R1 = not evaluable")
 })
+
+# ---- a conventional match object: no TaxaID column at all -------------------
+# The shape a BLAST or classifier run produces, after review_assignments():
+# an observation id, a name, a geography verdict and a habitat probability.
+# No likelihood_support, no occurrence record, no absolute fit, no rank.
+plainmk <- function(taxon = "Sebastes mystinus", geo = "likely", ph = 0.92,
+                    rank = "species", ...) {
+  data.frame(observation_id = paste0("p", seq_along(taxon)),
+             candidate_taxon = taxon, candidate_rank = rank,
+             llm_geographic_plausibility = geo, llm_p_habitat = ph,
+             llm_habitat_plausibility = ifelse(ph >= 0.7, "likely",
+                                        ifelse(ph < 0.1, "unlikely", "possible")),
+             stringsAsFactors = FALSE, ...)
+}
+pscr <- function(d, ...) scr(d, taxon_col = "candidate_taxon", rank_col = "candidate_rank",
+                             poor_fit_col = NULL, best_identity_rank_col = NULL, ...)
+
+test_that("a plain match object screens with the fit columns declared NULL", {
+  d <- plainmk(taxon = c("Sebastes mystinus", "Gadus morhua"),
+               geo = c("likely", "unlikely"))
+  r <- pscr(d)
+  expect_equal(nrow(r), 2L)
+  expect_equal(r$identity_action, c("keep", "review"))
+  expect_equal(r$suggested_action, c("keep", "verify_range"))
+  # It must never report a fit it was not shown.
+  expect_false(any(grepl("good fit", r$identity_reason)))
+  expect_match(r$identity_reason[1], "no absolute-fit evidence supplied", fixed = TRUE)
+  expect_match(r$identity_reason[2], "no absolute-fit evidence supplied", fixed = TRUE)
+  # `poor_fit_flag` is a fit verdict as much as the reason text is: FALSE reads
+  # as "not a poor fit", which is the claim a table with no fit evidence cannot
+  # support. It is NA where the fit was never shown.
+  expect_true(all(is.na(r$poor_fit_flag)))
+  # And it is still a real FALSE where the fit WAS shown and the rule did not
+  # fire, so the NA means "not shown" rather than "not flagged" -- without this
+  # half, an implementation that blanked the column always would pass.
+  shown <- plainmk()
+  shown$poor_absolute_fit <- FALSE
+  shown$best_identity_rank <- "species"
+  sr <- scr(shown, taxon_col = "candidate_taxon", rank_col = "candidate_rank")
+  expect_false(sr$poor_fit_flag)
+  expect_false(is.na(sr$poor_fit_flag))
+})
+
+test_that("NULL fit columns mark every fit-reading rule not evaluable", {
+  rc <- attr(pscr(plainmk()), "rule_counts")
+  fitrules <- c("I3_move_up", "I3_flag_coarse", "I3_exception",
+                "poor_fit_habitat_exclude", "I4")
+  expect_false(any(rc$evaluated[rc$rule %in% fitrules]))
+  expect_true(all(is.na(rc$n_rows[rc$rule %in% fitrules])))
+  # The geography rules still run, and report real counts.
+  expect_true(all(rc$evaluated[rc$rule %in% c("I1", "I2_review")]))
+  expect_equal(rc$n_rows[rc$rule == "I1"], 1L)
+  # The row set is fixed whatever is declared absent.
+  expect_equal(nrow(rc), 9L)
+})
+
+test_that("NULL is a declaration and a missing named column is still an error", {
+  d <- plainmk()
+  expect_error(scr(d, taxon_col = "candidate_taxon", rank_col = "candidate_rank",
+                   best_identity_rank_col = NULL), "poor_absolute_fit")
+  expect_error(scr(d, taxon_col = "candidate_taxon", rank_col = "candidate_rank",
+                   poor_fit_col = "pct_identity", best_identity_rank_col = NULL),
+               "pct_identity")
+})
+
+test_that("NULL and an all-NA fit column are NOT the same thing", {
+  d <- plainmk()
+  nullrun <- pscr(d)
+  nad <- d; nad$poor_absolute_fit <- NA; nad$best_identity_rank <- "species"
+  narun <- scr(nad, taxon_col = "candidate_taxon", rank_col = "candidate_rank")
+  # Both keep the row; only one of them claims the fit was good.
+  expect_equal(nullrun$identity_action, narun$identity_action)
+  expect_match(narun$identity_reason, "good fit", fixed = TRUE)
+  expect_false(grepl("good fit", nullrun$identity_reason, fixed = TRUE))
+  # And the all-NA table reports the fit rules as asked, which they were not.
+  expect_true(attr(narun, "rule_counts")$evaluated[attr(narun, "rule_counts")$rule == "I4"])
+  expect_false(attr(nullrun, "rule_counts")$evaluated[attr(nullrun, "rule_counts")$rule == "I4"])
+})
+
+# ---- review-only rows are not assessed (R0) ---------------------------------
+
+test_that("a review-only row is not_assessed, not upheld, with an NA score", {
+  d <- plainmk(taxon = c("Sebastes mystinus", "Gadus morhua"),
+               geo = c("likely", "unlikely"))
+  r <- pscr(d)
+  expect_equal(r$flag_resolution, c("not_assessed", "not_assessed"))
+  expect_true(all(is.na(r$flag_consistency_score)))
+  expect_match(r$flag_resolution_basis[1], "^R0;")
+  expect_match(r$flag_resolution_basis[1], "review-only evidence", fixed = TRUE)
+  expect_match(r$flag_resolution_basis[1], "seq=not_evaluated", fixed = TRUE)
+  rc <- attr(r, "resolution_counts")
+  expect_equal(rc$n_rows[rc$rule == "R0"], 2L)
+  expect_equal(rc$n_evaluable[rc$rule == "R0"], 2L)
+  # No later rule answered anything, so none can report a count.
+  expect_true(all(rc$n_rows[rc$rule != "R0"] %in% c(0L, NA_integer_)))
+})
+
+test_that("either axis of independent evidence lifts a row out of R0", {
+  # The blast radius of the review-only rule: one column of real evidence on
+  # EITHER axis is enough, so a TaxaID table is never affected.
+  d <- plainmk()
+  withseq <- d; withseq$likelihood_support <- 0.9
+  r1 <- pscr(withseq)
+  expect_false(r1$flag_resolution == "not_assessed")
+  expect_match(r1$flag_resolution_basis, "seq=support", fixed = TRUE)
+
+  withrec <- d; withrec$consensus_has_occurrence_record <- TRUE
+  r2 <- pscr(withrec)
+  expect_false(r2$flag_resolution == "not_assessed")
+
+  withwinner <- d; withwinner$winner_has_occurrence_record <- TRUE
+  expect_false(pscr(withwinner)$flag_resolution == "not_assessed")
+
+  withplaus <- d; withplaus$consensus_plausibility <- "expected"
+  expect_false(pscr(withplaus)$flag_resolution == "not_assessed")
+})
+
+test_that("a review-only EXCLUDE is not confirmed on the reviewer's own verdicts", {
+  # The measured reachability case. A vendor score thresholded into
+  # poor_absolute_fit drives I4 (poor fit, geography unlikely) on a taxon the
+  # reviewer called unlikely on BOTH axes, so the two votes agree and the
+  # consistency score is -1. Without a sequence vote or an occurrence record
+  # that agreement is the review agreeing with itself, and R3 must not confirm
+  # an exclusion on it.
+  d <- plainmk(taxon = "Cyprinus carpio", geo = "unlikely", ph = 0.03)
+  d$poor_absolute_fit <- TRUE          # the fabrication the README forbids
+  d$best_identity_rank <- "species"
+  r <- scr(d, taxon_col = "candidate_taxon", rank_col = "candidate_rank")
+  expect_equal(r$identity_action, "exclude")       # the identity rule still fires
+  expect_equal(r$suggested_action, "exclude")
+  expect_equal(r$flag_resolution, "not_assessed")  # the resolution does not
+  expect_true(is.na(r$flag_consistency_score))
+  expect_match(r$flag_resolution_basis, "review-only evidence", fixed = TRUE)
+  rc <- attr(r, "resolution_counts")
+  expect_equal(rc$n_rows[rc$rule == "R3"], 0L)
+  # Add one independent axis and the exclusion is assessed again, and confirmed:
+  # a confirmed exclusion needs no sequence support, only evidence that is not
+  # the review itself.
+  d2 <- d; d2$consensus_has_occurrence_record <- FALSE
+  r2 <- scr(d2, taxon_col = "candidate_taxon", rank_col = "candidate_rank")
+  expect_equal(r2$flag_resolution, "confirmed")
+  expect_match(r2$flag_resolution_basis, "^R3;")
+  expect_equal(r2$flag_consistency_score, -1)
+})
+
+test_that("a full TaxaID row is unchanged by the review-only rule", {
+  # (d): the rule keys on absence, so a row carrying the pipeline's own
+  # evidence resolves exactly as it did. One row per outcome the cascade can
+  # reach from a full table.
+  expect_equal(res(rv())$flag_resolution, "confirmed")                     # R7
+  expect_equal(res(rv(likelihood_support = 0.05))$flag_resolution, "escalated") # R6
+  expect_equal(res(rv(blank = TRUE), blank_flag_col = "blank")$flag_resolution, "upheld") # R1
+  expect_equal(res(rv(likelihood_support = 0.3,
+                      consensus_posterior = 0.35))$flag_resolution, "upheld")
+  # Dropping the sequence vote alone does NOT trigger the rule: the record
+  # column is still there, so the row is still assessed.
+  d <- rv(.drop = "likelihood_support")
+  r <- res(d)
+  expect_equal(r$flag_resolution, "upheld")
+  expect_false(r$flag_resolution == "not_assessed")
+  expect_equal(r$flag_consistency_score, 1)
+})

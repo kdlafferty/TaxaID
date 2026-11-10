@@ -24,7 +24,8 @@ screen_assignments(
 \arguments{
 \item{reviewed_df}{A data frame with one row per taxon x site unit.
 Required columns: \code{observation_id}, the columns named by \code{taxon_col},
-\code{rank_col}, \code{geography_col}, \code{poor_fit_col} and \code{best_identity_rank_col}.
+\code{rank_col} and \code{geography_col}, and the columns named by \code{poor_fit_col}
+and \code{best_identity_rank_col} unless those are \code{NULL}.
 \code{scope_col} and \code{habitat_col} are optional; if absent the matching rule is
 skipped with a message. A \code{winner_hypothesis_type} column enables the
 unreferenced-species exception. An \code{n_tubes} column (distinct tubes per
@@ -53,11 +54,23 @@ name: pass \code{"llm_geographic_plausibility"} and R4 reads
 \code{"llm_geographic_plausibility"} as the second scale.}
 
 \item{poor_fit_col}{Name of the logical column that is TRUE when the best
-match fits poorly in absolute terms.}
+match fits poorly in absolute terms, or \code{NULL} to declare that the table
+carries no absolute-fit evidence. \code{NULL} is for a table that never had the
+quantity -- a vendor or classifier result, or anything not built by
+TaxaLikely. The rules that read the fit (I3, I4 and the habitat exclusion)
+then report themselves as not evaluable, and I1 and I2 are decided on
+geography alone with an \code{identity_reason} saying the fit was not supplied.
+Supplying the column full of \code{NA} is NOT the same thing: a missing verdict
+counts as a good fit, so I1 would report a good fit the screen never saw.
+A non-\code{NULL} name must still exist as a column; naming a column that is
+absent is an error, not a declaration.}
 
 \item{best_identity_rank_col}{Name of the column giving the rank at which
 the best reference match is identified; used as the move-up target when
-it is coarser than the call.}
+it is coarser than the call. \code{NULL} declares the table has no such rank,
+and is equivalent to the column being present and \code{NA} throughout: a
+move-up goes up one rank, and a poor fit counts against the sequence vote
+because the rank it would be judged against is unknown.}
 
 \item{relative_score_gap}{Largest allowed shortfall of a relative's
 \code{score_likelihood} below the call's best member for the relative to
@@ -104,7 +117,9 @@ unlike an unsettled range question.}
 \item{presence}{"resident", "off_habitat" or "out_of_scope"; NA for
 identity-excluded rows and where habitat is missing.}
 \item{poor_fit_flag}{TRUE for poor-fit calls kept at a rank coarser than
-\code{move_up_max_rank}.}
+\code{move_up_max_rank}; FALSE where the fit was shown and the rule did not
+fire; NA throughout when \code{poor_fit_col} is \code{NULL}, because FALSE would
+report a fit verdict the screen was never shown.}
 \item{isolated_geography_unlikely}{Information only; never acts. TRUE if
 the taxon's total tubes across the input (summed \code{n_tubes}) is at most
 3 and geography is unlikely; FALSE otherwise; NA when \code{reviewed_df} has
@@ -130,7 +145,9 @@ nothing has \code{n_rows} 0 and \code{evaluated} TRUE; a rule that could not run
 \code{n_rows} NA and \code{evaluated} FALSE (I2_relative without \code{posterior_df},
 I3_exception without a \code{winner_hypothesis_type} column,
 poor_fit_habitat_exclude without the habitat column, blank_evidence with
-\code{blank_flag_col = NULL}). Because \code{rule_counts} is an attribute, dplyr verbs
+\code{blank_flag_col = NULL}, and I3_move_up, I3_flag_coarse, I3_exception,
+poor_fit_habitat_exclude and I4 together with \code{poor_fit_col = NULL}, since
+every one of them reads the absolute fit). Because \code{rule_counts} is an attribute, dplyr verbs
 drop it; read it straight off the value \code{screen_assignments()} returns.
 With \code{resolve = TRUE} the result also carries \code{attr(, "resolution_counts")}:
 one row per rule R0 to R7 with \code{n_rows}, \code{evaluated} and \code{n_evaluable}, and
@@ -148,8 +165,11 @@ exceeds their \code{n_evaluable}.
 it could not ask is upheld by default rather than by test. Its \code{n_rows}
 can therefore exceed its \code{n_evaluable}, and the gap is exactly the
 number of rows upheld without the confirm test being put. \verb{R7 = 2 (1 asked)} says two rows were resolved and one was tested.
-\item R0, R2, R3 and R5 read only what every gated row carries, so for
+\item R2, R3 and R5 read only what every gated row carries, so for
 them the two are the same question.
+\item R0 is put to every row, so it is always evaluable and its
+\code{n_evaluable} is the row count. It answers a row with no call, a row
+with fewer than two votes, and a review-only row.
 }
 \code{n_rows} across the rules sums to the rows the cascade resolved, whichever
 rule answered each, and no rule's count is ever blanked while it has rows
@@ -175,9 +195,10 @@ its prior-driven one. R7 resolves every row it reaches, but its confirm
 test needs the sequence vote, a decidable stability
 (\code{consensus_confidence_score} or \code{robust_lower_posterior}) and a decidable
 \code{prior_driven}; without them every row comes back "upheld" by default
-rather than by test, so those rows are not counted as asked. R0, R2, R3
-and R5 read only values every row past the two-vote gate already has, so
-for them reaching the rule is the whole of being asked.
+rather than by test, so those rows are not counted as asked. R2, R3
+and R5 read only values every row past the gate already has, so
+for them reaching the rule is the whole of being asked, and R0 is the gate
+itself: it is put to every row and reads only what every row has.
 }
 \description{
 Applies a fixed set of rules to the rows of a reviewed assignment table
@@ -270,7 +291,10 @@ an unreferenced species as of a wrong one. Support:
 \code{likelihood_support} >= 0.50 and no poor fit that counts against.
 Against: \code{likelihood_support} < 0.10, or a poor fit on a call finer
 than \code{best_identity_rank} (an unreferenced species is expected to fit
-poorly, so for it only \code{likelihood_support} counts).
+poorly, so for it only \code{likelihood_support} counts). Casting no SEQ vote
+does not by itself stop a row being resolved -- OCC and ECO can still
+vote -- but it does bar every route to a confirmed keep, and with no
+occurrence record either it sends the row to R0 (see below).
 \item \strong{OCC}, occurrence: the occurrence-record side of the prior
 (\code{consensus_has_occurrence_record}, which matches the call's rank; else
 \code{winner_has_occurrence_record}; else \code{consensus_plausibility}, which
@@ -300,11 +324,24 @@ softened flag requires SEQ support. A confirmed EXCLUSION does not, because
 agreeing with an exclusion lowers confidence in the call rather than
 raising it.
 
+A row whose only evidence is the review itself is not resolved at all. Where
+SEQ casts no vote AND the occurrence-record side of OCC is absent, OCC
+speaks for the reviewer's geography verdict alone and ECO for its habitat
+probability: two votes read off one instrument. Counting them as independent
+is the same double count the posterior is kept out of the vote to avoid, and
+it would hand such a row the maximum consistency score on no evidence
+outside the review. A \emph{review-only} row therefore reports
+"not_assessed" on every branch, exclusions included, and its
+\code{flag_resolution_basis} says so.
+
 \code{flag_consistency_score} is (votes for - votes against) / votes cast over
-SEQ, OCC and ECO, from -1 to 1, NA with fewer than two votes cast. The
+SEQ, OCC and ECO, from -1 to 1. It is NA with fewer than two votes cast, and
+NA on a review-only row, because a number beside "not_assessed" invites the
+reading the rule exists to remove. The
 first rule that applies sets \code{flag_resolution}:
 \itemize{
-\item R0: no call, or fewer than two votes cast: "not_assessed".
+\item R0: no call, fewer than two votes cast, or a review-only row (no
+sequence vote and no occurrence record): "not_assessed".
 \item R1: advice "exclude" with blank evidence or a \code{validity_flag}
 starting "invalid": "upheld". Positive evidence is never softened.
 \item R2: advice "exclude" with all three votes for, or with local
@@ -332,6 +369,12 @@ answers the poor match.
 score of 2/3 or higher, a stable call and a call that is not
 prior-driven; else "upheld".
 }
+\code{flag_resolution} is a label, not a ranking. "upheld" means only that the
+rule that answered the row did not soften, escalate or confirm it, and it
+covers scores across the whole range: a row every vote went against and a
+row every vote supported can both read "upheld", from R5 and R7
+respectively. Filter on \code{flag_consistency_score} as well as the label, or
+read \code{flag_resolution_basis}, which names the rule and every vote behind it.
 Rank is never a condition. A genus or family call is resolved with the
 same rules from its own rank-matched columns, so no rank is a dead end
 (see \code{add_posthoc_assessment()}, \strong{Why no rank-based
