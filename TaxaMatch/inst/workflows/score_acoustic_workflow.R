@@ -63,19 +63,23 @@ MIN_CONFIDENCE <- 0.1
 
 if (DEBUG_MODE) {
   # ---- Tutorial example: real BirdNET output for 3 confusable Calidris ------
-  # Same licensing/privacy reasoning as score_image_workflow.R: this points to
-  # an absolute path in the user's own project folder rather than
-  # package-bundled inst/extdata data. Unlike the photos, these specific CSVs
-  # (BirdNET's own numeric output) carry no photographer-licensing concern --
-  # but they are still process artifacts of a real study, not maintained
-  # tutorial fixtures, so they are not bundled either.
-  .csv_dir <- "/Users/lafferty/My Drive/Documents2/Lafferty Manuscripts/2 Active/BayesianID_perspective/sources/birdnet_csv_output"
+  # Same licensing/privacy reasoning as score_image_workflow.R: this reads from
+  # a directory you supply rather than from package-bundled inst/extdata data.
+  # Unlike the photos, these specific CSVs (BirdNET's own numeric output) carry
+  # no photographer-licensing concern -- but they are still process artifacts of
+  # a real study, not maintained tutorial fixtures, so they are not bundled
+  # either. The directory comes from the environment so that no
+  # machine-specific path is committed: set TAXAMATCH_BIRDNET_CSV_DIR to a
+  # folder holding BirdNET's CSV output and a manifest.csv.
+  .csv_dir <- Sys.getenv("TAXAMATCH_BIRDNET_CSV_DIR", unset = "")
   .manifest_path <- file.path(.csv_dir, "manifest.csv")
 
   if (!dir.exists(.csv_dir) || !file.exists(.manifest_path)) {
     stop(
       "DEBUG_MODE = TRUE but the tutorial BirdNET CSV directory/manifest ",
-      "was not found at:\n  ", .csv_dir, "\n",
+      "was not found at:\n  ",
+      if (nzchar(.csv_dir)) .csv_dir else "<TAXAMATCH_BIRDNET_CSV_DIR is not set>",
+      "\n",
       "Run sources/birdnet_csv_export.py first (requires ",
       "pip install birdnetlib requests and an XC_API_KEY -- see that ",
       "script's header for details), or point DEBUG_MODE <- FALSE at ",

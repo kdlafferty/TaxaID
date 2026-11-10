@@ -213,7 +213,7 @@ message("Saved likelihoods.rds")
 
 # The likelihoods data frame is the input to TaxaAssign::compute_posterior()
 # which combines these with priors from TaxaExpect.
-# See: TaxaAssign_bayesian_workflow.R or TaxaAssign_llm_workflow.R
+# See: TaxaAssign_bayesian_workflow.R
 
 message("\nWorkflow 4 complete.")
 message("Next: Workflow 5 (audit coverage) or TaxaAssign for posterior assignment")

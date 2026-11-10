@@ -123,7 +123,7 @@ This step checks the length of the aligned region (the BLAST length field), not 
 
 This filter decides which candidates ever reach TaxaLikely/TaxaAssign, and a true species dropped here cannot be recovered downstream. A narrow score_range (e.g. 2, adequate for a clear top hit at 98% identity or above) is not safe in a taxonomically dense genus, where real congeneric divergence can be tight.
 
-A leave-one-out check (the score_window_leave_one_out.R diagnostic, TaxaID_dev repository) treated each reference sequence as a query against every other sequence in three real reference-vs-reference distance matrices and asked how often a congener outscores the sequence's own true species:
+A leave-one-out check treated each reference sequence as a query against every other sequence in three real reference-vs-reference distance matrices and asked how often a congener outscores the sequence's own true species:
 
 - Sebastes (54 species): 3/113 (2.7%) queries, each by 0.6 points, so none would be dropped even at score_range = 2.
 
@@ -268,7 +268,7 @@ min_pident must sit INSIDE the marker's intraspecific range. The motivating true
 
 Evaluate Reference-Accession Quality via Unrestricted BLAST Comparison
 
-For each accession, BLASTs its own sequence against a broad, *unrestricted* database (not scope-limited to any caller-chosen taxon list), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict - the same congruence math 'TaxaLikely::audit_reference_database()'/'classify_reference_accessions()' computed from a narrow, taxon-list-scoped DECIPHER alignment (see that archived function's own roxygen for its full design), here fed from real, broad BLAST hits instead.
+For each accession, BLASTs its own sequence against a broad, *unrestricted* database (not scope-limited to any caller-chosen taxon list), applies the same-submission-batch independence filter, and computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict - the same congruence math that a retired, taxon-list-scoped DECIPHER alignment computed, here fed from real, broad BLAST hits instead.
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -277,9 +277,9 @@ For each accession, BLASTs its own sequence against a broad, *unrestricted* data
 | insufficient_evidence_ttl_days | no | 180 | Numeric (default 180). See Caching above. |
 | incongruent_ttl_days | no | 30 | Numeric (default 30). Days after which an "incongruent" cached verdict is re-evaluated. Inf caches it indefinitely. Much shorter than insufficient_evidence_ttl_days on purpose, for two compounding reasons: "incongruent" is the only verdict that causes a reference to be REMOVED, and the thing that goes stale underneath it -- NCBI's nt snapshot -- is rebuilt on the order of days to weeks, not months. It is also ~1% of a real accession population (12 of 995 on the PtConception screen), so this is simultaneously the most valuable and the cheapest recheck available. See @section Why "incongruent" carries a TTL. |
 | top_n | no | 5L | Integer (default 5L). Max independent BLAST hits ranked per accession for the congruence verdict. |
-| min_congruent_rank | no | "family" | Character (default "family"). Passed to the shared congruence math -- see TaxaLikely::audit_reference_database()'s own roxygen for why "family", not a coarser rank, is this ecosystem's default. |
+| min_congruent_rank | no | "family" | Character (default "family"). The rank at or above which an independent hit must agree for the accession's own label to count as corroborated; inst/reference_accession_evaluation_guide.md explains how the resulting verdict reads. |
 | hierarchy_incongruent_threshold | no | 0.5 | Numeric (default 0.5). An accession's smoothed frac_independent_below_min_congruent_rank at or above this value reads "incongruent". |
-| min_independent_partners | no | 3L | Integer (default 3L). Fewer independent top matches than this reads "insufficient_independent_evidence" regardless of the fraction -- mirrors TaxaLikely::repair_thin_evidence()'s identical floor. |
+| min_independent_partners | no | 3L | Integer (default 3L). Fewer independent top matches than this reads "insufficient_independent_evidence" regardless of the fraction. |
 | submission_window | no | 5L | Integer (default 5L). Days (or accession-number proximity) within which two accessions are treated as the same submission batch, and therefore non-independent evidence of each other. |
 | method | no | c("remote", "local") | Passed through to blast_sequences() -- see that function's own documentation. Note that method = "local" moves only the BLAST search to the local database; the query records are still fetched from NCBI, so the screen is not offline in either mode. |
 | database | no | "nt" | Passed through to blast_sequences() -- see that function's own documentation. Note that method = "local" moves only the BLAST search to the local database; the query records are still fetched from NCBI, so the screen is not offline in either mode. |
@@ -1104,7 +1104,7 @@ Re-evaluates ONLY the accessions an evaluation would actually remove, at a large
 
 congruent_evidence_exists_anywhere is the hard veto that spares an accession from reference_action == "remove" however low its label_confidence. It is documented as walking the pool "not limited to top_n" -- and it is, but the pool is itself capped by max_hits (default 20). On the real PtConception 12S screen, 899 of 989 accessions (91%) came back AT that cap, so in practice "anywhere" has meant "anywhere in the top 20".
 
-That was measured, not suspected (the veto_truncation_probe.R diagnostic (TaxaID_dev repository)): at max_hits = 100, congruent_evidence_exists_anywhere flipped FALSE to TRUE for 8 of 15 veto-critical accessions, and OQ846263 (Rathbunella hypoplecta) -- one of only two accessions that PtConception run would have removed -- turned out to be corroborated and dropped to "inspect". KM057967 (Jordania zonope) still removed at 100 hits, correctly: it is a genuine singleton. Both congruent controls were unchanged, as they must be, since widening a window cannot withdraw corroboration already observed.
+That was measured, not suspected: at max_hits = 100, congruent_evidence_exists_anywhere flipped FALSE to TRUE for 8 of 15 veto-critical accessions, and OQ846263 (Rathbunella hypoplecta) -- one of only two accessions that PtConception run would have removed -- turned out to be corroborated and dropped to "inspect". KM057967 (Jordania zonope) still removed at 100 hits, correctly: it is a genuine singleton. Both congruent controls were unchanged, as they must be, since widening a window cannot withdraw corroboration already observed.
 
 Raising the max_hits DEFAULT was considered and deliberately not done: max_hits is part of params_key, so a change would invalidate every cached row across every project cache (~3,000 real rows) for a screen that has been NCBI-throttled before. Auditing only the removal candidates is the cheap targeted alternative -- a real population is 1-4 accessions, and removal is the one decision this package makes destructively.
 
@@ -1114,7 +1114,7 @@ The audit is only meaningful if the re-evaluation differs from the production ru
 
 #### Read the corroborators, not just spared
 
-congruent_evidence_exists_anywhere counts a corroborating partner without any notion of whether that partner's own label is trustworthy, so a mislabeled reference can be rescued by another instance of the SAME mislabel. This is not hypothetical -- it has happened in real use. GreatLakes KJ135626 (Pseudorasbora parva) came back spared = TRUE, rescued by exactly one partner agreeing at species rank: MZ605481, which this project's own the reference_accession_ground_truth.csv diagnostic (TaxaID_dev repository) records as a candidate_mislabel whose real identity is Cyprinus carpio. KJ135626's own best disagreeing hit is Cyprinus carpio at 100%. Two copies of one error agreeing with each other is not corroboration, and the LLM reviewer's independent "genuine_mislabel" call on that accession was the better answer.
+congruent_evidence_exists_anywhere counts a corroborating partner without any notion of whether that partner's own label is trustworthy, so a mislabeled reference can be rescued by another instance of the SAME mislabel. This is not hypothetical -- it has happened in real use. GreatLakes KJ135626 (Pseudorasbora parva) came back spared = TRUE, rescued by exactly one partner agreeing at species rank: MZ605481, which this project's own ground-truth review records as a candidate_mislabel whose real identity is Cyprinus carpio. KJ135626's own best disagreeing hit is Cyprinus carpio at 100%. Two copies of one error agreeing with each other is not corroboration, and the LLM reviewer's independent "genuine_mislabel" call on that accession was the better answer.
 
 refine_reference_verdicts() cannot close this: it discounts a partner by that partner's OWN verdict, and a corroborator which is merely a BLAST hit -- not itself in the screened population -- has no verdict to discount. Widening the window makes the exposure larger, not smaller, since it admits more potential bad corroborators. So treat spared as a prompt to look, not a conclusion: a row rescued by one or two partners gets an explicit warning naming them, and (screen_corroborators = TRUE) that corroborator's own label is checked -- never automatically, only flagged, per this project's own "flag, don't auto-act" convention.
 
@@ -1123,8 +1123,8 @@ refine_reference_verdicts() cannot close this: it discounts a partner by that pa
 ``` r
 library(TaxaMatch)
 
-# 1. Read DADA2 output
-seqs <- read_sequence_table("seqtab_nochim.rds")
+# 1. Read DADA2 output (a sequence table is a matrix, so read it first)
+seqs <- read_sequence_table(readRDS("seqtab_nochim.rds"))
 
 # 2. Filter by length and abundance
 filtered <- filter_sequences(seqs, min_length = 100, max_length = 300,
@@ -1136,7 +1136,9 @@ blast_hits <- blast_sequences(filtered, database = "nt",
                               min_score = 80)
 
 # 4. Standardize to canonical match object
-match_df <- standardize_match_data(blast_hits)
+match_df <- standardize_match_data(blast_hits,
+                                   observation_id_col = "qseqid",
+                                   score_col = "pident")
 
 # 5. Remove redundant higher-rank hypotheses
 match_df <- filter_redundant_hypotheses(match_df)

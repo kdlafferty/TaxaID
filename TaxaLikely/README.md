@@ -605,11 +605,11 @@ written as `function(argument = default)`.
 
 ### Features
 
--   Transform (`train_likelihood_model(score_transform = "logit")`):
-    scores are moved to an unbounded scale, and the gap is computed on
-    the same scale, so differences near 100% are amplified.
-    `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's (1948) variance
-    stabilizer) is an opt-in alternative. Logit stretches the scale most
+-   Transform (`train_likelihood_model(score_transform = "sqrt_mismatch")`):
+    `-sqrt(1-p)`, Anscombe's (1948) variance stabilizer. `"logit"` is the
+    opt-in alternative: scores are moved to an unbounded scale, and the gap
+    is computed on the same scale, so differences near 100% are amplified.
+    Logit stretches the scale most
     near 100% identity, where real matches concentrate; on real 12S
     congener data this reversed the sign of genus-tightness comparisons
     (r = +0.47 under logit against -0.55 on the raw scale;
@@ -773,7 +773,8 @@ hyp_df <- unreferenced_candidates(birdnet_df,
 likelihoods <- assign_scores(hyp_df, score_type = "probability")
 
 # Feed directly to TaxaAssign:
-joined     <- TaxaAssign::join_priors(likelihoods, my_priors)
+joined     <- TaxaAssign::join_priors(likelihoods, my_priors,
+                                      backbone_id = 11)   # 11 = GBIF; 4 = NCBI
 posteriors <- TaxaAssign::compute_posterior(joined)
 ```
 
@@ -843,7 +844,8 @@ likelihoods <- assign_scores(hyp_df, score_type = "none")
 
 # Three rows per observation (H1 + H2 + H3); all score_likelihood = 1.0.
 # Feed directly to TaxaAssign; posteriors will be proportional to priors:
-joined     <- TaxaAssign::join_priors(likelihoods, my_priors)
+joined     <- TaxaAssign::join_priors(likelihoods, my_priors,
+                                      backbone_id = 11)   # 11 = GBIF; 4 = NCBI
 posteriors <- TaxaAssign::compute_posterior(joined)
 ```
 

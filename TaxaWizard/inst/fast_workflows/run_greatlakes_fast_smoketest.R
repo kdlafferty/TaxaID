@@ -2,7 +2,7 @@
 # run_greatlakes_fast_smoketest.R
 # TaxaID -- Minutes-not-hours smoke test for the likelihood -> posterior ->
 # consensus -> slash-taxon stage of the pipeline, against a real (curated,
-# small) GreatLakes fixture built by build_fast_fixture.R.
+# small) GreatLakes fixture cut from a real production checkpoint.
 #
 # GreatLakes sibling of run_fast_smoketest.R (PtConception 12S).
 # Same design and same caveats -- starts AFTER reference-quality screening

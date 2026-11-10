@@ -79,13 +79,14 @@ score = field_rate / (field_rate + control_rate)
 shrunk toward 0.5 by `prior_weight` (default 20, in read-equivalent
 units) so taxa with little total read support aren't scored confidently.
 Scores range from 0 (taxon found only in controls) to 1 (taxon found
-only in field samples). Default thresholds classify scores as `"high"`
-risk (score ≤ 0.5, probable contaminant), `"moderate"` risk (0.5 \<
-score ≤ 0.9, ambiguous), or `"low"` risk (score \> 0.9, likely genuine
-detection). For positive controls, the interpretation inverts: taxa from
-positive controls appearing in field samples indicate
+only in field samples). Default thresholds set `validity_flag` to
+`"invalid_<type>"` (score ≤ 0.5, probable contaminant),
+`"questionable_<type>"` (0.5 \< score ≤ 0.9, ambiguous), or `"valid"`
+(score \> 0.9, likely genuine detection), where `<type>` is the
+`contaminant_type` you passed. For positive controls, the interpretation
+inverts: taxa from positive controls appearing in field samples indicate
 cross-contamination. And a low-read taxon that never appeared in any
-control is pulled down out of the `"low"` risk band.
+control is pulled down out of the `"valid"` band.
 
 Users should be conservative when removing signals, especially given
 that control samples are usually rare (or entirely missing). Remove
@@ -550,10 +551,11 @@ flagged <- flag_handler(
 
 ``` r
 reviewed <- review_assignments(
-  input_df         = consensus_results,
-  taxon_col  = "consensus_taxon",
-  context    = list(geography = "Southern California", habitat = "Marine"),
-  target_group = "fish"
+  input_df     = consensus_results,
+  taxon_col    = "consensus_taxon",
+  context      = list(geography = "Southern California", habitat = "Marine"),
+  target_group = "fish",
+  data_type    = "eDNA"               # one of "eDNA", "acoustic", "image"
 )
 # Returns 8 structured columns (llm_-prefixed: independent LLM judgments,
 # never derived from the pipeline's own values):
@@ -570,6 +572,7 @@ reviewed <- review_assignments(
   taxon_col    = "consensus_taxon",
   context      = list(geography = "Pacific coast", habitat = "Marine"),
   target_group = "fish",
+  data_type    = "eDNA",
   sites        = site_table,          # columns: site, lat, lon
   site_col     = "site"
 )

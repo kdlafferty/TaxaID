@@ -51,8 +51,8 @@ devtools::install("path/to/TaxaMatch")
 ``` r
 library(TaxaMatch)
 
-# 1. Read DADA2 output
-seqs <- read_sequence_table("seqtab_nochim.rds")
+# 1. Read DADA2 output (a sequence table is a matrix, so read it first)
+seqs <- read_sequence_table(readRDS("seqtab_nochim.rds"))
 
 # 2. Filter by length and abundance
 filtered <- filter_sequences(seqs, min_length = 100, max_length = 300,
@@ -64,7 +64,9 @@ blast_hits <- blast_sequences(filtered, database = "nt",
                               min_score = 80)
 
 # 4. Standardize to canonical match object
-match_df <- standardize_match_data(blast_hits)
+match_df <- standardize_match_data(blast_hits,
+                                   observation_id_col = "qseqid",
+                                   score_col = "pident")
 
 # 5. Remove redundant higher-rank hypotheses
 match_df <- filter_redundant_hypotheses(match_df)

@@ -14,8 +14,10 @@ library(TaxaFlag)
 
 # --- 1. Load data -----------------------------------------------------------
 
-# raw <- read.csv(file.choose())   # interactive
-raw <- read.csv("/Users/lafferty/My Drive/Stats and Data/Palmyra eDNA/2017eDNA/Palmyra2017_MiFishU_tab+taxa.csv")
+# Point this at your own wide-format read table: one row per taxon, one column
+# per sample, plus the taxonomy columns. Nothing is bundled -- the table used to
+# develop this workflow is a real study's data, not a tutorial fixture.
+raw <- read.csv(file.choose()) # or read.csv("path/to/your_reads_plus_taxa.csv")
 
 # --- 2. Pivot to long format ------------------------------------------------
 # flag_contaminant() requires long format: one row per sample x taxon
@@ -72,10 +74,10 @@ pcr_flags |> filter(validity_flag != "valid")
 # construction the dominant taxon in its own control. A native spike should
 # instead only ever appear in `exclude_samples` (as the other two calls
 # above already do for Palmyra32/64/70), with recovery confirmed separately
-# by checking its own read count in the control. See
-# TaxaID_dev/ecosystem_docs/POSITIVE_CONTROLS_design_options.md (sibling development repository) for the
-# full native/non-native design discussion and the recommended paired-spike
-# (non-native + native together) pattern for measuring per-sample leakage.
+# by checking its own read count in the control. The recommended pattern for
+# measuring per-sample leakage is a paired spike: a non-native and a native
+# spike together, so the native one's recovery is read from its own control
+# count rather than from a contaminant score.
 
 pos_flags <- flag_contaminant(
   reads_long,

@@ -134,8 +134,12 @@ cat("\n=== ARM A: group-prior named-evidence filter (compute_group_priors exclud
 # (258 named-evidence rows against 37 anonymous dark-diversity mirrors), so the
 # arm is measured there when that file is available. Read-only, never written,
 # matching how this directory's fixtures were built.
+# The directory comes from TAXAID_REAL_DATA_DIR rather than being committed, so
+# this script carries no machine-specific path. Unset, and the arm reports that
+# it was skipped.
 .ptcon12s_priors_path <- file.path(
-  path.expand("~/My Drive/Rscripts/eDNA/PtConception"),
+  Sys.getenv("TAXAID_REAL_DATA_DIR", unset = ""),
+  "PtConception",
   "PtConMifishSchulte_taxaexpect_priors.rds"
 )
 if (file.exists(.ptcon12s_priors_path)) {

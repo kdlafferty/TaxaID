@@ -366,9 +366,7 @@ detect_suppressed_candidates <- function(match_obj,
 #'   never calls into it; the name and default \code{taxon_col}/
 #'   \code{grid_col}/\code{theta_col} column names are simply chosen to match
 #'   \code{TaxaExpect::estimate_kernel_priors()}'s own \code{$priors} output
-#'   shape (the current recommended path -- the archived
-#'   \code{generate_full_priors()} used the identical column names), so that
-#'   object can be passed directly without renaming columns. Any data frame
+#'   shape, so that object can be passed directly without renaming columns. Any data frame
 #'   with the right columns (or with \code{taxon_col}/\code{grid_col}/
 #'   \code{theta_col} overridden to match your own column names) works.
 #'   Powers the floor-vs-documented ratio fallback in \code{@section Level 4

@@ -60,7 +60,7 @@ vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 ``` r
 library(TaxaWizard)
 
-# Launch the interview (auto-selects console, browser, or RStudio viewer)
+# Launch the interview (auto-selects browser when shiny is installed, else console)
 workflow_create()
 
 # Or specify a mode

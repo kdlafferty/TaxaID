@@ -32,10 +32,9 @@ utils::globalVariables(c(
 #'   \code{TaxaTools::resolve_ncbi_taxid()}, using
 #'   the caller's OWN declared rank/lineage as the discriminator -- this
 #'   function has no lineage of its own to check against, so it trusts
-#'   whatever taxid it is given. See
-#'   \code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md} for the
-#'   measured real-world cost of the bare-name form (a red-algal genus
-#'   query pulled 306,181 vertebrate sequences alongside 68 real ones).
+#'   whatever taxid it is given. The measured real-world cost of the
+#'   bare-name form: a red-algal genus query pulled 306,181 vertebrate
+#'   sequences alongside 68 real ones.
 #' @noRd
 .build_search_term <- function(taxon, barcode_term, min_date = NULL,
                                max_date = NULL, taxid = NULL) {
@@ -449,8 +448,7 @@ utils::globalVariables(c(
           # database includes a real createdate field ("YYYY/MM/DD") on the
           # same already-batched call this function makes -- zero extra NCBI
           # round trips. Used by .compute_hierarchy_congruence()'s
-          # independence filter (audit_reference_database.R) to detect
-          # same-submission-batch accessions.
+          # independence filter to detect same-submission-batch accessions.
           create_date = as.character(if (is.null(x$createdate)) NA else x$createdate),
           stringsAsFactors = FALSE
         )
@@ -1814,9 +1812,7 @@ utils::globalVariables(c(
 #'   higher-rank or larger-volume homonym wins on volume, drowning the
 #'   wanted sequences in results from the wrong organism entirely (a
 #'   red-algal genus query for "Vertebrata" measured returning 306,181
-#'   vertebrate sequences alongside 68 real red-algal ones -- see
-#'   `ecosystem_docs/REENTRY_PROMPT_homonym_detection.md` for the full
-#'   incident). When supplied, each taxon is resolved to a disambiguated
+#'   vertebrate sequences alongside 68 real red-algal ones). When supplied, each taxon is resolved to a disambiguated
 #'   NCBI taxid first, via [TaxaTools::resolve_ncbi_taxid()] using `rank`
 #'   and the declared lineage as discriminators, and queried by
 #'   `txid<id>[ORGN]` instead of `<name>[Organism]`; a taxon that remains
@@ -2048,8 +2044,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # red-algal genus query for "Vertebrata" returning 306,181 vertebrate
   # sequences alongside 68 real ones -- the wanted sequences were not lost,
   # they were drowned, and every downstream model trained on them treated
-  # vertebrate mitochondria as congeners of a red alga. See
-  # ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for the full record.
+  # vertebrate mitochondria as congeners of a red alga.
   #
   # Resolved BEFORE the cache pass, not lazily inside the fetch loop, so the
   # resolved taxid can be folded into the cache key up front -- a taxid-
@@ -2596,8 +2591,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
         # was supplied -- these ranks are already present in the XML this
         # call fetches, so requesting them costs no extra API round trip and
         # is what lets the post-fetch lineage-agreement guard run with none
-        # either (see ecosystem_docs/REENTRY_PROMPT_homonym_detection.md,
-        # proposal 4).
+        # either.
         unique_taxids <- unique(meta$taxid)
         unique_taxids <- unique_taxids[!is.na(unique_taxids) &
           nchar(unique_taxids) > 0L]
@@ -3061,8 +3055,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # means this row's returned lineage shares nothing with what the caller
   # declared for the taxon it was queried under -- a likely homonym, not a
   # benign taxonomic revision (which stays inside a shared higher clade and
-  # so still agrees). See ecosystem_docs/REENTRY_PROMPT_homonym_detection.md,
-  # proposal 4 -- this is exactly the sweep that found the defect in the
+  # so still agrees). This is exactly the sweep that found the defect in the
   # first place, now run automatically on every taxa_lineage-aware fetch.
   if (!is.null(taxa_lineage) && has_queried_taxon) {
     disagreements <- .compute_lineage_disagreements(reference_df, taxa_lineage)

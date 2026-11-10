@@ -22,3 +22,12 @@
 # these lines must stay free of regex-special characters.
 ^inst/.*_review\.Rmd$
 ^inst/.*_review_response\.md$
+# Two development scripts in fast_workflows/. The four run_*_smoketest.R
+# scripts and their fixtures are user material and still ship; these two are
+# not. build_fast_fixture.R is the fixture builder, driven by hand against
+# checkpoints the developer supplies, and run_review_fixes_fast_check.R is a
+# scoped before/after check written against a specific set of changes and a
+# real occurrence checkpoint that is not in the repository. They stay in the
+# repository as part of the development record and do not ship.
+^inst/fast_workflows/build_fast_fixture\.R$
+^inst/fast_workflows/run_review_fixes_fast_check\.R$

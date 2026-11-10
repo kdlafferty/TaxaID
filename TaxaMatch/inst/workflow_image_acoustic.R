@@ -41,7 +41,9 @@ library(TaxaLikely)
 # If your images have GPS EXIF data, lat/lng/observed_on are read automatically.
 # For images without EXIF (e.g. cropped/edited files), supply them as arguments.
 
-image_dir <- "~/My Drive/Documents2/Lafferty Manuscripts/2 Active/BayesianID_perspective/photos of Western sandpiper"
+# Your own folder of images. None is bundled: photographs carry their own
+# licensing, so this workflow reads from a directory you supply.
+image_dir <- "path/to/your_images"
 
 match_raw <- score_image_inat(
   image_path  = image_dir,

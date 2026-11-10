@@ -355,7 +355,7 @@ message(sprintf(
 # scenario here would have zero connection to anything real in this chain --
 # fabricated sample IDs, fabricated blanks, fabricated read counts -- and
 # would just be noise, not a meaningful demonstration. This mirrors the
-# sampling_group TODO documented but not built in TaxaFetch's own workflow.
+# sampling_group assignment is documented but not built in TaxaFetch's own workflow.
 #
 # Signature (verified from R/flag_contaminant.R):
 #

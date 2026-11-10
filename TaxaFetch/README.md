@@ -164,8 +164,10 @@ the fetch step (`on_submit_failure = "error"` fails instead).
 shared signature and the cross-package
 `TaxaTools::taxaid_cache_report()` are described in the TaxaID README's
 Caching and resources section. `download_gbif_occurrences()` also
-reports the cache's total size after every run and offers to clear it
-once it passes 5 GB.
+reports the cache's total size after every run; once it passes
+`cache_prompt_mb` (5 GB by default) it offers to clear it in an interactive
+session that was passed `allow_prompts = TRUE`, and otherwise prints the
+commands that would.
 
 ## Vignettes
 

@@ -298,7 +298,7 @@ confirmation boost, which has no gate on occurrence-record presence -- so
 an \code{expected} call built on \code{prior_mean} would mean "confirmed
 elsewhere in this dataset", not "expected here on occurrence grounds".
 \code{theta_mean}
-(\code{TaxaExpect::prepare_model_dataframe()}'s raw occurrence-model share,
+(TaxaExpect's raw occurrence-model share,
 a compositional share of local records -- see
 \code{TaxaAssign::update_prior_from_consensus()}'s own "Rescaling onto the
 occurrence scale" section) is immune to that boost by construction, since

@@ -365,9 +365,8 @@ often would a REAL congener/confamilial pair score this high or higher in
 the training reference database? They are read off
 \code{model_params$Confusion_Risk_Curves} (genus-/family-equal-weighted,
 Empirical-Bayes-shrunk curves computed once by \code{train_likelihood_model()};
-see its \code{Confusion_Risk_Curves} documentation and the
-\code{score_floor_roc_sweep.R} diagnostic, TaxaID_dev repository, from which
-the curves are built).
+see its \code{Confusion_Risk_Curves} documentation for how the curves are
+built).
 
 \strong{Higher means MORE confusable, i.e. WEAKER evidence for the rank in
 question}, matching the high=concern convention of risk-style metrics

@@ -9,18 +9,16 @@ utils::globalVariables(c("taxid", "rank", "division", "genbankdivision", "scient
 # name), and a plain name-based search resolves to whichever node the service
 # prefers -- for an [ORGN] search, any node in the lineage, so a higher-rank
 # or larger-volume homonym wins regardless of which one the caller meant.
-# See ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for the full incident
-# record (measured 2026-09-22): a red-algal genus query for "Vertebrata"
+# The incident this was built from: a red-algal genus query for "Vertebrata"
 # returned 306,181 vertebrate sequences alongside 68 real red-algal ones.
 
 #' Confirmed NCBI name collisions across unrelated lineages
 #'
 #' Not exported. A small, hand-curated set of taxon names known to resolve
 #' to more than one NCBI taxonomy node in genuinely unrelated lineages,
-#' recorded as each case was found by a real sweep (see
-#' ecosystem_docs/REENTRY_PROMPT_homonym_detection.md: 78 of 4,638 genera in
+#' recorded as each case was found by a real sweep: 78 of 4,638 genera in
 #' one real COI reference fetch disagreed with the match object's own
-#' family, of which 11 were confirmed homonyms). Deliberately kept
+#' family, of which 11 were confirmed homonyms. Deliberately kept
 #' unexported and undocumented as public API: it is a snapshot of what one
 #' fetch happened to surface, not a property of NCBI, so it is incomplete on
 #' day one and would go stale as NCBI's taxonomy changes -- exporting it
@@ -138,8 +136,7 @@ utils::globalVariables(c("taxid", "rank", "division", "genbankdivision", "scient
 #' # The Vertebrata case: a name-based "Vertebrata[ORGN]" search pulls in
 #' # vertebrate sequences alongside the wanted red-algal ones. Rank alone
 #' # disambiguates here, since the two candidates differ in rank (genus vs.
-#' # clade) -- see ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for
-#' # the full measured incident.
+#' # clade).
 #' resolve_ncbi_taxid("Vertebrata", rank = "genus",
 #'   lineage_terms = c("Rhodomelaceae", "Ceramiales", "Rhodophyta"))
 #' # -> taxid "1261581", status "resolved_by_rank"
@@ -250,11 +247,9 @@ resolve_ncbi_taxid <- function(name, rank = NULL, lineage_terms = NULL) {
 #' different organisms sharing a name (a homonym -- reject). Both present
 #' identically as "the returned lineage disagrees with mine"; the operative
 #' test is not whether any one rank matches exactly, but whether the
-#' disagreement is CONTAINED within some shared higher clade at all. See
-#' \code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md}'s "HOMONYM vs
-#' BENIGN REVISION" section for the full reasoning and real worked examples
-#' (e.g. \code{Modiolus} Mytilidae -> Modiolidae is a revision, both molluscs;
-#' \code{Polychaeta} class -> a tachinid fly genus is a homonym).
+#' disagreement is CONTAINED within some shared higher clade at all. Worked
+#' examples: \code{Modiolus} Mytilidae -> Modiolidae is a revision, both
+#' molluscs; \code{Polychaeta} class -> a tachinid fly genus is a homonym.
 #'
 #' @param declared Character vector. One element per row: the caller's own
 #'   known higher-rank lineage terms for that row, pipe- or

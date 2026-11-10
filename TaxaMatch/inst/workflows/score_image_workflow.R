@@ -200,8 +200,8 @@ OUT_PREFIX <- "tutorial_camtrap"
 # https://www.inaturalist.org/users/api_token.
 #
 # KNOWN FOOTGUN (found live-testing this script): the token is a short-lived
-# JWT (this session's token had already expired after ~1 week) -- a 401
-# response means the token needs regenerating, NOT a code bug.
+# JWT that expires after roughly a week -- a 401 response means the token
+# needs regenerating, NOT a code bug.
 # ==============================================================================
 
 message("\n--- Step 1: Scoring images via live iNaturalist CV API ---")

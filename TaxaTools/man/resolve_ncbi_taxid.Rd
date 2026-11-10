@@ -69,8 +69,7 @@ both discriminators is reported \code{"ambiguous"} rather than guessed.
 # The Vertebrata case: a name-based "Vertebrata[ORGN]" search pulls in
 # vertebrate sequences alongside the wanted red-algal ones. Rank alone
 # disambiguates here, since the two candidates differ in rank (genus vs.
-# clade) -- see ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for
-# the full measured incident.
+# clade).
 resolve_ncbi_taxid("Vertebrata", rank = "genus",
   lineage_terms = c("Rhodomelaceae", "Ceramiales", "Rhodophyta"))
 # -> taxid "1261581", status "resolved_by_rank"

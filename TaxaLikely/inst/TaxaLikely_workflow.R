@@ -121,7 +121,9 @@ print(filtered)
 # Run interactively; the matrix step can take several minutes for large datasets.
 # The result is cached to inst/real_matrix.rds so you only build it once.
 
-match_obj <- readRDS("~/My Drive/Rscripts/projects/TaxaID/TaxaMatch/inst/match_obj.rds")
+# Supply your own match object -- the output of TaxaMatch::standardize_match_data()
+# saved with saveRDS(). No match object is bundled with the package.
+match_obj <- readRDS(file.choose()) # or readRDS("path/to/your_match_obj.rds")
 
 # Normalize legacy column names (older saved files)
 if (!"observation_id" %in% names(match_obj)) {

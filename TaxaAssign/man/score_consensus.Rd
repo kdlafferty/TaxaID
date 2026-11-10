@@ -29,8 +29,7 @@ resolution when present; genus is always derivable from species binomials.}
 value are discarded before any other filtering.  Scale must match the
 \code{score_col} values (e.g. 97 for percent identity, 0.97 for proportion).
 Default \code{0} (no filtering). Note: an ROC-style sweep against real 12S
-reference data (see the \code{score_floor_roc_sweep.R} diagnostic, TaxaID_dev
-repository) found
+reference data found
 that \code{min_score}/raw percent-identity alone cannot discriminate a true
 species from its closest congener at almost any real-world threshold
 (true-positive and congeneric-false-positive rates track each other
@@ -117,8 +116,7 @@ point), which is the default.  Hits scoring in
 
 \strong{The lower bound is exclusive, and Jonah Ventures' own is not} (confirmed
 while validating against their delivered Pt Conception MiFish
-taxonomy; see the \code{jv_bracket_consensus_validation.R} diagnostic,
-TaxaID_dev repository).  Their
+taxonomy).  Their
 delivered detailed-hit tables do contain hits at exactly \code{top - 1}, and
 those hits demonstrably contributed to their published consensus, so
 their real interval is the closed \verb{[top - 1, top]}.  The exclusive bound

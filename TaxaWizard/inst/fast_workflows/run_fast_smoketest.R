@@ -2,7 +2,7 @@
 # run_fast_smoketest.R
 # TaxaID -- Minutes-not-hours smoke test for the likelihood -> posterior ->
 # consensus -> slash-taxon stage of the pipeline, against a real (curated,
-# small) fixture built by build_fast_fixture.R.
+# small) fixture cut from a real production checkpoint.
 #
 # This
 # is deliberately narrower than a full production workflow -- it starts
@@ -116,13 +116,13 @@ cat(sprintf("\nTotal wall time: %.1fs\n", as.numeric(Sys.time() - t0, units = "s
 #    a function whose own docs warn this can corrupt formatting?
 
 # --- Extending this to a full end-to-end fast test ----------------------------
-# 1. Real priors: build a small TaxaExpect::generate_full_priors()-shaped
+# 1. Real priors: build a small TaxaExpect::estimate_kernel_priors()-shaped
 #    object for just the taxa present in `match_obj` (union of taxon_name
 #    across the fixture -- a few dozen species, not the full regional list),
 #    against the SAME small set of grid cells the fixture's observations
 #    actually fall in. This still needs one real (but narrowly-scoped) GBIF
-#    fetch -- cache its result the same way build_fast_fixture.R caches the
-#    match object, so it's a one-time cost, not a per-run one.
+#    fetch -- cache its result to an .rds beside the fixtures, so it's a
+#    one-time cost, not a per-run one.
 # 2. join_priors() the real priors onto `likelihoods` in place of the flat
 #    0.5 placeholder above, then re-run Stages 3-5 -- results become
 #    meaningful, not just regression-safe.

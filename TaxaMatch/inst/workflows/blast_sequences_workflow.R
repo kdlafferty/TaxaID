@@ -51,7 +51,7 @@ DEBUG_MODE <- TRUE
 # NCBI requires a contact email for remote BLAST (usage policy). An NCBI API
 # key is optional but raises the rate limit -- read from ENTREZ_KEY in
 # ~/.Renviron if set.
-MY_EMAIL <- "lafferty@ucsb.edu"
+MY_EMAIL <- Sys.getenv("NCBI_EMAIL", unset = "you@example.org")
 MY_API_KEY <- Sys.getenv("ENTREZ_KEY", unset = NA_character_)
 if (is.na(MY_API_KEY) || !nzchar(MY_API_KEY)) MY_API_KEY <- NULL
 
@@ -208,7 +208,7 @@ message(sprintf(
 # ---- Honesty check: does the top BLAST hit match ground truth? -------------
 # This is a real accuracy check on real data, not a synthetic sanity check --
 # useful to report even though it isn't part of the match object itself.
-# CONFIRMED IN SESSION 115's FIELD TEST: 5/5 correct at >=98% identity.
+# Confirmed against a real field test: 5/5 correct at >=98% identity.
 if (DEBUG_MODE) {
   .top1 <- taxamatch_blast_hits[order(
     taxamatch_blast_hits$observation_id, -taxamatch_blast_hits$score

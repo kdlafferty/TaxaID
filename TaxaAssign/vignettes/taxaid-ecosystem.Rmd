@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 
 ## Overview
 
-The TaxaID ecosystem is a suite of eight R packages that implements Bayesian
+The TaxaID ecosystem is a suite of nine R packages that implements Bayesian
 taxonomic assignment for biological observations -- eDNA sequences, camera trap
 images, acoustic recordings, or any data where an observation must be matched to
 a taxon. Given a set of candidate matches (with scores), TaxaID converts those
@@ -321,7 +321,9 @@ flagged <- flag_contaminant(
 reviewed <- review_assignments(
   flagged,
   taxon_col = "consensus_taxon",
-  site_col = "site_name", llm_fn = call_anthropic_api
+  context = list(geography = "Southern California Bight", habitat = "Marine"),
+  data_type = "eDNA",
+  site_col = "site_name", llm_fn = TaxaTools::call_api
 )
 ```
 

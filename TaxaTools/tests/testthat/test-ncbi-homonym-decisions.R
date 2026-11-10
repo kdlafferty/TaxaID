@@ -1,7 +1,7 @@
 # verify_taxon_names(backbone_id = 4)'s decisions workflow -- fully offline.
-# ecosystem_docs/REENTRY_PROMPT_homonym_detection.md's follow-up: .verify_via_ncbi()
-# used to silently pick whichever candidate its batched summary processed last for
-# an ambiguous name. It now reports such a name as an unresolved ambiguity, resolved
+# .verify_via_ncbi() must not silently pick whichever candidate its batched
+# summary processed last for an ambiguous name. It reports such a name as an
+# unresolved ambiguity instead, resolved
 # only via a caller-supplied `decisions`, an interactive prompt, or a non-interactive
 # stop() -- never a guess.
 

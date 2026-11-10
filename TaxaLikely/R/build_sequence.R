@@ -61,9 +61,7 @@ utils::globalVariables(c(
 #'   resolves to the literature-verified real PCR amplicon length rather than
 #'   a broader per-gene range; a bare marker name (e.g. `"12S"`) only
 #'   guarantees "roughly the right marker," not amplicon-window
-#'   comparability, and does not by itself close this gap. See
-#'   the `sebastes_chromis_confirmation.R` diagnostic (TaxaID_dev repository) for the case this was
-#'   found in.
+#'   comparability, and does not by itself close this gap.
 #'
 #'   A `reference_df` returned by [match_reference_region()] (it carries a
 #'   `trim_path` column) is exempt from this window: its sequences are already

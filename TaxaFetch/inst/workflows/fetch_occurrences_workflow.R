@@ -19,7 +19,7 @@
 #     GBIF fetch at a higher rank + placeholder for additional non-GBIF
 #     sources (e.g. benthic survey data underrepresented in GBIF for markers
 #     like 18S/COI). Sampling_group assignment (grouping taxa for per-group
-#     modelling) is intentionally NOT included here -- see the TODO comment
+#     modelling) is intentionally NOT included here -- see the note
 #     in VARIANT B below.
 #
 # Output: all_occurrences -- a tibble; see "Output" block at the end of this
@@ -251,10 +251,10 @@ message(sprintf("  %d occurrence records retained (Variant A).", nrow(all_occurr
 #   3. Additional non-GBIF sources would be loaded, standardized to match
 #      gbif_std's columns, and stacked alongside it.
 #
-# TODO: sampling_group assignment (grouping taxa for per-group modelling,
-#   e.g. macroalgae vs. zooplankton vs. fish) is a reusable classification
-#   step -- separate design thread, not part of this file. For now the
-#   broad-marker path stops after stack_occurrences().
+# Not covered here: sampling_group assignment (grouping taxa for per-group
+#   modelling, e.g. macroalgae vs. zooplankton vs. fish) is a reusable
+#   classification step and a separate design question, not part of this file.
+#   The broad-marker path stops after stack_occurrences().
 
 # gbif_occurrences_b <- raw_gbif |>
 #   TaxaFetch::filter_gbif_quality(
@@ -286,7 +286,7 @@ message(sprintf("  %d occurrence records retained (Variant A).", nrow(all_occurr
 # all_occurrences <- TaxaFetch::dedupe_occurrences(all_occurrences)
 # message(sprintf("  %d occurrence records retained (Variant B).", nrow(all_occurrences)))
 #
-# # TODO: sampling_group assignment goes here in a future session -- see note above.
+# # sampling_group assignment would go here -- see the note above.
 
 # --- END VARIANT B -------------------------------------------------------------
 

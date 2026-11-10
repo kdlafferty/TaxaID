@@ -37,8 +37,7 @@ usable as \code{TaxaAssign::score_consensus(rank_thresholds = ...)}. Errors
 if nothing is computable at all (fewer than 2 usable rank levels).
 }
 \description{
-A real, exported, marker-agnostic version of
-the \code{score_floor_roc_sweep.R} diagnostic (TaxaID_dev repository)'s per-rank Youden's J logic: given a
+Per-rank Youden's J thresholds, marker-agnostic: given a
 \code{build_sequence_matrix()}-style pairwise distance matrix for YOUR marker
 and reference database, returns the percent-identity threshold at each
 taxonomic rank (species/genus/family) that maximizes true-positive minus

@@ -340,8 +340,7 @@ NULL
 #' identity or above) is not safe in a taxonomically dense genus, where real
 #' congeneric divergence can be tight.
 #'
-#' A leave-one-out check (the \code{score_window_leave_one_out.R} diagnostic,
-#' TaxaID_dev repository) treated each reference sequence as a query against
+#' A leave-one-out check treated each reference sequence as a query against
 #' every other sequence in three real reference-vs-reference distance matrices
 #' and asked how often a congener outscores the sequence's own true species:
 #' \itemize{

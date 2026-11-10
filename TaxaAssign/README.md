@@ -74,8 +74,10 @@ updated    <- update_prior_from_consensus(posteriors, consensus,
 consensus  <- posterior_consensus(updated)
 head(consensus)
 
-# The credible-node method, a more conservative option (see Statistical Methods).
-# backbone_id lets the cross-phylum rule compare phyla by lineage, not by name.
+# The other method, consensus_method = "lca", is less conservative: it takes the
+# lowest common ancestor of the candidates in the threshold set (see Statistical
+# Methods). Spelling out the default here shows where backbone_id goes --
+# it lets the cross-phylum rule compare phyla by lineage, not by name.
 consensus_cn <- posterior_consensus(posteriors, consensus_method = "credible_node",
                                     backbone_id = 11)
 ```
@@ -221,7 +223,8 @@ competitive scores.
     against a species call.
 
 -   Slim prior information can be discounted
-    (`posterior_consensus(robust_prior_s = 1)`, credible node only).
+    (`posterior_consensus(robust_prior_s = 0)`, credible node only;
+    off by default, `1` is a typical opt-in value).
     This reduces the chance that a call rests on chance variation in a
     few occurrence records (an imprecise-Dirichlet neighbourhood; Walley
     1996). Here, a marginal call whose candidates' priors rest on few
@@ -229,9 +232,10 @@ competitive scores.
     `join_priors()` carries from the kernel prior; the bound is reported
     as `robust_lower_posterior`.
 
--   Cross-phylum rule (`posterior_consensus(cross_phylum_eps = 0.05)`,
-    credible node only). In rare cases, competing candidates come from
-    different phyla. If the second phylum holds at least 5% of the
+-   Cross-phylum rule (`posterior_consensus(cross_phylum_eps = 0)`,
+    credible node only; `0` turns it off, which is the default, and `0.05`
+    is a typical opt-in value). In rare cases, competing candidates come
+    from different phyla. If the second phylum holds at least that much of the
     posterior, the evidence cannot really tell the phyla apart, so the
     call is held at phylum or coarser. With
     `posterior_consensus(backbone_id = )`, a group that one source
@@ -252,7 +256,8 @@ competitive scores.
     calls.
 
 -   Taxonomy lookups
-    (`posterior_consensus(lookup_missing_taxonomy = TRUE)`): placeholder
+    (`posterior_consensus(lookup_missing_taxonomy = FALSE)`; pass `TRUE` to
+    turn them on): placeholder
     rows arrive without a full classification, so their family, order
     and so on are looked up online. The lookup uses each row's rank, so
     a name used at two ranks (such as a genus and a subgenus) resolves
@@ -368,7 +373,8 @@ release process.
 
 -   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (foundation package)
--   TaxaLikely and TaxaExpect (for the Bayesian workflow; in Suggests)
+-   TaxaLikely (for the Bayesian workflow; in Suggests, with TaxaHabitat
+    and TaxaMatch)
 -   An Application Programming Interface (API) key for an LLM provider
     (Anthropic Claude, Google Gemini, OpenAI, or local Ollama; see
     TaxaTools) is needed for `build_context()` and for the LLM-composed

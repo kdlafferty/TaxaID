@@ -163,8 +163,8 @@ every caller uses the exact same rule set.
 \code{""} is normalised to \code{NA} across every present \code{rank_cols}
 column BEFORE classification. Real GBIF-derived taxonomy stores
 "unclassified at this rank" as an empty string, not \code{NA} -- the same
-real-data quirk \code{TaxaExpect::compute_adaptive_sampling_groups()} and
-\code{TaxaAssign::join_priors()} already normalise this way. This is
+real-data quirk \code{TaxaAssign::join_priors()} already normalises this
+way. This is
 behaviour-neutral for every \code{==}/\code{\%in\%} test in the scheme
 (\code{""} and \code{NA} both fail them identically), but it is what lets
 the class-less-Chordata fish clause be written honestly as "class is

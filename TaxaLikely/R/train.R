@@ -591,11 +591,10 @@ utils::globalVariables(c(
 #' bivariate-normal form captured the real score distribution well for those
 #' two markers. Nothing in this function checks that the same form fits a
 #' different marker (e.g. COI, 16S, cytb, rbcL, matK, trnL, all trainable
-#' here via `trim_to_amplicon()`) before fitting it. Run the
-#' `seq_matrix_score_distribution.R` diagnostic (TaxaID_dev repository) on
+#' here via `trim_to_amplicon()`) before fitting it. Check
 #' `build_sequence_matrix()` output for a new marker before trusting this
-#' model there; it checks logit-normality and the H1/H2 spike ratio, the two
-#' properties the Gaussian form assumes.
+#' model there: the two properties the Gaussian form assumes are
+#' logit-normality of the transformed scores and the H1/H2 spike ratio.
 #'
 #' @section Per-genus delta shrinkage:
 #' The pooled `H2$delta` treats every genus identically, a poor approximation

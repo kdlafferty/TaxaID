@@ -14,9 +14,3 @@ Creative Commons 1.0 Universal (CC0 1.0)
 To the extent possible under law, the U.S. Geological Survey has waived
 all copyright and related or neighboring rights to this software. This
 work is published from the United States.
-
-## Note on Dependencies
-
-The former glmmTMB (GPL >= 3) dependency in TaxaExpect was removed on
-2026-09-09 along with the archived GLMM prior-fitting path, so no package
-in this ecosystem currently carries a GPL dependency.

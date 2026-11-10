@@ -88,9 +88,9 @@ downstream package needs solved consistently:
 
 In an interactive session, `library(TaxaTools)`'s `.onAttach()` scans
 `~/.Renviron` for API keys (priority: Anthropic \> Gemini \> OpenAI \>
-Azure OpenAI) and sets `options(TaxaID.llm_fn = <detected provider>)`
-automatically, so no downstream function needs its own
-provider-detection logic. Rscript and other non-interactive sessions
+Azure OpenAI) and sets `options(TaxaID.provider = <detected provider>)` and
+`options(TaxaID.llm_fn = call_api)` automatically, so no downstream function
+needs its own provider-detection logic. Rscript and other non-interactive sessions
 skip this: pass `provider =` explicitly or set the option yourself.
 
 ### Lower-cost and free LLM routes
@@ -320,7 +320,7 @@ response <- call_api("Summarize the habitat preferences of Gadus morhua in one s
 ### Resolve a barcode marker's expected amplicon length and primers
 
 ``` r
-resolve_barcode_lengths("MiFish")               # list(min = 163L, max = 185L)
+resolve_barcode_lengths("MiFish")               # c(min_bp = 130L, max_bp = 210L)
 resolve_barcode_primers("MiFish-U")             # list(fwd = ..., rev = ..., amplicon_range = ...)
 resolve_barcode_marker("COI-Folmer")            # "COI" -- the term a sequence database actually indexes
 ```
@@ -328,7 +328,7 @@ resolve_barcode_marker("COI-Folmer")            # "COI" -- the term a sequence d
 ### Convert between common and scientific names
 
 ``` r
-common_to_scientific(c("Pacific cod", "sablefish"), taxonomic_group = "fish")
+common_to_scientific(c("Pacific cod", "sablefish"), taxon_group = "fish")
 scientific_to_common("Gadus macrocephalus", backbone_id = 11)
 ```
 
