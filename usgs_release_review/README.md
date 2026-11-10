@@ -54,13 +54,17 @@ the reviewer before anything is deleted.
 
 ## Notes for the technical reviewer: security posture
 
-Checked against the WERC criteria at `4f75a008`. Every **count** and every
-**line citation** below was verified there, and a reviewer can check out that
-commit to reproduce each one. The commits between `4f75a008` and the release
-tag change documentation and roxygen comments only, never a line of executable
-code; if that is ever not so, this statement is stale and must be re-verified
-before the tag. Roxygen edits are included deliberately: they move lines inside
-`R/` files, so every line citation below is re-checked whenever one lands.
+Checked against the WERC criteria. Every **count** and every **line citation**
+below is verified at the commit that carries this statement, so a reviewer
+reproduces each one from the checkout being read. The counts were first
+verified at `4f75a008` and hold here unchanged. The line citations are numbered
+for this commit and must not be checked against `4f75a008`: roxygen edits move
+lines inside `R/` files, so every line citation below is re-checked whenever
+one lands, and that re-checking is what makes them differ from the commit where
+they were first verified. Since `4f75a008` the nine `R/` trees differ in
+roxygen and comments alone, with no executable line changed; test and `inst/`
+workflow files did change, to remove private paths. If an executable `R/` line
+ever changes, this statement is stale and must be re-verified before the tag.
 
 Scope: the nine package `R/` trees, plus the test placeholders and process calls
 noted where they fall outside it.
@@ -170,10 +174,10 @@ worth saying because it is how this case was missed twice.
    the key.
 
 Separately, `rentrez::set_entrez_key()` hands the NCBI key to rentrez, which
-appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:2032`,
+appends it to E-utilities URLs, at ten sites: `TaxaLikely/R/fetch.R:2028`,
 `R/coverage.R:184,955`, `R/suggest_unreferenced_species.R:975`;
-`TaxaMatch/R/blast_sequences.R:1962,2083,2237`,
-`R/investigate_flagged_accession.R:93`, `R/evaluate_reference_accessions.R:576`,
+`TaxaMatch/R/blast_sequences.R:1961,2082,2236`,
+`R/investigate_flagged_accession.R:93`, `R/evaluate_reference_accessions.R:575`,
 `R/check_marker_mismatch.R:114`. rentrez owns the request and the error text from
 that point, so the redaction above does not reach it; the exposure is an NCBI key
 in a URL inside a third-party package's condition message.
