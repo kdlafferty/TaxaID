@@ -343,7 +343,7 @@ read as an omission:
   would accept a new field was NOT verified, so none was added; the existing
   free-text field needs no schema change.
 
-The IPDS record for the release needs its own statement, which the policy
+The IPDS record for the release, IP-187738, needs its own statement, which the policy
 templates as: "AI-assisted coding tools [name and version of tools used] were
 employed to generate code used in [describe usage]. All code was reviewed,
 tested, and validated by the authors to ensure correctness and
