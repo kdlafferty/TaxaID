@@ -9,6 +9,9 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # A healthy job takes 7-10 min; 45 leaves room for a cold dependency cache
+    # but stops a wedged runner (seen at setup-r) long before GitHub's 6 h default.
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false
