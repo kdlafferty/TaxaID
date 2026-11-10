@@ -95,9 +95,7 @@ filter). Passing a \emph{specific, registered primer variant} here (e.g.
 resolves to the literature-verified real PCR amplicon length rather than
 a broader per-gene range; a bare marker name (e.g. \code{"12S"}) only
 guarantees "roughly the right marker," not amplicon-window
-comparability, and does not by itself close this gap. See
-the \code{sebastes_chromis_confirmation.R} diagnostic (TaxaID_dev repository) for the case this was
-found in.
+comparability, and does not by itself close this gap.
 
 A \code{reference_df} returned by \code{\link[=match_reference_region]{match_reference_region()}} (it carries a
 \code{trim_path} column) is exempt from this window: its sequences are already

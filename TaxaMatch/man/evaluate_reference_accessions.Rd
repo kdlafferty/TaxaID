@@ -61,10 +61,10 @@ recheck available. See \verb{@section Why "incongruent" carries a TTL}.}
 \item{top_n}{Integer (default \code{5L}). Max independent BLAST hits ranked
 per accession for the congruence verdict.}
 
-\item{min_congruent_rank}{Character (default \code{"family"}). Passed to the
-shared congruence math -- see
-\code{TaxaLikely::audit_reference_database()}'s own roxygen for why
-\code{"family"}, not a coarser rank, is this ecosystem's default.}
+\item{min_congruent_rank}{Character (default \code{"family"}). The rank at or
+above which an independent hit must agree for the accession's own label to
+count as corroborated; \code{inst/reference_accession_evaluation_guide.md}
+explains how the resulting verdict reads.}
 
 \item{hierarchy_incongruent_threshold}{Numeric (default \code{0.5}). An
 accession's smoothed \code{frac_independent_below_min_congruent_rank} at or
@@ -72,8 +72,7 @@ above this value reads \code{"incongruent"}.}
 
 \item{min_independent_partners}{Integer (default \code{3L}). Fewer independent
 top matches than this reads \code{"insufficient_independent_evidence"}
-regardless of the fraction -- mirrors
-\code{TaxaLikely::repair_thin_evidence()}'s identical floor.}
+regardless of the fraction.}
 
 \item{submission_window}{Integer (default \code{5L}). Days (or accession-number
 proximity) within which two accessions are treated as the same
@@ -368,11 +367,8 @@ For each accession, BLASTs its own sequence against a broad,
 \strong{unrestricted} database (not scope-limited to any caller-chosen
 taxon list), applies the same-submission-batch independence filter, and
 computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict --
-the same congruence math
-\code{TaxaLikely::audit_reference_database()}/\code{classify_reference_accessions()}
-computed from a narrow, taxon-list-scoped DECIPHER alignment (see that
-archived function's own roxygen for its full design), here
-fed from real, broad BLAST hits instead.
+the same congruence math that a retired, taxon-list-scoped DECIPHER
+alignment computed, here fed from real, broad BLAST hits instead.
 }
 \section{Why this exists}{
 

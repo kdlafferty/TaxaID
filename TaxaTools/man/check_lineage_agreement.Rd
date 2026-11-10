@@ -47,11 +47,9 @@ are the same organism reclassified (a benign revision -- accept) or two
 different organisms sharing a name (a homonym -- reject). Both present
 identically as "the returned lineage disagrees with mine"; the operative
 test is not whether any one rank matches exactly, but whether the
-disagreement is CONTAINED within some shared higher clade at all. See
-\code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md}'s "HOMONYM vs
-BENIGN REVISION" section for the full reasoning and real worked examples
-(e.g. \code{Modiolus} Mytilidae -> Modiolidae is a revision, both molluscs;
-\code{Polychaeta} class -> a tachinid fly genus is a homonym).
+disagreement is CONTAINED within some shared higher clade at all. Worked
+examples: \code{Modiolus} Mytilidae -> Modiolidae is a revision, both
+molluscs; \code{Polychaeta} class -> a tachinid fly genus is a homonym.
 }
 \section{What a disagreement means}{
 

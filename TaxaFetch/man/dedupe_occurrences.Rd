@@ -94,7 +94,7 @@ was documented. This can all happen inside \emph{one}
 \code{get_gbif_occurrences()} call, so a caller with only one data source is
 not exempt.
 
-This matters beyond bookkeeping: \code{TaxaExpect::prepare_model_dataframe()}
+This matters beyond bookkeeping: TaxaExpect's occurrence model
 counts raw records (\code{dplyr::n()}) as both \code{n_species} (the
 binomial numerator for a taxon at a site) and \code{n_total_at_site} (the
 shared effort denominator across every taxon at that site). Uncollapsed

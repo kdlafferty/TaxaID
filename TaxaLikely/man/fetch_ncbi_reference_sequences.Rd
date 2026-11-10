@@ -214,9 +214,7 @@ which for an \verb{[ORGN]} search is any node in the lineage -- a
 higher-rank or larger-volume homonym wins on volume, drowning the
 wanted sequences in results from the wrong organism entirely (a
 red-algal genus query for "Vertebrata" measured returning 306,181
-vertebrate sequences alongside 68 real red-algal ones -- see
-\code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md} for the full
-incident). When supplied, each taxon is resolved to a disambiguated
+vertebrate sequences alongside 68 real red-algal ones). When supplied, each taxon is resolved to a disambiguated
 NCBI taxid first, via \code{\link[TaxaTools:resolve_ncbi_taxid]{TaxaTools::resolve_ncbi_taxid()}} using \code{rank}
 and the declared lineage as discriminators, and queried by
 \verb{txid<id>[ORGN]} instead of \verb{<name>[Organism]}; a taxon that remains

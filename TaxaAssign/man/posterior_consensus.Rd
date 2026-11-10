@@ -493,7 +493,7 @@ boost -- it is NOT interchangeable with \code{winner_theta_mean} below for
 occurrence-plausibility purposes; see that function's own "Rescaling
 onto the occurrence scale" section.}
 \item{\code{winner_theta_mean}}{The consensus taxon's raw occurrence-model
-share (\code{theta_mean}, from \code{TaxaExpect::prepare_model_dataframe()} --
+share (\code{theta_mean}, from TaxaExpect --
 the fraction of local records attributable to this taxon; a
 compositional share, not a presence probability). Unlike
 \code{winner_prior}, this is immune to \code{update_prior_from_consensus()}'s

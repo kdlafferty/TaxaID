@@ -15,7 +15,7 @@ compute_group_priors(
 }
 \arguments{
 \item{taxaexpect_priors}{Data frame. The full local occurrence-prior
-table (e.g. \code{TaxaExpect::generate_full_priors()}'s output, or the
+table (e.g. \code{TaxaExpect::estimate_kernel_priors()}'s \verb{$priors}, or the
 \code{taxaexpect_priors} object already used elsewhere in this ecosystem's
 workflows). Must contain \code{taxon_col} and \code{theta_col}.}
 
@@ -82,7 +82,7 @@ few candidates one observation's evidence happened to surface.
 }
 \section{Why sum, and why this needs a separate pass}{
 
-\code{theta_mean} (\code{TaxaExpect::prepare_model_dataframe()}'s
+\code{theta_mean} (TaxaExpect's occurrence-model share,
 \code{n_species / n_total_at_site}) is a \strong{compositional share of local
 records} -- one record belongs to exactly one taxon, so shares are
 mutually exclusive across taxa. That makes the group's true share the
