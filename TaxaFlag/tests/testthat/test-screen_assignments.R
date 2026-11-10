@@ -832,6 +832,19 @@ test_that("a plain match object screens with the fit columns declared NULL", {
   expect_false(any(grepl("good fit", r$identity_reason)))
   expect_match(r$identity_reason[1], "no absolute-fit evidence supplied", fixed = TRUE)
   expect_match(r$identity_reason[2], "no absolute-fit evidence supplied", fixed = TRUE)
+  # `poor_fit_flag` is a fit verdict as much as the reason text is: FALSE reads
+  # as "not a poor fit", which is the claim a table with no fit evidence cannot
+  # support. It is NA where the fit was never shown.
+  expect_true(all(is.na(r$poor_fit_flag)))
+  # And it is still a real FALSE where the fit WAS shown and the rule did not
+  # fire, so the NA means "not shown" rather than "not flagged" -- without this
+  # half, an implementation that blanked the column always would pass.
+  shown <- plainmk()
+  shown$poor_absolute_fit <- FALSE
+  shown$best_identity_rank <- "species"
+  sr <- scr(shown, taxon_col = "candidate_taxon", rank_col = "candidate_rank")
+  expect_false(sr$poor_fit_flag)
+  expect_false(is.na(sr$poor_fit_flag))
 })
 
 test_that("NULL fit columns mark every fit-reading rule not evaluable", {

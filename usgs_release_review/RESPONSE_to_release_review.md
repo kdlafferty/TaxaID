@@ -215,8 +215,10 @@ they did:
   (`NA`) was read as a good fit, so the screen reported
   `I1: good fit, geography plausible: keep name` on evidence it had never
   seen. With `NULL` the rules that read the fit report themselves as not
-  evaluable and the reason text says the fit was not supplied. A non-`NULL`
-  name must still exist as a column, so a typo is still an error.
+  evaluable and the reason text says the fit was not supplied, and the
+  `poor_fit_flag` column is `NA` rather than `FALSE`, since `FALSE` reads as
+  "not a poor fit" and that is the verdict such a table cannot support. A
+  non-`NULL` name must still exist as a column, so a typo is still an error.
   (2) A row whose only evidence is the review itself now reports
   `flag_resolution` `"not_assessed"` with an `NA` consistency score, on every
   branch including exclusions. Where the sequence vote is absent and no

@@ -265,7 +265,9 @@
 #'   \item{presence}{"resident", "off_habitat" or "out_of_scope"; NA for
 #'     identity-excluded rows and where habitat is missing.}
 #'   \item{poor_fit_flag}{TRUE for poor-fit calls kept at a rank coarser than
-#'     `move_up_max_rank`.}
+#'     `move_up_max_rank`; FALSE where the fit was shown and the rule did not
+#'     fire; NA throughout when `poor_fit_col` is `NULL`, because FALSE would
+#'     report a fit verdict the screen was never shown.}
 #'   \item{isolated_geography_unlikely}{Information only; never acts. TRUE if
 #'     the taxon's total tubes across the input (summed `n_tubes`) is at most
 #'     3 and geography is unlikely; FALSE otherwise; NA when `reviewed_df` has
@@ -508,7 +510,10 @@ screen_assignments <- function(reviewed_df, posterior_df = NULL,
   i2_lead <- if (has_fit) "I2: good fit but geography unlikely"
              else "I2: geography unlikely, no absolute-fit evidence supplied"
   act <- rep("keep", n); rank_after <- cr; tax_after <- tx
-  reason <- rep(NA_character_, n); poor_flag <- rep(FALSE, n)
+  # FALSE is a fit verdict -- a consumer reads it as "not a poor fit" -- so
+  # with no fit evidence the flag is NA, the same answer `rule_counts` gives
+  # for the rules that would have set it.
+  reason <- rep(NA_character_, n); poor_flag <- rep(if (has_fit) FALSE else NA, n)
   rule <- rep(NA_character_, n)
   for (i in seq_len(n)) {
     if (is.na(tx[i])) { reason[i] <- "no call"; next }
