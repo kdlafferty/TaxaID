@@ -325,9 +325,8 @@ Where that statement lives in this repository:
   commit in this repository names the model that contributed to it in a
   `Co-Authored-By` trailer -- 1,759 of 1,821 at `77aa7471`, counted with
   `git log --no-merges --grep='Co-Authored-By: Claude'`. The remaining 62 carry
-  no trailer. Sonnet 5.5 was also used, for review sub-sessions that made no
-  commits, so it names no trailer and that part of the record is stated rather
-  than checkable.
+  no trailer. Sonnet 5.5 was also used, but no trailer names it, so that part of
+  the record is stated rather than checkable.
 
 Two things are deliberately NOT here, and are noted so their absence is not
 read as an omission:

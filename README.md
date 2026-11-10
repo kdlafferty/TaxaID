@@ -365,8 +365,8 @@ and Claude Fable 5 and 5.1. Nearly every non-merge commit names the
 model that contributed to it in a `Co-Authored-By` trailer -- 1,759 of
 1,821 at `77aa7471`, counted with `git log --no-merges --grep`
 `='Co-Authored-By: Claude'`; a count of trailer lines rather than
-commits returns one more, because one commit names two models. Sonnet 5.5
-ran review sub-sessions that made no commits, so it names no trailer.
+commits returns one more, because one commit names two models. No trailer
+names Sonnet 5.5, so its use is stated here rather than checkable there.
 Four commits name "Claude Sonnet" without a version. Opus accounts for
 the largest share, about half. Because this assistance was
 continuous rather than confined to particular functions, per-function
