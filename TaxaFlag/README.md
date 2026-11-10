@@ -7,7 +7,7 @@ editor_options:
 # TaxaFlag
 
 Post-assignment quality flagging for the
-[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Identifies
+[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. Identifies
 anomalous detections in taxonomic assignment results using data-driven
 and expert-review approaches.
 
@@ -657,14 +657,14 @@ interpretation.
 
 Ecosystem: TaxaAssign -\> TaxaFlag
 
-See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
+See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
 The repository URL above is provisional; see the root TaxaID README.
 

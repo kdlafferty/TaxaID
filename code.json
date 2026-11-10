@@ -33,10 +33,12 @@
     },
     "date": {
       "created": "2026-02-01",
-      "lastModified": "2026-11-09"
+      "lastModified": "2026-11-10"
     },
-    "repositoryURL": "https://github.com/kdlafferty/TaxaID",
-    "disclaimerURL": "https://www.usgs.gov/information-policies-and-instructions/software-management",
+    "homepageURL": "https://github.com/DOI-USGS/TaxaID",
+    "downloadURL": "https://github.com/DOI-USGS/TaxaID/archive/refs/heads/main.zip",
+    "repositoryURL": "https://github.com/DOI-USGS/TaxaID.git",
+    "disclaimerURL": "https://github.com/DOI-USGS/TaxaID/raw/main/DISCLAIMER.md",
     "relatedCode": [
       {
         "name": "TaxaTools",

@@ -311,15 +311,9 @@ section below for the finer-grained, object-level version.
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
-**The repository URL above is provisional.** TaxaID is expected to be
-released through a USGS-operated GitHub organization; until that URL is
-issued, `https://github.com/kdlafferty/TaxaID` stands in for it. Every
-file carrying the URL is listed in `usgs_release_review/REPO_URL_SWAP.md`
-so it can be replaced in one pass, and the `URL` and `BugReports` fields
-of each `DESCRIPTION`, together with `code.json`, are the ones that must
-be correct at release.
+The citation will carry a DOI once the official release is approved.
 
 A citable version with a DOI will be released through the USGS software
 release process.
@@ -615,7 +609,7 @@ packages <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
                "TaxaWizard")
 
 for (pkg in packages) {
-  remotes::install_github("kdlafferty/TaxaID", subdir = pkg)
+  remotes::install_github("DOI-USGS/TaxaID", subdir = pkg)
 }
 
 # Bioconductor dependency (needed for TaxaLikely reference matrix building)
@@ -970,7 +964,7 @@ no cache; call it through `evaluate_reference_accessions()` when you
 need one (see [Caching and resources](#caching-and-resources)).
 
 Getting help. If none of the above resolves it, please open an issue at
-<https://github.com/kdlafferty/TaxaID/issues> with your R version, the
+<https://github.com/DOI-USGS/TaxaID/issues> with your R version, the
 exact error message, and a minimal reproducible example if possible.
 This helps other users hitting the same issue find the answer too, and
 keeps a public record other than a private email thread.
@@ -1128,7 +1122,7 @@ Ecology Resources*, 23(3), 725--738.
 
 Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
-yet citable. <https://github.com/kdlafferty/TaxaID>
+yet citable. <https://github.com/DOI-USGS/TaxaID>
 
 Leray, M., Victor, B. C., Jeunen, G. J., & Robertson, D. R. (2026).
 Seeing Species Where They Are Not: Why eDNA Needs Better Taxonomic

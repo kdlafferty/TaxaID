@@ -12,8 +12,8 @@ Description: Identifies and flags anomalous detections in taxonomic
     Operates on consensus data frames and appends categorical flag
     columns for user-driven filtering. Part of the TaxaID ecosystem.
 License: CC0
-URL: https://github.com/kdlafferty/TaxaID
-BugReports: https://github.com/kdlafferty/TaxaID/issues
+URL: https://github.com/DOI-USGS/TaxaID
+BugReports: https://github.com/DOI-USGS/TaxaID/issues
 Encoding: UTF-8
 Depends:
     R (>= 4.1.0)

@@ -2,7 +2,7 @@
   "_meta": {
     "version": "2026-05-23",
     "description": "TaxaTools LLM provider registry. Defines handler families, endpoints, auth types, tier patterns, and fallback model names. Update this file or run refresh_models() when provider model families change.",
-    "github_url": "https://raw.githubusercontent.com/kdlafferty/TaxaID/main/TaxaTools/inst/model_tiers.json"
+    "github_url": "https://raw.githubusercontent.com/DOI-USGS/TaxaID/main/TaxaTools/inst/model_tiers.json"
   },
   "providers": {
     "anthropic": {
