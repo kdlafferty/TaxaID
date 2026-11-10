@@ -354,11 +354,16 @@ that in its own products.
 
 In writing the code: the TaxaID source code was written with the
 assistance of Anthropic Claude models, used through Claude Code
-(Anthropic PBC, San Francisco, California), between May 2026 and
-November 2026. The models were Claude Opus 4.6, 5 and 5.5, Claude
-Sonnet 4.6 and 5, and Claude Fable 5 and 5.1; every commit names the
-model that contributed to it in a `Co-Authored-By` trailer, and Opus
-accounts for the largest share of them. Because this assistance was
+(Anthropic PBC, San Francisco, California), from 20 May 2026 to
+9 November 2026. The models were Claude Opus 4.6, 5 and 5.5; Claude
+Sonnet 4.6, 5 and 5.5, with Sonnet 5.5 used for review sub-sessions;
+and Claude Fable 5 and 5.1. Nearly every non-merge commit names the
+model that contributed to it in a `Co-Authored-By` trailer -- 1,759 of
+1,821 at `77aa7471`, counted with `git log --no-merges --grep`
+`='Co-Authored-By: Claude'`; a count of trailer lines rather than
+commits returns one more, because one commit carries the trailer twice.
+Four commits name "Claude Sonnet" without a version. Opus accounts for
+the largest share, about half. Because this assistance was
 continuous rather than confined to particular functions, per-function
 annotation would imply a precision that does not exist, so this
 repository-level statement is the annotation. All of it was reviewed and tested before release: every
@@ -1023,10 +1028,13 @@ Dr. Richard Erickson (USGS) found support for me to adapt TaxaID to help
 the U.S. Fish and Wildlife Service improve taxonomic assignment for
 metabarcoding studies of Great Lakes fish communities. Throughout, Joe
 Craine and Nick Schulte helped me understand how Jonah Ventures computes
-taxonomic assignment. Claude Code was used in the last year of the
-project to increase robustness, reduce redundancies, strengthen tests,
-and write the documentation required to make TaxaID useful to others as
-an R package. Micah Wright (USGS) performed the code review.
+taxonomic assignment. Anthropic Claude models, used through Claude
+Code, were used from 20 May 2026 to 9 November 2026 to increase
+robustness, reduce redundancies, strengthen tests, and write and edit
+the documentation required to make TaxaID useful to others as an R
+package; the models and versions are listed under "Use of Large
+Language Models". I reviewed and verified the output and take
+responsibility for it. Micah Wright (USGS) performed the code review.
 
 # References
 

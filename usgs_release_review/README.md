@@ -304,9 +304,11 @@ Where that statement lives in this repository:
 - **Each package's `README.md`** carries the same statement in short form plus
   the non-endorsement disclaimer, because each one names commercial LLM
   providers.
-- The model record is checkable rather than asserted: every commit in this
-  repository names the model that contributed to it in a `Co-Authored-By`
-  trailer.
+- The model record is checkable rather than asserted: nearly every non-merge
+  commit in this repository names the model that contributed to it in a
+  `Co-Authored-By` trailer -- 1,759 of 1,821 at `77aa7471`, counted with
+  `git log --no-merges --grep='Co-Authored-By: Claude'`. The remaining 62 carry
+  no trailer, and no merge commit carries one.
 
 Two things are deliberately NOT here, and are noted so their absence is not
 read as an omission:
@@ -314,8 +316,10 @@ read as an omission:
 - `WERC_README_template.md` and `reviewer_supplied_README.md` are the
   reviewer's own files, kept as the record of what was supplied. The template
   has a disclaimer section but no AI section; it is not edited here.
-- `code.json` carries no AI statement because the federal source-code metadata
-  schema has no field for one.
+- `code.json` carries the AI statement appended to its existing `description`,
+  not in a field of its own. Whether the federal source-code metadata schema
+  would accept a new field was NOT verified, so none was added; the existing
+  free-text field needs no schema change.
 
 The IPDS record for the release needs its own statement, which the policy
 templates as: "AI-assisted coding tools [name and version of tools used] were
