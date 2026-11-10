@@ -385,7 +385,7 @@ fetch_gbif_occurrences <- function(keys,
   sig <- sprintf(
     "%dk_s%s_g%d_%s_l%d",
     length(keys),
-    rlang::hash(sort(keys)),
+    .cache_hash(sort(keys)),
     geometry_len,
     year_tag,
     as.integer(limit)

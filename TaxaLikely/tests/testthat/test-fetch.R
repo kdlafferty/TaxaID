@@ -770,3 +770,75 @@ test_that(".report_kingdom_split stays silent when there is nothing to report", 
                stringsAsFactors = FALSE), "Gillichthys"
   ))
 })
+
+# ---- cache keys ignore a string's encoding mark ------------------------------
+
+test_that("a cache key ignores the encoding mark of its strings", {
+  # The property is asserted for a UTF-8 native locale, which is what this
+  # project runs and what CI runs. In a C or Latin-1 session enc2utf8()
+  # transcodes an "unknown" string from the native encoding, so the guarantee
+  # is stated for UTF-8 sessions only.
+  s_utf8 <- "Pt. Mugu, California — estuarine and coastal"
+  s_unk <- s_utf8
+  Encoding(s_unk) <- "unknown"
+
+  # Guards first. Without these the test could pass by comparing a string with
+  # itself: the fixture has to differ in the MARK and in nothing else.
+  expect_identical(nchar(s_utf8, "bytes"), nchar(s_unk, "bytes"))
+  expect_false(identical(Encoding(s_utf8), Encoding(s_unk)))
+
+  # The defect the helper exists for: rlang::hash() serializes the mark, so the
+  # same text hashes two ways. If this expectation ever fails, rlang has fixed
+  # it upstream and the helper is no longer earning its keep.
+  expect_false(identical(rlang::hash(s_utf8), rlang::hash(s_unk)))
+
+  # The fix.
+  expect_identical(.cache_hash(s_utf8), .cache_hash(s_unk))
+
+  # Nested, because most cache keys in this ecosystem are a list() of fields and
+  # a top-level normalisation would miss the strings inside.
+  expect_identical(
+    .cache_hash(list(name = "cymatogaster aggregata", location = s_utf8)),
+    .cache_hash(list(name = "cymatogaster aggregata", location = s_unk))
+  )
+})
+
+test_that("the fix leaves an ASCII or already-UTF-8 key exactly where it was", {
+  # Nothing cached before this helper existed may be orphaned by it.
+  expect_identical(.cache_hash("abc"), rlang::hash("abc"))
+  expect_identical(
+    .cache_hash(list(a = 1L, b = "plain ascii")),
+    rlang::hash(list(a = 1L, b = "plain ascii"))
+  )
+
+  # A real production key, rebuilt as a fixture rather than read from anyone's
+  # cache directory. Under rlang 1.3.0 it hashes to
+  # 013ed883133c9461d1c3671a4b2be57a, which is the filename it is stored under
+  # in a live cache -- but that VALUE is asserted against rlang::hash() rather
+  # than pinned as a literal, because rlang::hash() is documented as unstable
+  # across rlang versions. Pinning it would turn an rlang upgrade into a red
+  # suite for a reason that has nothing to do with this property.
+  k <- list(
+    name = "paralabrax maculatofasciatus",
+    backbone_id = NA_integer_,
+    location = "Pt. Mugu, California — estuarine and coastal"
+  )
+  expect_identical(.cache_hash(k), rlang::hash(k))
+})
+
+test_that("the reference cache term suffix is the same under either encoding mark", {
+  # Through the call site's own .ref_cache_term_sfx(), which builds its probe
+  # with .build_search_term() and makes no network call. A tree without the
+  # helper fails here because the two suffixes differ.
+  t_utf8 <- "COI — cytochrome c oxidase subunit I"
+  t_unk <- t_utf8
+  Encoding(t_unk) <- "unknown"
+  expect_identical(.ref_cache_term_sfx(t_utf8), .ref_cache_term_sfx(t_unk))
+})
+
+test_that("an attributed or classed key is not moved by the fix", {
+  k_df <- data.frame(name = "other", taxid = "1", stringsAsFactors = FALSE)
+  expect_identical(.cache_hash(k_df), rlang::hash(k_df))
+  k_cl <- structure(list(a = "ascii", b = 2L), class = "my_key", extra = "kept")
+  expect_identical(.cache_hash(k_cl), rlang::hash(k_cl))
+})

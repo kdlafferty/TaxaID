@@ -328,7 +328,7 @@
 
 #' @noRd
 .worms_cache_path <- function(cache_dir, key) {
-  file.path(cache_dir, paste0(rlang::hash(key), "_worms_attr.rds"))
+  file.path(cache_dir, paste0(.cache_hash(key), "_worms_attr.rds"))
 }
 
 #' @noRd

@@ -19,7 +19,7 @@ utils::globalVariables(c(
 #' @noRd
 .outlier_verdict_hash <- function(rare_keys, year_range, method, min_occs,
                                   tdi, mltpl, local_ids, on_cap) {
-  rlang::hash(list(
+  .cache_hash(list(
     rare_keys  = sort(rare_keys),
     year_range = year_range,
     method     = method,

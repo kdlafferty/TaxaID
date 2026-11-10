@@ -487,7 +487,7 @@ common_to_scientific <- function(common_names,
 
 #' @noRd
 .common_name_cache_path <- function(cache_dir, key) {
-  file.path(cache_dir, paste0(rlang::hash(key), "_common_name.rds"))
+  file.path(cache_dir, paste0(.cache_hash(key), "_common_name.rds"))
 }
 
 #' @noRd

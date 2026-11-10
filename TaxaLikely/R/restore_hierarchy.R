@@ -68,7 +68,7 @@
 #' same semantics, 32-character key, whatever the input size.
 #' @noRd
 .align_cache_key <- function(prefix, ...) {
-  paste0(prefix, "::", rlang::hash(list(...)))
+  paste0(prefix, "::", .cache_hash(list(...)))
 }
 
 #' @noRd

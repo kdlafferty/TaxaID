@@ -1027,7 +1027,7 @@ utils::globalVariables(c(
 .ref_cache_term_sfx <- function(barcode_term) {
   # Built against a fixed probe so the digest is per-marker, not per-taxon.
   probe <- .build_search_term(.REF_CACHE_TERM_PROBE, barcode_term)
-  sprintf("_q%s", substr(rlang::hash(probe), 1L, 8L))
+  sprintf("_q%s", substr(.cache_hash(probe), 1L, 8L))
 }
 
 # The probe name the term digest is built against. A sentinel, not a real

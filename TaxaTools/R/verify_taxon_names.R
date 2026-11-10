@@ -583,7 +583,7 @@ verify_taxon_names <- function(name_list,
   if (is.character(decisions) && length(decisions) == 1L) {
     return(if (file.exists(decisions)) unname(tools::md5sum(decisions)) else "absent-file")
   }
-  rlang::hash(decisions)
+  .cache_hash(decisions)
 }
 
 #' @noRd
@@ -713,7 +713,7 @@ verify_taxon_names <- function(name_list,
 
 #' @noRd
 .verify_cache_path <- function(cache_dir, key) {
-  file.path(cache_dir, paste0(rlang::hash(key), "_verified_name.rds"))
+  file.path(cache_dir, paste0(.cache_hash(key), "_verified_name.rds"))
 }
 
 # The service call, as a seam tests can mock.

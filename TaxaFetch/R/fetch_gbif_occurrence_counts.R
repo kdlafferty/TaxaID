@@ -133,7 +133,7 @@ fetch_gbif_occurrence_counts <- function(keys,
   cache_path <- NULL
   if (!is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    cache_path <- file.path(cache_dir, paste0("gbif_counts_", rlang::hash(query), ".rds"))
+    cache_path <- file.path(cache_dir, paste0("gbif_counts_", .cache_hash(query), ".rds"))
     if (file.exists(cache_path)) {
       hit <- tryCatch(readRDS(cache_path), error = function(e) NULL)
       if (!is.null(hit) && identical(attr(hit, "query"), query)) {
