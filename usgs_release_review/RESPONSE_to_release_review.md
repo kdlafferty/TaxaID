@@ -206,6 +206,32 @@ they did:
 - `TaxaLikely::fetch_ncbi_reference_sequences()` gained a documented account
   of how it detects and removes cross-lineage (homonym) contamination in a
   fetched reference set, and of when that rule deliberately does nothing.
+- `TaxaFlag::screen_assignments()` was checked on 2026-11-10 against a
+  conventional match object -- a candidate list per observation with a score
+  for each, never processed by TaxaID -- and three things were corrected.
+  (1) `poor_fit_col` and `best_identity_rank_col` accept `NULL`, meaning the
+  table carries no absolute-fit evidence. Before, a caller without
+  TaxaLikely's absolute fit had to invent the column, and the honest invention
+  (`NA`) was read as a good fit, so the screen reported
+  `I1: good fit, geography plausible: keep name` on evidence it had never
+  seen. With `NULL` the rules that read the fit report themselves as not
+  evaluable and the reason text says the fit was not supplied. A non-`NULL`
+  name must still exist as a column, so a typo is still an error.
+  (2) A row whose only evidence is the review itself now reports
+  `flag_resolution` `"not_assessed"` with an `NA` consistency score, on every
+  branch including exclusions. Where the sequence vote is absent and no
+  occurrence-record column is present, the occurrence vote speaks for the
+  reviewer's geography verdict and the habitat vote for its habitat
+  probability: two votes read off one instrument. Counting them as independent
+  gave such a row the maximum consistency score on no evidence outside the
+  review, and could stamp an exclusion `"confirmed"` on the reviewer's own two
+  verdicts. This is the same double count the posterior is deliberately kept
+  out of the vote to avoid. A row carrying either axis of real evidence is
+  unaffected, so no table built by the TaxaID pipeline changes.
+  (3) A comment in the resolution step asserted that such a row would fall
+  below the two-vote gate and be reported as not assessed. It did not: the
+  gate was reached on those two votes. The comment now describes the code, and
+  (2) is what makes the behaviour it described true.
 
 ### Capabilities added in response to user feedback
 
