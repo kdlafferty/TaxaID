@@ -67,7 +67,8 @@ noted where they fall outside it.
 the release process rather than a courtesy.** Its predecessor named a commit,
 was not re-stated across the merged pull requests that followed, and was
 contradicted by its own reader's first grep; this statement was re-stated at
-`4f75a008` after four line citations and one dependency sentence had drifted. Naming the commit is what makes the staleness
+`4f75a008` after several line citations and one dependency sentence had
+drifted. Naming the commit is what makes the staleness
 visible; removing the name would only hide it.
 
 It is written down so the review does not have to rediscover it; where a check
@@ -308,7 +309,7 @@ Where that statement lives in this repository:
   commit in this repository names the model that contributed to it in a
   `Co-Authored-By` trailer -- 1,759 of 1,821 at `77aa7471`, counted with
   `git log --no-merges --grep='Co-Authored-By: Claude'`. The remaining 62 carry
-  no trailer, and no merge commit carries one.
+  no trailer.
 
 Two things are deliberately NOT here, and are noted so their absence is not
 read as an omission:
