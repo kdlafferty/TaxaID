@@ -96,7 +96,11 @@ test_that("a missing or invalid floor leaves the table unchanged", {
 })
 
 test_that("real GreatLakes _v104finalb: the split recovers all five grass-carp units and keeps every other call", {
-  G <- "/Users/lafferty/My Drive/Stats and Data/GreatLakes data"
+  # Directory from the environment, so no machine-specific path is committed;
+  # see test-compute_posterior_pooling.R for the same convention.
+  .root <- Sys.getenv("TAXAID_REAL_DATA_DIR", unset = "")
+  skip_if(!nzchar(.root), "TAXAID_REAL_DATA_DIR is not set")
+  G <- file.path(.root, "GreatLakes data")
   pf <- file.path(G, "GreatLakes2023BurnsHarbor_v104finalb_posteriors_updated_lca.rds")
   cf <- file.path(G, "GreatLakes2023BurnsHarbor_v104finalb_consensus_final_lca.rds")
   skip_if_not(file.exists(pf) && file.exists(cf), "GreatLakes saved run not reachable")

@@ -172,14 +172,30 @@ test_that("posterior_consensus warns below the pooling threshold only", {
 # Exactness on real tables
 # ---------------------------------------------------------------------------
 
+# Saved runs from real projects, used to check that pooling is exact against
+# tables this package did not generate. Their directory comes from
+# `TAXAID_REAL_DATA_DIR` so that no machine-specific path is committed: point
+# it at a folder holding the `SepulvedaMugu` and `GreatLakes data` directories
+# named below. Unset, or files absent, and these tests skip.
+#
+# The list is always built, so both tests exist and report as SKIP rather than
+# vanishing when the variable is unset -- a test that disappears is not a test
+# that passed.
+.real_root <- Sys.getenv("TAXAID_REAL_DATA_DIR", unset = "")
 .real_cases <- list(
-  Mugu = c(
-    "/Users/lafferty/My Drive/Rscripts/eDNA/SepulvedaMugu/MuguWilderFish_blast_parts_all_posteriors_r2.rds",
-    "/Users/lafferty/My Drive/Rscripts/eDNA/SepulvedaMugu/MuguWilderFish_blast_parts_consensus_final.rds"
+  Mugu = file.path(
+    .real_root, "SepulvedaMugu",
+    c(
+      "MuguWilderFish_blast_parts_all_posteriors_r2.rds",
+      "MuguWilderFish_blast_parts_consensus_final.rds"
+    )
   ),
-  GreatLakes = c(
-    "/Users/lafferty/My Drive/Stats and Data/GreatLakes data/GreatLakes2023BurnsHarbor_v103finalb_posteriors_updated.rds",
-    "/Users/lafferty/My Drive/Stats and Data/GreatLakes data/GreatLakes2023BurnsHarbor_v103finalb_consensus_final.rds"
+  GreatLakes = file.path(
+    .real_root, "GreatLakes data",
+    c(
+      "GreatLakes2023BurnsHarbor_v103finalb_posteriors_updated.rds",
+      "GreatLakes2023BurnsHarbor_v103finalb_consensus_final.rds"
+    )
   )
 )
 
@@ -188,6 +204,7 @@ for (nm in names(.real_cases)) {
     nm <- nm
     paths <- .real_cases[[nm]]
     test_that(paste0("pooling is exact on the real ", nm, " table"), {
+      skip_if(!nzchar(.real_root), "TAXAID_REAL_DATA_DIR is not set")
       skip_if_not(all(file.exists(paths)), paste("saved", nm, "tables not reachable"))
       p <- readRDS(paths[1])
       cons <- readRDS(paths[2])

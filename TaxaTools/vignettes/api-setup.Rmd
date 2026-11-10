@@ -106,8 +106,9 @@ rgbif::occ_search(scientificName = "Fundulus parvipinnis", limit = 5)
 
 ### NCBI Entrez API Key (ENTREZ_KEY)
 
-**Used by:** `verify_taxon_names()` (backbone_id = 4), `fetch_reference_sequences()`,
-`audit_barcode_coverage()`, `blast_sequences()`
+**Used by:** `verify_taxon_names()` (backbone_id = 4),
+`TaxaLikely::fetch_ncbi_reference_sequences()`,
+`TaxaLikely::audit_barcode_coverage()`, `TaxaMatch::blast_sequences()`
 
 **Why:** NCBI rate-limits unauthenticated requests to 3/second. With a key, the
 limit increases to 10/second. For large taxonomic queries, this makes a significant

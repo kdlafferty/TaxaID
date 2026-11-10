@@ -1,5 +1,5 @@
 # Edge: taxa -> context_df
-# Source: TaxaAssign/inst/TaxaAssign_llm_workflow.R
+# Source: TaxaAssign::build_context()
 
 unique_taxa <- unique({{input_var}}$taxon_name[!is.na({{input_var}}$taxon_name)])
 

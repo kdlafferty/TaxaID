@@ -1,5 +1,4 @@
-# Regression tests for the 2026-09-22 homonym-detection fix
-# (ecosystem_docs/REENTRY_PROMPT_homonym_detection.md).
+# Regression tests for homonym detection in the NCBI fetch path.
 #
 # A taxon name is not a key: NCBI can hold several nodes with the same name
 # in unrelated lineages, and a name-based [Organism] search silently

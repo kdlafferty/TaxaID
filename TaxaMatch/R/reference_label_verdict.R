@@ -1047,8 +1047,7 @@ refine_reference_verdicts <- function(evaluation,
 #' (91%) came back AT that cap, so in practice "anywhere" has meant "anywhere
 #' in the top 20".
 #'
-#' That was measured, not suspected
-#' (the `veto_truncation_probe.R` diagnostic (TaxaID_dev repository)): at `max_hits = 100`,
+#' That was measured, not suspected: at `max_hits = 100`,
 #' `congruent_evidence_exists_anywhere` flipped `FALSE` to `TRUE` for 8 of 15
 #' veto-critical accessions, and `OQ846263` (*Rathbunella hypoplecta*) --
 #' one of only two accessions that PtConception run would have removed --
@@ -1133,8 +1132,7 @@ refine_reference_verdicts <- function(evaluation,
 #' mislabel. This is not hypothetical -- it has happened in
 #' real use. GreatLakes `KJ135626` (*Pseudorasbora parva*) came back
 #' `spared = TRUE`, rescued by exactly one partner agreeing at species rank:
-#' `MZ605481`, which this project's own
-#' the `reference_accession_ground_truth.csv` diagnostic (TaxaID_dev repository) records as a
+#' `MZ605481`, which this project's own ground-truth review records as a
 #' `candidate_mislabel` whose real identity is *Cyprinus carpio*.
 #' `KJ135626`'s own best disagreeing hit is *Cyprinus carpio* at 100%. Two
 #' copies of one error agreeing with each other is not corroboration, and the

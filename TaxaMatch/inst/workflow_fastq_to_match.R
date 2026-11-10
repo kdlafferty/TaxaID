@@ -181,7 +181,9 @@ blast_hits <- blast_sequences(
   # from crowding out real congener candidates;
   # requires resolve_taxonomy = TRUE (below) to
   # be effective on remote results
-  email = "lafferty@ucsb.edu", resolve_taxonomy = TRUE
+  # NCBI's usage policy asks for a contact address; use your own.
+  email = Sys.getenv("NCBI_EMAIL", unset = "you@example.org"),
+  resolve_taxonomy = TRUE
 )
 
 # --- Option B: Local BLAST (requires BLAST+ and a local database) -------------

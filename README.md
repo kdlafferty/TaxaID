@@ -214,7 +214,11 @@ comparisons.
 
 See each package's README.md file for more details.
 
-### Dependency Chain (import order)
+### Data-flow order
+
+Every package Imports only TaxaTools; TaxaWizard Imports no TaxaID package and
+carries the other eight in Suggests. The order below is the order data moves
+through the ecosystem, not a chain of package dependencies.
 
 ```
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
@@ -361,7 +365,8 @@ and Claude Fable 5 and 5.1. Nearly every non-merge commit names the
 model that contributed to it in a `Co-Authored-By` trailer -- 1,759 of
 1,821 at `77aa7471`, counted with `git log --no-merges --grep`
 `='Co-Authored-By: Claude'`; a count of trailer lines rather than
-commits returns one more, because one commit names two models.
+commits returns one more, because one commit names two models. Sonnet 5.5
+ran review sub-sessions that made no commits, so it names no trailer.
 Four commits name "Claude Sonnet" without a version. Opus accounts for
 the largest share, about half. Because this assistance was
 continuous rather than confined to particular functions, per-function
@@ -752,7 +757,7 @@ with no network calls and no API key:
 # from the repository root; fixture paths are resolved via system.file()
 # against the installed (or devtools::load_all()'d) TaxaWizard package
 library(TaxaWizard)
-source(system.file("fast_workflows", "run_fast_smoketest.R", package = "TaxaWizard"))            # ~7 s
+source(system.file("fast_workflows", "run_fast_smoketest.R", package = "TaxaWizard"))            # a few seconds
 source(system.file("fast_workflows", "run_greatlakes_fast_smoketest.R", package = "TaxaWizard")) # ~6 s
 ```
 
@@ -832,7 +837,6 @@ Detailed, runnable workflow scripts are provided in each package's
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
 | Assign habitats | TaxaHabitat | `inst/workflows/assign_habitat_workflow.R` |
 | Build priors | TaxaExpect | `inst/workflows/generate_priors_workflow.R` |
-| LLM assignment | TaxaAssign | `inst/TaxaAssign_llm_workflow.R` |
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
 
 For a step-by-step map of the full pipeline (inputs, outputs, and save

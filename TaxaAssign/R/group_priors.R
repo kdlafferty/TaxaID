@@ -6,7 +6,7 @@
 #' few candidates one observation's evidence happened to surface.
 #'
 #' @section Why sum, and why this needs a separate pass:
-#' `theta_mean` (`TaxaExpect::prepare_model_dataframe()`'s
+#' `theta_mean` (TaxaExpect's occurrence-model share,
 #' `n_species / n_total_at_site`) is a **compositional share of local
 #' records** -- one record belongs to exactly one taxon, so shares are
 #' mutually exclusive across taxa. That makes the group's true share the
@@ -64,7 +64,7 @@
 #' them.
 #'
 #' @param taxaexpect_priors Data frame. The full local occurrence-prior
-#'   table (e.g. `TaxaExpect::generate_full_priors()`'s output, or the
+#'   table (e.g. `TaxaExpect::estimate_kernel_priors()`'s `$priors`, or the
 #'   `taxaexpect_priors` object already used elsewhere in this ecosystem's
 #'   workflows). Must contain `taxon_col` and `theta_col`.
 #' @param taxonomy_map Data frame supplying genus/family for each taxon in

@@ -29,3 +29,6 @@
 # these lines must stay free of regex-special characters.
 ^inst/.*_review\.Rmd$
 ^inst/.*_review_response\.md$
+# A standalone figure script for presentations and manuscripts, not part of
+# the package's own documentation. Development record; does not ship.
+^inst/plot_likelihood_landscape\.R$

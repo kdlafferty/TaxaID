@@ -618,10 +618,11 @@ reference.
 
 ## 10. Visualizing the Likelihood Landscape
 
-The standalone script `inst/plot_likelihood_landscape.R` produces a two-panel
-figure showing the H1 and H2 probability density surfaces in (score, gap) space,
-with labeled example points illustrating how different match outcomes map onto
-the landscape.
+The two-panel figure used in presentations shows the H1 and H2 probability
+density surfaces in (score, gap) space, with labeled example points
+illustrating how different match outcomes map onto the landscape. It is drawn
+from a trained model's own `H1`/`H2` parameters, so it can be reproduced from
+`train_likelihood_model()` output alone.
 
 This visualization shows that taxonomy assignment is not a simple threshold on
 match percentage -- it is a joint evaluation of how well the score matches the
@@ -1052,10 +1053,10 @@ they were run under (`consensus_method = "lca"`, `robust_prior_s = 1`,
 `cross_phylum_eps = 0.05`) instead of taking the package defaults.
 
 The benchmark is one dataset and one marker; decisions resting on it should be re-checked when
-a second held-out truth exists. The scripts are in the `TaxaID_dev` repository under
-`diagnostics/` (`softmax_ab_greatlakes.R`, `blast_model_ab_greatlakes*.R`,
-`thin_training_ab_greatlakes.R`, `pooled_model_ab_greatlakes.R`,
-`train_statistic_max_vs_median.R`).
+a second held-out truth exists. The A/B scripts behind it are development
+diagnostics, held outside this repository and not distributed with the package;
+the arguments each was run under are named above so the comparisons can be
+reproduced from the exported functions alone.
 
 ### 17A. Why not a softmax over scores
 

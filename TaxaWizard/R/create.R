@@ -95,7 +95,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
     print(setup[setup$status == "missing", , drop = FALSE])
   }
 
-  # Auto-detect: use viewer if RStudio is available, else console
+  # Auto-detect: use the browser when shiny is installed, else the console
 
   if (mode == "auto") {
     mode <- if (requireNamespace("shiny", quietly = TRUE)) "browser" else "console"

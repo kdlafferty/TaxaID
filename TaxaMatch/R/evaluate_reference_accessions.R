@@ -14,9 +14,8 @@ utils::globalVariables(c(
 # evaluate_reference_accessions() -- per-accession BLAST-based reference
 # quality evaluation
 #
-# Supersedes the taxon-list-scoped DECIPHER whole-set alignment approach
-# (TaxaLikely::audit_reference_database()/classify_reference_accessions(),
-# now retired) for the specific
+# Supersedes the taxon-list-scoped DECIPHER whole-set alignment approach,
+# now retired, for the specific
 # question this function answers: is a single accession's OWN listed taxon
 # congruent with what independent NCBI evidence actually says, evaluated
 # against the broadest comparison population BLAST can reach -- not just
@@ -1438,11 +1437,8 @@ utils::globalVariables(c(
 #' \strong{unrestricted} database (not scope-limited to any caller-chosen
 #' taxon list), applies the same-submission-batch independence filter, and
 #' computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict --
-#' the same congruence math
-#' `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()`
-#' computed from a narrow, taxon-list-scoped DECIPHER alignment (see that
-#' archived function's own roxygen for its full design), here
-#' fed from real, broad BLAST hits instead.
+#' the same congruence math that a retired, taxon-list-scoped DECIPHER
+#' alignment computed, here fed from real, broad BLAST hits instead.
 #'
 #' @section Why this exists:
 #' A comparison population limited to whatever else was fetched under the
@@ -1578,17 +1574,16 @@ utils::globalVariables(c(
 #'   recheck available. See `@section Why "incongruent" carries a TTL`.
 #' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
 #'   per accession for the congruence verdict.
-#' @param min_congruent_rank Character (default `"family"`). Passed to the
-#'   shared congruence math -- see
-#'   `TaxaLikely::audit_reference_database()`'s own roxygen for why
-#'   `"family"`, not a coarser rank, is this ecosystem's default.
+#' @param min_congruent_rank Character (default `"family"`). The rank at or
+#'   above which an independent hit must agree for the accession's own label to
+#'   count as corroborated; `inst/reference_accession_evaluation_guide.md`
+#'   explains how the resulting verdict reads.
 #' @param hierarchy_incongruent_threshold Numeric (default `0.5`). An
 #'   accession's smoothed `frac_independent_below_min_congruent_rank` at or
 #'   above this value reads `"incongruent"`.
 #' @param min_independent_partners Integer (default `3L`). Fewer independent
 #'   top matches than this reads `"insufficient_independent_evidence"`
-#'   regardless of the fraction -- mirrors
-#'   `TaxaLikely::repair_thin_evidence()`'s identical floor.
+#'   regardless of the fraction.
 #' @param submission_window Integer (default `5L`). Days (or accession-number
 #'   proximity) within which two accessions are treated as the same
 #'   submission batch, and therefore non-independent evidence of each other.

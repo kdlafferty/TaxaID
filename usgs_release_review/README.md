@@ -56,9 +56,11 @@ the reviewer before anything is deleted.
 
 Checked against the WERC criteria at `4f75a008`. Every **count** and every
 **line citation** below was verified there, and a reviewer can check out that
-commit to reproduce each one. The only commits between `4f75a008` and the
-release tag change documentation, not code; if that is ever not so, this
-statement is stale and must be re-verified before the tag.
+commit to reproduce each one. The commits between `4f75a008` and the release
+tag change documentation and roxygen comments only, never a line of executable
+code; if that is ever not so, this statement is stale and must be re-verified
+before the tag. Roxygen edits are included deliberately: they move lines inside
+`R/` files, so every line citation below is re-checked whenever one lands.
 
 Scope: the nine package `R/` trees, plus the test placeholders and process calls
 noted where they fall outside it.
@@ -116,6 +118,10 @@ count.** Nine further call sites read a variable whose NAME is itself a value:
 `R/model_registry.R:393,500,586`; `Sys.getenv(p$key)` at `TaxaTools/R/zzz.R:25`
 and `TaxaWizard/R/zzz.R:28`; `Sys.getenv(v)` at `TaxaWizard/R/setup.R:62`; and
 two inside the text of a script TaxaWizard generates, at `R/shiny.R:1718,1730`.
+A tenth site is found by neither grep: `TaxaTools/R/call_api.R:62` passes
+`Sys.getenv` to `vapply()` over the four-entry `key_map` at `:56-61`, so the
+variable names are literals but no `Sys.getenv(` call appears. It tests
+`nzchar()` and prints variable NAMES (`:66`), never a value.
 The name comes either from the built-in provider table (`TaxaTools/R/zzz.R:17-20`)
 or, for a caller-registered provider, from `prov_reg$api_key_var`, chosen at
 `R/call_api.R:109` and `R/model_registry.R:386,488,576`.
@@ -184,14 +190,24 @@ rather than as "added none", so that re-checking it is a matter of re-running th
 same greps:
 
 * `system()` -- one: `TaxaFetch/R/plan_gbif_fetch.R:180`, `sysctl -n hw.memsize`.
-* `system2()` -- eight, every one a fixed binary with a fixed argument vector and
-  no interpolated user text: `TaxaLikely/R/build_sequence.R:1487` (`ps`),
-  `R/matrix_size.R:147,150` (`vm_stat`, `powershell`),
-  `TaxaMatch/R/blast_sequences.R:1536,1665` (`blastn -version`,
+* `system2()` -- eight, none with any interpolated user text. Three name the
+  binary as a literal with a fixed argument vector:
+  `TaxaLikely/R/build_sequence.R:1485` (`ps`),
+  `R/matrix_size.R:147,150` (`vm_stat`, `powershell`). The other five do not,
+  and are accounted for below:
+  `TaxaMatch/R/blast_sequences.R:1535,1664` (`blastn -version`,
   `blastdbcmd -info`; the database path goes through `shQuote()`),
   `R/investigate_flagged_accession.R:241,250` (`blastdbcmd`, `makeblastdb`).
-  The eighth, `TaxaWizard/R/setup.R:449`, is the one whose binary name is not a
-  literal: it and its version flag are read from the package's own shipped
+  Four of the five -- `blast_sequences.R:1535,1664` and
+  `investigate_flagged_accession.R:241,250` -- take the binary as an internal
+  function's formal defaulting to `Sys.which()` (`blast_sequences.R:1530,1651`,
+  `investigate_flagged_accession.R:225-226`) rather than as a literal. All four
+  functions are `@noRd`, every in-package call site uses the default
+  (`blast_sequences.R:598,1712`, `investigate_flagged_accession.R:408`), and the
+  binary must resolve through `Sys.which()` before it runs, so overriding one
+  needs `:::`. Fixed by default rather than fixed.
+  The fifth, `TaxaWizard/R/setup.R:449`, reads its binary name from data: it
+  and its version flag are read from the package's own shipped
   `inst/setup/requirements.json` (`system.file("setup", ...)`, hand-kept), and
   the binary must already resolve through `Sys.which()` before it is run. Still
   no user-supplied text, but "fixed binary" would overstate it.
@@ -201,7 +217,7 @@ same greps:
 * **Bare `eval()`** -- on this software's own formals defaults, never on supplied
   text: `TaxaAssign/R/generate_report.R:253` evaluates its own `default_model`
   default, falling back to `as.character()` on error; and
-  `TaxaMatch/R/evaluate_reference_accessions.R:89,93-99` evaluate this function's
+  `TaxaMatch/R/evaluate_reference_accessions.R:88,92-98` evaluate this function's
   own `formals()` to report the defaults it ran under. Listed because a reviewer
   grepping `eval(` rather than `eval(parse(` finds these, and a statement that
   mentions only the latter reads as incomplete.
@@ -305,11 +321,13 @@ Where that statement lives in this repository:
 - **Each package's `README.md`** carries the same statement in short form plus
   the non-endorsement disclaimer, because each one names commercial LLM
   providers.
-- The model record is checkable rather than asserted: nearly every non-merge
+- The model record is checkable for most of the work: nearly every non-merge
   commit in this repository names the model that contributed to it in a
   `Co-Authored-By` trailer -- 1,759 of 1,821 at `77aa7471`, counted with
   `git log --no-merges --grep='Co-Authored-By: Claude'`. The remaining 62 carry
-  no trailer.
+  no trailer. Sonnet 5.5 was also used, for review sub-sessions that made no
+  commits, so it names no trailer and that part of the record is stated rather
+  than checkable.
 
 Two things are deliberately NOT here, and are noted so their absence is not
 read as an omission:

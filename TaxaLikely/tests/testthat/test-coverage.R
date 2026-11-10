@@ -396,9 +396,9 @@ test_that(".reverse_barcode_check: an NCBI record with no title does not poison 
   expect_length(out$sp_unreferenced, 0L)
 })
 
-# Homonym-detection wiring (ecosystem_docs/REENTRY_PROMPT_homonym_detection.md
-# follow-up): .genus_taxid() used to pick NCBI's first-listed id with no
-# disambiguation. It now delegates to TaxaTools::resolve_ncbi_taxid().
+# Homonym-detection wiring: .genus_taxid() delegates to
+# TaxaTools::resolve_ncbi_taxid() rather than picking NCBI's first-listed id
+# with no disambiguation.
 
 test_that(".lineage_terms_for_group: pulls the caller's own declared lineage for a group", {
   df <- data.frame(

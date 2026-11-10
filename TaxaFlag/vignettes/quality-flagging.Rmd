@@ -122,6 +122,7 @@ reviewed <- review_assignments(
     habitat = "Marine"
   ),
   target_group = "fish",
+  data_type = "eDNA",
   llm_fn = TaxaTools::call_api
 )
 

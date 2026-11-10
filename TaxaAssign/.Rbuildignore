@@ -24,3 +24,6 @@
 # these lines must stay free of regex-special characters.
 ^inst/.*_review\.Rmd$
 ^inst/.*_review_response\.md$
+# A design note on matching priors to likelihoods, written during development
+# and cited by nothing. Development record; does not ship.
+^inst/PRIOR_LIKELIHOOD_MATCHING\.md$

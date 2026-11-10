@@ -133,8 +133,7 @@ utils::globalVariables(c("score_val"))
 #'   value are discarded before any other filtering.  Scale must match the
 #'   `score_col` values (e.g. 97 for percent identity, 0.97 for proportion).
 #'   Default `0` (no filtering). Note: an ROC-style sweep against real 12S
-#'   reference data (see the `score_floor_roc_sweep.R` diagnostic, TaxaID_dev
-#'   repository) found
+#'   reference data found
 #'   that `min_score`/raw percent-identity alone cannot discriminate a true
 #'   species from its closest congener at almost any real-world threshold
 #'   (true-positive and congeneric-false-positive rates track each other
@@ -214,8 +213,7 @@ utils::globalVariables(c("score_val"))
 #'
 #'   **The lower bound is exclusive, and Jonah Ventures' own is not** (confirmed
 #'   while validating against their delivered Pt Conception MiFish
-#'   taxonomy; see the `jv_bracket_consensus_validation.R` diagnostic,
-#'   TaxaID_dev repository).  Their
+#'   taxonomy).  Their
 #'   delivered detailed-hit tables do contain hits at exactly `top - 1`, and
 #'   those hits demonstrably contributed to their published consensus, so
 #'   their real interval is the closed `[top - 1, top]`.  The exclusive bound

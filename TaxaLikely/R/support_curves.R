@@ -51,7 +51,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #' error) when neither is available, since this is meant to degrade
 #' gracefully as one input among several to `train_likelihood_model()`.
 #'
-#' `pair_type` mirrors the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository) exactly:
+#' `pair_type` takes four values:
 #' `"within-species"` (TP for the species tier), `"congeneric"` (same genus,
 #' different species -- FP for the species tier), `"confamilial"` (same
 #' family, different genus -- FP for the genus tier), `"cross-family"` (FP
@@ -91,9 +91,8 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #'       families.}
 #'     \item{`family`}{`tpr_pooled` equal-weighted across families (TP =
 #'       same-family); `fpr_pooled` from cross-family pairs -- a single
-#'       ungrouped rate (no rank above family to equal-weight by), matching
-#'       the structural ceiling documented in
-#'       the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository).}
+#'       ungrouped rate (no rank above family to equal-weight by), which is
+#'       a structural ceiling rather than a property of the data.}
 #'   }
 #'
 #' @noRd
@@ -209,8 +208,8 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
   # Jeffreys posterior mean, (k + 1/2) / (n + 1), alongside the raw proportion
   # k/n -- the standard non-informative Beta(1/2, 1/2) reference prior for a
   # Bernoulli parameter (Jeffreys, 1946), already this ecosystem's own
-  # convention for the same problem (see TaxaExpect::generate_full_priors()'s
-  # jeffreys_fallback). Needed because a raw k = 0 reports an EXACT zero --
+  # convention for the same problem, matching TaxaExpect's own Jeffreys
+  # fallback. Needed because a raw k = 0 reports an EXACT zero --
   # "no congener could ever score this well" -- which finite reference data
   # cannot support, and which is not a rare small-sample edge case here: on
   # real 12S data every observed score at or above ~99.5% identity landed on
@@ -473,8 +472,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 
 #' Derive marker-specific rank_thresholds via per-rank Youden's J
 #'
-#' A real, exported, marker-agnostic version of
-#' the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository)'s per-rank Youden's J logic: given a
+#' Per-rank Youden's J thresholds, marker-agnostic: given a
 #' `build_sequence_matrix()`-style pairwise distance matrix for YOUR marker
 #' and reference database, returns the percent-identity threshold at each
 #' taxonomic rank (species/genus/family) that maximizes true-positive minus

@@ -30,3 +30,7 @@
 # directory it creates, and reads whatever PDFs the developer put there. It
 # stays in the repository as part of the development record and does not ship.
 ^inst/pdf_workflow_test_v4\.R$
+# A design reference for developing the PDF pipeline, not user documentation:
+# it tells a developer how to keep pdf_extract.R structurally parallel to the
+# DataONE pipeline. Development record; does not ship.
+^inst/PDF_PIPELINE_DATAONE_PARALLEL\.md$

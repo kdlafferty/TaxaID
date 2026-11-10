@@ -2,7 +2,7 @@
 # run_mugu_fast_smoketest.R
 # TaxaID -- Minutes-not-hours smoke test for the posterior -> consensus ->
 # slash-taxon stage of the pipeline, against a real (curated, small) Mugu
-# 12S fixture built by build_fast_fixture.R.
+# 12S fixture cut from a real production checkpoint.
 #
 # Mugu sibling of run_fast_smoketest.R (PtConception 12S) and
 # run_greatlakes_fast_smoketest.R. Structurally different from both: Mugu's

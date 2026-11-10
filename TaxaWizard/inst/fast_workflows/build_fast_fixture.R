@@ -38,7 +38,7 @@
 #
 # Usage:
 #   Rscript TaxaWizard/inst/fast_workflows/build_fast_fixture.R \
-#     --input  "~/My Drive/Rscripts/eDNA/PtConception/PtConMifishSchulte_match_obj_restored.rds" \
+#     --input  "path/to/your_match_obj.rds" \
 #     --output "TaxaWizard/inst/fast_workflows/ptcon12s_fast_match_obj.rds" \
 #     --max-observations 150
 #

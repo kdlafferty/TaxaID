@@ -609,7 +609,7 @@
 #'       occurrence-plausibility purposes; see that function's own "Rescaling
 #'       onto the occurrence scale" section.}
 #'     \item{`winner_theta_mean`}{The consensus taxon's raw occurrence-model
-#'       share (`theta_mean`, from `TaxaExpect::prepare_model_dataframe()` --
+#'       share (`theta_mean`, from TaxaExpect --
 #'       the fraction of local records attributable to this taxon; a
 #'       compositional share, not a presence probability). Unlike
 #'       `winner_prior`, this is immune to `update_prior_from_consensus()`'s
@@ -1998,8 +1998,8 @@ posterior_consensus <- function(posterior_df,
   winner_likelihood <- .row_col_or(winner_row, "score_likelihood")
   winner_likelihood_cov <- .row_col_or(winner_row, "score_likelihood_cov")
   # winner_theta_mean: the winner's raw occurrence-model share
-  # (TaxaExpect::prepare_model_dataframe()'s theta_mean = n_species /
-  # n_total_at_site, a compositional share of local records), distinct from
+  # (TaxaExpect's theta_mean = n_species / n_total_at_site, a compositional
+  # share of local records), distinct from
   # winner_prior (prior_mean), which can be substantially inflated by
   # TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation
   # boost -- a different sample space entirely (see that function's own

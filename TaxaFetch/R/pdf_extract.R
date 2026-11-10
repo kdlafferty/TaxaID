@@ -17,7 +17,8 @@
 #   .coerce_integer_col()         -- safe as.integer with warning
 #
 # Design: mirrors fetch_dataone_occurrences() output contract.
-# See PDF_PIPELINE_DATAONE_PARALLEL.md for full column contract.
+# The full column contract is the one dedupe_occurrences() and the DataONE
+# path share; see this file's own roxygen for the per-column meanings.
 # ==============================================================================
 
 utils::globalVariables(c(

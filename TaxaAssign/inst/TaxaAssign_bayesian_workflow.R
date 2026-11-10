@@ -54,9 +54,9 @@ lik_result <- readRDS(file.choose()) # select real_likelihoods.rds from TaxaLike
 taxaexpect_priors <- readRDS(file.choose()) # select taxaexpect_priors.rds from TaxaExpect/inst/
 real_model <- readRDS(file.choose()) # select the trained model .rds used to produce lik_result
 
-# Optional: if TaxaAssign_llm_workflow.R has been run in the SAME session (it
-# defines its own match_df) AND that match_df matches this lik_result and
-# taxaexpect_priors, you can substitute it in place of match_obj above:
+# Optional: if another script has already built a match_df in the SAME session
+# AND it matches this lik_result and taxaexpect_priors, you can substitute it in
+# place of match_obj above:
 #   match_obj <- match_df[1:20, ]
 
 cat("Likelihood rows:", nrow(lik_result$likelihoods), "\n")

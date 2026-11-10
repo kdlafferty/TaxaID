@@ -27,3 +27,7 @@
 # of the same chain, inst/workflows/blast_sequences_workflow.R. Development
 # record; does not ship.
 ^inst/test_blast_remote\.R$
+# A Python helper for running BirdNET over a local audio directory, with paths
+# fixed to the developer's own layout. The README shows the equivalent script
+# inline for anyone who wants it. Development record; does not ship.
+^inst/run_birdnet\.py$

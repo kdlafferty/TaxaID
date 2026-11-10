@@ -2,7 +2,7 @@
 # run_ptcon18s_fast_smoketest.R
 # TaxaID -- Minutes-not-hours smoke test for the likelihood -> prior -> posterior
 # -> consensus -> slash-taxon stage of the pipeline, against a real (curated,
-# small) PtConception 18S fixture built by build_fast_fixture.R.
+# small) PtConception 18S fixture cut from a real production checkpoint.
 #
 # The live 18S production run has completed
 # through train_likelihood_model()/calibrate_query_noise() (and, in fact, the
