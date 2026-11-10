@@ -11,7 +11,8 @@
 #
 # enc2utf8() normalises the mark before hashing, and is a no-op both for ASCII
 # and for strings already marked UTF-8, so keys written before this helper
-# existed stay reachable. A test asserts that against a real pre-existing key.#
+# existed stay reachable. A test asserts that against a real pre-existing key.
+#
 # Two limits, both measured, neither worked around. A data.frame key whose
 # string columns differ only in their MARK still hashes two ways, because
 # normalising a column reorders the frame's attributes and rlang::hash()
@@ -21,12 +22,14 @@
 # either. The property is also stated for a UTF-8 native locale: in a C or
 # Latin-1 session enc2utf8() transcodes an "unknown" string from the native
 # encoding, so the guarantee does not carry there.
-# Duplicated (not shared through a dependency) from TaxaTools's copy of the
-# same name: TaxaFetch does not depend on TaxaTools, and reaching into it with
-# TaxaTools::: would be an undeclared ::: import -- an R CMD check WARNING,
-# which this project's CI treats as a failure. Same judgement as
-# TaxaAssign/R/site_utils.R's .beta_mean(). TaxaLikely carries the third copy.
-# The three are tested on the property, not on being identical text.
+# Duplicated rather than shared, and the reason is NOT a missing dependency:
+# TaxaTools is in this package's Imports, so a TaxaTools::: call would be a
+# DECLARED dependency. The reason is that .cache_hash() is not exported, and
+# R CMD check flags access to another package's unexported objects via :::.
+# Copying four lines avoids that without adding an export to the 1.0 surface.
+# Same judgement, and the same shape, as TaxaAssign/R/site_utils.R's
+# .beta_mean(). TaxaLikely carries the third copy, and the three are tested on the
+# property rather than on being identical text.
 #
 #' Normalise the strings inside a cache key before hashing
 #'

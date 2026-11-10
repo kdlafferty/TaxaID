@@ -2,7 +2,7 @@
   {
     "name": "TaxaID",
     "organization": "U.S. Geological Survey",
-    "description": "A modular R ecosystem for Bayesian taxonomic assignment of biological observations (eDNA sequences, images, acoustic recordings). Combines match-score likelihoods with spatially-explicit occurrence-based priors to compute posterior probabilities of taxonomic identity.",
+    "description": "A modular R ecosystem for Bayesian taxonomic assignment of biological observations (eDNA sequences, images, acoustic recordings). Combines match-score likelihoods with spatially-explicit occurrence-based priors to compute posterior probabilities of taxonomic identity. AI-assisted coding tools (Anthropic Claude models, used through Claude Code) were employed to write, test, document and review the code from 20 May 2026 to 9 November 2026; all code was reviewed, tested and validated by the author. See the repository README, section ‘Use of Large Language Models’. Any use of trade, firm, or product names is for descriptive purposes only and does not imply endorsement by the U.S. Government.",
     "version": "1.0.0",
     "status": "Preliminary",
     "permissions": {
@@ -24,14 +24,16 @@
       "metabarcoding"
     ],
     "laborHours": 0,
-    "languages": ["R"],
+    "languages": [
+      "R"
+    ],
     "contact": {
       "name": "Kevin Lafferty",
       "email": "klafferty@usgs.gov"
     },
     "date": {
       "created": "2026-02-01",
-      "lastModified": "2026-10-13"
+      "lastModified": "2026-11-09"
     },
     "repositoryURL": "https://github.com/kdlafferty/TaxaID",
     "disclaimerURL": "https://www.usgs.gov/information-policies-and-instructions/software-management",

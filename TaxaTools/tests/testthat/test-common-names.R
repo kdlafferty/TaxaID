@@ -537,7 +537,10 @@ test_that("a cache key ignores the encoding mark of its strings", {
   # The property is asserted for a UTF-8 native locale, which is what this
   # project runs and what CI runs. In a C or Latin-1 session enc2utf8()
   # transcodes an "unknown" string from the native encoding, so the guarantee
-  # is stated for UTF-8 sessions only.
+  # is stated for UTF-8 sessions only -- and this test declines there rather
+  # than failing, which is what the skip below is for.
+  skip_if_not(l10n_info()[["UTF-8"]],
+              "encoding-mark property is asserted for UTF-8 sessions only")
   s_utf8 <- "Pt. Mugu, California — estuarine and coastal"
   s_unk <- s_utf8
   Encoding(s_unk) <- "unknown"
@@ -587,6 +590,8 @@ test_that("the fix leaves an ASCII or already-UTF-8 key exactly where it was", {
 })
 
 test_that("the common-name cache PATH is the same under either encoding mark", {
+  skip_if_not(l10n_info()[["UTF-8"]],
+              "encoding-mark property is asserted for UTF-8 sessions only")
   # This goes through the call site's own key and path functions rather than
   # calling .cache_hash() directly, so on a tree without the helper it fails
   # because the two paths differ -- the thing this change is about -- and not
