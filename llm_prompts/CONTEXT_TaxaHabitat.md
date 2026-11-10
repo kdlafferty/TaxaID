@@ -495,11 +495,13 @@ prompt <- build_habitat_prompt(
 raw_text <- TaxaTools::prompt_api(prompt)
 
 # 3. Parse response into per-species habitat weights
-habitat_weights <- parse_hierarchical_habitat_response(raw_text, prompt)
-# taxon_name           Marine_weight  Freshwater_weight  Terrestrial_weight
-# Fundulus parvipinnis  0.85           0.15               0.0
-# Cottus asper          0.0            1.0                0.0
-# Anas platyrhynchos    0.05           0.60               0.35
+habitat_weights <- parse_hierarchical_habitat_response(raw_text, prompt$taxa)
+# One column per habitat in the scheme, named exactly as the scheme names it,
+# plus Other_weight for habitats outside it:
+# taxon_name           Marine  Freshwater  Terrestrial  Other_weight
+# Fundulus parvipinnis  0.85    0.15        0.0          0.0
+# Cottus asper          0.0     1.0         0.0          0.0
+# Anas platyrhynchos    0.05    0.60        0.35         0.0
 
 # Steps 1-3 in one call, with a per-taxon on-disk cache -- what every
 # production workflow should use. A habitat verdict decides which occurrence

@@ -57,7 +57,7 @@ An ordinal answer to "how expected is this taxon here?", reported for primary_ta
 
 "unprecedented" is driven by RECORD PRESENCE, never by a low value. A never-reported taxon and a genuine singleton can carry the same numeric value -- both land on the dark-diversity floor -- while meaning opposite things, so no threshold on the value can separate them.
 
-Reads theta_mean, not prior_mean. prior_mean can be substantially inflated by TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation boost, which has no gate on occurrence-record presence -- so an expected call built on prior_mean would mean "confirmed elsewhere in this dataset", not "expected here on occurrence grounds". theta_mean (TaxaExpect::prepare_model_dataframe()'s raw occurrence-model share, a compositional share of local records -- see TaxaAssign::update_prior_from_consensus()'s own "Rescaling onto the occurrence scale" section) is immune to that boost by construction, since the boost only ever modifies prior_mean.
+Reads theta_mean, not prior_mean. prior_mean can be substantially inflated by TaxaAssign::update_prior_from_consensus()'s cross-observation confirmation boost, which has no gate on occurrence-record presence -- so an expected call built on prior_mean would mean "confirmed elsewhere in this dataset", not "expected here on occurrence grounds". theta_mean (TaxaExpect's raw occurrence-model share, a compositional share of local records -- see TaxaAssign::update_prior_from_consensus()'s own "Rescaling onto the occurrence scale" section) is immune to that boost by construction, since the boost only ever modifies prior_mean.
 
 A single absolute threshold, such as 0.5 on the prior_mean scale, is also a unit mismatch on the theta_mean scale: theta_mean is a share of local records, not a presence probability, so comparing it to "50/50 odds" is not a meaningful comparison. Beyond that, a SINGLE threshold applied at every rank is itself biased: a genus/family-level consensus_prior (the SUM of theta_mean across every locally modelled group member, from TaxaAssign::posterior_consensus(group_priors = ...)) is mechanically larger than any one species' own share just from summing more terms, not because it is more locally expected. expected_theta_threshold is therefore a RANK-MATCHED vector: primary_plausibility (always the winning candidate's own species-level share) is compared against the "species" entry; consensus_plausibility is compared against whichever entry matches that row's own consensus_rank_col value. A consensus_rank with no matching entry (e.g. a coarser rank the caller didn't supply a threshold for) gets "not_modeled" rather than being compared against the wrong rank's threshold.
 
@@ -1069,10 +1069,11 @@ flagged <- flag_handler(
 
 ``` r
 reviewed <- review_assignments(
-  input_df         = consensus_results,
-  taxon_col  = "consensus_taxon",
-  context    = list(geography = "Southern California", habitat = "Marine"),
-  target_group = "fish"
+  input_df     = consensus_results,
+  taxon_col    = "consensus_taxon",
+  context      = list(geography = "Southern California", habitat = "Marine"),
+  target_group = "fish",
+  data_type    = "eDNA"               # one of "eDNA", "acoustic", "image"
 )
 # Returns 8 structured columns (llm_-prefixed: independent LLM judgments,
 # never derived from the pipeline's own values):
@@ -1089,6 +1090,7 @@ reviewed <- review_assignments(
   taxon_col    = "consensus_taxon",
   context      = list(geography = "Pacific coast", habitat = "Marine"),
   target_group = "fish",
+  data_type    = "eDNA",
   sites        = site_table,          # columns: site, lat, lon
   site_col     = "site"
 )

@@ -57,7 +57,7 @@ Classifies each row of a taxonomy table into a 'sampling_group' (the shared-effo
 
 #### Empty-string normalisation
 
-"" is normalised to NA across every present rank_cols column BEFORE classification. Real GBIF-derived taxonomy stores "unclassified at this rank" as an empty string, not NA -- the same real-data quirk TaxaExpect::compute_adaptive_sampling_groups() and TaxaAssign::join_priors() already normalise this way. This is behaviour-neutral for every ==/%in% test in the scheme ("" and NA both fail them identically), but it is what lets the class-less-Chordata fish clause be written honestly as "class is missing" rather than as a fragile class != "" check.
+"" is normalised to NA across every present rank_cols column BEFORE classification. Real GBIF-derived taxonomy stores "unclassified at this rank" as an empty string, not NA -- the same real-data quirk TaxaAssign::join_priors() already normalises this way. This is behaviour-neutral for every ==/%in% test in the scheme ("" and NA both fail them identically), but it is what lets the class-less-Chordata fish clause be written honestly as "class is missing" rather than as a fragile class != "" check.
 
 #### Backbone-mismatch detection (harmonise = FALSE)
 
@@ -397,7 +397,7 @@ The score and verified columns from verify_taxon_names are retained in the outpu
 
 Check whether a returned lineage agrees with a declared one
 
-A cheap, no-API-call post-fetch guard: given what a caller DECLARED about a taxon's own higher-rank lineage (e.g. from their own match object) and what a name-based fetch ACTUALLY RETURNED for it, decides whether the two are the same organism reclassified (a benign revision - accept) or two different organisms sharing a name (a homonym - reject). Both present identically as "the returned lineage disagrees with mine"; the operative test is not whether any one rank matches exactly, but whether the disagreement is CONTAINED within some shared higher clade at all. See ...
+A cheap, no-API-call post-fetch guard: given what a caller DECLARED about a taxon's own higher-rank lineage (e.g. from their own match object) and what a name-based fetch ACTUALLY RETURNED for it, decides whether the two are the same organism reclassified (a benign revision - accept) or two different organisms sharing a name (a homonym - reject). Both present identically as "the returned lineage disagrees with mine"; the operative test is not whether any one rank matches exactly, but whether the disagreement is CONTAINED within some shared higher clade at all. Worked examples: 'Modiolus' ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -1410,7 +1410,7 @@ response <- call_api("Summarize the habitat preferences of Gadus morhua in one s
 ### Resolve a barcode marker's expected amplicon length and primers
 
 ``` r
-resolve_barcode_lengths("MiFish")               # list(min = 163L, max = 185L)
+resolve_barcode_lengths("MiFish")               # c(min_bp = 130L, max_bp = 210L)
 resolve_barcode_primers("MiFish-U")             # list(fwd = ..., rev = ..., amplicon_range = ...)
 resolve_barcode_marker("COI-Folmer")            # "COI" -- the term a sequence database actually indexes
 ```
@@ -1418,7 +1418,7 @@ resolve_barcode_marker("COI-Folmer")            # "COI" -- the term a sequence d
 ### Convert between common and scientific names
 
 ``` r
-common_to_scientific(c("Pacific cod", "sablefish"), taxonomic_group = "fish")
+common_to_scientific(c("Pacific cod", "sablefish"), taxon_group = "fish")
 scientific_to_common("Gadus macrocephalus", backbone_id = 11)
 ```
 
