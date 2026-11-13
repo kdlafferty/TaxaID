@@ -337,6 +337,7 @@ verify_taxon_names <- function(name_list,
   # filter on `verified` alone keeps every unmatched row, which reads as
   # success downstream.
   final_df$matched <- final_df$verified & !is.na(final_df$matched_name)
+    if (return_ids) final_df <- final_df[, c(setdiff(names(final_df), .ID_COLUMNS), .ID_COLUMNS), drop = FALSE]
     # A contradiction is evidence of a homonym only where a CHOICE existed.
     # A unique NCBI node's lineage is the backbone's classification of the
     # only bearer of the name; where it differs from the caller's context the
@@ -517,6 +518,7 @@ verify_taxon_names <- function(name_list,
   # filter on `verified` alone keeps every unmatched row, which reads as
   # success downstream.
   final_df$matched <- final_df$verified & !is.na(final_df$matched_name)
+  if (return_ids) final_df <- final_df[, c(setdiff(names(final_df), .ID_COLUMNS), .ID_COLUMNS), drop = FALSE]
 
   n_verified <- sum(unique_df$verified, na.rm = TRUE)
   n_unverified <- sum(!unique_df$verified, na.rm = TRUE)
@@ -1397,6 +1399,9 @@ verify_taxon_names <- function(name_list,
     }
 
     lin <- lineage_map[[tid]]
+    # computed here: inside tibble() a later argument sees the COLUMN
+    # fuzzy_corrected just defined, not this vector
+    fz_type <- if (isTRUE(fuzzy_corrected[[nm]])) "Fuzzy" else "Exact"
     dplyr::tibble(
       user_supplied_name   = nm,
       matched_name         = lin$matched_name,
@@ -1419,7 +1424,7 @@ verify_taxon_names <- function(name_list,
       classification_ids   = lin$classification_ids %||% NA_character_,
       data_source_id       = 4L,
       entry_date           = NA_character_,
-      match_type           = if (isTRUE(fuzzy_corrected[[nm]])) "Fuzzy" else "Exact"
+      match_type           = fz_type
     )
   })
 
