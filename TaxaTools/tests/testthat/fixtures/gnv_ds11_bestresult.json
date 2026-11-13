@@ -1,0 +1,232 @@
+{
+ "names": [
+  {
+   "name": "Hypsurus caryi",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2389310",
+    "currentRecordId": "2389310",
+    "matchedCanonicalSimple": "Hypsurus caryi",
+    "currentCanonicalSimple": "Hypsurus caryi",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|587|4269|2389309|2389310",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  },
+  {
+   "name": "Embiotoca caryi",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2389311",
+    "currentRecordId": "2389310",
+    "matchedCanonicalSimple": "Embiotoca caryi",
+    "currentCanonicalSimple": "Hypsurus caryi",
+    "taxonomicStatus": "Synonym",
+    "isSynonym": true,
+    "classificationPath": "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|587|4269|2389309|2389310",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410385975596558
+   }
+  },
+  {
+   "name": "Oxyjulis californica",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2383301",
+    "currentRecordId": "2383301",
+    "matchedCanonicalSimple": "Oxyjulis californica",
+    "currentCanonicalSimple": "Oxyjulis californica",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Animalia|Chordata|Perciformes|Labridae|Oxyjulis|Oxyjulis californica",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|587|8535|2383300|2383301",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  },
+  {
+   "name": "Halichoeres californicus",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2383302",
+    "currentRecordId": "2383301",
+    "matchedCanonicalSimple": "Halichoeres californicus",
+    "currentCanonicalSimple": "Oxyjulis californica",
+    "taxonomicStatus": "Synonym",
+    "isSynonym": true,
+    "classificationPath": "Animalia|Chordata|Perciformes|Labridae|Oxyjulis|Oxyjulis californica",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|587|8535|2383300|2383301",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410385975596558
+   }
+  },
+  {
+   "name": "Mola alexandrini",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "10208782",
+    "currentRecordId": "5213725",
+    "matchedCanonicalSimple": "Mola alexandrini",
+    "currentCanonicalSimple": "Mola mola",
+    "taxonomicStatus": "Synonym",
+    "isSynonym": true,
+    "classificationPath": "Animalia|Chordata|Tetraodontiformes|Molidae|Mola|Mola mola",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|772|5897|5207570|5213725",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410385975596558
+   }
+  },
+  {
+   "name": "Etrumeus teres",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2413183",
+    "currentRecordId": "2413189",
+    "matchedCanonicalSimple": "Etrumeus teres",
+    "currentCanonicalSimple": "Etrumeus sadina",
+    "taxonomicStatus": "Synonym",
+    "isSynonym": true,
+    "classificationPath": "Animalia|Chordata|Clupeiformes|Dussumieriidae|Etrumeus|Etrumeus sadina",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|538|4964272|2413182|2413189",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410385975596558
+   }
+  },
+  {
+   "name": "Rhacochilus vacca",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2389313",
+    "currentRecordId": "2389313",
+    "matchedCanonicalSimple": "Rhacochilus vacca",
+    "currentCanonicalSimple": "Rhacochilus vacca",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Animalia|Chordata|Perciformes|Embiotocidae|Rhacochilus|Rhacochilus vacca",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|587|4269|2389312|2389313",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  },
+  {
+   "name": "Platybelone argala",
+   "matchType": "Fuzzy",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "4286140",
+    "currentRecordId": "4286140",
+    "matchedCanonicalSimple": "Platybelone argalus",
+    "currentCanonicalSimple": "Platybelone argalus",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Animalia|Chordata|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|498|7190|2369255|4286140",
+    "entryDate": "2024-01-11",
+    "matchType": "Fuzzy",
+    "sortScore": 9.362923879592506
+   }
+  },
+  {
+   "name": "Platybelone argalus",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "4286140",
+    "currentRecordId": "4286140",
+    "matchedCanonicalSimple": "Platybelone argalus",
+    "currentCanonicalSimple": "Platybelone argalus",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Animalia|Chordata|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+    "classificationRanks": "kingdom|phylum|order|family|genus|species",
+    "classificationIds": "1|44|498|7190|2369255|4286140",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  },
+  {
+   "name": "Vertebrata",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2660342",
+    "currentRecordId": "2660342",
+    "matchedCanonicalSimple": "Vertebrata",
+    "currentCanonicalSimple": "Vertebrata",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Plantae|Rhodophyta|Florideophyceae|Ceramiales|Rhodomelaceae|Vertebrata",
+    "classificationRanks": "kingdom|phylum|class|order|family|genus",
+    "classificationIds": "6|106|342|665|4895|2660342",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  },
+  {
+   "name": "Plocamium cartilagineum",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "5278595",
+    "currentRecordId": "5278595",
+    "matchedCanonicalSimple": "Plocamium cartilagineum",
+    "currentCanonicalSimple": "Plocamium cartilagineum",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Plantae|Rhodophyta|Florideophyceae|Plocamiales|Plocamiaceae|Plocamium|Plocamium cartilagineum",
+    "classificationRanks": "kingdom|phylum|class|order|family|genus|species",
+    "classificationIds": "6|106|342|1404|9033|2664785|5278595",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  },
+  {
+   "name": "Pisaster ochraceus",
+   "matchType": "Exact",
+   "bestResult": {
+    "dataSourceId": 11,
+    "recordId": "2273754",
+    "currentRecordId": "2273754",
+    "matchedCanonicalSimple": "Pisaster ochraceus",
+    "currentCanonicalSimple": "Pisaster ochraceus",
+    "taxonomicStatus": "Accepted",
+    "isSynonym": false,
+    "classificationPath": "Animalia|Echinodermata|Asteroidea|Forcipulatida|Asteriidae|Pisaster|Pisaster ochraceus",
+    "classificationRanks": "kingdom|phylum|class|order|family|genus|species",
+    "classificationIds": "1|50|214|1462|6009|2273739|2273754",
+    "entryDate": "2024-01-11",
+    "matchType": "Exact",
+    "sortScore": 9.410739851747246
+   }
+  }
+ ]
+}

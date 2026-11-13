@@ -121,6 +121,15 @@
 #' @param cache_ttl_days Numeric (default \code{365}). A cached answer older
 #'   than this is asked again, so backbone updates (renames, new synonymy)
 #'   eventually reach a long-lived cache. \code{Inf} never expires.
+#' @param return_ids Logical, default \code{FALSE}. When \code{TRUE}, six
+#'   identifier columns are appended (see Value): the backbone's own record
+#'   identifiers for the matched name and for its currently accepted name, the
+#'   identifiers of every node in \code{classification_path}, the data source
+#'   queried, and that source's entry date. These are what
+#'   \code{\link{build_taxon_registry}} keys on: a name is not a key, a record
+#'   identifier is. \code{FALSE} returns exactly the columns listed first in
+#'   Value. Part of the cache key when \code{TRUE}, so an entry written without
+#'   identifiers is never served as one with them.
 #' @return A tibble with one row per input name and the following columns:
 #' \describe{
 #'   \item{user_supplied_name}{The original name as supplied.}
@@ -187,6 +196,20 @@
 #'     \code{fallback_backbone_id} (see that parameter). Always review these
 #'     rows before trusting them -- a fuzzy match confirms a plausible
 #'     correction, not a certain one.}
+#'   \item{record_id, current_record_id, classification_ids, data_source_id,
+#'     entry_date, match_type}{Only when \code{return_ids = TRUE}. \code{record_id}: the
+#'     backbone's identifier for the record the query matched (for a synonym,
+#'     the synonym's own record). \code{current_record_id}: the identifier of
+#'     the currently accepted record (equal to \code{record_id} for an
+#'     accepted name). \code{classification_ids}: pipe-delimited identifiers
+#'     aligned with \code{classification_path}. \code{data_source_id}: the
+#'     backbone queried. \code{entry_date}: the date the source's records were
+#'     imported by the Global Names Verifier (\code{NA} on the NCBI path).
+#'     \code{match_type}: the verifier's own match type (\code{"Exact"},
+#'     \code{"Fuzzy"}, \code{"PartialExact"}, ...); a fuzzy match is a
+#'     different string, so it is never a declared synonymy.
+#'     Identifiers are character: GBIF usage keys, Catalogue of Life codes,
+#'     WoRMS LSIDs and NCBI taxids differ in form. \code{NA} where no match.}
 #' }
 #'
 #' @section Synonym resolution and rank correctness (backbone-general, not GBIF-specific):
@@ -246,13 +269,18 @@ verify_taxon_names <- function(name_list,
                                cache_dir = NULL,
                                cache_ttl_days = 365,
                                input_rank = NULL,
-                               lineage = NULL) {
+                               lineage = NULL,
+                               return_ids = FALSE) {
+  if (!is.logical(return_ids) || length(return_ids) != 1L || is.na(return_ids)) {
+    stop("`return_ids` must be TRUE or FALSE.")
+  }
   ranks <- .check_verify_ranks(input_rank, name_list)
   lineage <- .check_verify_lineage(lineage, name_list)
   if (!is.null(cache_dir)) {
     return(.verify_taxon_names_cached(
       name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id,
-      decisions, cache_dir, cache_ttl_days, ranks = ranks, lineage = lineage
+      decisions, cache_dir, cache_ttl_days, ranks = ranks, lineage = lineage,
+      return_ids = return_ids
     ))
   }
   # --- Input validation ---
@@ -292,7 +320,8 @@ verify_taxon_names <- function(name_list,
       clean_names, fallback_backbone_id = fallback_backbone_id,
       decisions = decisions,
       ranks = .ranks_for_names(ranks, trimmed_names, clean_names),
-      lineage = .ranks_for_names(lineage, trimmed_names, clean_names)
+      lineage = .ranks_for_names(lineage, trimmed_names, clean_names),
+      return_ids = return_ids
     )
     idx <- match(trimmed_names, unique_df$user_supplied_name)
     final_df <- unique_df[idx, , drop = FALSE]
@@ -429,7 +458,7 @@ verify_taxon_names <- function(name_list,
             use_current <- is_syn && !is.na(current_simple) && nzchar(current_simple)
             resolved_name <- if (use_current) current_simple else matched_simple
 
-            dplyr::tibble(
+            row <- dplyr::tibble(
               user_supplied_name   = safe_chr(item$name),
               matched_name         = resolved_name,
               matched_rank         = .last_classification_rank(safe_chr(best$classificationRanks)),
@@ -439,6 +468,8 @@ verify_taxon_names <- function(name_list,
               score                = safe_dbl(best$score),
               verified             = TRUE
             )
+            if (return_ids) row <- .gnv_id_columns(row, best, safe_chr)
+            row
           })
 
           dplyr::bind_rows(parsed)
@@ -470,6 +501,7 @@ verify_taxon_names <- function(name_list,
   }
 
   unique_df <- dplyr::bind_rows(all_results)
+  if (return_ids) unique_df <- .ensure_id_columns(unique_df, backbone_id)
 
   # Map results back to original input positions (preserving duplicates)
   idx <- match(trimmed_names, unique_df$user_supplied_name)
@@ -569,6 +601,39 @@ verify_taxon_names <- function(name_list,
 }
 
 
+# ---- identifier columns (return_ids = TRUE) ---------------------------------
+.ID_COLUMNS <- c("record_id", "current_record_id", "classification_ids", "data_source_id", "entry_date", "match_type")
+
+#' Append the Global Names Verifier's identifier fields of one bestResult
+#'
+#' `recordId` can arrive pipe-joined for a synonym on some sources (observed on
+#' Catalogue of Life and WoRMS: "<synonym>|<accepted>|<synonym>"); the first
+#' element is the matched record itself. `currentRecordId` is always one id.
+#' @noRd
+.gnv_id_columns <- function(row, best, safe_chr) {
+  rec <- safe_chr(best$recordId)
+  if (!is.na(rec)) rec <- strsplit(rec, "|", fixed = TRUE)[[1L]][[1L]]
+  cur <- safe_chr(best$currentRecordId)
+  row$record_id <- rec
+  row$current_record_id <- if (is.na(cur)) rec else cur
+  row$classification_ids <- safe_chr(best$classificationIds)
+  row$data_source_id <- suppressWarnings(as.integer(safe_chr(best$dataSourceId)))
+  row$entry_date <- safe_chr(best$entryDate)
+  row$match_type <- safe_chr(best$matchType)
+  row
+}
+
+#' Give every row the identifier columns (NA where the row has none), in order
+#' @noRd
+.ensure_id_columns <- function(df, backbone_id) {
+  for (cc in setdiff(.ID_COLUMNS, names(df))) {
+    df[[cc]] <- if (cc == "data_source_id") NA_integer_ else NA_character_
+  }
+  df$data_source_id[is.na(df$data_source_id) & df$verified %in% TRUE &
+                      !is.na(df$matched_name)] <- as.integer(backbone_id)
+  df[, c(setdiff(names(df), .ID_COLUMNS), .ID_COLUMNS), drop = FALSE]
+}
+
 # ---- per-name on-disk cache --------------------------------------------------
 # One .rds per (name, backbone_id, fallback_backbone_id, decisions), the same
 # file-per-key shape as scientific_to_common(cache_dir =), so
@@ -588,7 +653,8 @@ verify_taxon_names <- function(name_list,
 
 #' @noRd
 .verify_cache_key <- function(name, backbone_id, fallback_backbone_id, decisions_fp,
-                              rank = NA_character_, lineage = NA_character_) {
+                              rank = NA_character_, lineage = NA_character_,
+                              return_ids = FALSE) {
   key <- list(
     name = name, backbone_id = as.integer(backbone_id),
     fallback_backbone_id = if (is.null(fallback_backbone_id)) NA_integer_ else as.integer(fallback_backbone_id),
@@ -605,6 +671,9 @@ verify_taxon_names <- function(name_list,
   # NCBI homonym and gates a contradicting Global Names match), so it is
   # always part of the question when given.
   if (!is.na(lineage)) key$lineage <- lineage
+  # An entry written without identifier columns must not answer a call that
+  # asks for them; a call that does not ask keeps the key it always had.
+  if (isTRUE(return_ids)) key$ids <- TRUE
   key
 }
 
@@ -673,6 +742,9 @@ verify_taxon_names <- function(name_list,
   df$classification_ranks[bad] <- NA_character_
   if ("score" %in% names(df)) df$score[bad] <- NA_real_
   if ("matched" %in% names(df)) df$matched[bad] <- FALSE
+  for (cc in intersect(c("record_id", "current_record_id", "classification_ids", "entry_date"), names(df))) {
+    df[[cc]][bad] <- NA_character_
+  }
   df
 }
 
@@ -723,7 +795,8 @@ verify_taxon_names <- function(name_list,
 #' @noRd
 .verify_taxon_names_cached <- function(name_list, backbone_id, batch_size, timeout_sec,
                                        fallback_backbone_id, decisions, cache_dir,
-                                       cache_ttl_days, ranks = NULL, lineage = NULL) {
+                                       cache_ttl_days, ranks = NULL, lineage = NULL,
+                                       return_ids = FALSE) {
   if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
     stop("`cache_dir` must be NULL or a single directory path.")
   }
@@ -746,7 +819,8 @@ verify_taxon_names <- function(name_list,
   keys <- lapply(uniq, function(nm) .verify_cache_key(
     nm, backbone_id, fallback_backbone_id, fp,
     rank = if (is.null(rank_of)) NA_character_ else rank_of[[nm]],
-    lineage = if (is.null(lin_of)) NA_character_ else lin_of[[nm]]
+    lineage = if (is.null(lin_of)) NA_character_ else lin_of[[nm]],
+    return_ids = return_ids
   ))
   now <- Sys.time()
   cached <- lapply(keys, function(k) {
@@ -773,7 +847,8 @@ verify_taxon_names <- function(name_list,
       batch_size = batch_size, timeout_sec = timeout_sec,
       fallback_backbone_id = fallback_backbone_id, decisions = decisions,
       input_rank = if (is.null(rank_of)) NULL else unname(rank_of[miss]),
-      lineage = if (is.null(lin_of)) NULL else unname(lin_of[miss])
+      lineage = if (is.null(lin_of)) NULL else unname(lin_of[miss]),
+      return_ids = return_ids
     )
     fresh <- fresh[!duplicated(fresh$user_supplied_name), , drop = FALSE]
     # Write only names the service answered. A failed lookup (verified FALSE)
@@ -867,7 +942,8 @@ verify_taxon_names <- function(name_list,
                              fallback_backbone_id = 11L,
                              decisions = NULL,
                              ranks = NULL,
-                             lineage = NULL) {
+                             lineage = NULL,
+                             return_ids = FALSE) {
   # Names that had MORE THAN ONE candidate and were settled by the caller's
   # rank or decisions: the only ones whose lineage can contradict the
   # caller's context because a different taxon was chosen. Returned as
@@ -1335,11 +1411,24 @@ verify_taxon_names <- function(name_list,
       classification_ranks = lin$classification_ranks,
       score                = 1.0,
       verified             = TRUE,
-      fuzzy_corrected      = fuzzy_corrected[[nm]]
+      fuzzy_corrected      = fuzzy_corrected[[nm]],
+      # NCBI has no synonym records on this path: the record queried IS the
+      # current record, so both ids are the taxid.
+      record_id            = tid,
+      current_record_id    = tid,
+      classification_ids   = lin$classification_ids %||% NA_character_,
+      data_source_id       = 4L,
+      entry_date           = NA_character_,
+      match_type           = if (isTRUE(fuzzy_corrected[[nm]])) "Fuzzy" else "Exact"
     )
   })
 
   result <- dplyr::bind_rows(rows)
+  if (return_ids) {
+    result <- .ensure_id_columns(result, 4L)
+  } else {
+    result <- result[, setdiff(names(result), .ID_COLUMNS), drop = FALSE]
+  }
 
   n_matched <- sum(!is.na(result$matched_name))
   n_failed <- sum(!result$verified)
@@ -1411,6 +1500,7 @@ verify_taxon_names <- function(name_list,
     lineage_nodes <- xml2::xml_find_all(node, "./LineageEx/Taxon")
     l_ranks <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./Rank"))
     l_names <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./ScientificName"))
+    l_ids <- xml2::xml_text(xml2::xml_find_first(lineage_nodes, "./TaxId"))
 
     # Build path: lineage ranks + the taxon's own rank
     # Keep only standard Linnaean ranks + common sub-ranks to avoid duplicate
@@ -1430,17 +1520,20 @@ verify_taxon_names <- function(name_list,
       !is.na(l_names) & nzchar(l_names)
     path_names <- l_names[keep]
     path_ranks <- l_ranks[keep]
+    path_ids <- l_ids[keep]
 
     # Append the taxon itself (if it has a recognized rank)
     if (!is.na(this_rank) && nzchar(this_rank) && this_rank %in% linnaean_ranks) {
       path_names <- c(path_names, this_sci)
       path_ranks <- c(path_ranks, this_rank)
+      path_ids <- c(path_ids, this_id)
     }
 
     result[[this_id]] <- list(
       matched_name         = this_sci,
       classification_path  = paste(path_names, collapse = "|"),
-      classification_ranks = paste(path_ranks, collapse = "|")
+      classification_ranks = paste(path_ranks, collapse = "|"),
+      classification_ids   = paste(path_ids, collapse = "|")
     )
   }
 
