@@ -88,6 +88,8 @@ test_that("a homonym asked with an animal context never takes the alga's id", {
   expect_identical(alga, "gbif:2660342")
   expect_false(identical(animal, alga))
   expect_match(animal, "^local:")
+  # a gate rejection is an answer (homonym_rejected), never a failed lookup
+  expect_identical(reg$names$status[reg$names$source_table == "match_animals"], "homonym_rejected")
 })
 
 test_that("NEGATIVE: two congeners with near-identical names stay two taxa", {

@@ -208,6 +208,9 @@
 #'     \code{match_type}: the verifier's own match type (\code{"Exact"},
 #'     \code{"Fuzzy"}, \code{"PartialExact"}, ...); a fuzzy match is a
 #'     different string, so it is never a declared synonymy.
+#'     \code{"LineageRejected"} marks a row the \code{lineage} gate refused: the
+#'     service answered with a taxon in another lineage, so \code{verified} is
+#'     \code{FALSE} although the request did not fail.
 #'     Identifiers are character: GBIF usage keys, Catalogue of Life codes,
 #'     WoRMS LSIDs and NCBI taxids differ in form. \code{NA} where no match.}
 #' }
@@ -747,6 +750,10 @@ verify_taxon_names <- function(name_list,
   for (cc in intersect(c("record_id", "current_record_id", "classification_ids", "entry_date"), names(df))) {
     df[[cc]][bad] <- NA_character_
   }
+  # return_ids mode only (the column exists only then): say WHY the row is unverified. A
+  # gate rejection is an answer -- the service named another taxon -- not a failed request,
+  # and a caller keying on identifiers must be able to tell the two apart.
+  if ("match_type" %in% names(df)) df$match_type[bad] <- "LineageRejected"
   df
 }
 

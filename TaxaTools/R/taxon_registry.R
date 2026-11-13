@@ -173,7 +173,11 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   #    status rank_fallback, then a run-local id under that genus (below);
   #  - a fuzzy answer that is not a gender variant: a different string, so a different taxon
   #    until shown otherwise; status fuzzy_rejected, then the unresolved path.
-  failed <- !(r$verified %in% TRUE)
+  # A row the lineage gate refused is an ANSWER (the service named a taxon in another
+  # lineage: a homonym), not a failure: it takes the unresolved path, status homonym_rejected.
+  gated <- !(r$verified %in% TRUE) & r$match_type %in% "LineageRejected"
+  failed <- !(r$verified %in% TRUE) & !gated
+  nm$status[gated] <- "homonym_rejected"
   nm$status[failed] <- "lookup_failed"; nm$taxon_id[failed] <- NA_character_
   binom <- grepl("^\\S+ \\S+$", nm$name_clean)
   above <- ok & binom & !is.na(nm$matched_rank) & !(nm$matched_rank %in% .SPECIES_LEVEL)
@@ -206,7 +210,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     nm$accepted_lookup[clash] <- NA_character_   # the lookup's accepted name is ANOTHER taxon's
     nm$taxon_id[has] <- pk[has]
     nm$backend[has & !clash & is.na(nm$backend)] <- "pool_keys"
-    nm$status[has & (is.na(nm$status) | nm$status %in% c("lookup_failed", "rank_fallback", "fuzzy_rejected"))] <- "pool_key_only"
+    nm$status[has & (is.na(nm$status) | nm$status %in% c("lookup_failed", "rank_fallback", "fuzzy_rejected", "homonym_rejected"))] <- "pool_key_only"
   }
 
   taxa <- if (length(taxa)) do.call(rbind, taxa) else
@@ -519,7 +523,7 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     }
   }
   # unresolved and gender variants
-  for (s in c("unresolved_local", "gender_variant", "rank_fallback", "fuzzy_rejected", "lookup_failed")) {
+  for (s in c("unresolved_local", "gender_variant", "rank_fallback", "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
     z <- nm[nm$status %in% s, , drop = FALSE]
     if (nrow(z)) add(if (s == "lookup_failed") "error" else "info", s, NA_character_, NA_character_, paste(utils::head(sort(unique(z$verbatim_name)), 200), collapse = " | "),
                      sprintf("%d name(s)", length(unique(z$verbatim_name))), length(unique(z$verbatim_name)))

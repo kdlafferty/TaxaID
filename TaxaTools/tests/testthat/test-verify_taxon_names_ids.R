@@ -61,6 +61,10 @@ test_that("a lineage-gated homonym loses its ids along with its name", {
                                              lineage = "Animalia|Chordata", return_ids = TRUE))
   expect_false(out$verified)
   expect_true(is.na(out$current_record_id) && is.na(out$classification_ids))
+  # an ANSWER refused by the gate, not a failed request, and labelled as such
+  expect_identical(out$match_type, "LineageRejected")
+  plain <- suppressMessages(verify_taxon_names("Vertebrata", backbone_id = 11, input_rank = "genus", lineage = "Animalia|Chordata"))
+  expect_false("match_type" %in% names(plain))
 })
 
 test_that("an entry cached WITHOUT ids is never served to a call asking for them", {
