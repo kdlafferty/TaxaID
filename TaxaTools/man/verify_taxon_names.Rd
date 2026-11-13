@@ -14,7 +14,8 @@ verify_taxon_names(
   cache_dir = NULL,
   cache_ttl_days = 365,
   input_rank = NULL,
-  lineage = NULL
+  lineage = NULL,
+  return_ids = FALSE
 )
 }
 \arguments{
@@ -137,6 +138,16 @@ word its lineage: NCBI carries no phylum rank for many protist lineages, and
 GBIF and NCBI name the same clades differently, which is reclassification,
 not a homonym. A name is not a key; this is the caller's way of saying
 which one it means. Part of the cache key when given.}
+
+\item{return_ids}{Logical, default \code{FALSE}. When \code{TRUE}, six
+identifier columns are appended (see Value): the backbone's own record
+identifiers for the matched name and for its currently accepted name, the
+identifiers of every node in \code{classification_path}, the data source
+queried, and that source's entry date. These are what
+\code{\link{build_taxon_registry}} keys on: a name is not a key, a record
+identifier is. \code{FALSE} returns exactly the columns listed first in
+Value. Part of the cache key when \code{TRUE}, so an entry written without
+identifiers is never served as one with them.}
 }
 \value{
 A tibble with one row per input name and the following columns:
@@ -205,6 +216,20 @@ was instead matched after a fuzzy-spelling correction suggested by
 \code{fallback_backbone_id} (see that parameter). Always review these
 rows before trusting them -- a fuzzy match confirms a plausible
 correction, not a certain one.}
+\item{record_id, current_record_id, classification_ids, data_source_id,
+entry_date, match_type}{Only when \code{return_ids = TRUE}. \code{record_id}: the
+backbone's identifier for the record the query matched (for a synonym,
+the synonym's own record). \code{current_record_id}: the identifier of
+the currently accepted record (equal to \code{record_id} for an
+accepted name). \code{classification_ids}: pipe-delimited identifiers
+aligned with \code{classification_path}. \code{data_source_id}: the
+backbone queried. \code{entry_date}: the date the source's records were
+imported by the Global Names Verifier (\code{NA} on the NCBI path).
+\code{match_type}: the verifier's own match type (\code{"Exact"},
+\code{"Fuzzy"}, \code{"PartialExact"}, ...); a fuzzy match is a
+different string, so it is never a declared synonymy.
+Identifiers are character: GBIF usage keys, Catalogue of Life codes,
+WoRMS LSIDs and NCBI taxids differ in form. \code{NA} where no match.}
 }
 }
 \description{
