@@ -124,6 +124,30 @@ test_that("NEGATIVE: a planted undeclared merge (a fuzzy hit onto another specie
   expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "undeclared_merge")
 })
 
+test_that("a path-less id is named by the lookup's accepted name, even when its synonym arrives first", {
+  # p2 (exact F1 reproduction) found 57 false undeclared merges from this: the row was named by the first
+  # verbatim name met, a synonym, so the accepted name read as an undeclared second name
+  lk <- .fake_lookup(rbind(
+    .row("Halichoeres californicus", "Oxyjulis californica", "2383301", NA, NA, ranks = NA, rec = "2383302", syn = TRUE),
+    .row("Oxyjulis californica", "Oxyjulis californica", "2383301", NA, NA, ranks = NA)))
+  reg <- build_taxon_registry(.names(c("Halichoeres californicus", "Oxyjulis californica"), "priors"), run_id = "p1", lookup = lk)
+  expect_identical(reg$taxa$name[reg$taxa$taxon_id == "gbif:2383301"], "Oxyjulis californica")
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$kind == "undeclared_merge"))
+  expect_true(any(chk$kind == "declared_merge" & chk$taxon_id == "gbif:2383301"))
+})
+
+test_that("a taxon reached only through synonyms (its accepted name in no table) is named by that accepted name, and nothing is flagged", {
+  lk <- .fake_lookup(rbind(
+    .row("Etrumeus teres", "Etrumeus sadina", "2413189", NA, NA, ranks = NA, rec = "2413183", syn = TRUE),
+    .row("Clupea teres", "Etrumeus sadina", "2413189", NA, NA, ranks = NA, rec = "9999999", syn = TRUE)))
+  reg <- build_taxon_registry(.names(c("Etrumeus teres", "Clupea teres"), "reference"), run_id = "p2", lookup = lk)
+  expect_identical(reg$taxa$name[reg$taxa$taxon_id == "gbif:2413189"], "Etrumeus sadina")
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$severity == "error"))
+  expect_true(any(chk$kind == "declared_merge" & chk$taxon_id == "gbif:2413189"))
+})
+
 test_that("unresolved names get run-local ids: under the resolved genus where it is known", {
   .mock_gnv_reg()
   reg <- build_taxon_registry(.names(c("Hypsurus caryi", "Hypsurus novus", "Zzzus yyyus"), "checklist"), run_id = "t5", lookup = .real_lookup)

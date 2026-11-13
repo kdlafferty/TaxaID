@@ -148,6 +148,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   ok <- r$matched %in% TRUE & !is.na(r$current_record_id) & nzchar(r$current_record_id)
 
   nm$taxon_id <- ifelse(ok, paste0(prefix, ":", r$current_record_id), NA_character_)
+  # the lookup's ACCEPTED name for that id: what names a taxon the lookup gave no path for
+  nm$accepted_lookup <- ifelse(ok, as.character(r$matched_name), NA_character_)
   nm$matched_rank <- tolower(r$matched_rank)
   nm$status <- ifelse(!ok, NA_character_,
                 ifelse(tolower(r$match_type %||% "exact") %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"), "fuzzy",
@@ -183,6 +185,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     has <- !is.na(pk) & !is.na(pool_keys$species_key[match(nm$verbatim_name, pool_keys$verbatim_name)])
     clash <- has & !is.na(nm$taxon_id) & nm$taxon_id != pk
     nm$status[clash] <- "pool_key_conflict"
+    nm$accepted_lookup[clash] <- NA_character_   # the lookup's accepted name is ANOTHER taxon's
     nm$taxon_id[has] <- pk[has]
     nm$backend[has & !clash & is.na(nm$backend)] <- "pool_keys"
     nm$status[has & is.na(nm$status)] <- "pool_key_only"
@@ -246,10 +249,16 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   taxa <- taxa[!duplicated(key), , drop = FALSE]
   conflicts <- taxa[taxa$taxon_id %in% taxa$taxon_id[duplicated(taxa$taxon_id)], , drop = FALSE]
   taxa <- taxa[!duplicated(taxa$taxon_id), , drop = FALSE]
-  # a pool key the lookup never described still needs a row
+  # an id the lookup gave no path for (or a pool key it never described) still needs a row,
+  # named by the lookup's ACCEPTED name for that id -- never by whichever verbatim name
+  # happened to arrive first, which may be a synonym and would make the accepted name
+  # look like an undeclared second name. The verbatim name only when there is none.
   miss <- setdiff(nm$taxon_id, taxa$taxon_id)
   if (length(miss)) {
-    taxa <- rbind(taxa, data.frame(taxon_id = miss, name = nm$name_clean[match(miss, nm$taxon_id)], rank = NA_character_,
+    acc <- nm[!is.na(nm$accepted_lookup), c("taxon_id", "accepted_lookup"), drop = FALSE]
+    nm_miss <- acc$accepted_lookup[match(miss, acc$taxon_id)]
+    nm_miss[is.na(nm_miss)] <- nm$name_clean[match(miss[is.na(nm_miss)], nm$taxon_id)]
+    taxa <- rbind(taxa, data.frame(taxon_id = miss, name = nm_miss, rank = NA_character_,
                                    parent_id = NA_character_, snapshot = NA_character_, local = FALSE, stringsAsFactors = FALSE))
   }
   taxa$authority <- ifelse(taxa$local, "run-local", prefix)
