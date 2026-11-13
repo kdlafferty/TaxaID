@@ -228,6 +228,9 @@ imported by the Global Names Verifier (\code{NA} on the NCBI path).
 \code{match_type}: the verifier's own match type (\code{"Exact"},
 \code{"Fuzzy"}, \code{"PartialExact"}, ...); a fuzzy match is a
 different string, so it is never a declared synonymy.
+\code{"LineageRejected"} marks a row the \code{lineage} gate refused: the
+service answered with a taxon in another lineage, so \code{verified} is
+\code{FALSE} although the request did not fail.
 Identifiers are character: GBIF usage keys, Catalogue of Life codes,
 WoRMS LSIDs and NCBI taxids differ in form. \code{NA} where no match.}
 }
