@@ -114,10 +114,10 @@ test_that("NEGATIVE: a within-kingdom homonym in two families stays two taxa, an
   expect_identical(y$taxon_id, c("gbif:300", "gbif:200"))
 })
 
-test_that("NEGATIVE: a planted undeclared merge (a fuzzy hit onto another species) is an error-class finding", {
+test_that("NEGATIVE: a planted undeclared merge (an exact, non-synonym answer naming ANOTHER species) is an error-class finding", {
   lk <- .fake_lookup(rbind(
     .row("Foo baz", "Foo baz", "400", "1|2|3|4|5|400", "Animalia|Chordata|Perciformes|Fooidae|Foo|Foo baz"),
-    .row("Foo bar", "Foo baz", "400", "1|2|3|4|5|400", "Animalia|Chordata|Perciformes|Fooidae|Foo|Foo baz", mt = "Fuzzy")))
+    .row("Foo bar", "Foo baz", "400", "1|2|3|4|5|400", "Animalia|Chordata|Perciformes|Fooidae|Foo|Foo baz")))
   reg <- build_taxon_registry(.names(c("Foo baz", "Foo bar"), "match"), run_id = "n3", lookup = lk)
   chk <- check_taxon_registry(reg, verbose = FALSE)
   expect_true(any(chk$kind == "undeclared_merge" & chk$taxon_id == "gbif:400"))
@@ -146,6 +146,59 @@ test_that("a taxon reached only through synonyms (its accepted name in no table)
   chk <- check_taxon_registry(reg, verbose = FALSE)
   expect_false(any(chk$severity == "error"))
   expect_true(any(chk$kind == "declared_merge" & chk$taxon_id == "gbif:2413189"))
+})
+
+test_that("FIX 1: a binomial answered only at GENUS keeps its own run-local id under that genus, never the genus id", {
+  # p3 (live, CI): 1,048 species names took their genus's id this way; 161 false merges (e.g. 5 Gelidium species as one)
+  gpath <- "Plantae|Rhodophyta|Florideophyceae|Gelidiales|Gelidiaceae|Gelidium"
+  granks <- "kingdom|phylum|class|order|family|genus"
+  lk <- .fake_lookup(rbind(
+    .row("Gelidium kathyanniae", "Gelidium", "9460134", "6|106|342|900|901|9460134", gpath, ranks = granks, rank = "genus"),
+    .row("Gelidium pacificum", "Gelidium", "9460134", "6|106|342|900|901|9460134", gpath, ranks = granks, rank = "genus")))
+  reg <- build_taxon_registry(.names(c("Gelidium kathyanniae", "Gelidium pacificum"), "priors"), run_id = "f1", lookup = lk)
+  id <- stats::setNames(reg$names$taxon_id, reg$names$verbatim_name)
+  expect_identical(unname(id), c("local:9460134:kathyanniae", "local:9460134:pacificum"))
+  expect_identical(reg$names$status, c("rank_fallback", "rank_fallback"))
+  expect_identical(parent_at(unname(id), "genus", reg), c("gbif:9460134", "gbif:9460134"))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$kind %in% c("undeclared_merge", "declared_merge")))
+  expect_true(any(chk$kind == "rank_fallback" & chk$n == 2L))
+})
+
+test_that("FIX 2: a fuzzy answer that is not a gender variant does not resolve the name", {
+  # p3 (live, Mugu): Sardinops ocellatus fuzzy-matched to S. sagax and took its id
+  path <- "Animalia|Chordata|Clupeiformes|Clupeidae|Sardinops|Sardinops sagax"
+  lk <- .fake_lookup(rbind(
+    .row("Sardinops sagax", "Sardinops sagax", "2412583", "1|44|538|7690|2412582|2412583", path),
+    .row("Sardinops ocellatus", "Sardinops sagax", "2412583", "1|44|538|7690|2412582|2412583", path, mt = "Fuzzy")))
+  reg <- build_taxon_registry(.names(c("Sardinops sagax", "Sardinops ocellatus"), "r2"), run_id = "f2", lookup = lk)
+  oc <- reg$names[reg$names$verbatim_name == "Sardinops ocellatus", ]
+  expect_false(identical(oc$taxon_id, "gbif:2412583"))
+  expect_identical(oc$taxon_id, "local:2412582:ocellatus")
+  expect_identical(oc$status, "fuzzy_rejected")
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$kind == "undeclared_merge"))
+  expect_true(any(chk$kind == "fuzzy_rejected"))
+})
+
+test_that("FIX 3: a FAILED lookup is lookup_failed -- no id, not a local id, an error-class finding, refused at attach", {
+  lk <- function(names, rank, context) {
+    out <- .fake_lookup(.row("Hypsurus caryi", "Hypsurus caryi", "2389310", "1|44|587|4269|2389309|2389310",
+                             "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi"))(names, rank, context)
+    f <- names == "Foo failus"
+    out$verified[f] <- FALSE; out$matched[f] <- FALSE
+    out
+  }
+  reg <- build_taxon_registry(.names(c("Hypsurus caryi", "Foo failus"), "r2"), run_id = "f3", lookup = lk)
+  ff <- reg$names[reg$names$verbatim_name == "Foo failus", ]
+  expect_identical(ff$status, "lookup_failed")
+  expect_true(is.na(ff$taxon_id))
+  expect_false(any(grepl("Foo failus", reg$taxa$taxon_id, fixed = TRUE)))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_true(any(chk$kind == "lookup_failed" & chk$severity == "error"))
+  reg <- freeze_taxon_registry(reg)
+  expect_error(attach_taxon_ids(data.frame(n = "Foo failus"), reg, "n", "r2"), "FAILED lookup")
+  expect_output(print(reg), "lookup FAILED .*: 1 name")
 })
 
 test_that("unresolved names get run-local ids: under the resolved genus where it is known", {

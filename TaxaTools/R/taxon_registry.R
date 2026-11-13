@@ -27,6 +27,8 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 # Latin gender endings: a name differing from a resolved congener ONLY here is
 # the same species spelled for another gender (Platybelone argala / argalus).
 .GENDER_ENDINGS <- "(us|um|a|is|e|er|ra|rum|os|on)$"
+# Ranks at which an answer to a binomial is an answer about THAT species.
+.SPECIES_LEVEL <- c("species", "subspecies", "variety", "form", "forma", "infraspecies", "infraspecific")
 
 #' @noRd
 .registry_prefix <- function(backbone_id) {
@@ -163,7 +165,23 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     same_s <- .epithet_stem(sub("^\\S+ ", "", nm$name_clean[fz])) == .epithet_stem(sub("^\\S+ ", "", r$matched_name[fz]))
     nm$status[fz[same_g & same_s]] <- "gender_variant"
   }
-  nm$backend <- ifelse(ok, paste0("gnverifier:", key_backbone_id), NA_character_)
+  # Three answers that must NOT resolve a name to the id they carry:
+  #  - a lookup that FAILED (verified FALSE): status lookup_failed, no id, never a local id --
+  #    a failed request is not an answer, and attach_taxon_ids() refuses the name;
+  #  - a binomial answered only ABOVE species (the backbone lacks the species and returns its
+  #    genus): taking the genus id would merge every such species of the genus into one taxon;
+  #    status rank_fallback, then a run-local id under that genus (below);
+  #  - a fuzzy answer that is not a gender variant: a different string, so a different taxon
+  #    until shown otherwise; status fuzzy_rejected, then the unresolved path.
+  failed <- !(r$verified %in% TRUE)
+  nm$status[failed] <- "lookup_failed"; nm$taxon_id[failed] <- NA_character_
+  binom <- grepl("^\\S+ \\S+$", nm$name_clean)
+  above <- ok & binom & !is.na(nm$matched_rank) & !(nm$matched_rank %in% .SPECIES_LEVEL)
+  nm$status[above] <- "rank_fallback"; nm$taxon_id[above] <- NA_character_
+  fzr <- nm$status %in% "fuzzy"
+  nm$status[fzr] <- "fuzzy_rejected"; nm$taxon_id[fzr] <- NA_character_
+  nm$accepted_lookup[failed | above | fzr] <- NA_character_
+  nm$backend <- ifelse(!is.na(nm$taxon_id), paste0("gnverifier:", key_backbone_id), NA_character_)
   nm$backend_record_id <- ifelse(ok, r$record_id, NA_character_)
   nm$match_type <- r$match_type %||% NA_character_
   nm$hop <- ifelse(nm$source_naming %in% "ncbi", "ncbi_name_in_key_authority", "direct")
@@ -188,7 +206,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     nm$accepted_lookup[clash] <- NA_character_   # the lookup's accepted name is ANOTHER taxon's
     nm$taxon_id[has] <- pk[has]
     nm$backend[has & !clash & is.na(nm$backend)] <- "pool_keys"
-    nm$status[has & is.na(nm$status)] <- "pool_key_only"
+    nm$status[has & (is.na(nm$status) | nm$status %in% c("lookup_failed", "rank_fallback", "fuzzy_rejected"))] <- "pool_key_only"
   }
 
   taxa <- if (length(taxa)) do.call(rbind, taxa) else
@@ -196,7 +214,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                snapshot = character(0), local = logical(0), stringsAsFactors = FALSE)
 
   # --- unresolved: gender variant of a resolved congener, else a local id ---------
-  un <- which(is.na(nm$taxon_id))
+  un <- which(is.na(nm$taxon_id) & !nm$status %in% "lookup_failed")
   if (length(un)) {
     resolved <- nm[!is.na(nm$taxon_id) & grepl("^\\S+ \\S+$", nm$name_clean), c("name_clean", "taxon_id"), drop = FALSE]
     resolved <- resolved[!duplicated(resolved$name_clean), , drop = FALSE]
@@ -233,14 +251,14 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
           nm$taxon_id[i] <- paste0("local:", sub("^[^:]+:", "", g), ":", tolower(ep_of(x)))
           taxa <- rbind(taxa, data.frame(taxon_id = nm$taxon_id[i], name = x, rank = "species", parent_id = unname(g),
                                          snapshot = NA_character_, local = TRUE, stringsAsFactors = FALSE))
-          nm$status[i] <- "unresolved_local"
+          if (is.na(nm$status[i])) nm$status[i] <- "unresolved_local"
           next
         }
       }
       nm$taxon_id[i] <- paste0("local:", x)
       taxa <- rbind(taxa, data.frame(taxon_id = nm$taxon_id[i], name = x, rank = nm$rank_given[i] %||% NA_character_,
                                      parent_id = NA_character_, snapshot = NA_character_, local = TRUE, stringsAsFactors = FALSE))
-      nm$status[i] <- "unresolved_local"
+      if (is.na(nm$status[i])) nm$status[i] <- "unresolved_local"
     }
   }
 
@@ -253,7 +271,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   # named by the lookup's ACCEPTED name for that id -- never by whichever verbatim name
   # happened to arrive first, which may be a synonym and would make the accepted name
   # look like an undeclared second name. The verbatim name only when there is none.
-  miss <- setdiff(nm$taxon_id, taxa$taxon_id)
+  miss <- setdiff(stats::na.omit(nm$taxon_id), taxa$taxon_id)
   if (length(miss)) {
     acc <- nm[!is.na(nm$accepted_lookup), c("taxon_id", "accepted_lookup"), drop = FALSE]
     nm_miss <- acc$accepted_lookup[match(miss, acc$taxon_id)]
@@ -281,6 +299,9 @@ print.taxon_registry <- function(x, ...) {
   cat(sprintf("  taxa %d (run-local %d) | names %d from %d table(s)\n", nrow(x$taxa), sum(x$taxa$local),
               nrow(x$names), length(unique(x$names$source_table))))
   st <- table(x$names$status, useNA = "ifany"); cat("  status:", paste(names(st), st, sep = " ", collapse = "; "), "\n")
+  u <- function(s) length(unique(x$names$verbatim_name[x$names$status %in% s]))
+  cat(sprintf("  lookup FAILED (no answer; not resolved, not local): %d name(s) | answered but unresolved (local ids): %d | answered above species (rank_fallback): %d | fuzzy rejected: %d\n",
+              u("lookup_failed"), u("unresolved_local"), u("rank_fallback"), u("fuzzy_rejected")))
   invisible(x)
 }
 
@@ -345,6 +366,11 @@ attach_taxon_ids <- function(x, registry, name_col, source_table, context_col = 
     id <- n$taxon_id[match(paste(v, x[[context_col]], sep = "\r"), paste(n$verbatim_name, n$context, sep = "\r"))]
   }
   bad <- !is.na(v) & nzchar(v) & is.na(id)
+  lf <- bad & v %in% n$verbatim_name[n$status %in% "lookup_failed"]
+  if (any(lf)) {
+    stop(sprintf("%d name(s) in '%s' had a FAILED lookup when the registry was built (e.g. %s): no id was assigned. Rebuild the registry once the service answers.",
+                 length(unique(v[lf])), source_table, paste(utils::head(unique(v[lf]), 3), collapse = ", ")))
+  }
   if (any(bad)) {
     stop(sprintf("%d name(s) in '%s' are not in the frozen registry (e.g. %s): register them before the freeze.",
                  length(unique(v[bad])), source_table, paste(utils::head(unique(v[bad]), 3), collapse = ", ")))
@@ -493,9 +519,9 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     }
   }
   # unresolved and gender variants
-  for (s in c("unresolved_local", "gender_variant")) {
+  for (s in c("unresolved_local", "gender_variant", "rank_fallback", "fuzzy_rejected", "lookup_failed")) {
     z <- nm[nm$status %in% s, , drop = FALSE]
-    if (nrow(z)) add("info", s, NA_character_, NA_character_, paste(utils::head(sort(unique(z$verbatim_name)), 200), collapse = " | "),
+    if (nrow(z)) add(if (s == "lookup_failed") "error" else "info", s, NA_character_, NA_character_, paste(utils::head(sort(unique(z$verbatim_name)), 200), collapse = " | "),
                      sprintf("%d name(s)", length(unique(z$verbatim_name))), length(unique(z$verbatim_name)))
   }
   # merge audit: ids reached by 2+ different CLEAN names
