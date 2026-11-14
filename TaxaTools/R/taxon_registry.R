@@ -85,21 +85,24 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 # Ranks a candidate's lineage is compared on in the tie-break (the name itself is the same on every candidate).
 .TB_RANKS <- c("kingdom", "phylum", "class", "order", "family", "genus")
 
-#' A classification path's terms at the tie-break ranks, kingdom first
+#' A classification path's terms at the tie-break ranks, kingdom first, NAMED by rank
 #' @noRd
 .tb_terms_of_path <- function(path, ranks) {
   p <- .split_pipe(path); r <- tolower(.split_pipe(ranks))
   n <- min(length(p), length(r)); if (n == 0L) return(character(0L))
-  p[seq_len(n)][r[seq_len(n)] %in% .TB_RANKS]
+  keep <- r[seq_len(n)] %in% .TB_RANKS
+  stats::setNames(p[seq_len(n)][keep], r[seq_len(n)][keep])
 }
 
 #' Tie-break between 2+ GBIF candidate ids for one name (Kevin, 2026-11-13: GBIF first, then NCBI, then WoRMS)
 #'
 #' Step 0 (\code{gbif_first}): GBIF's own match for the name, when it is exactly one of the candidates.
-#' Then each authority in order: its lineage for the name is compared with the terms that DIFFER between the
-#' candidates (terms all candidates share decide nothing); the candidate with strictly the most of its own
-#' differing terms in that lineage wins. No answer, a tie, or a candidate with no lineage: the next
-#' authority. Nothing decides: \code{id = NA}, and the caller keeps the error-class finding.
+#' Then each authority in order. Candidate lineages are compared RANK BY RANK (\code{cand_terms} are named by
+#' rank): a rank distinguishes only where EVERY candidate has a value there and the values differ. A rank one
+#' candidate lacks is missing data, not evidence (a fuller lineage must not win on it). For each distinguishing
+#' rank, a candidate scores 1 if the authority's lineage holds its term; strictly the highest score wins. No
+#' answer, a tie, no distinguishing rank, or a candidate with no lineage: the next authority, then undecided
+#' (\code{id = NA}), and the caller keeps the error-class finding.
 #' @return list(id, by, detail)
 #' @noRd
 .registry_tiebreak <- function(name, cand_ids, cand_terms, lookup_id, tiebreak) {
@@ -114,17 +117,24 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
     return(list(id = NA_character_, by = NA_character_,
                 detail = paste(c(notes, "a candidate has no lineage to compare"), collapse = "; ")))
   }
-  shared <- Reduce(intersect, lapply(cand_terms, tolower))
-  own <- lapply(cand_terms, function(tt) tt[!tolower(tt) %in% shared])
+  if (any(vapply(cand_terms, function(tt) is.null(names(tt)) || any(!nzchar(names(tt))), TRUE))) {
+    stop(".registry_tiebreak: candidate terms must be named by rank.")
+  }
+  ranks_all <- Reduce(intersect, lapply(cand_terms, names))
+  dist <- ranks_all[vapply(ranks_all, function(rk) length(unique(tolower(vapply(cand_terms, function(tt) tt[[rk]], "")))) > 1L, TRUE)]
+  if (!length(dist)) {
+    return(list(id = NA_character_, by = NA_character_,
+                detail = paste(c(notes, "no rank that every candidate has differs between them"), collapse = "; ")))
+  }
   for (a in names(tiebreak$authorities)) {
     L <- tryCatch(as.character(tiebreak$authorities[[a]](name))[1L], error = function(e) NA_character_)
     if (is.na(L) || !nzchar(L)) { notes <- c(notes, paste0(a, ": no answer")); next }
-    score <- vapply(own, function(tt) if (!length(tt)) 0L else
-      sum(check_lineage_agreement(rep(L, length(tt)), tt, ignore = character(0L)) == "agrees"), 0L)
+    score <- vapply(cand_terms, function(tt)
+      sum(check_lineage_agreement(rep(L, length(dist)), unname(tt[dist]), ignore = character(0L)) == "agrees"), 0L)
     if (max(score) > 0L && sum(score == max(score)) == 1L) {
       w <- which.max(score)
-      return(list(id = cand_ids[w], by = a, detail = paste(c(notes, sprintf("%s lineage holds %s of %s's distinguishing terms (scores %s)",
-                                                             a, max(score), cand_ids[w], paste(score, collapse = "/"))), collapse = "; ")))
+      return(list(id = cand_ids[w], by = a, detail = paste(c(notes, sprintf("%s lineage holds %s of %s's terms at the distinguishing rank(s) %s (scores %s)",
+                                                             a, max(score), cand_ids[w], paste(dist, collapse = ","), paste(score, collapse = "/"))), collapse = "; ")))
     }
     notes <- c(notes, sprintf("%s: not decided (scores %s)", a, paste(score, collapse = "/")))
   }
@@ -371,7 +381,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       if (!length(lin_cols)) return(character(0L))
       w <- pool_keys[as.character(pool_keys$verbatim_name) %in% v & as.character(pool_keys$species_key) %in% k, lin_cols, drop = FALSE]
       if (!nrow(w)) return(character(0L))
-      x <- as.character(unlist(w[1L, ], use.names = FALSE)); x[!is.na(x) & nzchar(x)]
+      x <- stats::setNames(as.character(unlist(w[1L, ], use.names = FALSE)), lin_cols); x[!is.na(x) & nzchar(x)]
     }
     tb_rows <- list(); tb_pick <- character(0L); tb_by <- character(0L)
     if (!is.null(tiebreak)) {
