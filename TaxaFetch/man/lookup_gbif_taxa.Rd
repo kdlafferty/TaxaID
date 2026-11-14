@@ -41,22 +41,26 @@ Pipe-delimited names, ranks and GBIF keys, kingdom to the matched
 rank, positionally aligned.}
 \item{score}{\code{NA} (GBIF's confidence is not carried).}
 \item{verified}{\code{FALSE} only where the request failed.}
-\item{matched}{\code{TRUE} for EXACT, FUZZY and HIGHERRANK answers
-with a key. A HIGHERRANK answer is matched at its coarser rank: read
-\code{matched_rank}. LOOKUP_RECOVERED is not matched (it has no
+\item{matched}{\code{TRUE} for EXACT, FUZZY, VARIANT and HIGHERRANK
+answers with a key. A HIGHERRANK answer is matched at its coarser rank:
+read \code{matched_rank}. A VARIANT answer (GBIF matched a known
+orthographic variant of the name) is a different spelling, so it is
+matched as a fuzzy answer. LOOKUP_RECOVERED is not matched (it has no
 lineage).}
 \item{record_id}{The matched record's own GBIF key.}
 \item{current_record_id}{Its accepted key (its own key when accepted).}
 \item{data_source_id}{11 (GBIF).}
 \item{entry_date}{\code{NA}.}
-\item{match_type}{\code{"Fuzzy"} for FUZZY, \code{"Exact"} for other
-matched rows, else \code{NA}.}
+\item{match_type}{\code{"Fuzzy"} for FUZZY and VARIANT, \code{"Exact"}
+for other matched rows, else \code{NA}. A registry built on this lookup
+accepts a fuzzy answer for a genus word, but resolves a name by one only
+under its gender rule.}
 \item{gbif_matchType, gbif_status}{GBIF's own match type and status.}
 }
 Attributes \code{n_requested} (names asked), \code{n_cached} (served
 from \code{cache_dir} without a request), \code{n_error} (requests that
 failed: not answered, not the same as unmatched), \code{n_fuzzy},
-\code{n_higherrank} and \code{n_recovered}.
+\code{n_higherrank}, \code{n_recovered} and \code{n_variant}.
 }
 \description{
 Matches each name against GBIF's backbone taxonomy (the release GBIF
