@@ -90,3 +90,23 @@ test_that("bad return_keys / cache_dir are refused", {
   expect_error(get_keys_from_context(.sp("x"), return_keys = NA), "return_keys")
   expect_error(get_keys_from_context(.sp("x"), cache_dir = 1), "cache_dir")
 })
+
+# Package review 2026-11-13, N1 (taken as F7): a HIGHERRANK answer whose name_lookup() recovery FAILED was cached as a
+# final answer, so a transient outage became permanent. FAILS on the reviewed code (2ea632dc): one file is written.
+test_that("REVIEW F7: a HIGHERRANK row whose recovery request failed is returned but never cached", {
+  skip_if_not_installed("rgbif")
+  d <- tempfile()
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
+  local_mocked_bindings(
+    name_backbone = function(...) list(usageKey = 1L, matchType = "HIGHERRANK", rank = "KINGDOM", kingdom = "Animalia", kingdomKey = 1L),
+    name_lookup = function(...) stop("HTTP 503"),
+    .package = "rgbif")
+  out <- suppressMessages(suppressWarnings(get_keys_from_context(data.frame(kingdom = "Animalia", family = "Cyprinidae"), return_keys = TRUE, cache_dir = d)))
+  expect_identical(out$matchType, "HIGHERRANK")      # what the caller gets is unchanged
+  expect_length(list.files(d), 0L)                  # 2ea632dc: 1 (the degraded row cached as final)
+  # so the next call asks again instead of being served the degraded row
+  local_mocked_bindings(name_backbone = function(...) stop("asked again"), .package = "rgbif")
+  again <- suppressMessages(suppressWarnings(get_keys_from_context(data.frame(kingdom = "Animalia", family = "Cyprinidae"), return_keys = TRUE, cache_dir = d)))
+  expect_identical(again$matchType, "ERROR")
+})
