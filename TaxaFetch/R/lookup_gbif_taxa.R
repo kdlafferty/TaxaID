@@ -93,8 +93,10 @@
 #'     \item{entry_date}{\code{NA}.}
 #'     \item{match_type}{\code{"Fuzzy"} for FUZZY and VARIANT, \code{"Exact"}
 #'       for other matched rows, else \code{NA}. A registry built on this lookup
-#'       accepts a fuzzy answer for a genus word, but resolves a name by one only
-#'       under its gender rule.}
+#'       takes a fuzzy or variant GENUS answer only where the names' context
+#'       names its kingdom and phylum; it resolves a binomial by a fuzzy answer
+#'       only under its gender rule or, for a GBIF VARIANT of the genus with the
+#'       epithet unchanged, its genus_variant rule (same gate).}
 #'     \item{gbif_matchType, gbif_status}{GBIF's own match type and status.}
 #'   }
 #'   Attributes \code{n_requested} (names asked), \code{n_cached} (served

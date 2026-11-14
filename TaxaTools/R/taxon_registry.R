@@ -108,7 +108,7 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
   stats::setNames(p[seq_len(n)][keep], r[seq_len(n)][keep])
 }
 
-#' Tie-break between 2+ GBIF candidate ids for one name (Kevin, 2026-11-13: GBIF first, then NCBI, then WoRMS)
+#' Tie-break between 2+ GBIF candidate ids for one name (GBIF's own match first, then each authority in order)
 #'
 #' Step 0 (\code{gbif_first}): GBIF's own match for the name, when it is exactly one of the candidates.
 #' Then each authority in order. Candidate lineages are compared RANK BY RANK (\code{cand_terms} are named by
@@ -224,25 +224,40 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' \code{pool_key_conflict} between the pool's key and the lookup's), the
 #' candidates are decided by, in order: for \code{pool_key_ambiguous} only,
 #' the lookup's own answer when it is exactly one of the pool's keys
-#' (\code{gbif_first}); then each of \code{authorities} in turn, whose lineage for the name must hold strictly
-#' more of one candidate's distinguishing terms (those the candidates do not
-#' share) than of any other's. A decided name gets
+#' (\code{gbif_first}); then each of \code{authorities} in turn. The
+#' candidates' lineages are compared rank by rank: a rank distinguishes only
+#' where every candidate has a value there and the values differ (a rank one
+#' candidate lacks is missing data, not evidence). Per distinguishing rank, a
+#' candidate scores 1 if the authority's lineage holds its term; strictly the
+#' highest score wins. A decided name gets
 #' \code{status = "pool_key_tiebreak"}; an undecided one keeps its
 #' error-class finding. Candidates with identical lineages are never decided.
 #' Step 0 never applies to a \code{pool_key_conflict}: there the lookup's key
 #' is one of the two candidates by construction, so it would always win and
 #' undo pool-keys-first; a conflict is decided by the authorities or not at all.
 #'
+#' \strong{Coarser answers.} Every name is checked for an answer at a coarser
+#' rank than it was asked at (\code{rank_given}, else genus for one word,
+#' species for two, infraspecific for three or more): such a name gets
+#' \code{status = "rank_fallback"} and a run-local identifier under the
+#' answered ancestor, never that ancestor's identifier.
+#'
 #' \strong{Unresolved names} get a run-local identifier under their resolved
 #' genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
-#' the genus is unknown. A genus answered only by a fuzzy or variant match is
-#' taken only where the \code{context} of the names under it names the
-#' answer's kingdom and phylum; otherwise it is refused and listed in
-#' \code{meta$genus_variant_rejected} (a misspelt genus can match a genus in
+#' the genus is unknown. The genus is resolved per genus word AND \code{context}:
+#' genus rows already in the registry are used only where they do not
+#' contradict the context, and a word naming two or more such genera is refused
+#' (\code{meta$genus_homonym_unresolved}); otherwise the genus is looked up
+#' with the names' context. A genus answered only by a fuzzy or variant match
+#' is taken only where the context names the answer's kingdom and phylum; an
+#' exact answer is refused where it contradicts the context. Refusals are listed
+#' in \code{meta$genus_variant_rejected} (a genus word can name a genus in
 #' another kingdom). One narrow exception: a binomial whose epithet differs
 #' from a resolved congener's only in its Latin gender ending (\emph{Platybelone
 #' argala} / \emph{argalus}) takes that congener's identifier with
-#' \code{status = "gender_variant"}. A second: a binomial the lookup answers
+#' \code{status = "gender_variant"}, only from a congener with the same context
+#' (or, with a context, the same kingdom), and never for a name the lineage
+#' gate rejected. A second: a binomial the lookup answers
 #' as a GBIF \code{VARIANT} of its genus, with the epithet unchanged
 #' (\emph{Pyrogophorus platyrachis} / \emph{Pyrgophorus platyrachis}), takes
 #' that species' identifier with \code{status = "genus_variant"}, under the same
@@ -250,9 +265,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' phylum, or it is refused and listed in \code{meta$genus_variant_rejected}.
 #' This needs the lookup's \code{gbif_matchType} column. Every use is listed by
 #' \code{\link{check_taxon_registry}}. No other fuzzy matching is accepted:
-#' a lookup answered by a fuzzy match is kept as \code{status = "fuzzy"}, which
-#' the guard reports as an undeclared merge if it lands on another name's
-#' identifier.
+#' any other fuzzy answer gets \code{status = "fuzzy_rejected"} and no
+#' identifier from the answer; the name takes the unresolved path above.
+#' A \code{lookup} must return every column the registry reads (see
+#' \code{lookup}); a missing one is refused with an error of class
+#' \code{taxon_registry_bad_lookup}, never defaulted.
 #'
 #' @param names A data frame of the names to register, one row per name per
 #'   source: \code{verbatim_name} and \code{source_table} (required);
@@ -270,8 +287,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' @param lookup \code{NULL} (default: \code{verify_taxon_names()} against
 #'   \code{key_backbone_id} with \code{cache_dir}) or a function
 #'   \code{function(names, rank, context)} returning a table shaped like
-#'   \code{verify_taxon_names(return_ids = TRUE)}; supply one to resolve from
-#'   recorded answers offline.
+#'   \code{verify_taxon_names(return_ids = TRUE)}, one row per name, with at
+#'   least \code{matched_name}, \code{matched_rank}, \code{is_synonym},
+#'   \code{classification_path}, \code{classification_ranks}, \code{verified},
+#'   \code{matched}, \code{current_record_id}, \code{classification_ids} and
+#'   \code{match_type}; supply one to resolve from recorded answers offline.
 #' @param cache_dir Passed to \code{verify_taxon_names()} by the default lookup.
 #' @param tiebreak \code{NULL} (default: no tie-break; 2+ candidate ids stay
 #'   error-class findings) or a list: \code{gbif_first} (logical, default
