@@ -175,6 +175,10 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
 # Internal helper -- not exported
 # ------------------------------------------------------------------------------
 
+# Cache hits served by .process_gbif_row() since the last reset; read by lookup_gbif_taxa().
+.gkfc_state <- new.env(parent = emptyenv())
+.gkfc_state$cache_hits <- 0L
+
 #' Resolve one row of a hierarchy dataframe against the GBIF backbone
 #'
 #' @param row A one-row dataframe (one element from split(hierarchy_df, ...)).
@@ -232,7 +236,10 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
     cpath <- file.path(cache_dir, paste0(.cache_hash(ckey), "_gbif_keys.rds"))
     if (file.exists(cpath)) {
       hit <- tryCatch(readRDS(cpath), error = function(e) NULL)
-      if (!is.null(hit) && identical(hit$key, ckey) && is.data.frame(hit$row)) return(hit$row)
+      if (!is.null(hit) && identical(hit$key, ckey) && is.data.frame(hit$row)) {
+        .gkfc_state$cache_hits <- .gkfc_state$cache_hits + 1L   # counted for lookup_gbif_taxa(); output unchanged
+        return(hit$row)
+      }
     }
   }
 
