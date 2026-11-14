@@ -1,3 +1,10 @@
+# TaxaMatch (development version)
+
+* `standardize_match_data(registry = )`: given a frozen taxon registry, adds a
+  `taxon_id` column and the registry's stamp to the match object, leaving the
+  match names exactly as supplied. An unregistered name, or an input that
+  already has its own `taxon_id` column, is an error.
+
 # TaxaMatch 1.0.0
 
 * First public release.

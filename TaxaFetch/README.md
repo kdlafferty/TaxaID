@@ -84,6 +84,9 @@ GBIF pipeline:
 
 -   `make_bbox_wkt()`: create a WKT bounding box for spatial queries
 -   `get_keys_from_context()`: resolve taxon names to GBIF usage keys
+-   `lookup_gbif_taxa()`: match names against GBIF's backbone with every
+    identifier (own key, accepted key, the key at each rank), for
+    `TaxaTools::build_taxon_registry()`
 -   `fetch_gbif_occurrences()`: download occurrence records
 -   `get_gbif_occurrences()`: unified entry point that picks between
     `fetch_gbif_occurrences()` (small queries) and

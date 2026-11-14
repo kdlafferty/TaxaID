@@ -95,7 +95,8 @@ match_df <- filter_redundant_hypotheses(match_df)
     configurable column names; supports long and wide (`n_candidates`)
     formats
 -   `standardize_match_data()`: canonical column names, taxonomy
-    derivation via `TaxaTools::create_taxon_names()`
+    derivation via `TaxaTools::create_taxon_names()`; with `registry`,
+    the taxon registry's identifiers as a `taxon_id` column
 -   `filter_redundant_hypotheses()`: drop coarser-rank rows superseded
     by finer-rank rows within the same lineage and observation
 -   `report_match()`: summarize matching for `assemble_report()`
