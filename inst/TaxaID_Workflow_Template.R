@@ -69,6 +69,7 @@ GBIF_CACHE_DIR             <- file.path(CACHE_ROOT, "gbif")          # Occurrenc
 HABITAT_CACHE_DIR          <- file.path(CACHE_ROOT, "habitat")       # Habitat-classification cache
 REFERENCE_CACHE_DIR        <- file.path(CACHE_ROOT, "reference")     # Reference-sequence cache
 REVIEW_CACHE_DIR           <- file.path(CACHE_ROOT, "review")        # LLM review cache
+TAXONOMY_CACHE_DIR         <- file.path(CACHE_ROOT, "taxonomy")      # Name-lookup cache shared by every name verification, GBIF key and consensus taxonomy lookup: once filled, a rerun makes no name requests
 INCLUDE_DOMESTIC_PRIORS    <- FALSE                                  # Add domestic/food-species priors
 INCLUDE_GROUP_PRIORS       <- TRUE                                   # Add group-level prior support
 INCLUDE_DOWNRANKING        <- TRUE                                   # Allow posterior downranking
@@ -444,7 +445,7 @@ likelihoods <- likelihoods
 # Edge: taxa -> occurrences
 # Source: TaxaFetch/inst/GBIF_workflow.R + Define_search_workflow.R
 
-key_matches <- TaxaFetch::get_keys_from_context(taxa)
+key_matches <- TaxaFetch::get_keys_from_context(taxa, cache_dir = TAXONOMY_CACHE_DIR)   # answered rows cached: a rerun asks GBIF only for new or failed rows
 # fetch_gbif_occurrences() takes the usageKey COLUMN, not the whole table that
 # get_keys_from_context() returns: it begins with as.integer(keys), and a data
 # frame cannot be coerced to integer. Passing the table raises
@@ -782,17 +783,25 @@ taxon_verification <- TaxaTools::verify_taxon_names(
   name_list   = .prior_names$taxon_name,
   backbone_id = TARGET_BACKBONE_ID,
   input_rank  = ifelse(TaxaTools::is_plausible_binomial(.prior_names$taxon_name),
-                       "species", "genus")
+                       "species", "genus"),
+  cache_dir   = TAXONOMY_CACHE_DIR
 )
 message(sprintf(
   "Taxon-name verification: %d of %d unique taxon name(s) did not verify against backbone %s",
   sum(!taxon_verification$verified, na.rm = TRUE), nrow(taxon_verification),
   TARGET_BACKBONE_ID
 ))
+# convert_taxonomy_backbone() has no cache of its own; its verify_fn does the lookups. This wrapper adds the run's
+# taxonomy cache. It must DECLARE input_rank: convert_taxonomy_backbone() passes each name's rank only to a verify_fn
+# whose formals name it, so a function(...) wrapper would silently drop the rank.
+.verify_cached <- function(name_list, backbone_id, input_rank = NULL)
+  TaxaTools::verify_taxon_names(name_list, backbone_id = backbone_id, input_rank = input_rank,
+                                cache_dir = TAXONOMY_CACHE_DIR)
 priors <- TaxaMatch::convert_taxonomy_backbone(
   priors,
   target_backbone_id = TARGET_BACKBONE_ID,
-  taxon_col           = "taxon_name"
+  taxon_col           = "taxon_name",
+  verify_fn           = .verify_cached
 )
 message("Generated priors for ", length(unique(priors$taxon_name)), " taxa across ",
         dplyr::n_distinct(std_occurrences[[SAMPLING_GROUP_COL]]), " sampling group(s)")
@@ -928,7 +937,8 @@ consensus <- TaxaAssign::posterior_consensus(
   group_priors            = group_priors_obj,
   consensus_method        = "credible_node",
   robust_prior_s          = 0,
-  cross_phylum_eps        = 0
+  cross_phylum_eps        = 0,
+  taxonomy_cache_dir      = TAXONOMY_CACHE_DIR
 )
 
 # Optional: empirical Bayes refinement. n_sims defaults to 1000, which
@@ -948,7 +958,8 @@ consensus_final <- TaxaAssign::posterior_consensus(
   group_priors            = group_priors_obj,
   consensus_method        = "credible_node",
   robust_prior_s          = 0,
-  cross_phylum_eps        = 0
+  cross_phylum_eps        = 0,
+  taxonomy_cache_dir      = TAXONOMY_CACHE_DIR
 ) |> TaxaAssign::add_slash_taxon()
 # add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
 # consensus_taxon is in consensus_final).
