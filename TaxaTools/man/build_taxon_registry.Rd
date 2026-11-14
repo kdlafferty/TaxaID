@@ -95,6 +95,13 @@ Step 0 never applies to a \code{pool_key_conflict}: there the lookup's key
 is one of the two candidates by construction, so it would always win and
 undo pool-keys-first; a conflict is decided by the authorities or not at all.
 
+\strong{Homonyms.} An exact answer that contradicts the name's own
+\code{context} (the two name different kingdoms, or the context's other
+terms share nothing with the answer's phylum-to-genus path) is refused,
+whichever \code{lookup} gave it: the name gets
+\code{status = "homonym_rejected"} and takes the unresolved path below.
+A name with no context is not checked.
+
 \strong{Coarser answers.} Every name is checked for an answer at a coarser
 rank than it was asked at (\code{rank_given}, else genus for one word,
 species for two, infraspecific for three or more): such a name gets
