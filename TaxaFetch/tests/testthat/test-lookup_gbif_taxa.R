@@ -212,3 +212,12 @@ test_that("with the registry: a VARIANT genus answer gives the genus id where th
   expect_identical(r0$names$taxon_id, "local:Pyrogophorus notadus")
   expect_identical(r0$meta$genus_variant_rejected$reason, "no lineage context")
 })
+
+# Package review 2026-11-13, F6: the Rd described the registry's use of this lookup as it was before the genus gate
+# and the genus_variant rule. FAILS on the reviewed code (2ea632dc).
+test_that("REVIEW F6: lookup_gbif_taxa's docs no longer say a fuzzy answer resolves a name only under the gender rule", {
+  src <- testthat::test_path("..", "..", "R", "lookup_gbif_taxa.R"); rd <- testthat::test_path("..", "..", "man", "lookup_gbif_taxa.Rd")
+  if (!file.exists(src) || !file.exists(rd)) testthat::skip("R/ and man/ not found next to this package (source layout unavailable here)")
+  txt <- c(readLines(src, warn = FALSE), readLines(rd, warn = FALSE))
+  expect_false(any(grepl("resolves a name by one only", txt, fixed = TRUE)))
+})

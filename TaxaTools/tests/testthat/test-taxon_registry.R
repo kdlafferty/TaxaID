@@ -700,3 +700,11 @@ test_that("REVIEW F5: an NA taxon_id never joins to another NA, and no-partner c
   expect_identical(attr(j, "no_partner")[["x_rows"]], 1L)                   # 2ea632dc: 0
 })
 
+# -- F6 (+ N6): docs that no longer described the code, and a dated roxygen line ----------------------------------
+test_that("REVIEW F6: build_taxon_registry's docs no longer claim a fuzzy answer survives as status 'fuzzy'; no dated roxygen", {
+  src <- testthat::test_path("..", "..", "R", "taxon_registry.R"); rd <- testthat::test_path("..", "..", "man", "build_taxon_registry.Rd")
+  if (!file.exists(src) || !file.exists(rd)) testthat::skip("R/ and man/ not found next to this package (source layout unavailable here)")
+  txt <- c(readLines(src, warn = FALSE), readLines(rd, warn = FALSE))
+  expect_false(any(grepl('kept as \\code{status = "fuzzy"}', txt, fixed = TRUE)))   # 2ea632dc: present in R and Rd
+  expect_false(any(grepl("^#'.*20[0-9]{2}-[0-9]{2}-[0-9]{2}", readLines(src, warn = FALSE))))   # 2ea632dc: "(Kevin, 2026-11-13: ...)"
+})
