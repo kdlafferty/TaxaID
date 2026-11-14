@@ -491,11 +491,15 @@ test_that("provenance rejects a non-list and a multi-value field", {
   )
 })
 
-test_that("provenance is the LAST formal of standardize_match_data", {
+test_that("new formals of standardize_match_data go LAST: the released order is an exact prefix", {
   # New arguments go last so a positional call written against the previous
-  # signature cannot silently bind to a different argument.
+  # signature cannot silently bind to a different argument. The released
+  # signature ended at `provenance`; `registry` was added after it.
+  released <- c("data", "observation_id_col", "score_col", "rank_system", "coverage_col",
+                "col_map", "lowercase_names", "provenance")
   fm <- names(formals(standardize_match_data))
-  expect_identical(fm[length(fm)], "provenance")
+  expect_identical(fm[seq_along(released)], released)
+  expect_identical(fm[-seq_along(released)], "registry")
 })
 
 # ---- registry = (Phase 2): ids on the match object, nothing else changed ---------------------------
