@@ -26,8 +26,9 @@
 #' @param cache_dir Character or \code{NULL} (default, no cache). A directory
 #'   for a per-row on-disk cache keyed on everything the request sends (the
 #'   name, its rank, its context ranks) and on \code{return_keys}. Only answered
-#'   rows are written; a row whose request failed (\code{matchType = "ERROR"})
-#'   is never cached and is asked again next call.
+#'   rows are written; a row whose request failed (\code{matchType = "ERROR"}),
+#'   or a \code{HIGHERRANK} row whose \code{name_lookup()} recovery request
+#'   failed, is never cached and is asked again next call.
 #' @return The input dataframe with three columns appended:
 #'   \describe{
 #'     \item{usageKey}{Integer. GBIF usage key for the matched name, or
@@ -268,8 +269,10 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
       result <- .recover_higherrank(result, target_name, target_rank, valid_ranks,
         context = rank_values
       )
+      recovery_failed <- isTRUE(attr(result, "recovery_failed"))   # read before cbind(), which drops it
+      attr(result, "recovery_failed") <- NULL
       if (return_keys) result <- cbind(result, .gkfc_key_columns(record, result))
-      if (!is.null(ckey) && !identical(result$matchType, "ERROR")) {
+      if (!is.null(ckey) && !identical(result$matchType, "ERROR") && !recovery_failed) {
         saveRDS(list(key = ckey, row = result, written_at = Sys.time()), cpath)
       }
 
@@ -400,6 +403,8 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
         "get_keys_from_context: name_lookup recovery failed for '%s' -- %s",
         target_name, conditionMessage(e)
       ), call. = FALSE)
+      # the HIGHERRANK row is still returned, but marked: a failed recovery is not an answer, so it is never cached
+      attr(result, "recovery_failed") <- TRUE
       result
     }
   )
