@@ -766,3 +766,11 @@ test_that("REVIEW N4: the default lookup (lookup = NULL) gives the tested lookup
                "stop after the call")
   expect_identical(c(seen[[1L]]$rank, seen[[1L]]$lineage), c("genus", "Plantae|Rhodophyta"))
 })
+
+# N6: ifelse() returns the length of its TEST; the convention is dplyr::if_else() in new code.
+test_that("REVIEW N6: the registry code uses dplyr::if_else(), not ifelse()", {
+  src <- testthat::test_path("..", "..", "R", "taxon_registry.R")
+  if (!file.exists(src)) testthat::skip("R/ not found next to this package (source layout unavailable here)")
+  code <- sub("#.*$", "", readLines(src, warn = FALSE))
+  expect_false(any(grepl("(^|[^_[:alnum:].])ifelse\\(", code)))      # 1f3e31d0: 14 lines
+})

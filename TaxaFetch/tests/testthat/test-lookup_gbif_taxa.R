@@ -221,3 +221,11 @@ test_that("REVIEW F6: lookup_gbif_taxa's docs no longer say a fuzzy answer resol
   txt <- c(readLines(src, warn = FALSE), readLines(rd, warn = FALSE))
   expect_false(any(grepl("resolves a name by one only", txt, fixed = TRUE)))
 })
+
+# Package review 2026-11-13, N6: ifelse() returns the length of its TEST; the convention is dplyr::if_else().
+test_that("REVIEW N6: lookup_gbif_taxa's code uses dplyr::if_else(), not ifelse()", {
+  src <- testthat::test_path("..", "..", "R", "lookup_gbif_taxa.R")
+  if (!file.exists(src)) testthat::skip("R/ not found next to this package (source layout unavailable here)")
+  code <- sub("#.*$", "", readLines(src, warn = FALSE))
+  expect_false(any(grepl("(^|[^_[:alnum:].])ifelse\\(", code)))      # 1f3e31d0: 10 lines
+})
