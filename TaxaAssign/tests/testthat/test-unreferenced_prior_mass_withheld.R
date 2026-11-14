@@ -172,7 +172,10 @@ test_that("a species of a referenced genus is claimed by its genus ring, not wit
 
 # ---- 3. Coarser rings ---------------------------------------------------------
 
-test_that("a species of a referenced genus is withheld from the order and class rings; an unreferenced genus joins the finest ring unnamed", {
+test_that("withhold = \"genus\": a species of a referenced genus is withheld from the order and class rings; an unreferenced genus joins the finest ring unnamed", {
+  # The genus-only rule. Under the default "finest", Lacuna is withheld from the
+  # order ring too, because its family (Littorinidae) has a reference; that rule
+  # is tested in test-unreferenced_floor_rule.R.
   base <- .wh_littorina_joined()[1, ]
   j <- rbind(base,
     transform(base, taxon_name = "Littorinimorpha", taxon_name_rank = "order",
@@ -184,7 +187,8 @@ test_that("a species of a referenced genus is withheld from the order and class 
   tax$order <- c(rep("Littorinimorpha", 5), "Trochida")
   tax$class <- "Gastropoda"
   out <- suppressMessages(add_unreferenced_prior_mass(j, .wh_littorina_priors(), tax,
-    referenced_names = c("Littorina littorea", "Littorina scutulata"), named_rows = TRUE))
+    referenced_names = c("Littorina littorea", "Littorina scutulata"), named_rows = TRUE,
+    withhold = "genus"))
   w <- attr(out, "unreferenced_withheld")
   expect_named(w, .wh_cols)
   # Littorina keenae: genus referenced, no genus ring -> withheld ONCE, at the
