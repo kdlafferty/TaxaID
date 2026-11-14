@@ -80,7 +80,8 @@ consensus <- TaxaAssign::posterior_consensus(
   backbone_id      = {{backbone_id}},
   consensus_method = "credible_node",
   robust_prior_s   = 0,
-  cross_phylum_eps = 0
+  cross_phylum_eps = 0,
+  taxonomy_cache_dir = {{taxonomy_cache_dir}}
 )
 
 # 4. Confirmation update, then Round 2 consensus. n_sims defaults to 1000,
@@ -93,7 +94,8 @@ consensus <- TaxaAssign::posterior_consensus(
   backbone_id      = {{backbone_id}},
   consensus_method = "credible_node",
   robust_prior_s   = 0,
-  cross_phylum_eps = 0
+  cross_phylum_eps = 0,
+  taxonomy_cache_dir = {{taxonomy_cache_dir}}
 )
 
 message("Bayesian pathway complete. ", sum(consensus$is_resolved), " of ",

@@ -183,17 +183,25 @@ taxon_verification <- TaxaTools::verify_taxon_names(
   name_list   = .prior_names$taxon_name,
   backbone_id = {{target_backbone_id}},
   input_rank  = ifelse(TaxaTools::is_plausible_binomial(.prior_names$taxon_name),
-                       "species", "genus")
+                       "species", "genus"),
+  cache_dir   = {{taxonomy_cache_dir}}
 )
 message(sprintf(
   "Taxon-name verification: %d of %d unique taxon name(s) did not verify against backbone %s",
   sum(!taxon_verification$verified, na.rm = TRUE), nrow(taxon_verification),
   {{target_backbone_id}}
 ))
+# convert_taxonomy_backbone() has no cache of its own; its verify_fn does the lookups. This wrapper adds the run's
+# taxonomy cache. It must DECLARE input_rank: convert_taxonomy_backbone() passes each name's rank only to a verify_fn
+# whose formals name it, so a function(...) wrapper would silently drop the rank.
+.verify_cached <- function(name_list, backbone_id, input_rank = NULL)
+  TaxaTools::verify_taxon_names(name_list, backbone_id = backbone_id, input_rank = input_rank,
+                                cache_dir = {{taxonomy_cache_dir}})
 priors <- TaxaMatch::convert_taxonomy_backbone(
   priors,
   target_backbone_id = {{target_backbone_id}},
-  taxon_col           = "taxon_name"
+  taxon_col           = "taxon_name",
+  verify_fn           = .verify_cached
 )
 message("Generated priors for ", length(unique(priors$taxon_name)), " taxa across ",
         dplyr::n_distinct(std_occurrences[[{{sampling_group_col}}]]), " sampling group(s)")
