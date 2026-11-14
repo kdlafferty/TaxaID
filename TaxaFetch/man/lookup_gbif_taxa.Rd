@@ -32,8 +32,10 @@ matched rank (a synonym's accepted name, read from the record's own
 classification), or \code{NA} when not matched.}
 \item{matched_rank}{Lower-case rank of the matched record.}
 \item{is_synonym}{\code{TRUE} when the record is a synonym by any of its
-synonym flag, a status other than ACCEPTED, or an accepted key that
-differs from its own key.}
+synonym flag, a synonym-type status (SYNONYM, HETEROTYPIC_SYNONYM,
+HOMOTYPIC_SYNONYM, PROPARTE_SYNONYM, MISAPPLIED), or an accepted key
+that differs from its own key. PROVISIONALLY_ACCEPTED and DOUBTFUL
+records are not synonyms.}
 \item{classification_path, classification_ranks, classification_ids}{
 Pipe-delimited names, ranks and GBIF keys, kingdom to the matched
 rank, positionally aligned.}
