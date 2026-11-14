@@ -22,10 +22,16 @@
 # PROVISIONALLY_ACCEPTED with its accepted key equal to its own (206 live records were this): its own taxon, NOT a synonym.
 # A rule of "status != ACCEPTED" calls it a synonym; this fixture breaks that rule.
 .provisional <- within(.accepted_hypsurus, { status <- "PROVISIONALLY_ACCEPTED"; synonym <- NULL; acceptedUsageKey <- 2389310L })
+# VARIANT: GBIF matched a known orthographic variant (live: "Pyrogophorus" -> Pyrgophorus 2299855). Under the old rule
+# (EXACT/FUZZY/HIGHERRANK only) this genus answer was unmatched, so names under it got plain local ids.
+.variant_genus <- list(usageKey = 2299855L, matchType = "VARIANT", rank = "GENUS", status = "ACCEPTED",
+  canonicalName = "Pyrgophorus", kingdom = "Animalia", phylum = "Mollusca", class = "Gastropoda", family = "Cochliopidae",
+  genus = "Pyrgophorus", kingdomKey = 1L, phylumKey = 52L, classKey = 225L, familyKey = 2299800L, genusKey = 2299855L)
+.variant_species <- within(.accepted_hypsurus, matchType <- "VARIANT")
 
 .backbone <- function(name, ...) switch(name,
   "Hypsurus caryi" = .accepted_hypsurus, "Embiotoca caryi" = .synonym_no_flag, "Embiotoca keyonly" = .synonym_key_only,
-  "Gelidium kathyanniae" = .higherrank_genus, "Hypsurus cari" = .fuzzy, "Hypsurus provisional" = .provisional,
+  "Gelidium kathyanniae" = .higherrank_genus, "Hypsurus cari" = .fuzzy, "Hypsurus provisional" = .provisional, "Pyrogophorus" = .variant_genus, "Hypsurus karyi" = .variant_species,
   "Notagenus" = list(usageKey = 1L, matchType = "HIGHERRANK", rank = "KINGDOM", kingdom = "Animalia", kingdomKey = 1L),
   "Failname" = stop("HTTP 503"),
   list(matchType = "NONE", confidence = 100L))
@@ -167,4 +173,33 @@ test_that("with the registry: the flagless synonym is a DECLARED merge with its 
   chk <- TaxaTools::check_taxon_registry(reg)
   expect_identical(sum(chk$kind == "undeclared_merge"), 0L)
   expect_identical(sum(chk$kind == "declared_merge"), 1L)
+})
+
+test_that("VARIANT is matched as a fuzzy answer; the old EXACT/FUZZY/HIGHERRANK rule left it unmatched", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(name_backbone = .backbone, .package = "rgbif")
+  x <- suppressMessages(lookup_gbif_taxa(c("Pyrogophorus", "Hypsurus karyi")))
+  expect_identical(x$gbif_matchType, c("VARIANT", "VARIANT"))
+  expect_false(any(x$gbif_matchType %in% c("EXACT", "FUZZY", "HIGHERRANK")))   # the old rule's set: none of these
+  expect_identical(x$matched, c(TRUE, TRUE))
+  expect_identical(x$match_type, c("Fuzzy", "Fuzzy"))
+  expect_identical(x$matched_rank, c("genus", "species"))
+  expect_identical(x$current_record_id[1], "2299855")
+  expect_identical(attr(x, "n_variant"), 2L)
+  expect_identical(attr(x, "n_fuzzy"), 0L)                     # GBIF's own FUZZY count is not merged with VARIANT
+})
+
+test_that("with the registry: a VARIANT genus answer gives the genus id; a VARIANT species answer is not a name match", {
+  skip_if_not_installed("rgbif")
+  skip_if_not("build_taxon_registry" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the taxon registry")
+  local_mocked_bindings(name_backbone = .backbone, .package = "rgbif")
+  reg <- suppressMessages(TaxaTools::build_taxon_registry(
+    data.frame(verbatim_name = c("Pyrogophorus notadus", "Hypsurus karyi"), source_table = "t"),
+    run_id = "test", key_backbone_id = 11L, lookup = lookup_gbif_taxa))
+  id <- reg$names$taxon_id[match(c("Pyrogophorus notadus", "Hypsurus karyi"), reg$names$verbatim_name)]
+  expect_identical(id[1], "local:2299855:notadus")            # under the VARIANT genus key, not plain "local:<name>"
+  expect_true("gbif:2299855" %in% reg$taxa$taxon_id)
+  st <- reg$names$status[match("Hypsurus karyi", reg$names$verbatim_name)]
+  expect_false(st %in% c("accepted", "synonym"))               # a spelling variant never resolves a species by itself
+  expect_false(identical(id[2], "gbif:2389310"))
 })

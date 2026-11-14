@@ -81,22 +81,26 @@
 #'       rank, positionally aligned.}
 #'     \item{score}{\code{NA} (GBIF's confidence is not carried).}
 #'     \item{verified}{\code{FALSE} only where the request failed.}
-#'     \item{matched}{\code{TRUE} for EXACT, FUZZY and HIGHERRANK answers
-#'       with a key. A HIGHERRANK answer is matched at its coarser rank: read
-#'       \code{matched_rank}. LOOKUP_RECOVERED is not matched (it has no
+#'     \item{matched}{\code{TRUE} for EXACT, FUZZY, VARIANT and HIGHERRANK
+#'       answers with a key. A HIGHERRANK answer is matched at its coarser rank:
+#'       read \code{matched_rank}. A VARIANT answer (GBIF matched a known
+#'       orthographic variant of the name) is a different spelling, so it is
+#'       matched as a fuzzy answer. LOOKUP_RECOVERED is not matched (it has no
 #'       lineage).}
 #'     \item{record_id}{The matched record's own GBIF key.}
 #'     \item{current_record_id}{Its accepted key (its own key when accepted).}
 #'     \item{data_source_id}{11 (GBIF).}
 #'     \item{entry_date}{\code{NA}.}
-#'     \item{match_type}{\code{"Fuzzy"} for FUZZY, \code{"Exact"} for other
-#'       matched rows, else \code{NA}.}
+#'     \item{match_type}{\code{"Fuzzy"} for FUZZY and VARIANT, \code{"Exact"}
+#'       for other matched rows, else \code{NA}. A registry built on this lookup
+#'       accepts a fuzzy answer for a genus word, but resolves a name by one only
+#'       under its gender rule.}
 #'     \item{gbif_matchType, gbif_status}{GBIF's own match type and status.}
 #'   }
 #'   Attributes \code{n_requested} (names asked), \code{n_cached} (served
 #'   from \code{cache_dir} without a request), \code{n_error} (requests that
 #'   failed: not answered, not the same as unmatched), \code{n_fuzzy},
-#'   \code{n_higherrank} and \code{n_recovered}.
+#'   \code{n_higherrank}, \code{n_recovered} and \code{n_variant}.
 #'
 #' @seealso \code{\link{get_keys_from_context}}, which this calls with
 #'   \code{return_keys = TRUE}.
@@ -117,7 +121,7 @@ lookup_gbif_taxa <- function(names, rank = NULL, context = NULL, cache_dir = NUL
             "classification_ids", "data_source_id", "entry_date", "match_type", "gbif_matchType", "gbif_status")
   if (n == 0L) {
     out <- as.data.frame(stats::setNames(replicate(length(cols), character(0), simplify = FALSE), cols), stringsAsFactors = FALSE)
-    for (a in c("n_requested", "n_cached", "n_error", "n_fuzzy", "n_higherrank", "n_recovered")) attr(out, a) <- 0L
+    for (a in c("n_requested", "n_cached", "n_error", "n_fuzzy", "n_higherrank", "n_recovered", "n_variant")) attr(out, a) <- 0L
     return(out)
   }
 
@@ -134,7 +138,7 @@ lookup_gbif_taxa <- function(names, rank = NULL, context = NULL, cache_dir = NUL
   n_cached <- .gkfc_state$cache_hits
 
   mt <- g$matchType
-  matched <- mt %in% c("EXACT", "FUZZY", "HIGHERRANK") & !is.na(g$usageKey)
+  matched <- mt %in% c("EXACT", "FUZZY", "VARIANT", "HIGHERRANK") & !is.na(g$usageKey)
   syn <- .lgt_is_synonym(g$gbif_synonym, g$gbif_status, g$gbif_acceptedUsageKey, g$usageKey)
   cur <- ifelse(!is.na(g$gbif_acceptedUsageKey), g$gbif_acceptedUsageKey, g$usageKey)
   mr <- tolower(g$gbif_rank)
@@ -165,7 +169,7 @@ lookup_gbif_taxa <- function(names, rank = NULL, context = NULL, cache_dir = NUL
     classification_ids = ids,
     data_source_id = 11L,
     entry_date = NA_character_,
-    match_type = ifelse(matched, ifelse(mt == "FUZZY", "Fuzzy", "Exact"), NA_character_),
+    match_type = ifelse(matched, ifelse(mt %in% c("FUZZY", "VARIANT"), "Fuzzy", "Exact"), NA_character_),
     gbif_matchType = mt,
     gbif_status = g$gbif_status,
     stringsAsFactors = FALSE
@@ -176,5 +180,6 @@ lookup_gbif_taxa <- function(names, rank = NULL, context = NULL, cache_dir = NUL
   attr(out, "n_fuzzy") <- sum(mt %in% "FUZZY")
   attr(out, "n_higherrank") <- sum(mt %in% "HIGHERRANK")
   attr(out, "n_recovered") <- sum(mt %in% "LOOKUP_RECOVERED")
+  attr(out, "n_variant") <- sum(mt %in% "VARIANT")
   out
 }
