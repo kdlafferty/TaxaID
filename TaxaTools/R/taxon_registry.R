@@ -29,6 +29,20 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 .GENDER_ENDINGS <- "(us|um|a|is|e|er|ra|rum|os|on)$"
 # Ranks at which an answer to a binomial is an answer about THAT species.
 .SPECIES_LEVEL <- c("species", "subspecies", "variety", "form", "forma", "infraspecies", "infraspecific")
+# Rank ladder for "was the name answered at a coarser rank than it was asked at?". Below species everything is one
+# step (infraspecific). A rank not on the ladder cannot be compared: an ANSWER at such a rank counts as coarser
+# (refused, not accepted); a name ASKED at such a rank falls back to the shape rule.
+.RANK_LADDER <- c(kingdom = 1L, phylum = 2L, class = 3L, order = 4L, family = 5L, genus = 6L, species = 7L,
+                  subspecies = 8L, variety = 8L, form = 8L, forma = 8L, infraspecies = 8L, infraspecific = 8L)
+
+#' The rank a name was asked at: the rank given, else genus (one word), species (two), infraspecific (three or more)
+#' @noRd
+.asked_rank_level <- function(name_clean, rank_given) {
+  given <- unname(.RANK_LADDER[tolower(rank_given)])
+  nw <- lengths(strsplit(trimws(name_clean), "\\s+"))
+  shape <- ifelse(nw <= 1L, 6L, ifelse(nw == 2L, 7L, 8L))
+  ifelse(is.na(given), shape, given)
+}
 
 #' @noRd
 .registry_prefix <- function(backbone_id) {
@@ -332,9 +346,10 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   # Three answers that must NOT resolve a name to the id they carry:
   #  - a lookup that FAILED (verified FALSE): status lookup_failed, no id, never a local id --
   #    a failed request is not an answer, and attach_taxon_ids() refuses the name;
-  #  - a binomial answered only ABOVE species (the backbone lacks the species and returns its
-  #    genus): taking the genus id would merge every such species of the genus into one taxon;
-  #    status rank_fallback, then a run-local id under that genus (below);
+  #  - a name answered at a COARSER rank than it was asked at (a binomial answered at its genus, a genus at its
+  #    family, a trinomial at its species): taking that id would merge the name into its ancestor; status
+  #    rank_fallback, then a run-local id under the answered ancestor (below). Every row is checked, not only
+  #    binomials;
   #  - a fuzzy answer that is not a gender variant: a different string, so a different taxon
   #    until shown otherwise; status fuzzy_rejected, then the unresolved path.
   # A row the lineage gate refused is an ANSWER (the service named a taxon in another
@@ -343,8 +358,9 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   failed <- !(r$verified %in% TRUE) & !gated
   nm$status[gated] <- "homonym_rejected"
   nm$status[failed] <- "lookup_failed"; nm$taxon_id[failed] <- NA_character_
-  binom <- grepl("^\\S+ \\S+$", nm$name_clean)
-  above <- ok & binom & !is.na(nm$matched_rank) & !(nm$matched_rank %in% .SPECIES_LEVEL)
+  ans_lvl <- unname(.RANK_LADDER[nm$matched_rank])
+  above <- ok & (is.na(ans_lvl) | ans_lvl < .asked_rank_level(nm$name_clean, nm$rank_given))
+  nm$fallback_parent <- ifelse(above, nm$taxon_id, NA_character_)   # the answered ancestor: parent of the local id
   nm$status[above] <- "rank_fallback"; nm$taxon_id[above] <- NA_character_
   fzr <- nm$status %in% "fuzzy"
   nm$status[fzr] <- "fuzzy_rejected"; nm$taxon_id[fzr] <- NA_character_
@@ -497,7 +513,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       }
       nm$taxon_id[i] <- paste0("local:", x)
       taxa <- rbind(taxa, data.frame(taxon_id = nm$taxon_id[i], name = x, rank = nm$rank_given[i] %||% NA_character_,
-                                     parent_id = NA_character_, snapshot = NA_character_, local = TRUE, stringsAsFactors = FALSE))
+                                     parent_id = nm$fallback_parent[i], snapshot = NA_character_, local = TRUE, stringsAsFactors = FALSE))
       if (is.na(nm$status[i])) nm$status[i] <- "unresolved_local"
     }
   }
