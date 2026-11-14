@@ -359,11 +359,11 @@ that in its own products.
 In writing the code: the TaxaID source code was written with the
 assistance of Anthropic Claude models, used through Claude Code
 (Anthropic PBC, San Francisco, California), from 20 May 2026 to
-9 November 2026. The models were Claude Opus 4.6, 5 and 5.5; Claude
+14 November 2026. The models were Claude Opus 4.6, 5 and 5.5; Claude
 Sonnet 4.6, 5 and 5.5, with Sonnet 5.5 used for review sub-sessions;
 and Claude Fable 5 and 5.1. Nearly every non-merge commit names the
-model that contributed to it in a `Co-Authored-By` trailer -- 1,759 of
-1,821 at `77aa7471`, counted with `git log --no-merges --grep`
+model that contributed to it in a `Co-Authored-By` trailer -- 1,868 of
+1,930 at `2be885aa`, counted with `git log --no-merges --grep`
 `='Co-Authored-By: Claude'`; a count of trailer lines rather than
 commits returns one more, because one commit names two models. No trailer
 names Sonnet 5.5, so its use is stated here rather than checkable there.
@@ -1033,7 +1033,7 @@ the U.S. Fish and Wildlife Service improve taxonomic assignment for
 metabarcoding studies of Great Lakes fish communities. Throughout, Joe
 Craine and Nick Schulte helped me understand how Jonah Ventures computes
 taxonomic assignment. Anthropic Claude models, used through Claude
-Code, were used from 20 May 2026 to 9 November 2026 to increase
+Code, were used from 20 May 2026 to 14 November 2026 to increase
 robustness, reduce redundancies, strengthen tests, and write and edit
 the documentation required to make TaxaID useful to others as an R
 package; the models and versions are listed under "Use of Large
