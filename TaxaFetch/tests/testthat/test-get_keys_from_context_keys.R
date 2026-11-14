@@ -110,3 +110,26 @@ test_that("REVIEW F7: a HIGHERRANK row whose recovery request failed is returned
   again <- suppressMessages(suppressWarnings(get_keys_from_context(data.frame(kingdom = "Animalia", family = "Cyprinidae"), return_keys = TRUE, cache_dir = d)))
   expect_identical(again$matchType, "ERROR")
 })
+
+# Package review 2026-11-13, N2: the cache had no TTL, so a GBIF backbone revision never reached a cached row.
+# A row older than 365 days (verify_taxon_names()'s default) is asked again, and so is one with no written_at.
+# FAILS on 1f3e31d0: the 400-day-old row is served.
+test_that("REVIEW N2: a cached row older than 365 days, or with no written_at, is asked again; a fresh one is served", {
+  skip_if_not_installed("rgbif")
+  d <- tempfile()
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
+  local_mocked_bindings(name_backbone = .rec_synonym, .package = "rgbif")
+  a <- suppressMessages(get_keys_from_context(.sp("Embiotoca caryi"), return_keys = TRUE, cache_dir = d))
+  f <- list.files(d, full.names = TRUE)
+  expect_length(f, 1L)
+  ent <- readRDS(f)
+  local_mocked_bindings(name_backbone = function(...) stop("asked again"), .package = "rgbif")
+  ask <- function() suppressMessages(suppressWarnings(get_keys_from_context(.sp("Embiotoca caryi"), return_keys = TRUE, cache_dir = d)))
+  ent$written_at <- Sys.time() - 364 * 86400; saveRDS(ent, f)
+  expect_identical(ask(), a)                                   # within the TTL: served
+  ent$written_at <- Sys.time() - 400 * 86400; saveRDS(ent, f)
+  expect_identical(ask()$matchType, "ERROR")                   # 1f3e31d0: the 400-day-old row is served
+  ent$written_at <- NULL; saveRDS(ent, f)
+  expect_identical(ask()$matchType, "ERROR")                   # no age: cannot prove fresh
+})
