@@ -57,6 +57,11 @@ name (the occurrence pool's own GBIF \code{speciesKey}), that key IS the
 taxon identifier; the lookup still supplies the ancestor chain, and a lookup
 whose accepted record differs from the pool's key is recorded as
 \code{status = "pool_key_conflict"} for the guard, never silently resolved.
+A name the pool holds under two or more different keys is not keyed from
+the pool at all (its identifier comes from the lookup alone); it is listed in
+\code{meta$pool_key_ambiguous} and reported by
+\code{\link{check_taxon_registry}} as an error-class
+\code{pool_key_ambiguous} finding.
 
 \strong{Unresolved names} get a run-local identifier under their resolved
 genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even

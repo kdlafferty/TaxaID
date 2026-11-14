@@ -231,8 +231,7 @@ test_that("a name the pool holds under 2+ keys is NOT keyed from the pool (no si
                    species_key = c(999L, 2389310L, 999L, 1L, 2L))
   reg <- build_taxon_registry(.names("Hypsurus caryi", "pool"), run_id = "t6b", lookup = .real_lookup, pool_keys = pk)
   expect_identical(reg$names$taxon_id, "gbif:2389310")          # the lookup's id, not either pool key
-  expect_identical(reg$names$status, "accepted")
-  expect_false(identical(reg$names$backend, "pool_keys"))
+  expect_identical(reg$names$status, "accepted")                 # a silent first pick would give gbif:999 / pool_key_conflict
   a <- reg$meta$pool_key_ambiguous
   expect_identical(a$verbatim_name, c("Hypsurus caryi", "Absent name"))
   expect_identical(a$species_keys, c("2389310 | 999", "1 | 2"))
@@ -242,11 +241,12 @@ test_that("a name the pool holds under 2+ keys is NOT keyed from the pool (no si
   expect_identical(nrow(f), 2L)
   expect_identical(unique(f$severity), "error")
   expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "pool_key_ambiguous")
-  # one key repeated is not ambiguity
+  # one key repeated is not ambiguity: the name IS keyed from the pool (999 differs from the lookup, so it shows)
   reg1 <- build_taxon_registry(.names("Hypsurus caryi", "pool"), run_id = "t6c", lookup = .real_lookup,
-                               pool_keys = data.frame(verbatim_name = c("Hypsurus caryi", "Hypsurus caryi"), species_key = c(2389310L, 2389310L)))
+                               pool_keys = data.frame(verbatim_name = c("Hypsurus caryi", "Hypsurus caryi"), species_key = c(999L, 999L)))
   expect_null(reg1$meta$pool_key_ambiguous)
-  expect_identical(reg1$names$backend, "pool_keys")
+  expect_identical(reg1$names$taxon_id, "gbif:999")
+  expect_identical(reg1$names$status, "pool_key_conflict")
 })
 
 # --- freeze, stamp, join --------------------------------------------------------------------
