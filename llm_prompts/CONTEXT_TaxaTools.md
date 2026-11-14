@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 1.0.0. 53 exported function(s).
+Version 1.0.0. 60 exported function(s).
 
 ## Functions
 
@@ -79,6 +79,22 @@ Some rank disagreements are NOT homonyms: "Bacillariophyta" (NCBI phylum, GBIF c
 
 A cache written before this gate existed carries no matched_rank and cannot be checked, so it is discarded and re-resolved rather than trusted.
 
+### attach_taxon_ids(x, registry, name_col, source_table, context_col = NULL)
+
+Attach registry taxon identifiers to a table
+
+Adds a 'taxon_id' column to 'x' by looking up each row's verbatim name, as registered for 'source_table', in a FROZEN registry, and stamps the table with the registry's identity. The verbatim name column is left untouched. A name the registry does not hold for that table is an error: after the freeze nothing is resolved on the fly.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| x | yes |  | A data frame. |
+| registry | yes |  | A frozen taxon_registry. |
+| name_col | yes |  | Column of x holding the verbatim name. |
+| source_table | yes |  | The source_table label the names were registered under. |
+| context_col | no | NULL | NULL or the column of x holding the context each name was registered with; needed only when one name was registered under several contexts for this table. |
+
+**Value:** 'x' with 'taxon_id', stamped.
+
 ### build_report_context(study_description = NULL, data_type = NULL, workflow = NULL, packages = NULL, parameters = NULL, statistics = NULL, citations = NULL, facts = NULL)
 
 Build a Report Context Object
@@ -111,6 +127,36 @@ statistics vs. facts: Use statistics for numeric results (sample sizes, rates, c
 Reuse: Build one context object and pass it to both draft_methods_text() and draft_results_text() for consistent grounding across sections.
 
 Pipeline-specific packages can provide helper functions that extract facts from their output objects and pass them here (e.g., a TaxaAssign helper that reads report_params attributes from posterior output and consensus objects).
+
+### build_taxon_registry(names, run_id, key_backbone_id = 11L, pool_keys = NULL, lookup = NULL, cache_dir = NULL, tiebreak = NULL)
+
+Build a run's taxon registry
+
+Resolves every verbatim name the run will use, from every table, ONCE, to a record identifier under one key authority, and records how each name got there. Lookups go through 'verify_taxon_names' with 'return_ids = TRUE', so the identifier of the accepted record and of every ancestor come back in one answer; names are cleaned first with 'clean_taxon_names'. The registry is then frozen with 'freeze_taxon_registry' before any table is joined.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| names | yes |  | A data frame of the names to register, one row per name per source: verbatim_name and source_table (required); source_naming (e.g. "ncbi", "gbif", "user"), rank_given and context (a pipe-delimited higher-taxon string, the homonym gate) optional. |
+| run_id | yes |  | Character scalar identifying the run; part of every stamp. |
+| key_backbone_id | no | 11L | Integer: the key authority's Global Names Verifier data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default 11L. |
+| pool_keys | no | NULL | NULL or a data frame with verbatim_name and species_key: the occurrence pool's accepted key per name, used as the identifier ahead of any lookup. Optional kingdom ... genus columns give each key's lineage for the tie-break. |
+| lookup | no | NULL | NULL (default: verify_taxon_names() against key_backbone_id with cache_dir) or a function function(names, rank, context) returning a table shaped like verify_taxon_names(return_ids = TRUE), one row per name, with at least matched_name, matched_rank, is_synonym, classification_path, classification_ranks, verified, matched, current_record_id, classification_ids and match_type; supply one to resolve from recorded answers offline. |
+| cache_dir | no | NULL | Passed to verify_taxon_names() by the default lookup. |
+| tiebreak | no | NULL | NULL (default: no tie-break; 2+ candidate ids stay error-class findings) or a list: gbif_first (logical, default TRUE: for a name the pool holds under 2+ keys, take the lookup's own answer when it is exactly one of them; never used for a pool_key_conflict) and authorities, a named, ordered list of functions function(name) returning that authority's pipe-delimited lineage for the name, or NA (e.g. list(ncbi = ..., worms = ...)). Candidate lineages come from the lookup's classification and from optional kingdom ... genus columns of pool_keys. |
+
+**Value:** An object of class 'taxon_registry': a list with 'taxa', 'names' and 'meta', unfrozen.
+
+#### Details
+
+Pool keys first. Where pool_keys gives an accepted key for a name (the occurrence pool's own GBIF speciesKey), that key IS the taxon identifier; the lookup still supplies the ancestor chain, and a lookup whose accepted record differs from the pool's key is recorded as status = "pool_key_conflict" for the guard, never silently resolved. A name the pool holds under two or more different keys is not keyed from the pool at all (its identifier comes from the lookup alone); it is listed in meta$pool_key_ambiguous and reported by check_taxon_registry as an error-class pool_key_ambiguous finding.
+
+Tie-break (off by default, tiebreak). Where a name has two or more candidate ids (pool_key_ambiguous, or a pool_key_conflict between the pool's key and the lookup's), the candidates are decided by, in order: for pool_key_ambiguous only, the lookup's own answer when it is exactly one of the pool's keys (gbif_first); then each of authorities in turn. The candidates' lineages are compared rank by rank: a rank distinguishes only where every candidate has a value there and the values differ (a rank one candidate lacks is missing data, not evidence). Per distinguishing rank, a candidate scores 1 if the authority's lineage holds its term; strictly the highest score wins. A decided name gets status = "pool_key_tiebreak"; an undecided one keeps its error-class finding. Candidates with identical lineages are never decided. Step 0 never applies to a pool_key_conflict: there the lookup's key is one of the two candidates by construction, so it would always win and undo pool-keys-first; a conflict is decided by the authorities or not at all.
+
+Homonyms. An exact answer that contradicts the name's own context (the two name different kingdoms, or the context names a phylum, one the run's answers use, other than the answer's) is refused, whichever lookup gave it: the name gets status = "homonym_rejected" and takes the unresolved path below. A context that differs only at class, order or family is another classification of the same taxon, not a homonym. A name with no context is not checked.
+
+Coarser answers. Every name is checked for an answer at a coarser rank than it was asked at (rank_given, else genus for one word, species for two, infraspecific for three or more): such a name gets status = "rank_fallback" and a run-local identifier under the answered ancestor, never that ancestor's identifier.
+
+Unresolved names get a run-local identifier under their resolved genus (local:<genus id>:<epithet>), or local:<name> when even the genus is unknown. The genus is resolved per genus word AND context: genus rows already in the registry are used only where they do not contradict the context, and a word naming two or more such genera is refused (meta$genus_homonym_unresolved); otherwise the genus is looked up with the names' context. A genus answered only by a fuzzy or variant match is taken only where the context names the answer's kingdom and phylum; an exact answer is refused where it contradicts the context. Refusals are listed in meta$genus_variant_rejected (a genus word can name a genus in another kingdom). One narrow exception: a binomial whose epithet differs from a resolved congener's only in its Latin gender ending (Platybelone argala / argalus) takes that congener's identifier with status = "gender_variant", only from a congener with the same context (or, with a context, the same kingdom), and never for a name the lineage gate rejected. A second: a binomial the lookup answers as a GBIF VARIANT of its genus, with the epithet unchanged (Pyrogophorus platyrachis / Pyrgophorus platyrachis), takes that species' identifier with status = "genus_variant", under the same gate: the name's own context must name the answer's kingdom and phylum, or it is refused and listed in meta$genus_variant_rejected. This needs the lookup's gbif_matchType column. Every use is listed by check_taxon_registry. No other fuzzy matching is accepted: any other fuzzy answer gets status = "fuzzy_rejected" and no identifier from the answer; the name takes the unresolved path above. A lookup must return every column the registry reads (see lookup); a missing one is refused with an error of class taxon_registry_bad_lookup, never defaulted.
 
 ### cache_ok(path, inputs = NULL)
 
@@ -436,6 +482,21 @@ Compares the library this session is using against a manifest written by 'write_
 - EXTRA: Installed now, absent from the manifest; usually a manifest written before a package existed.
 
 Version and Built differences are shown but never fail on their own: rebuilding identical source moves Built and changes nothing that matters, and every TaxaID package sits at 0.1.0 so the version is silent by construction. The code hash is the signal.
+
+### check_taxon_registry(registry, tables = list(), mode = c("report", "error"), verbose = TRUE)
+
+Check a taxon registry and the tables stamped from it
+
+The guard. It reports, per table: taxa held under two or more verbatim names (expected for input tables, and the baseline a run is compared against); names that map to two or more taxa; unresolved and run-local names; the *merge audit*: every taxon identifier reached by two or more different names, each with the relationship its backend declared, and an error-class finding where none was declared (a fuzzy match onto another name's taxon, a pool key that disagrees with the lookup); conflicting descriptions of one identifier; and, for stamped tables, a missing stamp, the same taxon twice in ...
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| registry | yes |  | A taxon_registry. |
+| tables | no | list() | Named list of data frames to check (optional). |
+| mode | no | c("report", "error") | "report" (default): return the findings. "error": stop if any error-class finding exists. |
+| verbose | no | TRUE | Print a summary. Default TRUE. |
+
+**Value:** A data frame of findings: 'severity' ('"error"' or '"info"'), 'kind', 'table', 'taxon_id', 'names', 'detail', 'n'.
 
 ### clean_taxon_names(name_vec, remove_abbr = NULL, strip_modifiers = NULL)
 
@@ -797,6 +858,18 @@ Detects higher-rank inconsistencies: cases where the same taxon name at one rank
 
 These conflicts arise when merging taxonomy from multiple sources (GBIF + NCBI + WoRMS) or when supplementing verified taxonomy with manual corrections. Adapted from the GITA pipeline's f_find_taxonomic_inconsistencies(), vectorised for performance.
 
+### freeze_taxon_registry(registry)
+
+Freeze a taxon registry before the first join
+
+After the freeze the registry cannot grow: a name it does not hold is an error at 'attach_taxon_ids', never a new row. The freeze records the registry's content digest, which every stamp carries, so tables stamped from one frozen registry can be joined and tables from any other cannot. A registry edited after the freeze no longer matches its digest: 'attach_taxon_ids' refuses it and 'check_taxon_registry' reports it as an error.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| registry | yes |  | A taxon_registry from build_taxon_registry. |
+
+**Value:** The registry, frozen.
+
 ### is_plausible_binomial(x)
 
 Test Whether Strings Are Plausible Species Binomials
@@ -812,6 +885,22 @@ Returns TRUE for strings that are structurally plausible species binomials match
 #### Details
 
 Useful for filtering NCBI taxonomy results and occurrence records to described, named species only.
+
+### join_by_taxon(x, y, type = c("left", "inner", "anti", "semi"), extra_by = NULL, verbose = TRUE)
+
+Join two tables on registry taxon identifiers only
+
+The one join helper. Both tables must carry the stamp of the same frozen registry ('attach_taxon_ids'); an unstamped table, or one stamped from another registry, is an error. The join is on 'taxon_id' plus 'extra_by', and 'extra_by' may not name a taxon-name or lineage column. Every call reports the rows on each side with no partner, so a lost fallback shows up as a number.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| x | yes |  | Stamped data frames. |
+| y | yes |  | Stamped data frames. |
+| type | no | c("left", "inner", "anti", "semi") | One of "left", "inner", "anti", "semi". |
+| extra_by | no | NULL | Further join columns (e.g. "grid_id"), never names. |
+| verbose | no | TRUE | Print the no-partner counts. Default TRUE. |
+
+**Value:** The joined table, stamped, with attribute '"no_partner"' ('x_rows', 'y_rows').
 
 ### list_cache_files(cache_dir, patterns, recursive = FALSE, force = FALSE)
 
@@ -865,6 +954,20 @@ Constructor for the 'report_section' S3 class used by per-package report functio
 | statistics | no | NULL | Named list or NULL. Summary statistics computed in this step. |
 
 **Value:** A 'report_section' object (S3 list).
+
+### parent_at(ids, rank, registry)
+
+The ancestor of each taxon at a given rank
+
+Walks 'parent_id' up the registry's own tree, so ring scope and genus fallback read one tree, never a table's own genus or family column.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| ids | yes |  | Character vector of taxon identifiers. |
+| rank | yes |  | Rank to return, e.g. "genus" or "family". |
+| registry | yes |  | A taxon_registry. |
+
+**Value:** Character vector of taxon identifiers ('NA' where the walk does not reach that rank). A taxon AT 'rank' returns itself.
 
 ### parse_classification_path(path, ranks, target_rank)
 
@@ -1251,6 +1354,19 @@ Covers the package's three file-per-key caches: 'scientific_to_common(cache_dir 
 
 Note that WoRMS attributes carry no TTL because they are curated and do not drift between runs; clearing them is how you pick up a WoRMS revision.
 
+### taxon_in(ids, set)
+
+Membership by registry taxon identifier
+
+The identifier form of '%in%': "is this taxon already a candidate?", asked of ids, never of names. 'NA' is never a member.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| ids | yes |  | Character vector of taxon identifiers. |
+| set | yes |  | Character vector of taxon identifiers. |
+
+**Value:** Logical, one per 'ids'.
+
 ### to_faire(input_df, table_type = c("taxaFinal", "taxaRaw"), checkls_ver = "1.02", assay_name = NULL)
 
 Export a TaxaID Data Frame in FAIRe Checklist Format
@@ -1310,7 +1426,7 @@ Returns a data frame of token usage records accumulated since the last call to '
 
 **Value:** A data frame. Columns depend on 'by': '"call"' 'timestamp', 'caller', 'provider', 'model', 'input', 'output', 'total' '"function"' 'caller', 'n_calls', 'input', 'output', 'total' '"provider"' 'provider', 'n_calls', 'input', 'output', 'total' '"session"' 'n_calls', 'input', 'output', 'total' Returns an empty data frame with a message if no calls have been recorded.
 
-### verify_taxon_names(name_list, backbone_id, batch_size = 500, timeout_sec = 30, fallback_backbone_id = 11L, decisions = NULL, cache_dir = NULL, cache_ttl_days = 365, input_rank = NULL, lineage = NULL)
+### verify_taxon_names(name_list, backbone_id, batch_size = 500, timeout_sec = 30, fallback_backbone_id = 11L, decisions = NULL, cache_dir = NULL, cache_ttl_days = 365, input_rank = NULL, lineage = NULL, return_ids = FALSE)
 
 Verify Taxon Names Against a Taxonomic Backbone
 
@@ -1328,8 +1444,9 @@ Checks a vector of taxon names against a target taxonomic backbone using the Glo
 | cache_ttl_days | no | 365 | Numeric (default 365). A cached answer older than this is asked again, so backbone updates (renames, new synonymy) eventually reach a long-lived cache. Inf never expires. |
 | input_rank | no | NULL | Character vector or NULL (default). One rank per element of name_list ("genus", "species", ...; NA where unknown): the rank the CALLER means each name at. Only used by the NCBI path (backbone_id = 4) and only for a name that resolves to more than one NCBI node: when exactly one candidate carries the given rank, that node is taken, with no further request and before decisions is consulted. "Etheostoma" is both a genus and a subgenus; a consensus table knows which it means. On the Global Names path it does not change the query (one best match is returned) but it decides, with lineage, whether that match can be gated: a match at another rank is gated on its lineage, a match at the asked rank only on a kingdom difference (see lineage). On the NCBI path a rank that is given enters the cache key (see cache_dir); elsewhere the key is unchanged. |
 | lineage | no | NULL | Character vector or NULL (default). One lineage context per element of name_list (NA = none): a pipe-delimited string of ancestor names the caller already knows for that name, e.g. "Chordata" or "Metazoa\|Chordata\|Actinopteri". Used twice. On the NCBI path (backbone_id = 4) a homonym is resolved, after input_rank and before decisions, to the one candidate whose own lineage contains any of the context's names (the candidates' lineages are already fetched for the ambiguity report, so this adds no request); zero or several containing candidates leave it ambiguous. Second, a returned classification that contradicts the context -- both carry comparable names (kingdoms are ignored, see check_lineage_agreement()) and share none -- is reported as unverified, never accepted, but only where a CHOICE between taxa existed: on the NCBI path a name that had several candidates and was settled by input_rank or decisions; on the Global Names path (one best match, no candidate set) a match whose rank differs from input_rank, or any match when no rank was given; a match AT the asked rank is gated only when the context names a kingdom (Animalia or Metazoa, Plantae or Viridiplantae, Fungi, Chromista, Protozoa, Bacteria, Archaea) and the returned path's kingdom differs, since a same-rank homonym such as Ulvaria (a fish genus and an alga genus) crosses kingdoms while a reclassification never does. A unique node, or a same-rank match within one kingdom, is accepted however the backbones word its lineage: NCBI carries no phylum rank for many protist lineages, and GBIF and NCBI name the same clades differently, which is reclassification, not a homonym. A name is not a key; this is the caller's way of saying which one it means. Part of the cache key when given. |
+| return_ids | no | FALSE | Logical, default FALSE. When TRUE, six identifier columns are appended (see Value): the backbone's own record identifiers for the matched name and for its currently accepted name, the identifiers of every node in classification_path, the data source queried, and that source's entry date. These are what build_taxon_registry keys on: a name is not a key, a record identifier is. FALSE returns exactly the columns listed first in Value. Part of the cache key when TRUE, so an entry written without identifiers is never served as one with them. |
 
-**Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the match as a taxonomic synonym ('is_synonym = TRUE'), this is the backbone's OWN currently-accepted name, not the (possibly outdated) synonym form that was actually queried - see 'is_synonym' below. Sourced from the Global Names Verifier API's own canonical-name fields, not a local regex, so it is not vulnerable to truncating a trinomial to a binomial the way a naive genus-plus-one-epithet parse would. matched_rank Character. The taxonomic rank 'matched_name' itself was actually resolved at (e.g. '"species"', '"genus"', '"subspecies"') - the last rank present in 'classification_ranks'. Use this, not an assumption carried over from whatever rank the input name was expected to be, to decide how to use 'matched_name' downstream: a query submitted as a species binomial can genuinely resolve only to genus (e.g. an informally-named taxon with no species-level backbone entry), and treating the returned name as still species-level in that case silently corrupts a genus-only name into a fabricated pseudo-binomial. 'NA' when no match was found. is_synonym Logical. 'TRUE' when the backbone's own best match for this name is a taxonomic synonym of a currently-accepted name (in which case 'matched_name' already reports the accepted form, not the synonym). 'NA' when unknown (no match, an API failure, or - for 'backbone_id = 4' specifically - always, since NCBI's direct lookup path does not expose synonym relationships the way the Global Names Verifier path does). Synonymy is a property of the SPECIFIC backbone queried, not a universal fact - the same name can be a synonym under one backbone's own taxonomic opinion and not another's (confirmed directly: GBIF/Catalogue of Life/WoRMS all flag '"Inu"' Snyder 1909 as a synonym of '"Luciogobius"' Gill 1859, while NCBI's own taxonomy does not consider it one at all). This column always reflects whichever single 'backbone_id' was actually queried. classification_path Pipe-delimited classification path from the backbone (e.g., '"Animalia|Chordata|..."'). Already reflects the currently-accepted lineage even when the query matched a synonym. classification_ranks Pipe-delimited rank labels corresponding to 'classification_path'. score Backbone match confidence score between 0 and 1. Higher is better. This measures name-matching quality against the backbone and is unrelated to the sequence match scores used elsewhere in the TaxaID ecosystem (e.g., percent identity from BLAST). verified Logical. 'TRUE' if the lookup ran and the API answered, 'FALSE' if the API failed and fallback values were used - or, when 'lineage' was given, if the API answered and the answer contradicted the caller's lineage (see 'lineage'). The second case is deterministic: the same name with the same context is rejected every time, so retrying it is pointless; the message that names each rejected name tells the two cases apart. It does not say whether the name was found: a name the backbone does not hold returns 'verified = TRUE' with 'matched_name = NA'. Always check rows where 'verified = FALSE'. matched Logical. 'TRUE' only when the lookup ran and returned a name ('verified & !is.na(matched_name)'). Filter on this, not on 'verified', to keep resolved names. fuzzy_corrected Logical. Only present when 'backbone_id = 4'. 'TRUE' if this name was not found by NCBI's own exact search and was instead matched after a fuzzy-spelling correction suggested by 'fallback_backbone_id' (see that parameter). Always review these rows before trusting them - a fuzzy match confirms a plausible correction, not a certain one.
+**Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the match as a taxonomic synonym ('is_synonym = TRUE'), this is the backbone's OWN currently-accepted name, not the (possibly outdated) synonym form that was actually queried - see 'is_synonym' below. Sourced from the Global Names Verifier API's own canonical-name fields, not a local regex, so it is not vulnerable to truncating a trinomial to a binomial the way a naive genus-plus-one-epithet parse would. matched_rank Character. The taxonomic rank 'matched_name' itself was actually resolved at (e.g. '"species"', '"genus"', '"subspecies"') - the last rank present in 'classification_ranks'. Use this, not an assumption carried over from whatever rank the input name was expected to be, to decide how to use 'matched_name' downstream: a query submitted as a species binomial can genuinely resolve only to genus (e.g. an informally-named taxon with no species-level backbone entry), and treating the returned name as still species-level in that case silently corrupts a genus-only name into a fabricated pseudo-binomial. 'NA' when no match was found. is_synonym Logical. 'TRUE' when the backbone's own best match for this name is a taxonomic synonym of a currently-accepted name (in which case 'matched_name' already reports the accepted form, not the synonym). 'NA' when unknown (no match, an API failure, or - for 'backbone_id = 4' specifically - always, since NCBI's direct lookup path does not expose synonym relationships the way the Global Names Verifier path does). Synonymy is a property of the SPECIFIC backbone queried, not a universal fact - the same name can be a synonym under one backbone's own taxonomic opinion and not another's (confirmed directly: GBIF/Catalogue of Life/WoRMS all flag '"Inu"' Snyder 1909 as a synonym of '"Luciogobius"' Gill 1859, while NCBI's own taxonomy does not consider it one at all). This column always reflects whichever single 'backbone_id' was actually queried. classification_path Pipe-delimited classification path from the backbone (e.g., '"Animalia|Chordata|..."'). Already reflects the currently-accepted lineage even when the query matched a synonym. classification_ranks Pipe-delimited rank labels corresponding to 'classification_path'. score Backbone match confidence score between 0 and 1. Higher is better. This measures name-matching quality against the backbone and is unrelated to the sequence match scores used elsewhere in the TaxaID ecosystem (e.g., percent identity from BLAST). verified Logical. 'TRUE' if the lookup ran and the API answered, 'FALSE' if the API failed and fallback values were used - or, when 'lineage' was given, if the API answered and the answer contradicted the caller's lineage (see 'lineage'). The second case is deterministic: the same name with the same context is rejected every time, so retrying it is pointless; the message that names each rejected name tells the two cases apart. It does not say whether the name was found: a name the backbone does not hold returns 'verified = TRUE' with 'matched_name = NA'. Always check rows where 'verified = FALSE'. matched Logical. 'TRUE' only when the lookup ran and returned a name ('verified & !is.na(matched_name)'). Filter on this, not on 'verified', to keep resolved names. fuzzy_corrected Logical. Only present when 'backbone_id = 4'. 'TRUE' if this name was not found by NCBI's own exact search and was instead matched after a fuzzy-spelling correction suggested by 'fallback_backbone_id' (see that parameter). Always review these rows before trusting them - a fuzzy match confirms a plausible correction, not a certain one. record_id, current_record_id, classification_ids, data_source_id, entry_date, match_type Only when 'return_ids = TRUE'. 'record_id': the backbone's identifier for the record the query matched (for a synonym, the synonym's own record). 'current_record_id': the identifier of the currently accepted record (equal to 'record_id' for an accepted name). 'classification_ids': pipe-delimited identifiers aligned with 'classification_path'. 'data_source_id': the backbone queried. 'entry_date': the date the source's records were imported by the Global Names Verifier ('NA' on the NCBI path). 'match_type': the verifier's own match type ('"Exact"', '"Fuzzy"', '"PartialExact"', ...); a fuzzy match is a different string, so it is never a declared synonymy. '"LineageRejected"' marks a row the 'lineage' gate refused: the service answered with a taxon in another lineage, so 'verified' is 'FALSE' although the request did not fail. Identifiers are character: GBIF usage keys, Catalogue of Life codes, WoRMS LSIDs and NCBI taxids differ in form. 'NA' where no match.
 
 #### Details
 

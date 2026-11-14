@@ -4,7 +4,7 @@
 
 Provides tools for acquiring, combining, and preparing taxonomic occurrence data from multiple sources including GBIF and DataONE. The user specifies a spatial area and taxonomic group; TaxaFetch retrieves occurrence records and aligns column naming to DarwinCore conventions. Habitat assignment and spatial quality control are handled by TaxaHabitat. Output is a data frame of taxonomic occurrences at various locations and times. These data feed into TaxaHabitat and then TaxaExpect, which generates spatially explicit predictions of relative occurrence across taxa. Part of the TaxaID ecosystem.
 
-Version 1.0.0. 32 exported function(s).
+Version 1.0.0. 33 exported function(s).
 
 ## Functions
 
@@ -547,7 +547,7 @@ Column standardization and a known, unfixable asymmetry: the "standard" column l
 
 - Similarly, samplingProtocol/occurrenceRemarks/ preparations (used by filter_gbif_quality(exclude_edna = TRUE)) are not present in GBIF's SIMPLE_CSV export either, and so are NA on the download path; they are included when present on the fetch path.
 
-### get_keys_from_context(hierarchy_df)
+### get_keys_from_context(hierarchy_df, return_keys = FALSE, cache_dir = NULL)
 
 Fetch GBIF Taxon Keys Using Full Taxonomic Context
 
@@ -556,6 +556,8 @@ Resolves a dataframe of scientific names to GBIF usage keys by supplying the ful
 | Param | Required | Default | Doc |
 |---|---|---|---|
 | hierarchy_df | yes |  | A dataframe. Each row is one taxon. Columns should be named for Linnaean ranks (case-insensitive): kingdom, phylum, class, order, family, genus, species. Not all ranks need to be present. For each row, the most specific rank provided is used as the lookup target; higher ranks are passed as disambiguation context. |
+| return_keys | no | FALSE | Logical, default FALSE. When TRUE, the identifiers GBIF's backbone match already returns are appended as well (prefixed gbif_): gbif_acceptedUsageKey, gbif_status, gbif_synonym, gbif_canonicalName, and for each rank from kingdom to species its key and name (gbif_kingdomKey, gbif_kingdom, ..., gbif_speciesKey, gbif_species). No extra request is made. A synonym's usageKey is its OWN record; its accepted record is gbif_acceptedUsageKey. A species answered only at a higher rank (matchType = "HIGHERRANK") carries that higher rank's key in usageKey: read gbif_rank before treating it as the species. |
+| cache_dir | no | NULL | Character or NULL (default, no cache). A directory for a per-row on-disk cache keyed on everything the request sends (the name, its rank, its context ranks) and on return_keys. Only answered rows are written; a row whose request failed (matchType = "ERROR"), or a HIGHERRANK row whose name_lookup() recovery request failed, is never cached and is asked again next call. A cached row older than 365 days (the default lifetime of TaxaTools::verify_taxon_names()'s cache), or one with no recorded write time, is asked again, so a GBIF backbone revision reaches it. |
 
 **Value:** The input dataframe with three columns appended: usageKey Integer. GBIF usage key for the matched name, or 'NA' if no match was found. matchType Character. GBIF match quality: '"EXACT"', '"FUZZY"', '"HIGHERRANK"', '"LOOKUP_RECOVERED"' (a '"HIGHERRANK"' result recovered via a secondary 'name_lookup()' call - see '@details'), '"NONE"', '"NO_DATA"' (no rank columns present in this row), or '"ERROR"' (API call failed). gbif_rank Character. The rank GBIF assigned to the matched record, or 'NA' if no match.
 
@@ -601,6 +603,21 @@ catalog <- harvest_dataone_catalog(cache_file = "pasta_catalog.rds") geo_prompt 
 Cache invalidation: Delete or rename the cache file to force a full re-download. The cache stores the raw tibble -- no further processing is done at cache-read time.
 
 PASTA coordinates field: The Solr coordinates field is indexed but unreliably populated for most packages. Spatial filtering is handled downstream via screen_eml_columns (EML <boundingCoordinates>) and record-level bbox filtering in fetch_dataone_occurrences.
+
+### lookup_gbif_taxa(names, rank = NULL, context = NULL, cache_dir = NULL)
+
+Look Up Taxon Names in GBIF's Backbone, With Identifiers
+
+Matches each name against GBIF's backbone taxonomy (the release GBIF occurrence records are keyed on) and returns the record's identifiers: its own key, its accepted key, and the key of every rank in its classification. The output has the columns of 'TaxaTools::verify_taxon_names(return_ids = TRUE)', so it can be passed as the 'lookup' of 'TaxaTools::build_taxon_registry()'.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| names | yes |  | Character vector of taxon names. |
+| rank | no | NULL | NULL (default) or a character vector, one per name: the rank each name is meant at. A rank outside kingdom ... species, or NA, is inferred: species for a name of two or more words, genus for one word. Give the rank for a one-word name above genus (a family), or it is asked as a genus. |
+| context | no | NULL | NULL (default) or a character vector, one per name: a pipe-delimited higher-taxon string. Only a leading kingdom name is used (passed to GBIF as context); the other elements carry no rank label. |
+| cache_dir | no | NULL | NULL (default, no cache) or a directory: the per-row cache of get_keys_from_context. Failed requests are never cached. |
+
+**Value:** A data frame, one row per name, in input order: user_supplied_name The name as given. matched_name The ACCEPTED name GBIF gives for the match at its matched rank (a synonym's accepted name, read from the record's own classification), or 'NA' when not matched. matched_rank Lower-case rank of the matched record. is_synonym 'TRUE' when the record is a synonym by any of its synonym flag, a synonym-type status (SYNONYM, HETEROTYPIC_SYNONYM, HOMOTYPIC_SYNONYM, PROPARTE_SYNONYM, MISAPPLIED), or an accepted key that differs from its own key. PROVISIONALLY_ACCEPTED and DOUBTFUL records are not synonyms. classification_path, classification_ranks, classification_ids Pipe-delimited names, ranks and GBIF keys, kingdom to the matched rank, positionally aligned. score 'NA' (GBIF's confidence is not carried). verified 'FALSE' only where the request failed. matched 'TRUE' for EXACT, FUZZY, VARIANT and HIGHERRANK answers with a key. A HIGHERRANK answer is matched at its coarser rank: read 'matched_rank'. A VARIANT answer (GBIF matched a known orthographic variant of the name) is a different spelling, so it is matched as a fuzzy answer. LOOKUP_RECOVERED is not matched (it has no lineage). record_id The matched record's own GBIF key. current_record_id Its accepted key (its own key when accepted). data_source_id 11 (GBIF). entry_date 'NA'. match_type '"Fuzzy"' for FUZZY and VARIANT, '"Exact"' for other matched rows, else 'NA'. A registry built on this lookup takes a fuzzy or variant GENUS answer only where the names' context names its kingdom and phylum; it resolves a binomial by a fuzzy answer only under its gender rule or, for a GBIF VARIANT of the genus with the epithet unchanged, its genus_variant rule (same gate). gbif_matchType, gbif_status GBIF's own match type and status. Attributes 'n_requested' (names asked), 'n_cached' (served from 'cache_dir' without a request), 'n_error' (requests that failed: not answered, not the same as unmatched), 'n_fuzzy', 'n_higherrank', 'n_recovered' and 'n_variant'.
 
 ### make_bbox_wkt(lat, lon, radius_deg)
 
