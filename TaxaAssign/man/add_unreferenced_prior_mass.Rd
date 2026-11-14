@@ -13,7 +13,8 @@ add_unreferenced_prior_mass(
   unreferenced_types = c("unreferenced_species", "unreferenced_genus",
     "unreferenced_family", "unreferenced_order", "unreferenced_class"),
   mismatch_message_fraction = 0.05,
-  named_rows = FALSE
+  named_rows = FALSE,
+  withhold = c("finest", "genus")
 )
 }
 \arguments{
@@ -59,6 +60,13 @@ either way. Only a species claimed by its OWN genus ring is named: a
 family, order, class or phylum ring stands for "some unreferenced taxon
 of this clade", so the species it claims add their prior to that ring
 row unnamed, exactly as with \code{FALSE}.}
+
+\item{withhold}{Character, the rule that keeps a local unreferenced species
+out of a ring too coarse for it (see Withheld species). \code{"finest"}
+(default): the species adds its prior only to the ring at the finest rank
+where its lineage has a referenced taxon for this marker. \code{"genus"}: only
+a referenced genus withholds a species, so a species whose family has a
+reference can still be claimed by an order, class or phylum ring.}
 }
 \value{
 \code{joined} with \code{prior_mean}, \code{prior_alpha} and \code{prior_beta} updated
@@ -131,11 +139,19 @@ and messages when that fraction exceeds \code{mismatch_message_fraction}.
 
 \section{Withheld species}{
 
-A local unreferenced species whose genus has a reference for this marker
-(the genus of any name in \code{referenced_names}) is claimed only by its own
-genus ring. Where the unit has no genus ring for it, the genus's
-references were compared with the read and did not match, so no family,
-order, class or phylum ring may name it; it is withheld and listed in
+A ring row stands for an unsequenced relative at its scope. A local
+unreferenced species belongs in that ring only if no finer taxon of its
+own lineage was already tested against the read. Under the default
+\code{withhold = "finest"}, a species is claimed only by the ring at the finest
+rank where its lineage has a referenced taxon for this marker (its genus,
+family, order, ...; the lineages of \code{referenced_names} in \code{taxonomy} and
+of the named candidates in \code{joined}). Where the unit has no ring at that
+rank, that taxon's references were compared with the read and did not
+match, so no coarser ring may name the species; it is withheld with reason
+\code{"genus_referenced_unmatched"} when its genus has a reference and
+\code{"finer_rank_referenced_unmatched"} when the referenced taxon is coarser
+(its family, order, ...). Under \code{withhold = "genus"} only a referenced
+genus withholds a species from its family or coarser rings. Withheld species are listed in
 \code{attr(result, "unreferenced_withheld")} (\code{observation_id}, \code{taxon_name},
 \code{scope}, \code{scope_rank}, \code{reason}), present on every return.
 }
