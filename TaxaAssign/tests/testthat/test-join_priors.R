@@ -952,3 +952,58 @@ test_that("join_priors carries the fallthrough table on every return", {
   expect_false(is.null(.fallthrough(out)))
   expect_s3_class(.fallthrough(out), "data.frame")
 })
+
+# ---- taxonomy_cache_dir: the fallback's name lookups use the run's name cache ----
+
+test_that("REVIEW JP: taxonomy_cache_dir is the LAST formal, default NULL, released formals an exact prefix", {
+  f <- names(formals(join_priors))
+  released <- c("likelihoods", "taxaexpect_priors", "site", "taxonomy_lookup", "rank_system",
+                "expansion_taxonomy", "expansion_min_prior", "expansion_cumulative_prior",
+                "singleton_taxonomy", "backbone_id")
+  expect_identical(f[seq_along(released)], released)
+  expect_identical(f[-seq_along(released)], "taxonomy_cache_dir")
+  expect_null(formals(join_priors)$taxonomy_cache_dir)
+})
+
+.jp_fallback_args <- function(...) {
+  got <- NULL
+  local_mocked_bindings(
+    verify_taxon_names = function(name_list, ...) {
+      got <<- list(...)
+      stop("captured")
+    },
+    .package = "TaxaTools"
+  )
+  lik <- .make_lik_family_only()
+  lik$taxon_name <- "Gillichthys mirabilis"
+  lik$taxon_name_rank <- "species"
+  lik$species <- "Gillichthys mirabilis"
+  lik$genus <- "Gillichthys"
+  lik$family <- NA_character_
+  suppressMessages(suppressWarnings(join_priors(
+    lik, .make_pri_gobiidae(),
+    site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine"),
+    rank_system = c("family", "genus", "species"),
+    backbone_id = 11L, ...
+  )))
+  got
+}
+
+test_that("by default the fallback sends no cache_dir (the lookup is uncached)", {
+  got <- .jp_fallback_args()
+  expect_false(is.null(got))
+  expect_false("cache_dir" %in% names(got))
+})
+
+test_that("taxonomy_cache_dir reaches verify_taxon_names() as cache_dir", {
+  skip_if_not("taxonomy_cache_dir" %in% names(formals(join_priors)))
+  d <- withr::local_tempdir()
+  got <- .jp_fallback_args(taxonomy_cache_dir = d)
+  expect_identical(got$cache_dir, d)
+})
+
+test_that("taxonomy_cache_dir must be NULL or one path", {
+  skip_if_not("taxonomy_cache_dir" %in% names(formals(join_priors)))
+  expect_error(.jp_fallback_args(taxonomy_cache_dir = c("a", "b")), "taxonomy_cache_dir")
+  expect_error(.jp_fallback_args(taxonomy_cache_dir = NA_character_), "taxonomy_cache_dir")
+})
