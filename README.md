@@ -992,17 +992,17 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 57                 | 34         | Yes      |
-| TaxaFetch   | 32                 | 28         | Yes      |
+| TaxaTools   | 64                 | 36         | Yes      |
+| TaxaFetch   | 33                 | 30         | Yes      |
 | TaxaHabitat | 15                 | 13         | Yes      |
 | TaxaMatch   | 30                 | 23         | Yes      |
 | TaxaLikely  | 33                 | 43         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 13                 | 25         | Yes      |
+| TaxaAssign  | 13                 | 26         | Yes      |
 | TaxaFlag    | 17                 | 23         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
-**Export surface: 223 = 218 functions + 5 data objects.** The per-package counts
+**Export surface: 231 = 226 functions + 5 data objects.** The per-package counts
 above are checked against the packages themselves whenever the test suite is run
 from a repository checkout, so this table and the code do not drift apart
 silently.
