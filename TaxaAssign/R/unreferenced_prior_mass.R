@@ -5,6 +5,12 @@
 # best candidate's genus, family, ...) the prior mass of the local species
 # they actually stand for, instead of a dark-diversity floor alone.
 
+# Add any of `cols` missing from `df` as NA columns, in `cols` order, so frames
+# built from different sources bind.
+.fill_cols <- function(df, cols) {
+  for (cc in setdiff(cols, names(df))) df[[cc]] <- rep(NA_character_, nrow(df))
+  df[, cols, drop = FALSE]
+}
 
 #' Add the prior mass of unreferenced local relatives to generic hypotheses
 #'
@@ -92,6 +98,12 @@
 #'   family, order, class or phylum ring stands for "some unreferenced taxon
 #'   of this clade", so the species it claims add their prior to that ring
 #'   row unnamed, exactly as with `FALSE`.
+#' @param withhold Character, the rule that keeps a local unreferenced species
+#'   out of a ring too coarse for it (see Withheld species). `"finest"`
+#'   (default): the species adds its prior only to the ring at the finest rank
+#'   where its lineage has a referenced taxon for this marker. `"genus"`: only
+#'   a referenced genus withholds a species, so a species whose family has a
+#'   reference can still be claimed by an order, class or phylum ring.
 #'
 #' @return `joined` with `prior_mean`, `prior_alpha` and `prior_beta` updated
 #'   on rows that gained mass, plus `prior_mean_floor` (the prior before this
@@ -107,11 +119,19 @@
 #'   the local species that make it up.
 #'
 #' @section Withheld species:
-#'   A local unreferenced species whose genus has a reference for this marker
-#'   (the genus of any name in `referenced_names`) is claimed only by its own
-#'   genus ring. Where the unit has no genus ring for it, the genus's
-#'   references were compared with the read and did not match, so no family,
-#'   order, class or phylum ring may name it; it is withheld and listed in
+#'   A ring row stands for an unsequenced relative at its scope. A local
+#'   unreferenced species belongs in that ring only if no finer taxon of its
+#'   own lineage was already tested against the read. Under the default
+#'   `withhold = "finest"`, a species is claimed only by the ring at the finest
+#'   rank where its lineage has a referenced taxon for this marker (its genus,
+#'   family, order, ...; the lineages of `referenced_names` in `taxonomy` and
+#'   of the named candidates in `joined`). Where the unit has no ring at that
+#'   rank, that taxon's references were compared with the read and did not
+#'   match, so no coarser ring may name the species; it is withheld with reason
+#'   `"genus_referenced_unmatched"` when its genus has a reference and
+#'   `"finer_rank_referenced_unmatched"` when the referenced taxon is coarser
+#'   (its family, order, ...). Under `withhold = "genus"` only a referenced
+#'   genus withholds a species from its family or coarser rings. Withheld species are listed in
 #'   `attr(result, "unreferenced_withheld")` (`observation_id`, `taxon_name`,
 #'   `scope`, `scope_rank`, `reason`), present on every return.
 #' @seealso [join_priors()], [compute_posterior()]
@@ -147,8 +167,10 @@ add_unreferenced_prior_mass <- function(joined,
                                         grid_id = NULL,
                                         unreferenced_types = c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order", "unreferenced_class"),
                                         mismatch_message_fraction = 0.05,
-                                        named_rows = FALSE) {
+                                        named_rows = FALSE,
+                                        withhold = c("finest", "genus")) {
   # --- Validation --------------------------------------------------------------
+  withhold <- match.arg(withhold)
   req_j <- c(
     "observation_id", "taxon_name", "taxon_name_rank", "hypothesis_type",
     "prior_mean", "prior_alpha", "prior_beta"
@@ -295,11 +317,23 @@ add_unreferenced_prior_mass <- function(joined,
   # order, class or phylum ring ("some unreferenced genus of ...") cannot be
   # this species. It is then not claimed at all, and reported.
   ref_genera <- unique(sub(" .*$", "", ref[!is.na(ref)]))
+  # Referenced taxa at every rank above species, from the referenced species'
+  # own lineages: their `taxonomy` rows, and the lineage columns `joined`
+  # carries on its named candidates (referenced by construction).
+  lin_ranks <- setdiff(intersect(rank_order, unique(c(names(taxonomy), names(joined)))), "species")
+  ref_lin <- rbind(
+    .fill_cols(taxonomy[taxonomy$taxon_name %in% ref, intersect(lin_ranks, names(taxonomy)), drop = FALSE], lin_ranks),
+    .fill_cols(joined[joined$hypothesis_type %in% "specific_candidate", intersect(lin_ranks, names(joined)), drop = FALSE], lin_ranks)
+  )
+  ref_anc <- lapply(stats::setNames(lin_ranks, lin_ranks), function(rr) unique(stats::na.omit(ref_lin[[rr]])))
   withheld <- list()
   for (r in intersect(rank_order, unique(gdf$rank))) {
     gr <- gdf[gdf$rank == r, , drop = FALSE]
     p_r <- pr[!is.na(pr[[r]]), c("taxon_name", "hab", "theta_mean", "var", r), drop = FALSE]
     names(p_r)[5] <- "scope"
+    # the lineage below this ring, for the floor rule
+    finer <- if (withhold == "finest") intersect(lin_ranks[seq_len(match(r, lin_ranks) - 1L)], names(pr)) else character(0)
+    for (rr in finer) p_r[[paste0(".lin_", rr)]] <- pr[[rr]][!is.na(pr[[r]])]
     m <- merge(gr, p_r, by = "scope", suffixes = c("", ".p"))
     if (has_hab) m <- m[is.na(m$hab.p) | (!is.na(m$hab) & m$hab == m$hab.p), , drop = FALSE]
     if (nrow(m) == 0L) next
@@ -312,10 +346,18 @@ add_unreferenced_prior_mass <- function(joined,
     if (nrow(m) == 0L) next
     if (r != "genus") {
       ref_gen <- sub(" .*$", "", m$taxon_name) %in% ref_genera
+      why <- c("finer_rank_referenced_unmatched", "genus_referenced_unmatched")[ref_gen + 1L]
+      if (withhold == "finest") {
+        for (rr in finer) {
+          v <- m[[paste0(".lin_", rr)]]
+          ref_gen <- ref_gen | (!is.na(v) & v %in% ref_anc[[rr]])
+        }
+      }
       if (any(ref_gen)) {
         withheld[[length(withheld) + 1L]] <- data.frame(
           observation_id = m$observation_id[ref_gen], taxon_name = m$taxon_name[ref_gen],
-          scope = m$scope[ref_gen], scope_rank = r, reason = "genus_referenced_unmatched",
+          scope = m$scope[ref_gen], scope_rank = r,
+          reason = why[ref_gen],
           stringsAsFactors = FALSE
         )
         # withheld, AND marked claimed so no coarser ring takes them either
@@ -325,7 +367,7 @@ add_unreferenced_prior_mass <- function(joined,
       }
     }
     claimed <- c(claimed, unique(paste(m$observation_id, m$taxon_name, sep = "\r")))
-    members_all[[r]] <- m
+    members_all[[r]] <- m[, !startsWith(names(m), ".lin_"), drop = FALSE]
   }
   mem <- if (length(members_all)) do.call(rbind, members_all) else NULL
 
@@ -441,7 +483,7 @@ add_unreferenced_prior_mass <- function(joined,
   )
   if (nrow(withheld_df) > 0L) {
     cli::cli_inform(sprintf(
-      "add_unreferenced_prior_mass: %d local unreferenced species row(s) withheld in %d observation(s): their genus has a reference for this marker that did not match the read, so no family or coarser ring may name them (attr 'unreferenced_withheld').",
+      "add_unreferenced_prior_mass: %d local unreferenced species row(s) withheld in %d observation(s): a finer taxon of their lineage has a reference for this marker that did not match the read, so no coarser ring may name them (attr 'unreferenced_withheld').",
       nrow(withheld_df), length(unique(withheld_df$observation_id))
     ))
   }

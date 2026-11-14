@@ -185,6 +185,10 @@ describes, and each argument is written as
     `add_unreferenced_prior_mass(named_rows = TRUE)`, each such species
     gets its own row and can be reported by name; the default (`FALSE`)
     keeps them pooled in the placeholder.
+    A local species counts toward a placeholder only if no finer taxon of
+    its lineage (genus, family, ...) has a reference for the marker: that
+    taxon's references were already compared with the read.
+    `withhold = "genus"` applies the test at genus only.
 
 ### Posteriors: `compute_posterior()`
 
