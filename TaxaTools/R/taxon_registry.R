@@ -236,6 +236,13 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' is one of the two candidates by construction, so it would always win and
 #' undo pool-keys-first; a conflict is decided by the authorities or not at all.
 #'
+#' \strong{Homonyms.} An exact answer that contradicts the name's own
+#' \code{context} (the two name different kingdoms, or the context's other
+#' terms share nothing with the answer's phylum-to-genus path) is refused,
+#' whichever \code{lookup} gave it: the name gets
+#' \code{status = "homonym_rejected"} and takes the unresolved path below.
+#' A name with no context is not checked.
+#'
 #' \strong{Coarser answers.} Every name is checked for an answer at a coarser
 #' rank than it was asked at (\code{rank_given}, else genus for one word,
 #' species for two, infraspecific for three or more): such a name gets
@@ -345,6 +352,19 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   q <- unique(nm[, c("name_clean", "rank_given", "context")])
   res <- lookup(q$name_clean, q$rank_given, q$context)
   .check_lookup_shape(res, nrow(q), "name lookup")
+  # An EXACT answer that contradicts the name's own context is a homonym, whichever lookup gave it: a lookup with no
+  # lineage gate of its own (lookup_gbif_taxa()) can answer an exact name in another kingdom. Same test as the genus
+  # pass's EXACT answers (.genus_conflicts_context); non-exact answers have their own, stricter gates below.
+  # Marked as the verify_taxon_names() lineage gate marks it, so it takes the homonym_rejected path.
+  res$match_type <- as.character(res$match_type)
+  nonexact_q <- tolower(res$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies")
+  lg <- which(res$matched %in% TRUE & !nonexact_q & !is.na(q$context) & nzchar(q$context) & !is.na(res$classification_path))
+  lg <- lg[vapply(lg, function(j) .genus_conflicts_context(q$context[j], res$classification_path[j], res$classification_ranks[j]), TRUE)]
+  if (length(lg)) {
+    res$verified[lg] <- FALSE; res$matched[lg] <- FALSE; res$match_type[lg] <- "LineageRejected"
+    for (cc in c("matched_name", "matched_rank", "is_synonym", "current_record_id", "classification_path",
+                 "classification_ranks", "classification_ids")) res[[cc]][lg] <- NA
+  }
   qk <- paste(q$name_clean, q$rank_given, q$context, sep = "\r")
   nk <- paste(nm$name_clean, nm$rank_given, nm$context, sep = "\r")
   r <- res[match(nk, qk), , drop = FALSE]
