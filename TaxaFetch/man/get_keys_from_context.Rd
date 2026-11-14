@@ -4,7 +4,7 @@
 \alias{get_keys_from_context}
 \title{Fetch GBIF Taxon Keys Using Full Taxonomic Context}
 \usage{
-get_keys_from_context(hierarchy_df)
+get_keys_from_context(hierarchy_df, return_keys = FALSE, cache_dir = NULL)
 }
 \arguments{
 \item{hierarchy_df}{A dataframe. Each row is one taxon. Columns should be
@@ -13,6 +13,24 @@ named for Linnaean ranks (case-insensitive): \code{kingdom},
 \code{species}. Not all ranks need to be present. For each row, the
 most specific rank provided is used as the lookup target; higher ranks
 are passed as disambiguation context.}
+
+\item{return_keys}{Logical, default \code{FALSE}. When \code{TRUE}, the
+identifiers GBIF's backbone match already returns are appended as well
+(prefixed \code{gbif_}): \code{gbif_acceptedUsageKey}, \code{gbif_status},
+\code{gbif_synonym}, \code{gbif_canonicalName}, and for each rank from
+kingdom to species its key and name (\code{gbif_kingdomKey},
+\code{gbif_kingdom}, ..., \code{gbif_speciesKey}, \code{gbif_species}).
+No extra request is made. A synonym's \code{usageKey} is its OWN record;
+its accepted record is \code{gbif_acceptedUsageKey}. A species answered
+only at a higher rank (\code{matchType = "HIGHERRANK"}) carries that higher
+rank's key in \code{usageKey}: read \code{gbif_rank} before treating it as
+the species.}
+
+\item{cache_dir}{Character or \code{NULL} (default, no cache). A directory
+for a per-row on-disk cache keyed on everything the request sends (the
+name, its rank, its context ranks) and on \code{return_keys}. Only answered
+rows are written; a row whose request failed (\code{matchType = "ERROR"})
+is never cached and is asked again next call.}
 }
 \value{
 The input dataframe with three columns appended:
