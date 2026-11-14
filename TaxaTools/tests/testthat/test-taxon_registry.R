@@ -684,3 +684,19 @@ test_that("REVIEW F4: a lookup missing verified, matched, matched_rank, is_synon
   }
 })
 
+# -- F5: join_by_taxon joined NA ids to each other ----------------------------------------------------------------
+test_that("REVIEW F5: an NA taxon_id never joins to another NA, and no-partner counts ignore NA keys' false matches", {
+  .mock_gnv_reg()
+  reg <- freeze_taxon_registry(.caryi_reg())
+  m <- attach_taxon_ids(data.frame(observation_id = c("o1", "o2"), taxon_name = c("Embiotoca caryi", NA)), reg, "taxon_name", "match")
+  p <- attach_taxon_ids(data.frame(taxon_name = c("Hypsurus caryi", ""), prior = c(0.3, 0.9)), reg, "taxon_name", "priors")
+  expect_true(is.na(m$taxon_id[2]) && is.na(p$taxon_id[2]))
+  j <- suppressMessages(join_by_taxon(m, p, "left"))
+  expect_identical(nrow(j), 2L)
+  expect_true(is.na(j$prior[j$observation_id == "o2"]))                      # 2ea632dc: 0.9 (NA matched NA)
+  expect_identical(nrow(suppressMessages(join_by_taxon(m, p, "inner"))), 1L)
+  expect_identical(nrow(suppressMessages(join_by_taxon(m, p, "semi"))), 1L)
+  expect_identical(nrow(suppressMessages(join_by_taxon(m, p, "anti"))), 1L)
+  expect_identical(attr(j, "no_partner")[["x_rows"]], 1L)                   # 2ea632dc: 0
+})
+
