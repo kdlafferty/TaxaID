@@ -152,13 +152,16 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' \strong{Tie-break} (off by default, \code{tiebreak}). Where a name has two
 #' or more candidate ids (\code{pool_key_ambiguous}, or a
 #' \code{pool_key_conflict} between the pool's key and the lookup's), the
-#' candidates are decided by, in order: the lookup's own answer when it is
-#' exactly one of the candidates (\code{gbif_first}); then each of
-#' \code{authorities} in turn, whose lineage for the name must hold strictly
+#' candidates are decided by, in order: for \code{pool_key_ambiguous} only,
+#' the lookup's own answer when it is exactly one of the pool's keys
+#' (\code{gbif_first}); then each of \code{authorities} in turn, whose lineage for the name must hold strictly
 #' more of one candidate's distinguishing terms (those the candidates do not
 #' share) than of any other's. A decided name gets
 #' \code{status = "pool_key_tiebreak"}; an undecided one keeps its
 #' error-class finding. Candidates with identical lineages are never decided.
+#' Step 0 never applies to a \code{pool_key_conflict}: there the lookup's key
+#' is one of the two candidates by construction, so it would always win and
+#' undo pool-keys-first; a conflict is decided by the authorities or not at all.
 #'
 #' \strong{Unresolved names} get a run-local identifier under their resolved
 #' genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
@@ -196,8 +199,9 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' @param cache_dir Passed to \code{verify_taxon_names()} by the default lookup.
 #' @param tiebreak \code{NULL} (default: no tie-break; 2+ candidate ids stay
 #'   error-class findings) or a list: \code{gbif_first} (logical, default
-#'   \code{TRUE}: take the lookup's own answer when it is exactly one of the
-#'   candidates) and \code{authorities}, a named, ordered list of functions
+#'   \code{TRUE}: for a name the pool holds under 2+ keys, take the lookup's
+#'   own answer when it is exactly one of them; never used for a
+#'   \code{pool_key_conflict}) and \code{authorities}, a named, ordered list of functions
 #'   \code{function(name)} returning that authority's pipe-delimited lineage
 #'   for the name, or \code{NA} (e.g. \code{list(ncbi = ..., worms = ...)}).
 #'   Candidate lineages come from the lookup's classification and from optional
@@ -344,8 +348,11 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       for (v in unique(nm$verbatim_name[clash])) {
         i <- which(clash & nm$verbatim_name == v)[1L]
         ids <- c(pk[i], lk_id[i])
+        # no step 0 here: the lookup's key is one of the two candidates by construction, so "GBIF's own match
+        # decides" would always side with the lookup and silently reverse pool-keys-first. Authorities only.
         tb <- .registry_tiebreak(v, ids, list(pool_terms(v, sub("^[^:]+:", "", pk[i])),
-                                              .tb_terms_of_path(r$classification_path[i], r$classification_ranks[i])), lk_id[i], tiebreak)
+                                              .tb_terms_of_path(r$classification_path[i], r$classification_ranks[i])), lk_id[i],
+                                 utils::modifyList(tiebreak, list(gbif_first = FALSE)))
         tb_rows[[length(tb_rows) + 1L]] <- data.frame(verbatim_name = v, kind = "pool_key_conflict", candidates = paste(ids, collapse = " | "),
                                                       chosen = tb$id, by = tb$by, detail = tb$detail, stringsAsFactors = FALSE)
         if (!is.na(tb$id)) { tb_pick[v] <- tb$id; tb_by[v] <- tb$by }

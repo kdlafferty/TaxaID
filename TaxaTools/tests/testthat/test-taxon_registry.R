@@ -457,17 +457,27 @@ test_that("GUARD CAN FAIL: identical candidate lineages, or an authority naming 
   expect_true(is.na(nolin$meta$pool_key_tiebreaks$chosen))                   # a candidate with no lineage: never decided by lineage
 })
 
-test_that("a pool_key_conflict goes through the same tie-break: step 0 takes GBIF's match; off, the conflict error stays", {
+test_that("GUARD CAN FAIL: step 0 never settles a pool_key_conflict (it would always pick the lookup); authorities can", {
   lk <- .fake_lookup(.row("Pachycheles holosericus", "Pachycheles holosericus", "5000", "1|18|300|400|501|601|5000",
                           "Animalia|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles|Pachycheles holosericus", ranks = .tk7))
-  pool <- data.frame(verbatim_name = "Pachycheles holosericus", species_key = "11156704", stringsAsFactors = FALSE)
-  off <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "c0", pool_keys = pool, lookup = lk)
-  expect_identical(c(off$names$taxon_id, off$names$status), c("gbif:11156704", "pool_key_conflict"))
-  on <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "c1", pool_keys = pool, lookup = lk, tiebreak = list())
-  expect_identical(c(on$names$taxon_id, on$names$status, on$names$accepted_lookup), c("gbif:5000", "pool_key_tiebreak", "Pachycheles holosericus"))
+  pool <- data.frame(verbatim_name = "Pachycheles holosericus", species_key = "11156704", kingdom = "Animalia", phylum = "Arthropoda",
+                     class = "Malacostraca", order = "Decapoda", family = "Paguridae", genus = "Pachycheles", stringsAsFactors = FALSE)
+  .pc <- function(tb) build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "c", pool_keys = pool, lookup = lk, tiebreak = tb)
+  for (tb in list(NULL, list(), list(gbif_first = TRUE))) {          # off, and step 0 with no authorities: the conflict stays
+    reg <- .pc(tb)
+    expect_identical(c(reg$names$taxon_id, reg$names$status), c("gbif:11156704", "pool_key_conflict"))
+    expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "pool_key_conflict")
+  }
+  expect_true(is.na(.pc(list())$meta$pool_key_tiebreaks$chosen))
+  on <- .pc(list(authorities = list(ncbi = function(name) "Metazoa|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles")))
+  expect_identical(c(on$names$taxon_id, on$names$status, on$names$backend, on$names$accepted_lookup),
+                   c("gbif:5000", "pool_key_tiebreak", "tiebreak:ncbi", "Pachycheles holosericus"))
   chk <- check_taxon_registry(on, verbose = FALSE)
   expect_false(any(chk$kind == "pool_key_conflict"))
   expect_true(any(chk$kind == "pool_key_tiebroken" & grepl("pool_key_conflict", chk$detail)))
+  pool_side <- .pc(list(authorities = list(ncbi = function(name) "Metazoa|Arthropoda|Paguridae")))
+  expect_identical(pool_side$names$taxon_id, "gbif:11156704")             # NCBI naming the pool key's family keeps the pool key
+  expect_identical(pool_side$names$status, "pool_key_tiebreak")
 })
 
 test_that("a malformed tiebreak is refused", {
