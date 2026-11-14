@@ -124,7 +124,8 @@ test_that("cache: a second call is served from the cache with the network off, a
   b <- suppressMessages(lookup_gbif_taxa(c("Hypsurus caryi", "Embiotoca caryi"), cache_dir = d))
   expect_identical(attr(b, "n_cached"), 2L)
   expect_identical(attr(b, "n_error"), 0L)
-  expect_identical(as.data.frame(b)[], as.data.frame(a)[])
+  strip <- function(x) { attributes(x)[grep("^n_", names(attributes(x)))] <- NULL; x }   # n_cached differs by design
+  expect_identical(strip(b), strip(a))
 })
 
 test_that("input order is kept and a zero-length input returns the columns with zero counts", {
