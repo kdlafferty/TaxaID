@@ -767,10 +767,50 @@ test_that("REVIEW N4: the default lookup (lookup = NULL) gives the tested lookup
   expect_identical(c(seen[[1L]]$rank, seen[[1L]]$lineage), c("genus", "Plantae|Rhodophyta"))
 })
 
+# N7: taxa held the ancestor rows of REJECTED answers (the moth lineage of Hypnea nigrescens), contradicting
+# "one row per taxon used in the run" and inflating print() counts.
+test_that("REVIEW N7: taxa holds only taxa the run uses: every row is a registered id or an ancestor of one", {
+  ctx <- c("Hypnea nigrescens" = "Plantae|Rhodophyta|Florideophyceae", "Pyrogophorus platyrachis" = .moll)
+  reg <- build_taxon_registry(.names(names(ctx), "r2", context = unname(ctx)), run_id = "n7", lookup = .binvar_lk())
+  expect_false(any(reg$taxa$name %in% c("Hypena", "Hypena nigrescens", "Erebidae", "Lepidoptera", "Arthropoda")))   # 1f3e31d0: all present
+  expect_identical(reg$meta$genus_variant_rejected$answer, "Hypena nigrescens")   # the rejected answer is still listed, with its path
+  used <- stats::na.omit(reg$names$taxon_id)
+  anc <- unique(unlist(lapply(used, function(id) { out <- character(0); while (!is.na(id) && !(id %in% out)) { out <- c(out, id); id <- reg$taxa$parent_id[match(id, reg$taxa$taxon_id)] }; out })))
+  expect_setequal(reg$taxa$taxon_id, anc)
+  expect_true(all(c("Pyrgophorus", "Mollusca") %in% reg$taxa$name))   # the used taxon's own ancestors stay
+})
+
+# N7: the freeze digest hashed names[, setdiff(names, "built_at")] (a no-op) and nothing re-checked it, so a registry
+# edited after the freeze still stamped tables under the old digest.
+test_that("REVIEW N7: a registry edited after the freeze is refused at attach and is an error-class finding", {
+  reg <- freeze_taxon_registry(build_taxon_registry(.names("Pyrgophorus platyrachis", "r2", context = .moll), run_id = "n7d", lookup = .binvar_lk()))
+  x <- data.frame(taxon_name = "Pyrgophorus platyrachis")
+  expect_identical(attach_taxon_ids(x, reg, "taxon_name", "r2")$taxon_id, "gbif:2299858")
+  expect_false("registry_digest_mismatch" %in% check_taxon_registry(reg, verbose = FALSE)$kind)
+  bad <- reg; bad$names$taxon_id <- "gbif:1"
+  expect_error(attach_taxon_ids(x, bad, "taxon_name", "r2"), "digest")               # 1f3e31d0: stamps gbif:1 under the old digest
+  chk <- check_taxon_registry(bad, verbose = FALSE)
+  expect_identical(chk$severity[chk$kind == "registry_digest_mismatch"], "error")
+  bad2 <- reg; bad2$taxa$name[1] <- "Plantae"
+  expect_error(attach_taxon_ids(x, bad2, "taxon_name", "r2"), "digest")
+})
+
 # N6: ifelse() returns the length of its TEST; the convention is dplyr::if_else() in new code.
 test_that("REVIEW N6: the registry code uses dplyr::if_else(), not ifelse()", {
   src <- testthat::test_path("..", "..", "R", "taxon_registry.R")
   if (!file.exists(src)) testthat::skip("R/ not found next to this package (source layout unavailable here)")
   code <- sub("#.*$", "", readLines(src, warn = FALSE))
   expect_false(any(grepl("(^|[^_[:alnum:].])ifelse\\(", code)))      # 1f3e31d0: 14 lines
+})
+
+# N7: the CLAUDE.md export table reproduces each function's Rd title, as its other rows do.
+test_that("REVIEW N7: CLAUDE.md's rows for the registry exports are their Rd titles", {
+  md <- testthat::test_path("..", "..", "CLAUDE.md"); man <- testthat::test_path("..", "..", "man")
+  if (!file.exists(md) || !dir.exists(man)) testthat::skip("CLAUDE.md or man/ not found (source layout unavailable here)")
+  rows <- readLines(md, warn = FALSE)
+  for (f in c("check_taxon_registry", "freeze_taxon_registry", "join_by_taxon", "parent_at", "taxon_in")) {
+    rd <- readLines(file.path(man, paste0(f, ".Rd")), warn = FALSE)
+    title <- sub("^\\\\title\\{(.*)\\}$", "\\1", grep("^\\\\title\\{", rd, value = TRUE))
+    expect_true(sprintf("| `%s` | %s |", f, title) %in% rows, info = f)   # 1f3e31d0: all five differ
+  }
 })
