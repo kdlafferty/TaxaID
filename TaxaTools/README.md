@@ -70,6 +70,13 @@ downstream package needs solved consistently:
 | `fetch_worms_attributes()` | Look up taxa in the World Register of Marine Species (WoRMS) by name and return curated attributes: the multi-label marine/brackish/freshwater/terrestrial habitat flags, AphiaID, accepted name, taxonomic status, WoRMS classification, and optionally NCBI taxon id and an introduced-species flag. |
 | `resolve_ncbi_taxid()` | Resolve a taxon name to one disambiguated NCBI taxonomy id: a name is not a key, since NCBI can hold several nodes with the same name in unrelated lineages, and a plain name-based search silently resolves to whichever node the service prefers. Disambiguates using the caller's own declared rank first, then containment in the caller's own known higher-rank lineage. |
 | `check_lineage_agreement()` | A cheap, no-API-call guard: given what a caller declared about a taxon's own higher-rank lineage and what a name-based fetch actually returned for it, decides whether the two share a clade (the same organism reclassified, or an exact match) or share nothing (a likely homonym). |
+| `build_taxon_registry()` | Resolve every name a run uses, once, to an identifier under one key authority (by default the GBIF Backbone), recording how each name got there (accepted, synonym, gender variant, run-local, ...). Occurrence-pool keys come first; a name the pool holds under two or more keys, or whose pool key disagrees with the lookup, is reported, and `tiebreak` can decide it by GBIF's own match and then by authorities' lineages. |
+| `freeze_taxon_registry()` | Fix the registry's contents before any table is joined; after the freeze an unknown name is an error. |
+| `attach_taxon_ids()` | Add a `taxon_id` column and the registry's stamp to a table, from its verbatim name column. |
+| `join_by_taxon()` | Join two stamped tables on `taxon_id` only, refusing an unstamped table, two different registries, or a name column in the key, and reporting the rows on each side with no partner. |
+| `taxon_in()` | Membership of identifiers in a set of identifiers, never of names. |
+| `parent_at()` | The ancestor identifier of each taxon at a given rank, from the registry's tree. |
+| `check_taxon_registry()` | The guard: lists every identifier reached by two or more names with the declared relationship, and reports undeclared merges, ambiguous pool keys, a taxon twice in one observation, and table lineages that contradict the registry (a family or order difference is listed, a genus difference is an error). |
 
 ### LLM provider interface
 

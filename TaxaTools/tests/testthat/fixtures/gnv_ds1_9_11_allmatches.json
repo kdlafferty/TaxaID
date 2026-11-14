@@ -1,0 +1,679 @@
+{
+ "names": [
+  {
+   "name": "Hypsurus caryi",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "3P4S7",
+     "currentRecordId": "3P4S7",
+     "matchedCanonicalSimple": "Hypsurus caryi",
+     "currentCanonicalSimple": "Hypsurus caryi",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Embiotocidae|Hypsurus|Hypsurus caryi",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|KV76S|KVFRM|3P4S7",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:240717",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:240717",
+     "matchedCanonicalSimple": "Hypsurus caryi",
+     "currentCanonicalSimple": "Hypsurus caryi",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei||Embiotocidae|Hypsurus|Hypsurus caryi",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:1517546|urn:lsid:marinespecies.org:taxname:151386|urn:lsid:marinespecies.org:taxname:240716|urn:lsid:marinespecies.org:taxname:240717",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2389310",
+     "currentRecordId": "2389310",
+     "matchedCanonicalSimple": "Hypsurus caryi",
+     "currentCanonicalSimple": "Hypsurus caryi",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|587|4269|2389309|2389310",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    }
+   ]
+  },
+  {
+   "name": "Embiotoca caryi",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "39FYP|3P4S7|39FYP",
+     "currentRecordId": "3P4S7",
+     "matchedCanonicalSimple": "Embiotoca caryi",
+     "currentCanonicalSimple": "Hypsurus caryi",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Embiotocidae|Hypsurus|Hypsurus caryi",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|KV76S|KVFRM|3P4S7",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.411799753388399
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:240719|urn:lsid:marinespecies.org:taxname:240717|urn:lsid:marinespecies.org:taxname:240719",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:240717",
+     "matchedCanonicalSimple": "Embiotoca caryi",
+     "currentCanonicalSimple": "Hypsurus caryi",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei||Embiotocidae|Hypsurus|Hypsurus caryi",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:1517546|urn:lsid:marinespecies.org:taxname:151386|urn:lsid:marinespecies.org:taxname:240716|urn:lsid:marinespecies.org:taxname:240717",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411093439783798
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2389311",
+     "currentRecordId": "2389310",
+     "matchedCanonicalSimple": "Embiotoca caryi",
+     "currentCanonicalSimple": "Hypsurus caryi",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|587|4269|2389309|2389310",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410385975596558
+    }
+   ]
+  },
+  {
+   "name": "Oxyjulis californica",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "4BFCV|3JBQL|4BFCV",
+     "currentRecordId": "3JBQL",
+     "matchedCanonicalSimple": "Oxyjulis californica",
+     "currentCanonicalSimple": "Halichoeres californicus",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Labridae|Julidinae|Halichoeres|Halichoeres californicus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|family|subfamily|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|KVFTB|V7HX3|KVCK2|3JBQL",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.411799753388399
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:240727|urn:lsid:marinespecies.org:taxname:240728|urn:lsid:marinespecies.org:taxname:240727",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:240728",
+     "matchedCanonicalSimple": "Oxyjulis californica",
+     "currentCanonicalSimple": "Halichoeres californicus",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Labriformes|Labridae|Julidinae|Halichoeres|Halichoeres californicus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|subfamily|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:1915902|urn:lsid:marinespecies.org:taxname:125541|urn:lsid:marinespecies.org:taxname:1843798|urn:lsid:marinespecies.org:taxname:158813|urn:lsid:marinespecies.org:taxname:240728",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411093439783798
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2383301",
+     "currentRecordId": "2383301",
+     "matchedCanonicalSimple": "Oxyjulis californica",
+     "currentCanonicalSimple": "Oxyjulis californica",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Animalia|Chordata|Perciformes|Labridae|Oxyjulis|Oxyjulis californica",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|587|8535|2383300|2383301",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    }
+   ]
+  },
+  {
+   "name": "Halichoeres californicus",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "3JBQL",
+     "currentRecordId": "3JBQL",
+     "matchedCanonicalSimple": "Halichoeres californicus",
+     "currentCanonicalSimple": "Halichoeres californicus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Labridae|Julidinae|Halichoeres|Halichoeres californicus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|family|subfamily|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|KVFTB|V7HX3|KVCK2|3JBQL",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:240728",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:240728",
+     "matchedCanonicalSimple": "Halichoeres californicus",
+     "currentCanonicalSimple": "Halichoeres californicus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Labriformes|Labridae|Julidinae|Halichoeres|Halichoeres californicus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|subfamily|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:1915902|urn:lsid:marinespecies.org:taxname:125541|urn:lsid:marinespecies.org:taxname:1843798|urn:lsid:marinespecies.org:taxname:158813|urn:lsid:marinespecies.org:taxname:240728",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2383302",
+     "currentRecordId": "2383301",
+     "matchedCanonicalSimple": "Halichoeres californicus",
+     "currentCanonicalSimple": "Oxyjulis californica",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Animalia|Chordata|Perciformes|Labridae|Oxyjulis|Oxyjulis californica",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|587|8535|2383300|2383301",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410385975596558
+    }
+   ]
+  },
+  {
+   "name": "Mola alexandrini",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "D569F",
+     "currentRecordId": "D569F",
+     "matchedCanonicalSimple": "Mola alexandrini",
+     "currentCanonicalSimple": "Mola alexandrini",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Tetraodontiformes|Tetraodontoidei|Molidae|Mola|Mola alexandrini",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|suborder|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|47D|V9554|CVB|KVLK7|D569F",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:1329867",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:1329867",
+     "matchedCanonicalSimple": "Mola alexandrini",
+     "currentCanonicalSimple": "Mola alexandrini",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Tetraodontiformes|Tetraodontoidei|Molidae|Mola|Mola alexandrini",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|suborder|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:10332|urn:lsid:marinespecies.org:taxname:1849266|urn:lsid:marinespecies.org:taxname:125609|urn:lsid:marinespecies.org:taxname:126233|urn:lsid:marinespecies.org:taxname:1329867",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "10208782",
+     "currentRecordId": "5213725",
+     "matchedCanonicalSimple": "Mola alexandrini",
+     "currentCanonicalSimple": "Mola mola",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Animalia|Chordata|Tetraodontiformes|Molidae|Mola|Mola mola",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|772|5897|5207570|5213725",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410385975596558
+    }
+   ]
+  },
+  {
+   "name": "Etrumeus teres",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "6H4WN|6H58P|6H4WN",
+     "currentRecordId": "6H58P",
+     "matchedCanonicalSimple": "Etrumeus teres",
+     "currentCanonicalSimple": "Etrumeus sadina",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Clupeiformes|Clupeoidei|Dussumieriidae|Etrumeus|Etrumeus sadina",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|suborder|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|YR|VQX52|KV9HL|KV9RQ|6H58P",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.411799753388399
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:158693|urn:lsid:marinespecies.org:taxname:584793|urn:lsid:marinespecies.org:taxname:158693",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:584793",
+     "matchedCanonicalSimple": "Etrumeus teres",
+     "currentCanonicalSimple": "Etrumeus sadina",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Clupeiformes|Clupeoidei|Dussumieriidae|Etrumeus|Etrumeus sadina",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|suborder|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:10297|urn:lsid:marinespecies.org:taxname:1903206|urn:lsid:marinespecies.org:taxname:714646|urn:lsid:marinespecies.org:taxname:158692|urn:lsid:marinespecies.org:taxname:584793",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411093439783798
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2413183",
+     "currentRecordId": "2413189",
+     "matchedCanonicalSimple": "Etrumeus teres",
+     "currentCanonicalSimple": "Etrumeus sadina",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Animalia|Chordata|Clupeiformes|Dussumieriidae|Etrumeus|Etrumeus sadina",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|538|4964272|2413182|2413189",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410385975596558
+    }
+   ]
+  },
+  {
+   "name": "Rhacochilus vacca",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "4RX28|D5B5W|4RX28",
+     "currentRecordId": "D5B5W",
+     "matchedCanonicalSimple": "Rhacochilus vacca",
+     "currentCanonicalSimple": "Phanerodon vacca",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Embiotocidae|Phanerodon|Phanerodon vacca",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|KV76S|KVPB7|D5B5W",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.411799753388399
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:282576|urn:lsid:marinespecies.org:taxname:1577347|urn:lsid:marinespecies.org:taxname:282576",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:1577347",
+     "matchedCanonicalSimple": "Rhacochilus vacca",
+     "currentCanonicalSimple": "Phanerodon vacca",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei||Embiotocidae|Phanerodon|Phanerodon vacca",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:1517546|urn:lsid:marinespecies.org:taxname:151386|urn:lsid:marinespecies.org:taxname:240729|urn:lsid:marinespecies.org:taxname:1577347",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411093439783798
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2389313",
+     "currentRecordId": "2389313",
+     "matchedCanonicalSimple": "Rhacochilus vacca",
+     "currentCanonicalSimple": "Rhacochilus vacca",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Animalia|Chordata|Perciformes|Embiotocidae|Rhacochilus|Rhacochilus vacca",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|587|4269|2389312|2389313",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    }
+   ]
+  },
+  {
+   "name": "Platybelone argala",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "4JNTQ|4JNTR|4JNTQ",
+     "currentRecordId": "4JNTR",
+     "matchedCanonicalSimple": "Platybelone argala",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|T6|KTZ9Y|KVPV4|4JNTR",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.411799753388399
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:400783|urn:lsid:marinespecies.org:taxname:126377|urn:lsid:marinespecies.org:taxname:400783",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:126377",
+     "matchedCanonicalSimple": "Platybelone argala",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:10320|urn:lsid:marinespecies.org:taxname:125451|urn:lsid:marinespecies.org:taxname:125689|urn:lsid:marinespecies.org:taxname:126377",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411093439783798
+    },
+    {
+     "dataSourceId": 1,
+     "recordId": "4JNTR",
+     "currentRecordId": "4JNTR",
+     "matchedCanonicalSimple": "Platybelone argalus",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|T6|KTZ9Y|KVPV4|4JNTR",
+     "entryDate": "2026-10-26",
+     "matchType": "Fuzzy",
+     "sortScore": 9.36450062552923
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:126377",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:126377",
+     "matchedCanonicalSimple": "Platybelone argalus",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:10320|urn:lsid:marinespecies.org:taxname:125451|urn:lsid:marinespecies.org:taxname:125689|urn:lsid:marinespecies.org:taxname:126377",
+     "entryDate": "2026-11-09",
+     "matchType": "Fuzzy",
+     "sortScore": 9.363712968125562
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "4286140",
+     "currentRecordId": "4286140",
+     "matchedCanonicalSimple": "Platybelone argalus",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Animalia|Chordata|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|498|7190|2369255|4286140",
+     "entryDate": "2024-01-11",
+     "matchType": "Fuzzy",
+     "sortScore": 9.362923879592506
+    }
+   ]
+  },
+  {
+   "name": "Platybelone argalus",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "4JNTR",
+     "currentRecordId": "4JNTR",
+     "matchedCanonicalSimple": "Platybelone argalus",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|T6|KTZ9Y|KVPV4|4JNTR",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:126377",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:126377",
+     "matchedCanonicalSimple": "Platybelone argalus",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:10320|urn:lsid:marinespecies.org:taxname:125451|urn:lsid:marinespecies.org:taxname:125689|urn:lsid:marinespecies.org:taxname:126377",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "4286140",
+     "currentRecordId": "4286140",
+     "matchedCanonicalSimple": "Platybelone argalus",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Animalia|Chordata|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "kingdom|phylum|order|family|genus|species",
+     "classificationIds": "1|44|498|7190|2369255|4286140",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    },
+    {
+     "dataSourceId": 1,
+     "recordId": "4JNTQ|4JNTR|4JNTQ",
+     "currentRecordId": "4JNTR",
+     "matchedCanonicalSimple": "Platybelone argala",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "CS5HF|N|CH2|8V4V3|8V4V5|8VVWB|8VR36|KTWM8|8V4VD|T6|KTZ9Y|KVPV4|4JNTR",
+     "entryDate": "2026-10-26",
+     "matchType": "Fuzzy",
+     "sortScore": 9.36410697539405
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:400783|urn:lsid:marinespecies.org:taxname:126377|urn:lsid:marinespecies.org:taxname:400783",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:126377",
+     "matchedCanonicalSimple": "Platybelone argala",
+     "currentCanonicalSimple": "Platybelone argalus",
+     "taxonomicStatus": "Synonym",
+     "isSynonym": true,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata|Gnathostomata|Osteichthyes|Actinopterygii|Actinopteri|Teleostei|Beloniformes|Belonidae|Platybelone|Platybelone argalus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|infraphylum|parvphylum|gigaclass|superclass|class|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419|urn:lsid:marinespecies.org:taxname:1828|urn:lsid:marinespecies.org:taxname:152352|urn:lsid:marinespecies.org:taxname:10194|urn:lsid:marinespecies.org:taxname:843664|urn:lsid:marinespecies.org:taxname:293496|urn:lsid:marinespecies.org:taxname:10320|urn:lsid:marinespecies.org:taxname:125451|urn:lsid:marinespecies.org:taxname:125689|urn:lsid:marinespecies.org:taxname:126377",
+     "entryDate": "2026-11-09",
+     "matchType": "Fuzzy",
+     "sortScore": 9.363318603075168
+    }
+   ]
+  },
+  {
+   "name": "Vertebrata",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "8V4V3",
+     "currentRecordId": "8V4V3",
+     "matchedCanonicalSimple": "Vertebrata",
+     "currentCanonicalSimple": "Vertebrata",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Chordata|Vertebrata",
+     "classificationRanks": "domain|kingdom|phylum|subphylum",
+     "classificationIds": "CS5HF|N|CH2|8V4V3",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 1,
+     "recordId": "TPDW7",
+     "currentRecordId": "TPDW7",
+     "matchedCanonicalSimple": "Vertebrata",
+     "currentCanonicalSimple": "Vertebrata",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Plantae|Rhodophyta|Eurhodophytina|Florideophyceae|Rhodymeniophycidae|Ceramiales|Rhodomelaceae|Streblocladieae|Vertebrata",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|class|subclass|order|family|tribe|genus",
+     "classificationIds": "CS5HF|P|RH2|6S|BN|VQ98G|WG|FQJ|VQ2TS|TPDW7",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:146419",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:146419",
+     "matchedCanonicalSimple": "Vertebrata",
+     "currentCanonicalSimple": "Vertebrata",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Chordata|Vertebrata",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1821|urn:lsid:marinespecies.org:taxname:146419",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:370321",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:370321",
+     "matchedCanonicalSimple": "Vertebrata",
+     "currentCanonicalSimple": "Vertebrata",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Plantae|Biliphyta|Rhodophyta|Eurhodophytina|Florideophyceae|Rhodymeniophycidae|Ceramiales|Rhodomelaceae|Streblocladieae|Vertebrata",
+     "classificationRanks": "superdomain|kingdom|subkingdom|unranked|unranked|class|subclass|order|family|tribe|genus",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:3|urn:lsid:marinespecies.org:taxname:368662|urn:lsid:marinespecies.org:taxname:852|urn:lsid:marinespecies.org:taxname:493826|urn:lsid:marinespecies.org:taxname:368670|urn:lsid:marinespecies.org:taxname:196243|urn:lsid:marinespecies.org:taxname:860|urn:lsid:marinespecies.org:taxname:143674|urn:lsid:marinespecies.org:taxname:1309985|urn:lsid:marinespecies.org:taxname:370321",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2660342",
+     "currentRecordId": "2660342",
+     "matchedCanonicalSimple": "Vertebrata",
+     "currentCanonicalSimple": "Vertebrata",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Plantae|Rhodophyta|Florideophyceae|Ceramiales|Rhodomelaceae|Vertebrata",
+     "classificationRanks": "kingdom|phylum|class|order|family|genus",
+     "classificationIds": "6|106|342|665|4895|2660342",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "12194263",
+     "currentRecordId": "12194263",
+     "matchedCanonicalSimple": "Vertebrata",
+     "currentCanonicalSimple": "Vertebrata",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Plantae|Rhodophyta|Florideophyceae|Ceramiales|Rhodomelaceae|Vertebrata|Vertebrata spec",
+     "classificationRanks": "kingdom|phylum|class|order|family|genus|species",
+     "classificationIds": "6|106|342|665|4895|2660342|12194263",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410474471670609
+    }
+   ]
+  },
+  {
+   "name": "Plocamium cartilagineum",
+   "results": [
+    {
+     "dataSourceId": 11,
+     "recordId": "5278595",
+     "currentRecordId": "5278595",
+     "matchedCanonicalSimple": "Plocamium cartilagineum",
+     "currentCanonicalSimple": "Plocamium cartilagineum",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Plantae|Rhodophyta|Florideophyceae|Plocamiales|Plocamiaceae|Plocamium|Plocamium cartilagineum",
+     "classificationRanks": "kingdom|phylum|class|order|family|genus|species",
+     "classificationIds": "6|106|342|1404|9033|2664785|5278595",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    }
+   ]
+  },
+  {
+   "name": "Pisaster ochraceus",
+   "results": [
+    {
+     "dataSourceId": 1,
+     "recordId": "4J8HY",
+     "currentRecordId": "4J8HY",
+     "matchedCanonicalSimple": "Pisaster ochraceus",
+     "currentCanonicalSimple": "Pisaster ochraceus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Eukaryota|Animalia|Echinodermata|Asterozoa|Asteroidea|Ambuloasteroidea|Neoasteroidea|Forcipulatacea|Forcipulatida|Asteriidae|Pisaster|Pisaster ochraceus",
+     "classificationRanks": "domain|kingdom|phylum|subphylum|class|subclass|infraclass|superorder|order|family|genus|species",
+     "classificationIds": "CS5HF|N|CHN|7NF2N|B8V3Q|8VLBJ|8VLBK|7NF5X|7NFB5|7NG2H|7PS7F|4J8HY",
+     "entryDate": "2026-10-26",
+     "matchType": "Exact",
+     "sortScore": 9.412152479890551
+    },
+    {
+     "dataSourceId": 9,
+     "recordId": "urn:lsid:marinespecies.org:taxname:240755",
+     "currentRecordId": "urn:lsid:marinespecies.org:taxname:240755",
+     "matchedCanonicalSimple": "Pisaster ochraceus",
+     "currentCanonicalSimple": "Pisaster ochraceus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Biota|Animalia|Echinodermata|Asterozoa|Asteroidea|Ambuloasteroidea|Neoasteroidea|Forcipulatacea|Forcipulatida|Asteriidae|Pisaster|Pisaster ochraceus",
+     "classificationRanks": "superdomain|kingdom|phylum|subphylum|class|subclass|infraclass|superorder|order|family|genus|species",
+     "classificationIds": "urn:lsid:marinespecies.org:taxname:1|urn:lsid:marinespecies.org:taxname:2|urn:lsid:marinespecies.org:taxname:1806|urn:lsid:marinespecies.org:taxname:148743|urn:lsid:marinespecies.org:taxname:123080|urn:lsid:marinespecies.org:taxname:1562575|urn:lsid:marinespecies.org:taxname:1562576|urn:lsid:marinespecies.org:taxname:582527|urn:lsid:marinespecies.org:taxname:123086|urn:lsid:marinespecies.org:taxname:123121|urn:lsid:marinespecies.org:taxname:240754|urn:lsid:marinespecies.org:taxname:240755",
+     "entryDate": "2026-11-09",
+     "matchType": "Exact",
+     "sortScore": 9.411446740174974
+    },
+    {
+     "dataSourceId": 11,
+     "recordId": "2273754",
+     "currentRecordId": "2273754",
+     "matchedCanonicalSimple": "Pisaster ochraceus",
+     "currentCanonicalSimple": "Pisaster ochraceus",
+     "taxonomicStatus": "Accepted",
+     "isSynonym": false,
+     "classificationPath": "Animalia|Echinodermata|Asteroidea|Forcipulatida|Asteriidae|Pisaster|Pisaster ochraceus",
+     "classificationRanks": "kingdom|phylum|class|order|family|genus|species",
+     "classificationIds": "1|50|214|1462|6009|2273739|2273754",
+     "entryDate": "2024-01-11",
+     "matchType": "Exact",
+     "sortScore": 9.410739851747246
+    }
+   ]
+  }
+ ]
+}

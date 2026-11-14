@@ -12,16 +12,18 @@ reasoning behind them -- lives in the TaxaID_dev repository at
 `ecosystem_docs/session_notes/TaxaTools_CLAUDE_2026-10.md`. This file carries current
 state only.
 
-## Exported functions (57)
+## Exported functions (64)
 
 | Function | Purpose |
 |---|---|
 | `%||%` | Null-coalescing operator |
 | `assemble_report` | Assemble Multiple Report Sections into a Unified Report |
 | `assign_sampling_group` | Assign Sampling Groups from Taxonomic Rank Columns |
+| `attach_taxon_ids` | Attach registry taxon identifiers to a table |
 | `barcode_length_defaults` | Default NCBI Nucleotide Length Ranges by Barcode Type |
 | `barcode_primer_defaults` | Default PCR Primer Sequences by Barcode/Primer-Set Name |
 | `build_report_context` | Build a Report Context Object |
+| `build_taxon_registry` | Build a run's taxon registry |
 | `cache_ok` | Is a cache file usable, given the inputs it derives from? |
 | `call_anthropic_api` | Call the Anthropic API with a Single Prompt String |
 | `call_api` | Call Any Configured LLM with a Single Prompt String |
@@ -33,6 +35,7 @@ state only.
 | `change_backbone` | Translate Taxon Names Between Taxonomic Backbones |
 | `check_lineage_agreement` | Check whether a returned lineage agrees with a declared one |
 | `check_taxaid_manifest` | Check the Installed TaxaID Code Against a Recorded Manifest |
+| `check_taxon_registry` | Check a taxon registry and the tables stamped from it |
 | `clean_taxon_names` | Extract and Clean Taxon Names from a Character Vector |
 | `common_to_scientific` | Convert Common Names to Scientific Names |
 | `create_taxon_names` | Create Most Specific Taxon Name Column |
@@ -46,10 +49,13 @@ state only.
 | `fetch_worms_attributes` | Fetch WoRMS Taxon Attributes by Name |
 | `fill_higher_ranks` | Fill Higher Taxonomic Ranks from Local Data and Backbone APIs |
 | `find_taxonomy_conflicts` | Find Taxonomic Conflicts in a Taxonomy Data Frame |
+| `freeze_taxon_registry` | Freeze a taxon registry before the first join |
 | `is_plausible_binomial` | Test Whether Strings Are Plausible Species Binomials |
+| `join_by_taxon` | Join two tables on registry taxon identifiers only |
 | `list_cache_files` | List files in a directory matching cache-file patterns |
 | `list_models` | List Current LLM Model Tier Assignments |
 | `new_report_section` | Create a Report Section Object |
+| `parent_at` | The ancestor of each taxon at a given rank |
 | `parse_classification_path` | Parse a Rank Value from a Pipe-Delimited Classification Path |
 | `prompt_api` | Submit a Multi-Chunk LLM Prompt to Any Provider |
 | `prompt_manual` | Submit a Prompt Manually via Any LLM Interface |
@@ -69,6 +75,7 @@ state only.
 | `taxaid_build_manifest` | Record Which TaxaID Code a Run Is Using |
 | `taxaid_cache_report` | Report every TaxaID cache on this machine |
 | `taxatools_clear_cache` | Report and clear the TaxaTools on-disk caches |
+| `taxon_in` | Membership by registry taxon identifier |
 | `to_faire` | Export a TaxaID Data Frame in FAIRe Checklist Format |
 | `token_usage` | Summarise LLM Token Usage for the Current Session |
 | `verify_taxon_names` | Verify Taxon Names Against a Taxonomic Backbone |

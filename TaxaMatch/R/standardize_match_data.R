@@ -110,6 +110,15 @@
 #'   `attr(out, "report_params")`, merged into any such attribute `data`
 #'   already carries, with these values taking precedence, and read from there
 #'   by [report_match()].
+#' @param registry A frozen `taxon_registry` from
+#'   [TaxaTools::build_taxon_registry()] and [TaxaTools::freeze_taxon_registry()],
+#'   or `NULL` (default: no identifiers added). When given, a `taxon_id`
+#'   column is added by [TaxaTools::attach_taxon_ids()] from each row's
+#'   `taxon_name`, looked up among the names the registry holds for source
+#'   table `"match"`, and the result carries the registry's stamp. The match
+#'   names themselves (NCBI naming) are left exactly as they are. A name the
+#'   registry does not hold, or an input that already has its own `taxon_id`
+#'   column, is an error.
 #'
 #' @return A data frame with at minimum:
 #' \describe{
@@ -132,6 +141,9 @@
 #' `attr(out, "report_params")` list recording the search, in the same fields
 #' `blast_sequences()` records, so that one vocabulary describes every match
 #' source whatever produced the hits.
+#'
+#' When `registry` is supplied, the result also has a `taxon_id` column (the
+#' registry's identifier for each row's taxon) and the registry's stamp.
 #'
 #' @seealso [TaxaTools::create_taxon_names()], [TaxaTools::rename_cols()],
 #'   [filter_redundant_hypotheses()] (the natural next pipeline step, when
@@ -167,7 +179,8 @@ standardize_match_data <- function(data = NULL,
                                    coverage_col = NULL,
                                    col_map = NULL,
                                    lowercase_names = TRUE,
-                                   provenance = NULL) {
+                                   provenance = NULL,
+                                   registry = NULL) {
   # --- 1. Load data -----------------------------------------------------------
   if (is.null(data)) {
     if (!interactive()) {
@@ -186,6 +199,9 @@ standardize_match_data <- function(data = NULL,
   }
 
   # --- 2. Validate args -------------------------------------------------------
+  if (!is.null(registry) && !inherits(registry, "taxon_registry")) {
+    stop("`registry` must be NULL or a frozen taxon_registry (TaxaTools::build_taxon_registry(), then freeze_taxon_registry()).")
+  }
   if (!is.logical(lowercase_names) || length(lowercase_names) != 1L || is.na(lowercase_names)) {
     stop("`lowercase_names` must be TRUE or FALSE.")
   }
@@ -293,6 +309,13 @@ standardize_match_data <- function(data = NULL,
     merged <- if (is.null(existing)) list() else existing
     merged[names(provenance)] <- provenance
     attr(data, "report_params") <- merged
+  }
+
+  # --- 10. Registry identifiers (optional) -----------------------------------
+  # Last, so every attribute above is kept; attach_taxon_ids() adds one column
+  # and the stamp and leaves the NCBI names untouched.
+  if (!is.null(registry)) {
+    data <- TaxaTools::attach_taxon_ids(data, registry, name_col = "taxon_name", source_table = "match")
   }
 
   data

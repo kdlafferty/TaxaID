@@ -12,7 +12,7 @@ reasoning behind them -- lives in the TaxaID_dev repository at
 `ecosystem_docs/session_notes/TaxaFetch_CLAUDE_2026-10.md`. This file carries current
 state only.
 
-## Exported functions (32)
+## Exported functions (33)
 
 | Function | Purpose |
 |---|---|
@@ -34,6 +34,7 @@ state only.
 | `get_gbif_occurrences` | Fetch GBIF Occurrences -- Unified Entry Point |
 | `get_keys_from_context` | Fetch GBIF Taxon Keys Using Full Taxonomic Context |
 | `harvest_dataone_catalog` | Harvest the Full PASTA / EDI Dataset Catalog |
+| `lookup_gbif_taxa` | Look Up Taxon Names in GBIF's Backbone, With Identifiers |
 | `make_bbox_wkt` | Create a WKT Bounding Box Around a Central Point |
 | `parse_geo_screening_response` | Parse an LLM Geographic Screening Response |
 | `parse_pdf_extract_response` | Parse a raw LLM extraction response to a Darwin Core tibble |

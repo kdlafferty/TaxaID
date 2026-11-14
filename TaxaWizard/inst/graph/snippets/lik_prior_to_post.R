@@ -20,7 +20,8 @@ likelihoods_ready <- TaxaAssign::join_priors(
   site              = site_spec,
   taxonomy_lookup   = {{match_var}},
   rank_system       = detected_ranks,
-  backbone_id       = {{backbone_id}}
+  backbone_id       = {{backbone_id}},
+  taxonomy_cache_dir = {{taxonomy_cache_dir}}
 )
 
 # compute_posterior() pools named unreferenced rows whose point posterior is

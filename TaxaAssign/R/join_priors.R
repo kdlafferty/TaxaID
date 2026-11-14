@@ -657,6 +657,11 @@ utils::globalVariables(c(
 #' `taxaexpect_priors` (e.g. a family absent from the study region) are left
 #' unchanged and receive the dark diversity floor prior.
 #'
+#' @param taxonomy_cache_dir Character or `NULL` (default). A directory passed
+#'   to [TaxaTools::verify_taxon_names()] as `cache_dir` in the taxonomy
+#'   fallback, so answered lookups are reused and a rerun with a filled cache
+#'   makes no name requests. Same meaning as in [posterior_consensus()].
+#'   `NULL` looks every name up afresh.
 #' @return A data frame ready for [compute_posterior()], with columns
 #'   `prior_mean`, `prior_alpha`, and `prior_beta` added. All input columns are
 #'   preserved. Additional columns from `taxaexpect_priors`
@@ -754,7 +759,8 @@ join_priors <- function(likelihoods,
                         expansion_min_prior = 0.05,
                         expansion_cumulative_prior = 0.90,
                         singleton_taxonomy = NULL,
-                        backbone_id) {
+                        backbone_id,
+                        taxonomy_cache_dir = NULL) {
   # ---- Input validation -----------------------------------------------------
   if (!is.data.frame(likelihoods)) {
     cli::cli_abort("{.arg likelihoods} must be a data frame.")
@@ -769,6 +775,11 @@ join_priors <- function(likelihoods,
       TaxaTools::verify_taxon_names()'s {.arg backbone_id} docs, or \\
       https://verifier.globalnames.org/ for the full list."
     ))
+  }
+
+  if (!is.null(taxonomy_cache_dir) &&
+    (!is.character(taxonomy_cache_dir) || length(taxonomy_cache_dir) != 1L || is.na(taxonomy_cache_dir))) {
+    cli::cli_abort("{.arg taxonomy_cache_dir} must be NULL or a single directory path.")
   }
 
   needed_lik <- c("observation_id", "taxon_name", "taxon_name_rank")
@@ -1755,6 +1766,7 @@ join_priors <- function(likelihoods,
           if ("taxon_name_rank" %in% names(result)) {
             vargs$input_rank <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]
           }
+          if (!is.null(taxonomy_cache_dir)) vargs$cache_dir <- taxonomy_cache_dir
           verified <- do.call(TaxaTools::verify_taxon_names, vargs)
           TaxaTools::change_backbone(verified,
             input_col = "user_supplied_name"

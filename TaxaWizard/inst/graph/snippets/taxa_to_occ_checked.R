@@ -8,7 +8,7 @@
 #   are skipped -- only sparse-locally species pay the extra global-fetch
 #   cost.
 
-key_matches <- TaxaFetch::get_keys_from_context({{input_var}})
+key_matches <- TaxaFetch::get_keys_from_context({{input_var}}, cache_dir = {{taxonomy_cache_dir}})   # answered rows cached: a rerun asks GBIF only for new or failed rows
 # fetch_gbif_occurrences() takes the usageKey COLUMN, not the whole table that
 # get_keys_from_context() returns: it begins with as.integer(keys), and a data
 # frame cannot be coerced to integer. Passing the table raises

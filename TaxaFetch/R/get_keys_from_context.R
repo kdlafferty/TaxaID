@@ -12,6 +12,26 @@
 #'   most specific rank provided is used as the lookup target; higher ranks
 #'   are passed as disambiguation context.
 #'
+#' @param return_keys Logical, default \code{FALSE}. When \code{TRUE}, the
+#'   identifiers GBIF's backbone match already returns are appended as well
+#'   (prefixed \code{gbif_}): \code{gbif_acceptedUsageKey}, \code{gbif_status},
+#'   \code{gbif_synonym}, \code{gbif_canonicalName}, and for each rank from
+#'   kingdom to species its key and name (\code{gbif_kingdomKey},
+#'   \code{gbif_kingdom}, ..., \code{gbif_speciesKey}, \code{gbif_species}).
+#'   No extra request is made. A synonym's \code{usageKey} is its OWN record;
+#'   its accepted record is \code{gbif_acceptedUsageKey}. A species answered
+#'   only at a higher rank (\code{matchType = "HIGHERRANK"}) carries that higher
+#'   rank's key in \code{usageKey}: read \code{gbif_rank} before treating it as
+#'   the species.
+#' @param cache_dir Character or \code{NULL} (default, no cache). A directory
+#'   for a per-row on-disk cache keyed on everything the request sends (the
+#'   name, its rank, its context ranks) and on \code{return_keys}. Only answered
+#'   rows are written; a row whose request failed (\code{matchType = "ERROR"}),
+#'   or a \code{HIGHERRANK} row whose \code{name_lookup()} recovery request
+#'   failed, is never cached and is asked again next call. A cached row older
+#'   than 365 days (the default lifetime of \code{TaxaTools::verify_taxon_names()}'s
+#'   cache), or one with no recorded write time, is asked again, so a GBIF
+#'   backbone revision reaches it.
 #' @return The input dataframe with three columns appended:
 #'   \describe{
 #'     \item{usageKey}{Integer. GBIF usage key for the matched name, or
@@ -75,7 +95,14 @@
 #' @importFrom dplyr bind_rows bind_cols
 #' @export
 
-get_keys_from_context <- function(hierarchy_df) {
+get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir = NULL) {
+  if (!is.logical(return_keys) || length(return_keys) != 1L || is.na(return_keys)) {
+    stop("get_keys_from_context: 'return_keys' must be TRUE or FALSE.")
+  }
+  if (!is.null(cache_dir) && (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))) {
+    stop("get_keys_from_context: 'cache_dir' must be NULL or a single directory path.")
+  }
+  if (!is.null(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
     stop(
@@ -129,8 +156,10 @@ get_keys_from_context <- function(hierarchy_df) {
   row_list <- split(hierarchy_df, seq_len(nrow(hierarchy_df)))
 
   results <- dplyr::bind_rows(
-    lapply(row_list, .process_gbif_row, valid_ranks = valid_ranks)
+    lapply(row_list, .process_gbif_row, valid_ranks = valid_ranks,
+           return_keys = return_keys, cache_dir = cache_dir)
   )
+  if (return_keys) results <- .gkfc_ensure_key_columns(results)
 
   n_recovered <- sum(results$matchType == "LOOKUP_RECOVERED", na.rm = TRUE)
   message(sprintf(
@@ -150,6 +179,12 @@ get_keys_from_context <- function(hierarchy_df) {
 # Internal helper -- not exported
 # ------------------------------------------------------------------------------
 
+# Cache hits served by .process_gbif_row() since the last reset; read by lookup_gbif_taxa().
+# Lifetime of a get_keys_from_context() cache row, in days: verify_taxon_names()'s cache_ttl_days default.
+.GKFC_CACHE_TTL_DAYS <- 365
+.gkfc_state <- new.env(parent = emptyenv())
+.gkfc_state$cache_hits <- 0L
+
 #' Resolve one row of a hierarchy dataframe against the GBIF backbone
 #'
 #' @param row A one-row dataframe (one element from split(hierarchy_df, ...)).
@@ -157,7 +192,7 @@ get_keys_from_context <- function(hierarchy_df) {
 #' @return A one-row dataframe with columns usageKey, matchType, gbif_rank.
 #' @noRd
 
-.process_gbif_row <- function(row, valid_ranks) {
+.process_gbif_row <- function(row, valid_ranks, return_keys = FALSE, cache_dir = NULL) {
   # Identify which rank columns are present in this row
   present_cols <- names(row)[tolower(names(row)) %in% valid_ranks]
 
@@ -199,6 +234,23 @@ get_keys_from_context <- function(hierarchy_df) {
   api_args$rank <- toupper(target_rank)
   api_args$verbose <- FALSE
 
+  # Cache: keyed on the whole request plus return_keys; a hit skips the call
+  ckey <- NULL
+  if (!is.null(cache_dir)) {
+    ckey <- list(request = api_args[setdiff(sort(names(api_args)), "verbose")], return_keys = isTRUE(return_keys),
+                 version = "get_keys_from_context_v1")
+    cpath <- file.path(cache_dir, paste0(.cache_hash(ckey), "_gbif_keys.rds"))
+    if (file.exists(cpath)) {
+      hit <- tryCatch(readRDS(cpath), error = function(e) NULL)
+      # a row older than .GKFC_CACHE_TTL_DAYS, or with no written_at, is asked again: a backbone revision must reach it
+      age <- if (!is.null(hit) && inherits(hit$written_at, "POSIXct")) as.numeric(difftime(Sys.time(), hit$written_at, units = "days")) else NA_real_
+      if (!is.null(hit) && identical(hit$key, ckey) && is.data.frame(hit$row) && !is.na(age) && age <= .GKFC_CACHE_TTL_DAYS) {
+        .gkfc_state$cache_hits <- .gkfc_state$cache_hits + 1L   # counted for lookup_gbif_taxa(); output unchanged
+        return(hit$row)
+      }
+    }
+  }
+
   # Call GBIF backbone with full context
   tryCatch(
     {
@@ -224,6 +276,12 @@ get_keys_from_context <- function(hierarchy_df) {
       result <- .recover_higherrank(result, target_name, target_rank, valid_ranks,
         context = rank_values
       )
+      recovery_failed <- isTRUE(attr(result, "recovery_failed"))   # read before cbind(), which drops it
+      attr(result, "recovery_failed") <- NULL
+      if (return_keys) result <- cbind(result, .gkfc_key_columns(record, result))
+      if (!is.null(ckey) && !identical(result$matchType, "ERROR") && !recovery_failed) {
+        saveRDS(list(key = ckey, row = result, written_at = Sys.time()), cpath)
+      }
 
       result
     },
@@ -352,9 +410,46 @@ get_keys_from_context <- function(hierarchy_df) {
         "get_keys_from_context: name_lookup recovery failed for '%s' -- %s",
         target_name, conditionMessage(e)
       ), call. = FALSE)
+      # the HIGHERRANK row is still returned, but marked: a failed recovery is not an answer, so it is never cached
+      attr(result, "recovery_failed") <- TRUE
       result
     }
   )
 
   recovered
+}
+
+
+# ------------------------------------------------------------------------------
+# return_keys = TRUE: GBIF's own identifiers from the same name_backbone record
+# ------------------------------------------------------------------------------
+.GKFC_RANKS <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
+.GKFC_KEY_COLUMNS <- c("gbif_acceptedUsageKey", "gbif_status", "gbif_synonym", "gbif_canonicalName",
+                       as.vector(rbind(paste0("gbif_", .GKFC_RANKS, "Key"), paste0("gbif_", .GKFC_RANKS))))
+
+#' One row of identifier columns from a name_backbone record ([[ ]]: absent fields are NULL, not warnings)
+#' @noRd
+.gkfc_key_columns <- function(record, result) {
+  g <- function(f, as) { v <- tryCatch(record[[f]], error = function(e) NULL); if (is.null(v) || !length(v)) as(NA) else as(v[[1L]]) }
+  out <- list(gbif_acceptedUsageKey = g("acceptedUsageKey", as.integer), gbif_status = g("status", as.character),
+              gbif_synonym = g("synonym", as.logical), gbif_canonicalName = g("canonicalName", as.character))
+  for (r in .GKFC_RANKS) {
+    out[[paste0("gbif_", r, "Key")]] <- g(paste0(r, "Key"), as.integer)
+    out[[paste0("gbif_", r)]] <- g(r, as.character)
+  }
+  # A LOOKUP_RECOVERED key replaced the record's usageKey; the record's other fields describe
+  # the HIGHERRANK answer, not the recovered taxon, so they are not reported for it.
+  if (identical(result$matchType, "LOOKUP_RECOVERED")) out[] <- lapply(out, function(v) v[NA_integer_][1L])
+  as.data.frame(out, stringsAsFactors = FALSE)[.GKFC_KEY_COLUMNS]
+}
+
+#' Every row gets every identifier column (NA where the row has none: NO_DATA, ERROR, NONE)
+#' @noRd
+.gkfc_ensure_key_columns <- function(results) {
+  int <- grepl("Key$", .GKFC_KEY_COLUMNS)
+  for (i in seq_along(.GKFC_KEY_COLUMNS)) {
+    cc <- .GKFC_KEY_COLUMNS[i]
+    if (!cc %in% names(results)) results[[cc]] <- if (int[i]) NA_integer_ else if (cc == "gbif_synonym") NA else NA_character_
+  }
+  results[, c(setdiff(names(results), .GKFC_KEY_COLUMNS), .GKFC_KEY_COLUMNS), drop = FALSE]
 }

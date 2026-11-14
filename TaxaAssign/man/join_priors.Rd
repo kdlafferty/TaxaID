@@ -14,7 +14,8 @@ join_priors(
   expansion_min_prior = 0.05,
   expansion_cumulative_prior = 0.9,
   singleton_taxonomy = NULL,
-  backbone_id
+  backbone_id,
+  taxonomy_cache_dir = NULL
 )
 }
 \arguments{
@@ -115,6 +116,12 @@ A prior taxon that fails to map does not raise; it falls to the dark
 diversity floor, which is indistinguishable in the output from genuine
 dark diversity. The join rate per rank is reported at the end of every
 call so a wrong direction is visible immediately.}
+
+\item{taxonomy_cache_dir}{Character or \code{NULL} (default). A directory passed
+to \code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}} as \code{cache_dir} in the taxonomy
+fallback, so answered lookups are reused and a rerun with a filled cache
+makes no name requests. Same meaning as in \code{\link[=posterior_consensus]{posterior_consensus()}}.
+\code{NULL} looks every name up afresh.}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns

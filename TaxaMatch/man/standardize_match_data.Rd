@@ -12,7 +12,8 @@ standardize_match_data(
   coverage_col = NULL,
   col_map = NULL,
   lowercase_names = TRUE,
-  provenance = NULL
+  provenance = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -73,6 +74,16 @@ is an error rather than a silently dropped value. Attached as
 \code{attr(out, "report_params")}, merged into any such attribute \code{data}
 already carries, with these values taking precedence, and read from there
 by \code{\link[=report_match]{report_match()}}.}
+
+\item{registry}{A frozen \code{taxon_registry} from
+\code{\link[TaxaTools:build_taxon_registry]{TaxaTools::build_taxon_registry()}} and \code{\link[TaxaTools:freeze_taxon_registry]{TaxaTools::freeze_taxon_registry()}},
+or \code{NULL} (default: no identifiers added). When given, a \code{taxon_id}
+column is added by \code{\link[TaxaTools:attach_taxon_ids]{TaxaTools::attach_taxon_ids()}} from each row's
+\code{taxon_name}, looked up among the names the registry holds for source
+table \code{"match"}, and the result carries the registry's stamp. The match
+names themselves (NCBI naming) are left exactly as they are. A name the
+registry does not hold, or an input that already has its own \code{taxon_id}
+column, is an error.}
 }
 \value{
 A data frame with at minimum:
@@ -96,6 +107,9 @@ When \code{provenance} is supplied, the result also carries an
 \code{attr(out, "report_params")} list recording the search, in the same fields
 \code{blast_sequences()} records, so that one vocabulary describes every match
 source whatever produced the hits.
+
+When \code{registry} is supplied, the result also has a \code{taxon_id} column (the
+registry's identifier for each row's taxon) and the registry's stamp.
 }
 \description{
 Reads raw match data (from a data frame or file), renames the observation

@@ -359,11 +359,11 @@ that in its own products.
 In writing the code: the TaxaID source code was written with the
 assistance of Anthropic Claude models, used through Claude Code
 (Anthropic PBC, San Francisco, California), from 20 May 2026 to
-9 November 2026. The models were Claude Opus 4.6, 5 and 5.5; Claude
+14 November 2026. The models were Claude Opus 4.6, 5 and 5.5; Claude
 Sonnet 4.6, 5 and 5.5, with Sonnet 5.5 used for review sub-sessions;
 and Claude Fable 5 and 5.1. Nearly every non-merge commit names the
-model that contributed to it in a `Co-Authored-By` trailer -- 1,759 of
-1,821 at `77aa7471`, counted with `git log --no-merges --grep`
+model that contributed to it in a `Co-Authored-By` trailer -- 1,868 of
+1,930 at `2be885aa`, counted with `git log --no-merges --grep`
 `='Co-Authored-By: Claude'`; a count of trailer lines rather than
 commits returns one more, because one commit names two models. No trailer
 names Sonnet 5.5, so its use is stated here rather than checkable there.
@@ -992,17 +992,17 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 57                 | 34         | Yes      |
-| TaxaFetch   | 32                 | 28         | Yes      |
+| TaxaTools   | 64                 | 36         | Yes      |
+| TaxaFetch   | 33                 | 30         | Yes      |
 | TaxaHabitat | 15                 | 13         | Yes      |
 | TaxaMatch   | 30                 | 23         | Yes      |
 | TaxaLikely  | 33                 | 43         | Yes      |
 | TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 13                 | 25         | Yes      |
+| TaxaAssign  | 13                 | 26         | Yes      |
 | TaxaFlag    | 17                 | 23         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
-**Export surface: 223 = 218 functions + 5 data objects.** The per-package counts
+**Export surface: 231 = 226 functions + 5 data objects.** The per-package counts
 above are checked against the packages themselves whenever the test suite is run
 from a repository checkout, so this table and the code do not drift apart
 silently.
@@ -1033,7 +1033,7 @@ the U.S. Fish and Wildlife Service improve taxonomic assignment for
 metabarcoding studies of Great Lakes fish communities. Throughout, Joe
 Craine and Nick Schulte helped me understand how Jonah Ventures computes
 taxonomic assignment. Anthropic Claude models, used through Claude
-Code, were used from 20 May 2026 to 9 November 2026 to increase
+Code, were used from 20 May 2026 to 14 November 2026 to increase
 robustness, reduce redundancies, strengthen tests, and write and edit
 the documentation required to make TaxaID useful to others as an R
 package; the models and versions are listed under "Use of Large
