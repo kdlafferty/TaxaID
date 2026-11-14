@@ -137,7 +137,9 @@ test_that("rank: given where valid, else inferred from word count; a leading kin
 
 test_that("cache: a second call is served from the cache with the network off, and n_cached says so", {
   skip_if_not_installed("rgbif")
-  d <- withr::local_tempdir()
+  d <- tempfile()
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
   local_mocked_bindings(name_backbone = .backbone, .package = "rgbif")
   a <- suppressMessages(lookup_gbif_taxa(c("Hypsurus caryi", "Embiotoca caryi"), cache_dir = d))
   expect_identical(attr(a, "n_cached"), 0L)

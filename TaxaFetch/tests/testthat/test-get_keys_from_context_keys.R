@@ -48,7 +48,9 @@ test_that("return_keys: a species answered only at GENUS is visibly a genus (HIG
 
 test_that("return_keys: a failed request is ERROR with every key column NA, and it is never cached", {
   skip_if_not_installed("rgbif")
-  d <- withr::local_tempdir()
+  d <- tempfile()
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
   local_mocked_bindings(name_backbone = function(...) stop("HTTP 503"), .package = "rgbif")
   out <- suppressMessages(suppressWarnings(get_keys_from_context(.sp("Embiotoca caryi"), return_keys = TRUE, cache_dir = d)))
   expect_identical(out$matchType, "ERROR")
@@ -70,7 +72,9 @@ test_that("return_keys: a LOOKUP_RECOVERED key does not borrow the higher-rank r
 
 test_that("cache_dir: an answered row is served from the cache with the network off; return_keys is part of the key", {
   skip_if_not_installed("rgbif")
-  d <- withr::local_tempdir()
+  d <- tempfile()
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
   local_mocked_bindings(name_backbone = .rec_synonym, .package = "rgbif")
   a <- suppressMessages(get_keys_from_context(.sp("Embiotoca caryi"), return_keys = TRUE, cache_dir = d))
   expect_length(list.files(d), 1L)
