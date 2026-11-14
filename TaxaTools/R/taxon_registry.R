@@ -61,6 +61,9 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 .registry_default_lookup <- function(backbone_id, cache_dir) {
   force(backbone_id); force(cache_dir)
   function(names, rank, context) {
+    # no rank or context for any name is "none given" (NULL), as verify_taxon_names() means it
+    if (all(is.na(rank))) rank <- NULL
+    if (all(is.na(context))) context <- NULL
     verify_taxon_names(names, backbone_id = backbone_id, cache_dir = cache_dir,
                        input_rank = rank, lineage = context, return_ids = TRUE)
   }
