@@ -497,3 +497,56 @@ test_that("provenance is the LAST formal of standardize_match_data", {
   fm <- names(formals(standardize_match_data))
   expect_identical(fm[length(fm)], "provenance")
 })
+
+# ---- registry = (Phase 2): ids on the match object, nothing else changed ---------------------------
+# Offline: the registry is built from a synthetic lookup (verify_taxon_names(return_ids = TRUE) shape).
+.reg_lookup <- function(names, rank, context) {
+  acc <- names == "Hypsurus caryi"; syn <- names == "Embiotoca caryi"; hit <- acc | syn
+  data.frame(user_supplied_name = names, matched_name = ifelse(hit, "Hypsurus caryi", NA), matched_rank = ifelse(hit, "species", NA),
+             is_synonym = ifelse(hit, syn, NA),
+             classification_path = ifelse(hit, "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi", NA),
+             classification_ranks = ifelse(hit, "kingdom|phylum|order|family|genus|species", NA), score = NA_real_, verified = TRUE,
+             matched = hit, record_id = ifelse(acc, "2389310", ifelse(syn, "2389311", NA)), current_record_id = ifelse(hit, "2389310", NA),
+             classification_ids = ifelse(hit, "1|44|587|4269|2389309|2389310", NA), data_source_id = 11L, entry_date = NA_character_,
+             match_type = ifelse(hit, "Exact", NA), stringsAsFactors = FALSE)
+}
+.match_raw <- function() data.frame(ESVId = c("e1", "e1", "e2"), PercMatch = c(99.1, 98.7, 97.0), Kingdom = "Animalia",
+  Phylum = "Chordata", Family = "Embiotocidae", Genus = c("Hypsurus", "Embiotoca", "Hypsurus"),
+  Species = c("Hypsurus caryi", "Embiotoca caryi", "Hypsurus caryi"), stringsAsFactors = FALSE)
+.match_reg <- function(freeze = TRUE) {
+  r <- TaxaTools::build_taxon_registry(data.frame(verbatim_name = c("Hypsurus caryi", "Embiotoca caryi"), source_table = "match"),
+                                       run_id = "m1", lookup = .reg_lookup)
+  if (freeze) TaxaTools::freeze_taxon_registry(r) else r
+}
+.skip_no_registry <- function() testthat::skip_if_not("attach_taxon_ids" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the taxon registry")
+
+test_that("registry = NULL (default) leaves the output exactly as before: no taxon_id, no stamp", {
+  a <- suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch"))
+  b <- suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch", registry = NULL))
+  expect_identical(a, b)
+  expect_false("taxon_id" %in% names(a))
+  expect_null(attr(a, "taxon_registry"))
+})
+
+test_that("with a registry: the same rows and columns plus taxon_id and the stamp; NCBI names untouched; synonyms share an id", {
+  .skip_no_registry()
+  prov <- list(method = "blastn", tool_version = "2.16", database = "core_nt", database_date = "2026-10-01", search_started = "2026-11-01")
+  base <- suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch", provenance = prov))
+  out <- suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch", provenance = prov, registry = .match_reg()))
+  expect_identical(out$taxon_id, c("gbif:2389310", "gbif:2389310", "gbif:2389310"))
+  expect_identical(out$taxon_name, c("Hypsurus caryi", "Embiotoca caryi", "Hypsurus caryi"))   # verbatim, not rewritten
+  expect_false(is.null(attr(out, "taxon_registry")))
+  expect_identical(attr(out, "report_params"), attr(base, "report_params"))                   # provenance kept
+  stripped <- out; stripped$taxon_id <- NULL; attr(stripped, "taxon_registry") <- NULL
+  expect_identical(stripped, base)
+})
+
+test_that("GUARD CAN FAIL: an unregistered name, an unfrozen registry, a non-registry, or an existing taxon_id column is refused", {
+  .skip_no_registry()
+  raw <- .match_raw(); raw$Species[3] <- "Damalichthys vacca"
+  expect_error(suppressMessages(standardize_match_data(raw, "ESVId", "PercMatch", registry = .match_reg())), "not in the frozen registry")
+  expect_error(suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch", registry = .match_reg(freeze = FALSE))), "Freeze")
+  expect_error(standardize_match_data(.match_raw(), "ESVId", "PercMatch", registry = list()), "taxon_registry")
+  inat <- .match_raw(); inat$taxon_id <- 49917L
+  expect_error(suppressMessages(standardize_match_data(inat, "ESVId", "PercMatch", registry = .match_reg())), "did not stamp")
+})
