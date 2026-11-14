@@ -98,7 +98,13 @@ answer's kingdom and phylum; otherwise it is refused and listed in
 another kingdom). One narrow exception: a binomial whose epithet differs
 from a resolved congener's only in its Latin gender ending (\emph{Platybelone
 argala} / \emph{argalus}) takes that congener's identifier with
-\code{status = "gender_variant"}. Every use is listed by
+\code{status = "gender_variant"}. A second: a binomial the lookup answers
+as a GBIF \code{VARIANT} of its genus, with the epithet unchanged
+(\emph{Pyrogophorus platyrachis} / \emph{Pyrgophorus platyrachis}), takes
+that species' identifier with \code{status = "genus_variant"}, under the same
+gate: the name's own \code{context} must name the answer's kingdom and
+phylum, or it is refused and listed in \code{meta$genus_variant_rejected}.
+This needs the lookup's \code{gbif_matchType} column. Every use is listed by
 \code{\link{check_taxon_registry}}. No other fuzzy matching is accepted:
 a lookup answered by a fuzzy match is kept as \code{status = "fuzzy"}, which
 the guard reports as an undeclared merge if it lands on another name's
