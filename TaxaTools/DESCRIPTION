@@ -31,7 +31,7 @@ Suggests:
     xml2
 Config/testthat/edition: 3
 Imports:
-    dplyr,
+    dplyr (>= 1.1.0),
     httr,
     httr2,
     jsonlite,

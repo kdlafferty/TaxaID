@@ -653,14 +653,17 @@ join_by_taxon <- function(x, y, type = c("left", "inner", "anti", "semi"), extra
   bad <- c(bad, grep("_ncbi$|_name$", extra_by, value = TRUE))
   if (length(bad)) stop(sprintf("`extra_by` names taxon-name or lineage column(s) (%s): join on taxon_id only.", paste(unique(bad), collapse = ", ")))
   by <- c("taxon_id", extra_by)
+  # An NA taxon_id (an unnamed or blank row) is no taxon: it never matches another NA (na_matches = "never", as
+  # taxon_in() treats NA), and a row with an NA key always counts as having no partner.
   kx <- do.call(paste, c(lapply(by, function(b) x[[b]]), sep = "\r"))
   ky <- do.call(paste, c(lapply(by, function(b) y[[b]]), sep = "\r"))
-  np <- c(x_rows = sum(!kx %in% ky), y_rows = sum(!ky %in% kx))
+  nax <- is.na(x$taxon_id); nay <- is.na(y$taxon_id)
+  np <- c(x_rows = sum(nax | !kx %in% ky[!nay]), y_rows = sum(nay | !ky %in% kx[!nax]))
   out <- switch(type,
-                left = dplyr::left_join(x, y, by = by, relationship = "many-to-many"),
-                inner = dplyr::inner_join(x, y, by = by, relationship = "many-to-many"),
-                anti = dplyr::anti_join(x, y, by = by),
-                semi = dplyr::semi_join(x, y, by = by))
+                left = dplyr::left_join(x, y, by = by, relationship = "many-to-many", na_matches = "never"),
+                inner = dplyr::inner_join(x, y, by = by, relationship = "many-to-many", na_matches = "never"),
+                anti = dplyr::anti_join(x, y, by = by, na_matches = "never"),
+                semi = dplyr::semi_join(x, y, by = by, na_matches = "never"))
   if (verbose) message(sprintf("join_by_taxon (%s on %s): %d row(s) of x and %d row(s) of y have no partner.",
                                type, paste(by, collapse = "+"), np[["x_rows"]], np[["y_rows"]]))
   attr(out, .REGISTRY_STAMP) <- sx
