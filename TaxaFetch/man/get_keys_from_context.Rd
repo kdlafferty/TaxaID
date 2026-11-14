@@ -29,8 +29,9 @@ the species.}
 \item{cache_dir}{Character or \code{NULL} (default, no cache). A directory
 for a per-row on-disk cache keyed on everything the request sends (the
 name, its rank, its context ranks) and on \code{return_keys}. Only answered
-rows are written; a row whose request failed (\code{matchType = "ERROR"})
-is never cached and is asked again next call.}
+rows are written; a row whose request failed (\code{matchType = "ERROR"}),
+or a \code{HIGHERRANK} row whose \code{name_lookup()} recovery request
+failed, is never cached and is asked again next call.}
 }
 \value{
 The input dataframe with three columns appended:
