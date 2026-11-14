@@ -177,6 +177,63 @@ The output is ready for `expand_unreferenced_hypotheses()` (also in
 TaxaLikely, once a TaxaExpect-derived unreferenced-species list is
 available) and then TaxaAssign: `join_priors()` → `compute_posterior()`.
 
+## Why a trained likelihood model rather than a softmax
+
+A simpler way to turn match scores into likelihoods is a softmax: each
+referenced candidate gets a weight that rises steeply with its match score,
+and the weights are normalised over the candidates. It has a handful of
+constants and needs no training run. A softmax only ranks the references it
+is given, though. To allow for a read whose source has no reference, it needs
+an extra "unknown" term at each rank: an unsequenced congener, an unsequenced
+genus in the family, and so on. How large that term is decides how the model
+fails:
+
+- **A large unknown term** takes probability away from every named candidate,
+  including the right one. Calls drift to coarse ranks, and a read that fits a
+  referenced species well can end up called only to class.
+- **A small unknown term** makes the softmax confident whenever some
+  reference is close. When the true source is an unreferenced congener, its
+  read still matches a referenced relative at high identity, and the softmax
+  calls that relative, the wrong species.
+
+A single constant per rank cannot suit every clade, because the right size
+depends on how complete the reference library is for that clade.
+`train_likelihood_model()` measures it from the reference library itself. It
+compares how well a sequence matches other sequences of its own species (H1)
+with how well it matches its closest congener, which stands in for an
+unreferenced species of the same genus (H2), and its closest relative in
+another genus of the same family, which stands in for an unreferenced genus
+(H3). The H2 shift is estimated per genus where the genus has congener pairs,
+shrunk toward the pooled value. The unknown hypotheses therefore get
+likelihoods measured from the library, not one tuned constant.
+
+In a held-out test on one 12S library, a softmax with a fitted unknown term at
+each rank was compared with the trained model. Reads were scored with their
+own species (or genus) removed from the library, and each model was scored on
+the log probability it gave the true answer. The table gives the softmax minus
+the trained model, with 95% intervals from resampling genera:
+
+| The read's source | Softmax minus trained model |
+|---|---|
+| a species with a reference | +1.02 [+0.81, +1.21] |
+| a species with no reference, in a referenced genus | -0.69 [-1.04, -0.33] |
+| a genus with no reference | +0.46 [-0.14, +1.08], not distinguishable from 0 |
+
+The softmax does better when the species is in the library and worse when it
+is not. The gain in log score is larger than the loss, but the loss falls on
+the costliest error: the softmax names a referenced congener while the true
+species is missing from the library, a confident wrong species call. TaxaID is
+designed to minimise those errors, even at some cost in resolution.
+
+**This matters most where references are sparse.** The share of reads from
+unreferenced species rises as reference coverage falls. For markers or
+regions with sparse libraries, such as COI and 18S for many invertebrate
+groups, the share is expected to be larger, and with it the share of reads
+where the softmax loses. The cost of training is spent where it matters most.
+This comparison has not yet been repeated on such a library. Where a library
+is nearly complete for the local species, the two approaches should come
+closer.
+
 ## Key Parameters
 
 | Parameter | Default | When to change |
