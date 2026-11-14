@@ -654,3 +654,20 @@ test_that("REVIEW F2: a uninomial or trinomial answered at a coarser rank is ran
   expect_identical(r1$names$status, "rank_fallback")
 })
 
+# -- F3: the tie-break counted a rank one candidate lacks as evidence ---------------------------------------------
+test_that("REVIEW F3: only ranks EVERY candidate has, with differing values, decide; a fuller lineage does not win on missing data", {
+  lk <- .fake_lookup(.row("Pachycheles holosericus", "Pachycheles holosericus", "5000", "1|18|300|400|501|601|5000",
+                          "Animalia|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles|Pachycheles holosericus", ranks = .tk7))
+  pool <- data.frame(verbatim_name = "Pachycheles holosericus", species_key = "11156704", family = "Paguridae", genus = "Pachycheles",
+                     stringsAsFactors = FALSE)                               # only family and genus columns
+  ncbi <- function(name) "Metazoa|Arthropoda|Malacostraca|Decapoda|Paguridae|Pachycheles"
+  reg <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "f3", pool_keys = pool, lookup = lk,
+                              tiebreak = list(authorities = list(ncbi = ncbi)))
+  expect_identical(reg$meta$pool_key_tiebreaks$chosen, "gbif:11156704")       # 2ea632dc: gbif:5000 (scores 1/3 on missing ranks)
+  # no rank that both have and that differs: undecided
+  reg2 <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "f3b", pool_keys = pool[, c("verbatim_name", "species_key", "genus")],
+                               lookup = lk, tiebreak = list(authorities = list(ncbi = ncbi)))
+  expect_true(is.na(reg2$meta$pool_key_tiebreaks$chosen))                    # 2ea632dc: gbif:5000
+  expect_error(check_taxon_registry(reg2, mode = "error", verbose = FALSE), "pool_key_conflict")
+})
+
