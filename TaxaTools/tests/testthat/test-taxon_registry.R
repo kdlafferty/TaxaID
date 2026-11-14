@@ -679,8 +679,13 @@ test_that("REVIEW F4: a lookup missing verified, matched, matched_rank, is_synon
     .row("Hypsurus caryi", "Hypsurus caryi", "2389310", "1|44|587|4269|2389309|2389310", "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi")))
   for (col in c("verified", "matched", "matched_rank", "is_synonym", "match_type")) {
     lk <- local({ cc <- col; function(names, rank, context) { o <- base(names, rank, context); o[[cc]] <- NULL; o } })
-    expect_error(build_taxon_registry(.names(c("Embiotoca caryi", "Hypsurus caryi"), "r2"), run_id = "f4", lookup = lk),
-                 paste0("lookup.*", col), info = col)
+    # The condition is CAUGHT, not passed to expect_error(): testthat 3e re-raises a non-matching error, so an incidental
+    # crash in the reviewed code (it crashed on a missing `matched`) showed as a test ERROR, not a failure. The fix
+    # must refuse with its own classed condition naming the column; anything else fails here by assertion.
+    e <- tryCatch(build_taxon_registry(.names(c("Embiotoca caryi", "Hypsurus caryi"), "r2"), run_id = "f4", lookup = lk),
+                  error = function(e) e)
+    expect_s3_class(e, "taxon_registry_bad_lookup")
+    expect_match(if (inherits(e, "condition")) conditionMessage(e) else "", col, fixed = TRUE, info = col)
   }
 })
 
