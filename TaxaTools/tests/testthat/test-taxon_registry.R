@@ -401,6 +401,80 @@ test_that("GUARD CAN FAIL: no context, or the right kingdom with the wrong phylu
   expect_null(r2$meta$genus_variant_rejected)
 })
 
+# Tie-break fixtures. The live case: the CI pool holds Tetraclita rubescens under two GBIF species keys
+# (2115806, 9188200); GBIF's species/match answers 9188200. Lineages here are synthetic: the two candidates
+# differ only in family, so only an authority naming one of those families can decide.
+.tk7 <- "kingdom|phylum|class|order|family|genus|species"
+.tetra_lk <- function() .fake_lookup(.row("Tetraclita rubescens", "Tetraclita rubescens", "9188200", "1|18|300|400|500|600|9188200",
+  "Animalia|Arthropoda|Thecostraca|Balanomorpha|Tetraclitidae|Tetraclita|Tetraclita rubescens", ranks = .tk7))
+.tetra_pool <- function(fam = c("Balanidae", "Tetraclitidae")) data.frame(verbatim_name = "Tetraclita rubescens",
+  species_key = c("2115806", "9188200"), kingdom = "Animalia", phylum = "Arthropoda", class = "Thecostraca", order = "Balanomorpha",
+  family = fam, genus = "Tetraclita", stringsAsFactors = FALSE)
+.lin <- function(fam) function(name) paste("cellular organisms|Eukaryota|Metazoa|Arthropoda|Crustacea|Thecostraca|Balanomorpha", fam, "Tetraclita", sep = "|")
+.tb_reg <- function(tiebreak, pool = .tetra_pool()) build_taxon_registry(.names("Tetraclita rubescens", "r2"), run_id = "tb",
+  pool_keys = pool, lookup = .tetra_lk(), tiebreak = tiebreak)
+
+test_that("tie-break off (default): a name the pool holds under 2 keys stays an error, as before", {
+  reg <- .tb_reg(NULL)
+  expect_identical(reg$names$taxon_id, "gbif:9188200")                       # the lookup's id; not keyed from the pool
+  expect_null(reg$meta$pool_key_tiebreaks)
+  expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "pool_key_ambiguous")
+})
+
+test_that("step 0: GBIF's own match, when it is exactly one of the candidates, decides; the finding becomes info", {
+  reg <- .tb_reg(list())                                                     # gbif_first defaults to TRUE
+  expect_identical(c(reg$names$taxon_id, reg$names$status, reg$names$backend), c("gbif:9188200", "pool_key_tiebreak", "tiebreak:gbif"))
+  expect_null(reg$meta$pool_key_ambiguous)
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_identical(chk$severity[chk$kind == "pool_key_tiebroken"], "info")
+  expect_false(any(chk$kind == "pool_key_ambiguous"))
+  expect_silent(check_taxon_registry(reg, mode = "error", verbose = FALSE))
+})
+
+test_that("GUARD CAN FAIL: NCBI decides by the candidates' DISTINGUISHING terms, even against GBIF's match when step 0 is off", {
+  reg <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = .lin("Balanidae"), worms = .lin("Tetraclitidae"))))
+  expect_identical(c(reg$names$taxon_id, reg$names$backend), c("gbif:2115806", "tiebreak:ncbi"))   # NCBI first, and it names Balanidae
+  expect_true(is.na(reg$names$accepted_lookup))                              # the lookup's name belonged to the other id
+  expect_true("gbif:2115806" %in% reg$taxa$taxon_id)
+})
+
+test_that("an authority with no answer passes to the next (NCBI silent -> WoRMS decides)", {
+  reg <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = function(name) NA_character_, worms = .lin("Tetraclitidae"))))
+  expect_identical(c(reg$names$taxon_id, reg$names$backend), c("gbif:9188200", "tiebreak:worms"))
+  expect_match(reg$meta$pool_key_tiebreaks$detail, "ncbi: no answer", fixed = TRUE)
+})
+
+test_that("GUARD CAN FAIL: identical candidate lineages, or an authority naming both, are NOT decided; the error stays", {
+  same <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = .lin("Tetraclitidae"))), pool = .tetra_pool(c("Tetraclitidae", "Tetraclitidae")))
+  expect_true(is.na(same$meta$pool_key_tiebreaks$chosen))
+  expect_false(identical(same$names$status, "pool_key_tiebreak"))
+  expect_error(check_taxon_registry(same, mode = "error", verbose = FALSE), "pool_key_ambiguous")
+  expect_true(any(check_taxon_registry(same, verbose = FALSE)$kind == "pool_key_tiebreak_undecided"))
+  both <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = function(name) "Arthropoda|Balanidae|Tetraclitidae")))
+  expect_true(is.na(both$meta$pool_key_tiebreaks$chosen))
+  expect_match(both$meta$pool_key_tiebreaks$detail, "not decided (scores 1/1)", fixed = TRUE)
+  nolin <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = .lin("Balanidae"))), pool = .tetra_pool()[, c("verbatim_name", "species_key")])
+  expect_true(is.na(nolin$meta$pool_key_tiebreaks$chosen))                   # a candidate with no lineage: never decided by lineage
+})
+
+test_that("a pool_key_conflict goes through the same tie-break: step 0 takes GBIF's match; off, the conflict error stays", {
+  lk <- .fake_lookup(.row("Pachycheles holosericus", "Pachycheles holosericus", "5000", "1|18|300|400|501|601|5000",
+                          "Animalia|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles|Pachycheles holosericus", ranks = .tk7))
+  pool <- data.frame(verbatim_name = "Pachycheles holosericus", species_key = "11156704", stringsAsFactors = FALSE)
+  off <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "c0", pool_keys = pool, lookup = lk)
+  expect_identical(c(off$names$taxon_id, off$names$status), c("gbif:11156704", "pool_key_conflict"))
+  on <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "c1", pool_keys = pool, lookup = lk, tiebreak = list())
+  expect_identical(c(on$names$taxon_id, on$names$status, on$names$accepted_lookup), c("gbif:5000", "pool_key_tiebreak", "Pachycheles holosericus"))
+  chk <- check_taxon_registry(on, verbose = FALSE)
+  expect_false(any(chk$kind == "pool_key_conflict"))
+  expect_true(any(chk$kind == "pool_key_tiebroken" & grepl("pool_key_conflict", chk$detail)))
+})
+
+test_that("a malformed tiebreak is refused", {
+  expect_error(.tb_reg("ncbi"), "tiebreak")
+  expect_error(.tb_reg(list(authorities = list(function(name) NA))), "named list")
+})
+
 test_that("taxon_in asks membership of ids, never names, and NA is never a member", {
   expect_identical(taxon_in(c("gbif:1", NA, "gbif:3"), c("gbif:1", NA)), c(TRUE, FALSE, FALSE))
   expect_error(taxon_in(1, "gbif:1"), "character")

@@ -63,6 +63,55 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
              snapshot = snapshot, local = FALSE, stringsAsFactors = FALSE)
 }
 
+# Ranks a candidate's lineage is compared on in the tie-break (the name itself is the same on every candidate).
+.TB_RANKS <- c("kingdom", "phylum", "class", "order", "family", "genus")
+
+#' A classification path's terms at the tie-break ranks, kingdom first
+#' @noRd
+.tb_terms_of_path <- function(path, ranks) {
+  p <- .split_pipe(path); r <- tolower(.split_pipe(ranks))
+  n <- min(length(p), length(r)); if (n == 0L) return(character(0L))
+  p[seq_len(n)][r[seq_len(n)] %in% .TB_RANKS]
+}
+
+#' Tie-break between 2+ GBIF candidate ids for one name (Kevin, 2026-11-13: GBIF first, then NCBI, then WoRMS)
+#'
+#' Step 0 (\code{gbif_first}): GBIF's own match for the name, when it is exactly one of the candidates.
+#' Then each authority in order: its lineage for the name is compared with the terms that DIFFER between the
+#' candidates (terms all candidates share decide nothing); the candidate with strictly the most of its own
+#' differing terms in that lineage wins. No answer, a tie, or a candidate with no lineage: the next
+#' authority. Nothing decides: \code{id = NA}, and the caller keeps the error-class finding.
+#' @return list(id, by, detail)
+#' @noRd
+.registry_tiebreak <- function(name, cand_ids, cand_terms, lookup_id, tiebreak) {
+  notes <- character(0L)
+  if (isTRUE(tiebreak$gbif_first)) {
+    if (!is.na(lookup_id) && sum(cand_ids == lookup_id) == 1L) {
+      return(list(id = lookup_id, by = "gbif", detail = "GBIF's own match is one of the candidates"))
+    }
+    notes <- c(notes, "gbif: its match is not one of the candidates")
+  }
+  if (any(lengths(cand_terms) == 0L)) {
+    return(list(id = NA_character_, by = NA_character_,
+                detail = paste(c(notes, "a candidate has no lineage to compare"), collapse = "; ")))
+  }
+  shared <- Reduce(intersect, lapply(cand_terms, tolower))
+  own <- lapply(cand_terms, function(tt) tt[!tolower(tt) %in% shared])
+  for (a in names(tiebreak$authorities)) {
+    L <- tryCatch(as.character(tiebreak$authorities[[a]](name))[1L], error = function(e) NA_character_)
+    if (is.na(L) || !nzchar(L)) { notes <- c(notes, paste0(a, ": no answer")); next }
+    score <- vapply(own, function(tt) if (!length(tt)) 0L else
+      sum(check_lineage_agreement(rep(L, length(tt)), tt, ignore = character(0L)) == "agrees"), 0L)
+    if (max(score) > 0L && sum(score == max(score)) == 1L) {
+      w <- which.max(score)
+      return(list(id = cand_ids[w], by = a, detail = sprintf("%s lineage holds %s of %s's distinguishing terms (scores %s)",
+                                                             a, max(score), cand_ids[w], paste(score, collapse = "/"))))
+    }
+    notes <- c(notes, sprintf("%s: not decided (scores %s)", a, paste(score, collapse = "/")))
+  }
+  list(id = NA_character_, by = NA_character_, detail = paste(notes, collapse = "; "))
+}
+
 #' Does a non-exact genus answer sit in the names' own lineage? Kingdom AND phylum must agree.
 #'
 #' A fuzzy or variant genus answer can be a different genus in another kingdom (Hypnea, a red
@@ -100,6 +149,17 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' \code{\link{check_taxon_registry}} as an error-class
 #' \code{pool_key_ambiguous} finding.
 #'
+#' \strong{Tie-break} (off by default, \code{tiebreak}). Where a name has two
+#' or more candidate ids (\code{pool_key_ambiguous}, or a
+#' \code{pool_key_conflict} between the pool's key and the lookup's), the
+#' candidates are decided by, in order: the lookup's own answer when it is
+#' exactly one of the candidates (\code{gbif_first}); then each of
+#' \code{authorities} in turn, whose lineage for the name must hold strictly
+#' more of one candidate's distinguishing terms (those the candidates do not
+#' share) than of any other's. A decided name gets
+#' \code{status = "pool_key_tiebreak"}; an undecided one keeps its
+#' error-class finding. Candidates with identical lineages are never decided.
+#'
 #' \strong{Unresolved names} get a run-local identifier under their resolved
 #' genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
 #' the genus is unknown. A genus answered only by a fuzzy or variant match is
@@ -126,20 +186,29 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #'   \code{11L}.
 #' @param pool_keys \code{NULL} or a data frame with \code{verbatim_name} and
 #'   \code{species_key}: the occurrence pool's accepted key per name, used as the
-#'   identifier ahead of any lookup.
+#'   identifier ahead of any lookup. Optional \code{kingdom} ... \code{genus}
+#'   columns give each key's lineage for the tie-break.
 #' @param lookup \code{NULL} (default: \code{verify_taxon_names()} against
 #'   \code{key_backbone_id} with \code{cache_dir}) or a function
 #'   \code{function(names, rank, context)} returning a table shaped like
 #'   \code{verify_taxon_names(return_ids = TRUE)}; supply one to resolve from
 #'   recorded answers offline.
 #' @param cache_dir Passed to \code{verify_taxon_names()} by the default lookup.
+#' @param tiebreak \code{NULL} (default: no tie-break; 2+ candidate ids stay
+#'   error-class findings) or a list: \code{gbif_first} (logical, default
+#'   \code{TRUE}: take the lookup's own answer when it is exactly one of the
+#'   candidates) and \code{authorities}, a named, ordered list of functions
+#'   \code{function(name)} returning that authority's pipe-delimited lineage
+#'   for the name, or \code{NA} (e.g. \code{list(ncbi = ..., worms = ...)}).
+#'   Candidate lineages come from the lookup's classification and from optional
+#'   \code{kingdom} ... \code{genus} columns of \code{pool_keys}.
 #' @return An object of class \code{taxon_registry}: a list with \code{taxa},
 #'   \code{names} and \code{meta}, unfrozen.
 #' @seealso \code{\link{freeze_taxon_registry}}, \code{\link{attach_taxon_ids}},
 #'   \code{\link{join_by_taxon}}, \code{\link{check_taxon_registry}}
 #' @export
 build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys = NULL,
-                                 lookup = NULL, cache_dir = NULL) {
+                                 lookup = NULL, cache_dir = NULL, tiebreak = NULL) {
   if (!is.data.frame(names) || !all(c("verbatim_name", "source_table") %in% names(names))) {
     stop("`names` must be a data frame with columns verbatim_name and source_table.")
   }
@@ -150,6 +219,15 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   prefix <- .registry_prefix(key_backbone_id)
   if (is.null(lookup)) lookup <- .registry_default_lookup(key_backbone_id, cache_dir)
   if (!is.function(lookup)) stop("`lookup` must be NULL or a function(names, rank, context).")
+  if (!is.null(tiebreak)) {
+    if (!is.list(tiebreak)) stop("`tiebreak` must be NULL or a list(gbif_first =, authorities =).")
+    tiebreak$gbif_first <- if (is.null(tiebreak$gbif_first)) TRUE else isTRUE(tiebreak$gbif_first)
+    au <- tiebreak$authorities %||% list()
+    if (!is.list(au) || (length(au) && (is.null(names(au)) || any(!nzchar(names(au))) || !all(vapply(au, is.function, TRUE))))) {
+      stop("`tiebreak$authorities` must be a named list of functions(name).")
+    }
+    tiebreak$authorities <- au
+  }
 
   nm <- data.frame(verbatim_name = as.character(names$verbatim_name),
                    source_table = as.character(names$source_table), stringsAsFactors = FALSE)
@@ -224,7 +302,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   }
 
   # --- pool keys first --------------------------------------------------------
-  pool_key_ambiguous <- NULL
+  pool_key_ambiguous <- NULL; pool_key_tiebreaks <- NULL
   if (!is.null(pool_keys)) {
     if (!is.data.frame(pool_keys) || !all(c("verbatim_name", "species_key") %in% names(pool_keys))) {
       stop("`pool_keys` must be NULL or a data frame with verbatim_name and species_key.")
@@ -235,6 +313,26 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     pkv <- unique(data.frame(verbatim_name = as.character(pkv$verbatim_name), species_key = as.character(pkv$species_key),
                              stringsAsFactors = FALSE))
     amb_names <- unique(pkv$verbatim_name[duplicated(pkv$verbatim_name)])
+    lk_id <- nm$taxon_id; acc0 <- nm$accepted_lookup        # the lookup's own answer, before any pool key
+    lin_cols <- intersect(.TB_RANKS, names(pool_keys))
+    pool_terms <- function(v, k) {
+      if (!length(lin_cols)) return(character(0L))
+      w <- pool_keys[as.character(pool_keys$verbatim_name) %in% v & as.character(pool_keys$species_key) %in% k, lin_cols, drop = FALSE]
+      if (!nrow(w)) return(character(0L))
+      x <- as.character(unlist(w[1L, ], use.names = FALSE)); x[!is.na(x) & nzchar(x)]
+    }
+    tb_rows <- list(); tb_pick <- character(0L); tb_by <- character(0L)
+    if (!is.null(tiebreak)) {
+      for (v in intersect(amb_names, nm$verbatim_name)) {
+        keys <- sort(unique(pkv$species_key[pkv$verbatim_name == v])); ids <- paste0(prefix, ":", keys)
+        lid <- unique(stats::na.omit(lk_id[nm$verbatim_name == v]))
+        tb <- .registry_tiebreak(v, ids, lapply(keys, function(k) pool_terms(v, k)), if (length(lid) == 1L) lid else NA_character_, tiebreak)
+        tb_rows[[length(tb_rows) + 1L]] <- data.frame(verbatim_name = v, kind = "pool_key_ambiguous", candidates = paste(ids, collapse = " | "),
+                                                      chosen = tb$id, by = tb$by, detail = tb$detail, stringsAsFactors = FALSE)
+        if (!is.na(tb$id)) { tb_pick[v] <- tb$id; tb_by[v] <- tb$by }
+      }
+      amb_names <- setdiff(amb_names, names(tb_pick))
+    }
     pool_key_ambiguous <- if (length(amb_names)) data.frame(verbatim_name = amb_names,
       species_keys = vapply(amb_names, function(v) paste(sort(pkv$species_key[pkv$verbatim_name == v]), collapse = " | "), ""),
       in_names = amb_names %in% nm$verbatim_name, stringsAsFactors = FALSE, row.names = NULL) else NULL
@@ -242,11 +340,31 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     pk <- paste0(prefix, ":", pkv$species_key)[match(nm$verbatim_name, pkv$verbatim_name)]
     has <- !is.na(match(nm$verbatim_name, pkv$verbatim_name))
     clash <- has & !is.na(nm$taxon_id) & nm$taxon_id != pk
+    if (!is.null(tiebreak) && any(clash)) {
+      for (v in unique(nm$verbatim_name[clash])) {
+        i <- which(clash & nm$verbatim_name == v)[1L]
+        ids <- c(pk[i], lk_id[i])
+        tb <- .registry_tiebreak(v, ids, list(pool_terms(v, sub("^[^:]+:", "", pk[i])),
+                                              .tb_terms_of_path(r$classification_path[i], r$classification_ranks[i])), lk_id[i], tiebreak)
+        tb_rows[[length(tb_rows) + 1L]] <- data.frame(verbatim_name = v, kind = "pool_key_conflict", candidates = paste(ids, collapse = " | "),
+                                                      chosen = tb$id, by = tb$by, detail = tb$detail, stringsAsFactors = FALSE)
+        if (!is.na(tb$id)) { tb_pick[v] <- tb$id; tb_by[v] <- tb$by }
+      }
+    }
     nm$status[clash] <- "pool_key_conflict"
     nm$accepted_lookup[clash] <- NA_character_   # the lookup's accepted name is ANOTHER taxon's
     nm$taxon_id[has] <- pk[has]
     nm$backend[has & !clash & is.na(nm$backend)] <- "pool_keys"
     nm$status[has & (is.na(nm$status) | nm$status %in% c("lookup_failed", "rank_fallback", "fuzzy_rejected", "homonym_rejected"))] <- "pool_key_only"
+    if (length(tb_pick)) {
+      w <- which(nm$verbatim_name %in% names(tb_pick))
+      newid <- unname(tb_pick[nm$verbatim_name[w]])
+      same <- !is.na(lk_id[w]) & newid == lk_id[w]
+      nm$accepted_lookup[w] <- ifelse(same, acc0[w], NA_character_)   # the lookup's name only where it named the chosen id
+      nm$taxon_id[w] <- newid; nm$status[w] <- "pool_key_tiebreak"
+      nm$backend[w] <- paste0("tiebreak:", unname(tb_by[nm$verbatim_name[w]]))
+    }
+    pool_key_tiebreaks <- if (length(tb_rows)) do.call(rbind, tb_rows) else NULL
   }
 
   taxa <- if (length(taxa)) do.call(rbind, taxa) else
@@ -343,7 +461,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     meta = list(run_id = run_id, key_backbone_id = key_backbone_id, authority = prefix,
                 snapshot = if (length(snaps)) paste(snaps, collapse = ",") else NA_character_,
                 frozen = FALSE, digest = NA_character_, built_at = Sys.time(),
-                taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous,
+                taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous, pool_key_tiebreaks = pool_key_tiebreaks,
                 genus_variant_rejected = if (length(genus_variant_rejected)) do.call(rbind, genus_variant_rejected) else NULL)
   ), class = "taxon_registry")
 }
@@ -591,7 +709,7 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   }
   # merge audit: ids reached by 2+ different CLEAN names
   z <- nm[!is.na(nm$taxon_id), , drop = FALSE]
-  declared <- c("accepted", "synonym", "gender_variant", "pool_key_only")
+  declared <- c("accepted", "synonym", "gender_variant", "pool_key_only", "pool_key_tiebreak")
   for (id in unique(z$taxon_id)) {
     w <- z[z$taxon_id == id, , drop = FALSE]
     if (length(unique(w$name_clean)) < 2L) next
@@ -623,6 +741,15 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   if (!is.null(gvr) && nrow(gvr)) {
     for (i in seq_len(nrow(gvr))) add("info", "genus_variant_rejected", NA_character_, gvr$answer_id[i], gvr$genus_word[i],
                                       sprintf("answer %s (%s): %s", gvr$answer[i], gvr$answer_path[i], gvr$reason[i]), 1L)
+  }
+  # tie-break outcomes: a decided name is listed (info) with the authority that decided; an undecided one keeps
+  # its error-class pool_key_ambiguous / pool_key_conflict finding above, and the reason is listed here
+  tbk <- registry$meta$pool_key_tiebreaks
+  if (!is.null(tbk) && nrow(tbk)) {
+    for (i in seq_len(nrow(tbk))) add("info", if (is.na(tbk$chosen[i])) "pool_key_tiebreak_undecided" else "pool_key_tiebroken",
+                                      NA_character_, if (is.na(tbk$chosen[i])) tbk$candidates[i] else tbk$chosen[i], tbk$verbatim_name[i],
+                                      sprintf("%s; candidates %s; %s", tbk$kind[i], tbk$candidates[i],
+                                              if (is.na(tbk$by[i])) tbk$detail[i] else paste0("decided by ", tbk$by[i], ": ", tbk$detail[i])), 1L)
   }
   tc <- registry$meta$taxa_conflicts
   if (!is.null(tc) && nrow(tc)) {
