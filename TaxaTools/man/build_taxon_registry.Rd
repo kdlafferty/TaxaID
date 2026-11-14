@@ -65,7 +65,11 @@ the pool at all (its identifier comes from the lookup alone); it is listed in
 
 \strong{Unresolved names} get a run-local identifier under their resolved
 genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
-the genus is unknown. One narrow exception: a binomial whose epithet differs
+the genus is unknown. A genus answered only by a fuzzy or variant match is
+taken only where the \code{context} of the names under it names the
+answer's kingdom and phylum; otherwise it is refused and listed in
+\code{meta$genus_variant_rejected} (a misspelt genus can match a genus in
+another kingdom). One narrow exception: a binomial whose epithet differs
 from a resolved congener's only in its Latin gender ending (\emph{Platybelone
 argala} / \emph{argalus}) takes that congener's identifier with
 \code{status = "gender_variant"}. Every use is listed by
