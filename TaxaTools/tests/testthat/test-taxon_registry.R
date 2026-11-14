@@ -814,3 +814,26 @@ test_that("REVIEW N7: CLAUDE.md's rows for the registry exports are their Rd tit
     expect_true(sprintf("| `%s` | %s |", f, title) %in% rows, info = f)   # 1f3e31d0: all five differ
   }
 })
+
+# N3, found by S0 run7 on Mugu final6 (2026-11-14): the gate as first written refused 9 Mugu names (Girella x8,
+# Plectranthias) whose NCBI context names only an order and family ("Centrarchiformes|Girellidae") that GBIF classifies
+# differently (Perciformes|Kyphosidae). That is a classification concept (listed as lineage_concept_differs), not a
+# homonym. A context contradicts an EXACT answer only where it names another kingdom, or names a phylum (one this run's
+# answers use) other than the answer's. FAILS on 3517338d..7f2e333d: the Girella answer is homonym_rejected.
+.s7r <- "kingdom|phylum|class|order|family|genus|species"
+.girella_lk <- function() .fake_lookup(rbind(
+  .row("Girella nigricans", "Girella nigricans", "2381213", "1|44|204|587|4282|2381211|2381213",
+       "Animalia|Chordata|Actinopterygii|Perciformes|Kyphosidae|Girella|Girella nigricans", ranks = .s7r),
+  .row("Pollicipes polymerus", "Pollicipes polymerus", "2115000", "1|54|300|400|500|600|2115000",
+       "Animalia|Arthropoda|Thecostraca|Pollicipedomorpha|Pollicipedidae|Pollicipes|Pollicipes polymerus", ranks = .s7r)))
+test_that("REVIEW N3 (S0 run7): a family/order concept difference is not a homonym; another kingdom, or another phylum the context names, is", {
+  one <- function(ctx) build_taxon_registry(rbind(.names("Girella nigricans", "r2", context = ctx), .names("Pollicipes polymerus", "r2")),
+                                            run_id = "n3s", lookup = .girella_lk())$names
+  n <- one("Centrarchiformes|Girellidae")
+  expect_identical(n$taxon_id[n$verbatim_name == "Girella nigricans"], "gbif:2381213")      # 7f2e333d: local:Girella nigricans
+  expect_identical(n$status[n$verbatim_name == "Girella nigricans"], "accepted")
+  expect_identical(one("Metazoa|Chordata|Actinopteri|Centrarchiformes|Girellidae")$status[1], "accepted")   # NCBI-style, same phylum
+  expect_identical(one("Animalia|Arthropoda|Thecostraca")$status[1], "homonym_rejected")   # a phylum the run's answers use, not the answer's
+  expect_identical(one("Plantae|Rhodophyta")$status[1], "homonym_rejected")                # another kingdom
+  expect_identical(one("Animalia|Mollusca")$status[1], "accepted")                         # Mollusca: no answer in this run uses it as a phylum
+})
