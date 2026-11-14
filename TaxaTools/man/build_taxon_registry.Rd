@@ -10,7 +10,8 @@ build_taxon_registry(
   key_backbone_id = 11L,
   pool_keys = NULL,
   lookup = NULL,
-  cache_dir = NULL
+  cache_dir = NULL,
+  tiebreak = NULL
 )
 }
 \arguments{
@@ -28,7 +29,8 @@ data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default
 
 \item{pool_keys}{\code{NULL} or a data frame with \code{verbatim_name} and
 \code{species_key}: the occurrence pool's accepted key per name, used as the
-identifier ahead of any lookup.}
+identifier ahead of any lookup. Optional \code{kingdom} ... \code{genus}
+columns give each key's lineage for the tie-break.}
 
 \item{lookup}{\code{NULL} (default: \code{verify_taxon_names()} against
 \code{key_backbone_id} with \code{cache_dir}) or a function
@@ -37,6 +39,16 @@ identifier ahead of any lookup.}
 recorded answers offline.}
 
 \item{cache_dir}{Passed to \code{verify_taxon_names()} by the default lookup.}
+
+\item{tiebreak}{\code{NULL} (default: no tie-break; 2+ candidate ids stay
+error-class findings) or a list: \code{gbif_first} (logical, default
+\code{TRUE}: for a name the pool holds under 2+ keys, take the lookup's
+own answer when it is exactly one of them; never used for a
+\code{pool_key_conflict}) and \code{authorities}, a named, ordered list of functions
+\code{function(name)} returning that authority's pipe-delimited lineage
+for the name, or \code{NA} (e.g. \code{list(ncbi = ..., worms = ...)}).
+Candidate lineages come from the lookup's classification and from optional
+\code{kingdom} ... \code{genus} columns of \code{pool_keys}.}
 }
 \value{
 An object of class \code{taxon_registry}: a list with \code{taxa},
@@ -62,6 +74,20 @@ the pool at all (its identifier comes from the lookup alone); it is listed in
 \code{meta$pool_key_ambiguous} and reported by
 \code{\link{check_taxon_registry}} as an error-class
 \code{pool_key_ambiguous} finding.
+
+\strong{Tie-break} (off by default, \code{tiebreak}). Where a name has two
+or more candidate ids (\code{pool_key_ambiguous}, or a
+\code{pool_key_conflict} between the pool's key and the lookup's), the
+candidates are decided by, in order: for \code{pool_key_ambiguous} only,
+the lookup's own answer when it is exactly one of the pool's keys
+(\code{gbif_first}); then each of \code{authorities} in turn, whose lineage for the name must hold strictly
+more of one candidate's distinguishing terms (those the candidates do not
+share) than of any other's. A decided name gets
+\code{status = "pool_key_tiebreak"}; an undecided one keeps its
+error-class finding. Candidates with identical lineages are never decided.
+Step 0 never applies to a \code{pool_key_conflict}: there the lookup's key
+is one of the two candidates by construction, so it would always win and
+undo pool-keys-first; a conflict is decided by the authorities or not at all.
 
 \strong{Unresolved names} get a run-local identifier under their resolved
 genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
