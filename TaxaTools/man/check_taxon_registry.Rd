@@ -37,5 +37,9 @@ name's taxon, a pool key that disagrees with the lookup); conflicting
 descriptions of one identifier; and, for stamped tables, a missing stamp, the
 same taxon twice in one observation (by \code{taxon_id} and
 \code{hypothesis_type}), and table lineage columns that disagree with the
-registry's tree.
+registry's tree. The registry's tree is the authority: a family or order
+column that disagrees is another classification of the same taxon, listed
+as \code{lineage_concept_differs} (info); a genus column that disagrees is
+\code{lineage_disagrees} (error), unless the table's genus is the genus word
+of a name registered as a synonym of that taxon (info).
 }
