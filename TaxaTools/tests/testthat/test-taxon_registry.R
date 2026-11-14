@@ -613,7 +613,7 @@ test_that("REVIEW F1b: two homonymous genus rows in taxa are not chosen between 
          "Plantae|Tracheophyta|Pinopsida|Pinales|Araucariaceae|Agathis|Agathis robusta", ranks = .s7),
     .row("Agathis montana", "Agathis montana", "1300001", "1|54|216|1457|6658|1300000|1300001",
          "Animalia|Arthropoda|Insecta|Hymenoptera|Braconidae|Agathis|Agathis montana", ranks = .s7)))
-  nm <- rbind(.names(c("Agathis robusta", "Agathis montana", "Agathis foo"), "r2"),
+  nm <- rbind(.names(c("Agathis robusta", "Agathis montana", "Agathis foo"), "r2", context = NA_character_),
               .names("Agathis bar", "r2", context = "Plantae|Tracheophyta"))
   reg <- build_taxon_registry(nm, run_id = "f1b", lookup = lk)
   id <- stats::setNames(reg$names$taxon_id, reg$names$verbatim_name)
@@ -631,7 +631,7 @@ test_that("REVIEW F1c: a homonym_rejected binomial never takes a resolved congen
     o$verified[g] <- FALSE; o$match_type[g] <- "LineageRejected"; o$matched[g] <- FALSE
     o
   }
-  reg <- build_taxon_registry(rbind(.names("Vertebrata lanosa", "r2"), .names("Vertebrata lanosus", "r2", context = "Animalia|Chordata")),
+  reg <- build_taxon_registry(rbind(.names("Vertebrata lanosa", "r2", context = NA_character_), .names("Vertebrata lanosus", "r2", context = "Animalia|Chordata")),
                               run_id = "f1c", lookup = lk)
   ln <- reg$names[reg$names$verbatim_name == "Vertebrata lanosus", ]
   expect_false(identical(ln$taxon_id, "gbif:2680001"))                       # 2ea632dc: gender_variant onto the alga
@@ -644,7 +644,7 @@ test_that("REVIEW F2: a uninomial or trinomial answered at a coarser rank is ran
     .row("Notagenus", "Embiotocidae", "4269", "1|44|587|4269", "Animalia|Chordata|Perciformes|Embiotocidae", ranks = "kingdom|phylum|order|family", rank = "family"),
     .row("Hypsurus caryi foo", "Hypsurus caryi", "2389310", "1|44|587|4269|2389309|2389310",
          "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi", rank = "species")))
-  reg <- build_taxon_registry(rbind(.names("Notagenus", "r2", rank_given = "genus"), .names("Hypsurus caryi foo", "r2")), run_id = "f2", lookup = lk)
+  reg <- build_taxon_registry(rbind(.names("Notagenus", "r2", rank_given = "genus"), .names("Hypsurus caryi foo", "r2", rank_given = NA_character_)), run_id = "f2", lookup = lk)
   n <- reg$names[match(c("Notagenus", "Hypsurus caryi foo"), reg$names$verbatim_name), ]
   expect_identical(n$status, c("rank_fallback", "rank_fallback"))             # 2ea632dc: accepted, accepted
   expect_identical(n$taxon_id, c("local:Notagenus", "local:Hypsurus caryi foo"))   # 2ea632dc: gbif:4269, gbif:2389310
