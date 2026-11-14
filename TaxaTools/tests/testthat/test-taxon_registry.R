@@ -638,3 +638,19 @@ test_that("REVIEW F1c: a homonym_rejected binomial never takes a resolved congen
   expect_false(identical(ln$status, "gender_variant"))
 })
 
+# -- F2: only binomials were checked for a coarser-rank answer ----------------------------------------------------
+test_that("REVIEW F2: a uninomial or trinomial answered at a coarser rank is rank_fallback under that ancestor, not accepted", {
+  lk <- .fake_lookup(rbind(
+    .row("Notagenus", "Embiotocidae", "4269", "1|44|587|4269", "Animalia|Chordata|Perciformes|Embiotocidae", ranks = "kingdom|phylum|order|family", rank = "family"),
+    .row("Hypsurus caryi foo", "Hypsurus caryi", "2389310", "1|44|587|4269|2389309|2389310",
+         "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi", rank = "species")))
+  reg <- build_taxon_registry(rbind(.names("Notagenus", "r2", rank_given = "genus"), .names("Hypsurus caryi foo", "r2")), run_id = "f2", lookup = lk)
+  n <- reg$names[match(c("Notagenus", "Hypsurus caryi foo"), reg$names$verbatim_name), ]
+  expect_identical(n$status, c("rank_fallback", "rank_fallback"))             # 2ea632dc: accepted, accepted
+  expect_identical(n$taxon_id, c("local:Notagenus", "local:Hypsurus caryi foo"))   # 2ea632dc: gbif:4269, gbif:2389310
+  expect_identical(reg$taxa$parent_id[match(n$taxon_id, reg$taxa$taxon_id)], c("gbif:4269", "gbif:2389310"))
+  # rank asked inferred from the name when not given: one word = genus
+  r1 <- build_taxon_registry(.names("Notagenus", "r2"), run_id = "f2b", lookup = lk)
+  expect_identical(r1$names$status, "rank_fallback")
+})
+
