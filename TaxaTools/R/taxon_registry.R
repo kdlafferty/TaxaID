@@ -503,7 +503,11 @@ parent_at <- function(ids, rank, registry) {
 #' descriptions of one identifier; and, for stamped tables, a missing stamp, the
 #' same taxon twice in one observation (by \code{taxon_id} and
 #' \code{hypothesis_type}), and table lineage columns that disagree with the
-#' registry's tree.
+#' registry's tree. The registry's tree is the authority: a family or order
+#' column that disagrees is another classification of the same taxon, listed
+#' as \code{lineage_concept_differs} (info); a genus column that disagrees is
+#' \code{lineage_disagrees} (error), unless the table's genus is the genus word
+#' of a name registered as a synonym of that taxon (info).
 #'
 #' @param registry A \code{taxon_registry}.
 #' @param tables Named list of data frames to check (optional).
@@ -592,13 +596,25 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
       if (any(d)) add("error", "taxon_twice_in_observation", tn, paste(utils::head(unique(x$taxon_id[d]), 20), collapse = " | "), NA_character_,
                       sprintf("%d observation(s)", length(unique(x$observation_id[d]))), sum(d))
     }
+    # The registry's tree is the authority. A table that files a taxon under another FAMILY or ORDER uses another
+    # classification of the same taxon: listed (info, lineage_concept_differs), not flagged. A GENUS that disagrees
+    # means the name may be another taxon (error, lineage_disagrees) -- unless the table's genus is the genus word of a
+    # name registered as a SYNONYM of that taxon (the table carries the synonym's own genus): listed as info.
+    syn <- nm[nm$status %in% "synonym" & !is.na(nm$taxon_id), , drop = FALSE]
+    syn_key <- paste(syn$taxon_id, sub(" .*$", "", syn$name_clean), sep = "\r")
     for (rk in intersect(c("genus", "family", "order"), names(x))) {
       anc <- parent_at(x$taxon_id, rk, registry)
       reg_name <- registry$taxa$name[match(anc, registry$taxa$taxon_id)]
       dis <- !is.na(reg_name) & !is.na(x[[rk]]) & as.character(x[[rk]]) != reg_name
-      if (any(dis)) add("error", "lineage_disagrees", tn, paste(utils::head(unique(x$taxon_id[dis]), 20), collapse = " | "),
-                        paste(utils::head(unique(sprintf("%s: table %s, registry %s", rk, x[[rk]][dis], reg_name[dis])), 10), collapse = "; "),
-                        sprintf("%s column", rk), sum(dis))
+      info <- if (rk == "genus") dis & paste(x$taxon_id, as.character(x[[rk]]), sep = "\r") %in% syn_key else dis
+      for (lv in c("info", "error")) {
+        w <- if (lv == "info") info else dis & !info
+        if (!any(w)) next
+        add(lv, if (lv == "info") "lineage_concept_differs" else "lineage_disagrees", tn,
+            paste(utils::head(unique(x$taxon_id[w]), 20), collapse = " | "),
+            paste(utils::head(unique(sprintf("%s: table %s, registry %s", rk, x[[rk]][w], reg_name[w])), 10), collapse = "; "),
+            if (rk == "genus" && lv == "info") "genus column; the table's genus is a declared synonym's" else sprintf("%s column", rk), sum(w))
+      }
     }
   }
   res <- if (length(out)) do.call(rbind, out) else

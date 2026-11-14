@@ -308,15 +308,42 @@ test_that("GUARD CAN FAIL: one taxon twice in one observation (the r15 Dryad dou
   expect_false(any(check_taxon_registry(reg, tables = list(ok = ok), verbose = FALSE)$kind == "taxon_twice_in_observation"))
 })
 
-test_that("GUARD CAN FAIL: a missing stamp, and a table lineage that contradicts the registry (Carcharodon under Alopiidae)", {
+test_that("a FAMILY that differs from the registry's tree is another classification: listed (info), never an error", {
   lk <- .fake_lookup(.row("Carcharodon carcharias", "Carcharodon carcharias", "500", "1|44|900|901|902|500",
                           "Animalia|Chordata|Lamniformes|Lamnidae|Carcharodon|Carcharodon carcharias"))
   reg <- freeze_taxon_registry(build_taxon_registry(.names("Carcharodon carcharias", "r2"), run_id = "g2", lookup = lk))
   t <- attach_taxon_ids(data.frame(observation_id = c("a", "b"), taxon_name = "Carcharodon carcharias", family = c("Lamnidae", "Alopiidae")),
                         reg, "taxon_name", "r2")
   chk <- check_taxon_registry(reg, tables = list(r2 = t, raw = data.frame(taxon_name = "x")), verbose = FALSE)
-  expect_true(any(chk$kind == "lineage_disagrees" & chk$n == 1L))
+  w <- chk[chk$kind == "lineage_concept_differs", ]
+  expect_identical(nrow(w), 1L)
+  expect_identical(c(w$severity, w$n), c("info", "1"))
+  expect_match(w$names, "family: table Alopiidae, registry Lamnidae", fixed = TRUE)
+  expect_false(any(chk$kind == "lineage_disagrees"))
   expect_true(any(chk$kind == "missing_stamp" & chk$table == "raw"))
+  # the family difference alone does not stop an error-mode run
+  expect_silent(check_taxon_registry(reg, tables = list(r2 = t), mode = "error", verbose = FALSE))
+})
+
+test_that("GUARD CAN FAIL: a GENUS that differs is an error, unless it is the genus of a declared synonym of that taxon", {
+  ids <- "1|44|587|4269|2389309|2389310"; path <- "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi"
+  lk <- .fake_lookup(rbind(.row("Hypsurus caryi", "Hypsurus caryi", "2389310", ids, path),
+                           .row("Embiotoca caryi", "Hypsurus caryi", "2389310", ids, path, rec = "2389311", syn = TRUE)))
+  reg <- freeze_taxon_registry(build_taxon_registry(.names(c("Hypsurus caryi", "Embiotoca caryi"), "r2"), run_id = "g3", lookup = lk))
+  t <- attach_taxon_ids(data.frame(observation_id = c("a", "b", "c"), taxon_name = c("Hypsurus caryi", "Embiotoca caryi", "Hypsurus caryi"),
+                                   genus = c("Hypsurus", "Embiotoca", "Damalichthys")), reg, "taxon_name", "r2")
+  chk <- check_taxon_registry(reg, tables = list(r2 = t), verbose = FALSE)
+  e <- chk[chk$kind == "lineage_disagrees", ]; i <- chk[chk$kind == "lineage_concept_differs", ]
+  expect_identical(c(nrow(e), nrow(i)), c(1L, 1L))
+  expect_identical(c(e$severity, e$n), c("error", "1"))
+  expect_match(e$names, "table Damalichthys", fixed = TRUE)
+  expect_identical(c(i$severity, i$n), c("info", "1"))
+  expect_match(i$names, "table Embiotoca", fixed = TRUE)
+  expect_error(check_taxon_registry(reg, tables = list(r2 = t), mode = "error", verbose = FALSE), "lineage_disagrees")
+  # without the declared synonym, the synonym's genus is an error too: the exemption comes from the registry, not the string
+  reg1 <- freeze_taxon_registry(build_taxon_registry(.names("Hypsurus caryi", "r2"), run_id = "g4", lookup = lk))
+  t1 <- attach_taxon_ids(data.frame(observation_id = "a", taxon_name = "Hypsurus caryi", genus = "Embiotoca"), reg1, "taxon_name", "r2")
+  expect_true(any(check_taxon_registry(reg1, tables = list(r2 = t1), verbose = FALSE)$kind == "lineage_disagrees"))
 })
 
 test_that("taxon_in asks membership of ids, never names, and NA is never a member", {
