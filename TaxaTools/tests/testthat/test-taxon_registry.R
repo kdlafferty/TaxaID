@@ -27,8 +27,10 @@
   function(names, rank, context) {
     k <- paste(names, ifelse(is.na(context), "", context), sep = "\r")
     tk <- paste(tbl$q, ifelse(is.na(tbl$ctx), "", tbl$ctx), sep = "\r")
-    tk0 <- paste(tbl$q, "", sep = "\r")
-    i <- match(k, tk); i[is.na(i)] <- match(k[is.na(i)], tk0)
+    # a name with no context-specific row falls back to its context-free row (the lookup ignores a context it has
+    # no answer for). The earlier fallback compared "name\rcontext" with "name\r" and so never matched.
+    nc <- which(is.na(tbl$ctx)); j <- match(names, tbl$q[nc])
+    i <- match(k, tk); i[is.na(i)] <- nc[j[is.na(i)]]
     hit <- !is.na(i)
     data.frame(user_supplied_name = names, matched_name = ifelse(hit, tbl$matched[i], NA), matched_rank = ifelse(hit, tbl$rank[i], NA),
                is_synonym = ifelse(hit, tbl$syn[i], NA), classification_path = ifelse(hit, tbl$path[i], NA),
