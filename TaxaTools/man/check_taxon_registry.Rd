@@ -41,5 +41,6 @@ registry's tree. The registry's tree is the authority: a family or order
 column that disagrees is another classification of the same taxon, listed
 as \code{lineage_concept_differs} (info); a genus column that disagrees is
 \code{lineage_disagrees} (error), unless the table's genus is the genus word
-of a name registered as a synonym of that taxon (info).
+of a name registered as a synonym of that taxon (info). A frozen registry
+edited after the freeze is \code{registry_digest_mismatch} (error).
 }
