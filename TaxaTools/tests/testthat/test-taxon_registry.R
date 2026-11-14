@@ -360,6 +360,47 @@ test_that("GUARD CAN FAIL: attach_taxon_ids refuses to overwrite a taxon_id colu
                                 reg, "taxon_name", "priors"), "did not stamp")
 })
 
+# Genus answers for the unresolved-name pass. Hypnea (red alga) answered as Hypena (moth) is the live p8d case
+# (species level); here the same mistake at the genus pass. Pyrgophorus is GBIF's VARIANT for Pyrogophorus.
+.gk <- "kingdom|phylum|class|order|family|genus"
+.genus_lk <- function() .fake_lookup(rbind(
+  .row("Hypnea", "Hypena", "1798000", "1|54|216|797|4532|1798000", "Animalia|Arthropoda|Insecta|Lepidoptera|Erebidae|Hypena",
+       ranks = .gk, rank = "genus", mt = "Fuzzy"),
+  .row("Pyrogophorus", "Pyrgophorus", "2299855", "1|52|225|1000|2299800|2299855", "Animalia|Mollusca|Gastropoda|Littorinimorpha|Cochliopidae|Pyrgophorus",
+       ranks = .gk, rank = "genus", mt = "Fuzzy"),
+  .row("Hypsurus", "Hypsurus", "2389309", "1|44|204|587|4269|2389309", "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Hypsurus",
+       ranks = .gk, rank = "genus", mt = "Exact")))
+
+test_that("GUARD CAN FAIL: a fuzzy/variant GENUS answer in another kingdom is refused; without the gate it was taken", {
+  reg <- build_taxon_registry(.names("Hypnea nigrescens", "r2", context = "Plantae|Rhodophyta|Florideophyceae"),
+                              run_id = "gv1", lookup = .genus_lk())
+  expect_identical(reg$names$taxon_id, "local:Hypnea nigrescens")          # NOT local:1798000:nigrescens (under the moth)
+  expect_false("gbif:1798000" %in% reg$taxa$taxon_id)
+  gvr <- reg$meta$genus_variant_rejected
+  expect_identical(c(gvr$genus_word, gvr$answer, gvr$reason), c("Hypnea", "Hypena", "lineage does not agree at kingdom and phylum"))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_identical(chk$severity[chk$kind == "genus_variant_rejected"], "info")
+})
+
+test_that("a fuzzy/variant genus answer whose kingdom AND phylum the names' context gives is taken (Pyrogophorus -> Pyrgophorus)", {
+  reg <- build_taxon_registry(.names("Pyrogophorus platyrachis", "r2", context = "Animalia|Mollusca|Gastropoda"),
+                              run_id = "gv2", lookup = .genus_lk())
+  expect_identical(reg$names$taxon_id, "local:2299855:platyrachis")
+  expect_true("gbif:2299855" %in% reg$taxa$taxon_id)
+  expect_null(reg$meta$genus_variant_rejected)
+})
+
+test_that("GUARD CAN FAIL: no context, or the right kingdom with the wrong phylum, refuses a non-exact genus; EXACT needs neither", {
+  r0 <- build_taxon_registry(.names("Pyrogophorus platyrachis", "r2"), run_id = "gv3", lookup = .genus_lk())
+  expect_identical(r0$names$taxon_id, "local:Pyrogophorus platyrachis")
+  expect_identical(r0$meta$genus_variant_rejected$reason, "no lineage context")
+  r1 <- build_taxon_registry(.names("Pyrogophorus platyrachis", "r2", context = "Animalia|Chordata"), run_id = "gv4", lookup = .genus_lk())
+  expect_identical(r1$names$taxon_id, "local:Pyrogophorus platyrachis")   # kingdom agrees, phylum does not: refused
+  r2 <- build_taxon_registry(.names("Hypsurus notaspecies", "r2"), run_id = "gv5", lookup = .genus_lk())
+  expect_identical(r2$names$taxon_id, "local:2389309:notaspecies")         # an EXACT genus answer is unchanged
+  expect_null(r2$meta$genus_variant_rejected)
+})
+
 test_that("taxon_in asks membership of ids, never names, and NA is never a member", {
   expect_identical(taxon_in(c("gbif:1", NA, "gbif:3"), c("gbif:1", NA)), c(TRUE, FALSE, FALSE))
   expect_error(taxon_in(1, "gbif:1"), "character")

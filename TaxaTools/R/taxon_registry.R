@@ -63,6 +63,22 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
              snapshot = snapshot, local = FALSE, stringsAsFactors = FALSE)
 }
 
+#' Does a non-exact genus answer sit in the names' own lineage? Kingdom AND phylum must agree.
+#'
+#' A fuzzy or variant genus answer can be a different genus in another kingdom (Hypnea, a red
+#' alga, answered as Hypena, a moth). It is taken only when the context (the union of the
+#' lineages the tables give for the names under that genus word) names the answer's kingdom
+#' and its phylum. No context, no kingdom or phylum in it, or a mismatch: not taken.
+#' @noRd
+.genus_answer_in_context <- function(ctx, path, ranks) {
+  if (is.na(ctx) || !nzchar(ctx)) return(FALSE)
+  p <- .split_pipe(path); r <- tolower(.split_pipe(ranks))
+  ph <- p[r == "phylum"]
+  kp <- .kingdom_of_path(path, ranks); kc <- .kingdoms_of_context(ctx)
+  if (!length(ph) || is.na(kp) || !length(kc) || !(kp %in% kc)) return(FALSE)
+  identical(check_lineage_agreement(ctx, ph[[1L]], ignore = character(0)), "agrees")
+}
+
 #' Build a run's taxon registry
 #'
 #' Resolves every verbatim name the run will use, from every table, ONCE, to a
@@ -86,7 +102,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #'
 #' \strong{Unresolved names} get a run-local identifier under their resolved
 #' genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
-#' the genus is unknown. One narrow exception: a binomial whose epithet differs
+#' the genus is unknown. A genus answered only by a fuzzy or variant match is
+#' taken only where the \code{context} of the names under it names the
+#' answer's kingdom and phylum; otherwise it is refused and listed in
+#' \code{meta$genus_variant_rejected} (a misspelt genus can match a genus in
+#' another kingdom). One narrow exception: a binomial whose epithet differs
 #' from a resolved congener's only in its Latin gender ending (\emph{Platybelone
 #' argala} / \emph{argalus}) takes that congener's identifier with
 #' \code{status = "gender_variant"}. Every use is listed by
@@ -234,6 +254,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                snapshot = character(0), local = logical(0), stringsAsFactors = FALSE)
 
   # --- unresolved: gender variant of a resolved congener, else a local id ---------
+  genus_variant_rejected <- list()
   un <- which(is.na(nm$taxon_id) & !nm$status %in% "lookup_failed")
   if (length(un)) {
     resolved <- nm[!is.na(nm$taxon_id) & grepl("^\\S+ \\S+$", nm$name_clean), c("name_clean", "taxon_id"), drop = FALSE]
@@ -249,6 +270,20 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     if (length(need)) {
       g <- lookup(need, rep("genus", length(need)), rep(NA_character_, length(need)))
       okg <- g$matched %in% TRUE & tolower(g$matched_rank) %in% "genus" & !is.na(g$current_record_id)
+      # A non-exact genus answer (fuzzy, or GBIF's VARIANT, which the lookup reports as fuzzy) is
+      # taken only where the names' own lineage agrees at kingdom and phylum; EXACT is unchanged.
+      fzg <- which(okg & tolower(g$match_type %||% "exact") %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"))
+      for (j in fzg) {
+        under <- un[grepl("^\\S+ \\S+$", nm$name_clean[un]) & gen_of(nm$name_clean[un]) == need[j]]
+        ctx <- paste(unique(unlist(lapply(stats::na.omit(nm$context[under]), .split_pipe))), collapse = "|")
+        if (!.genus_answer_in_context(if (nzchar(ctx)) ctx else NA_character_, g$classification_path[j], g$classification_ranks[j])) {
+          okg[j] <- FALSE
+          genus_variant_rejected[[length(genus_variant_rejected) + 1L]] <- data.frame(
+            genus_word = need[j], answer = g$matched_name[j], answer_id = paste0(prefix, ":", g$current_record_id[j]),
+            answer_path = g$classification_path[j], context = if (nzchar(ctx)) ctx else NA_character_,
+            reason = if (nzchar(ctx)) "lineage does not agree at kingdom and phylum" else "no lineage context", stringsAsFactors = FALSE)
+        }
+      }
       gid[need[okg]] <- paste0(prefix, ":", g$current_record_id[okg])
       for (j in which(okg)) {
         a <- .ancestor_rows(g$classification_path[j], g$classification_ranks[j], g$classification_ids[j],
@@ -308,7 +343,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     meta = list(run_id = run_id, key_backbone_id = key_backbone_id, authority = prefix,
                 snapshot = if (length(snaps)) paste(snaps, collapse = ",") else NA_character_,
                 frozen = FALSE, digest = NA_character_, built_at = Sys.time(),
-                taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous)
+                taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous,
+                genus_variant_rejected = if (length(genus_variant_rejected)) do.call(rbind, genus_variant_rejected) else NULL)
   ), class = "taxon_registry")
 }
 
@@ -581,6 +617,12 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     for (i in seq_len(nrow(pka))) add("error", "pool_key_ambiguous", NA_character_, pka$species_keys[i], pka$verbatim_name[i],
                                       if (isTRUE(pka$in_names[i])) "pool holds this name under 2+ keys; id from the lookup only"
                                       else "pool holds this name under 2+ keys; name not in the registered tables", 1L)
+  }
+  # non-exact genus answers refused by the lineage gate: the names under them kept plain local ids
+  gvr <- registry$meta$genus_variant_rejected
+  if (!is.null(gvr) && nrow(gvr)) {
+    for (i in seq_len(nrow(gvr))) add("info", "genus_variant_rejected", NA_character_, gvr$answer_id[i], gvr$genus_word[i],
+                                      sprintf("answer %s (%s): %s", gvr$answer[i], gvr$answer_path[i], gvr$reason[i]), 1L)
   }
   tc <- registry$meta$taxa_conflicts
   if (!is.null(tc) && nrow(tc)) {
