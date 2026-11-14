@@ -742,3 +742,27 @@ test_that("REVIEW N3: an EXACT answer that contradicts the name's own context is
   nc <- build_taxon_registry(.names("Agathis montana", "r2"), run_id = "n3c", lookup = .agathis_lk())
   expect_identical(nc$names$taxon_id, "gbif:1800777")
 })
+
+# N4: every test passed `lookup =`; the default lookup passed all-NA rank and context vectors where the tests'
+# .real_lookup passes NULL.
+test_that("REVIEW N4: the default lookup (lookup = NULL) gives the tested lookup's registry, and sends NULL for absent rank/context", {
+  .mock_gnv_reg()
+  nm <- .names(c("Embiotoca caryi", "Hypsurus caryi", "Oxyjulis californica"), "match")
+  a <- build_taxon_registry(nm, run_id = "n4")
+  b <- build_taxon_registry(nm, run_id = "n4", lookup = .real_lookup)
+  expect_identical(a$names, b$names)
+  expect_identical(a$taxa, b$taxa)
+  seen <- list()
+  local_mocked_bindings(verify_taxon_names = function(name_list, ..., input_rank = NULL, lineage = NULL) {
+    seen[[length(seen) + 1L]] <<- list(rank = input_rank, lineage = lineage)
+    stop("stop after the call")
+  })
+  expect_error(build_taxon_registry(nm, run_id = "n4b"), "stop after the call")
+  expect_null(seen[[1L]]$rank)                       # 1f3e31d0: c(NA, NA, NA)
+  expect_null(seen[[1L]]$lineage)                    # 1f3e31d0: c(NA, NA, NA)
+  # a given rank or context still reaches the lookup
+  seen <- list()
+  expect_error(build_taxon_registry(.names("Vertebrata", "m", rank_given = "genus", context = "Plantae|Rhodophyta"), run_id = "n4c"),
+               "stop after the call")
+  expect_identical(c(seen[[1L]]$rank, seen[[1L]]$lineage), c("genus", "Plantae|Rhodophyta"))
+})
