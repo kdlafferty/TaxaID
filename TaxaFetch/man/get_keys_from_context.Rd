@@ -31,7 +31,10 @@ for a per-row on-disk cache keyed on everything the request sends (the
 name, its rank, its context ranks) and on \code{return_keys}. Only answered
 rows are written; a row whose request failed (\code{matchType = "ERROR"}),
 or a \code{HIGHERRANK} row whose \code{name_lookup()} recovery request
-failed, is never cached and is asked again next call.}
+failed, is never cached and is asked again next call. A cached row older
+than 365 days (the default lifetime of \code{TaxaTools::verify_taxon_names()}'s
+cache), or one with no recorded write time, is asked again, so a GBIF
+backbone revision reaches it.}
 }
 \value{
 The input dataframe with three columns appended:
