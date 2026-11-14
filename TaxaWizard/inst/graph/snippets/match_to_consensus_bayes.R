@@ -66,7 +66,8 @@ likelihoods_ready <- TaxaAssign::join_priors(
   taxaexpect_priors = {{priors_var}},
   site              = {{site}},
   rank_system       = detected_ranks,
-  backbone_id       = {{backbone_id}}
+  backbone_id       = {{backbone_id}},
+  taxonomy_cache_dir = {{taxonomy_cache_dir}}
 )
 result <- TaxaAssign::compute_posterior(likelihoods_ready)
 
