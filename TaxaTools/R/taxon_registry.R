@@ -615,6 +615,16 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     }
   }
 
+  # --- taxa: only taxa the run uses -- a registered id and its ancestors. The ancestor rows of a REJECTED answer
+  # (a fuzzy_rejected or homonym answer's lineage) were working rows for the genus pass above, not taxa of this run;
+  # the rejected answer itself stays listed in meta (genus_variant_rejected) and in names.
+  keep <- unique(stats::na.omit(nm$taxon_id)); frontier <- keep
+  while (length(frontier)) {
+    up <- setdiff(unique(stats::na.omit(taxa$parent_id[taxa$taxon_id %in% frontier])), keep)
+    keep <- c(keep, up); frontier <- up
+  }
+  taxa <- taxa[taxa$taxon_id %in% keep, , drop = FALSE]
+
   # --- taxa: one row per id; a second, DIFFERENT description of an id is a conflict ---
   key <- paste(taxa$taxon_id, taxa$name, taxa$rank, taxa$parent_id, sep = "\r")
   taxa <- taxa[!duplicated(key), , drop = FALSE]
@@ -666,6 +676,9 @@ print.taxon_registry <- function(x, ...) {
 #' error at \code{\link{attach_taxon_ids}}, never a new row. The freeze records
 #' the registry's content digest, which every stamp carries, so tables stamped
 #' from one frozen registry can be joined and tables from any other cannot.
+#' A registry edited after the freeze no longer matches its digest:
+#' \code{\link{attach_taxon_ids}} refuses it and
+#' \code{\link{check_taxon_registry}} reports it as an error.
 #'
 #' @param registry A \code{taxon_registry} from \code{\link{build_taxon_registry}}.
 #' @return The registry, frozen.
@@ -674,8 +687,7 @@ freeze_taxon_registry <- function(registry) {
   if (!inherits(registry, "taxon_registry")) stop("`registry` must be a taxon_registry.")
   if (isTRUE(registry$meta$frozen)) return(registry)
   registry$meta$frozen <- TRUE
-  registry$meta$digest <- .cache_hash(list(registry$taxa, registry$names[, setdiff(names(registry$names), "built_at")],
-                                           registry$meta$run_id, registry$meta$authority))
+  registry$meta$digest <- .registry_digest(registry)
   registry
 }
 
@@ -683,6 +695,17 @@ freeze_taxon_registry <- function(registry) {
 .registry_stamp <- function(registry) {
   list(run_id = registry$meta$run_id, authority = registry$meta$authority, digest = registry$meta$digest)
 }
+
+#' The content digest a frozen registry's stamps carry: its taxa and names tables, run id and authority
+#' (built_at lives in meta and is not hashed)
+#' @noRd
+.registry_digest <- function(registry) {
+  .cache_hash(list(registry$taxa, registry$names, registry$meta$run_id, registry$meta$authority))
+}
+
+#' Is a frozen registry still what was frozen? FALSE when its taxa, names, run id or authority were edited after the freeze.
+#' @noRd
+.registry_digest_ok <- function(registry) identical(.registry_digest(registry), registry$meta$digest)
 
 #' Attach registry taxon identifiers to a table
 #'
@@ -705,6 +728,7 @@ freeze_taxon_registry <- function(registry) {
 attach_taxon_ids <- function(x, registry, name_col, source_table, context_col = NULL) {
   if (!inherits(registry, "taxon_registry")) stop("`registry` must be a taxon_registry.")
   if (!isTRUE(registry$meta$frozen)) stop("Freeze the registry (freeze_taxon_registry()) before attaching ids: a registry that can still grow gives tables stamped from different contents.")
+  if (!.registry_digest_ok(registry)) stop("The registry was edited after freeze_taxon_registry(): its content no longer matches its digest, so tables stamped from it would carry the old digest. Rebuild and freeze it again.")
   if (!is.data.frame(x) || !name_col %in% names(x)) stop("`name_col` must name a column of `x`.")
   # A taxon_id column this registry did not stamp belongs to someone else (e.g. iNaturalist's numeric
   # taxon ids in check_inat_range() output): overwriting it would silently change what the column means.
@@ -850,7 +874,8 @@ parent_at <- function(ids, rank, registry) {
 #' column that disagrees is another classification of the same taxon, listed
 #' as \code{lineage_concept_differs} (info); a genus column that disagrees is
 #' \code{lineage_disagrees} (error), unless the table's genus is the genus word
-#' of a name registered as a synonym of that taxon (info).
+#' of a name registered as a synonym of that taxon (info). A frozen registry
+#' edited after the freeze is \code{registry_digest_mismatch} (error).
 #'
 #' @param registry A \code{taxon_registry}.
 #' @param tables Named list of data frames to check (optional).
@@ -870,6 +895,10 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
                                            detail = detail, n = as.integer(n), stringsAsFactors = FALSE)
   }
   nm <- registry$names
+  if (isTRUE(registry$meta$frozen) && !.registry_digest_ok(registry)) {
+    add("error", "registry_digest_mismatch", NA_character_, NA_character_, NA_character_,
+        "registry edited after freeze_taxon_registry(): its content no longer matches the digest its stamps carry", 1L)
+  }
   # taxa under 2+ names, per source table (baseline)
   for (tb in sort(unique(nm$source_table))) {
     z <- nm[nm$source_table == tb & !is.na(nm$taxon_id), , drop = FALSE]
