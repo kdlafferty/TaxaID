@@ -19,10 +19,13 @@
   family = "Gelidiaceae", genus = "Gelidium", kingdomKey = 6L, phylumKey = 106L, classKey = 342L, orderKey = 900L,
   familyKey = 901L, genusKey = 9460134L)
 .fuzzy <- within(.accepted_hypsurus, matchType <- "FUZZY")
+# PROVISIONALLY_ACCEPTED with its accepted key equal to its own (206 live records were this): its own taxon, NOT a synonym.
+# A rule of "status != ACCEPTED" calls it a synonym; this fixture breaks that rule.
+.provisional <- within(.accepted_hypsurus, { status <- "PROVISIONALLY_ACCEPTED"; synonym <- NULL; acceptedUsageKey <- 2389310L })
 
 .backbone <- function(name, ...) switch(name,
   "Hypsurus caryi" = .accepted_hypsurus, "Embiotoca caryi" = .synonym_no_flag, "Embiotoca keyonly" = .synonym_key_only,
-  "Gelidium kathyanniae" = .higherrank_genus, "Hypsurus cari" = .fuzzy,
+  "Gelidium kathyanniae" = .higherrank_genus, "Hypsurus cari" = .fuzzy, "Hypsurus provisional" = .provisional,
   "Notagenus" = list(usageKey = 1L, matchType = "HIGHERRANK", rank = "KINGDOM", kingdom = "Animalia", kingdomKey = 1L),
   "Failname" = stop("HTTP 503"),
   list(matchType = "NONE", confidence = 100L))
@@ -68,6 +71,18 @@ test_that("unit: .lgt_is_synonym reads each of the three fields, and none of the
                    c(TRUE, TRUE, TRUE, FALSE, FALSE))
   expect_true(.lgt_is_synonym(NA, "HETEROTYPIC_SYNONYM", NA_integer_, 1L))
   expect_false(.lgt_is_synonym(FALSE, "ACCEPTED", 1L, 1L))   # accepted key equal to its own: accepted
+  expect_identical(.lgt_is_synonym(NA, c("PROVISIONALLY_ACCEPTED", "DOUBTFUL", "PROPARTE_SYNONYM", "MISAPPLIED", "HOMOTYPIC_SYNONYM"),
+                                   NA_integer_, 1L), c(FALSE, FALSE, TRUE, TRUE, TRUE))
+})
+
+test_that("a PROVISIONALLY_ACCEPTED record whose accepted key is its own is NOT a synonym", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(name_backbone = .backbone, .package = "rgbif")
+  x <- suppressMessages(lookup_gbif_taxa("Hypsurus provisional"))
+  expect_identical(x$gbif_status, "PROVISIONALLY_ACCEPTED")
+  expect_false(x$is_synonym)
+  expect_identical(x$record_id, x$current_record_id)
+  expect_identical(x$matched_name, "Hypsurus caryi")          # its own canonical name, not a classification lookup
 })
 
 test_that("FUZZY is matched with match_type Fuzzy; HIGHERRANK is matched at its coarser rank; both counted", {

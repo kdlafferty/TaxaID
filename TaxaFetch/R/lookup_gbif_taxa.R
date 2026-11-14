@@ -6,16 +6,20 @@
 .LGT_RANKS <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
 .LGT_KINGDOMS <- c("Animalia", "Plantae", "Fungi", "Chromista", "Protozoa", "Bacteria", "Archaea", "Viruses")
 
+.LGT_SYNONYM_STATUS <- c("SYNONYM", "HETEROTYPIC_SYNONYM", "HOMOTYPIC_SYNONYM", "PROPARTE_SYNONYM", "MISAPPLIED")
+
 #' Is a GBIF backbone record a synonym? Any one of three fields says so.
 #'
 #' GBIF states synonymy in three places: the \code{synonym} flag, a
-#' \code{status} other than ACCEPTED, and an \code{acceptedUsageKey} different
-#' from the record's own \code{usageKey}. A record need not carry all three, so
-#' reading one alone files a synonym as accepted.
+#' synonym-type \code{status}, and an \code{acceptedUsageKey} different from
+#' the record's own \code{usageKey}. A record need not carry all three (the
+#' live backbone match returns no flag at all), so reading one alone files a
+#' synonym as accepted. PROVISIONALLY_ACCEPTED and DOUBTFUL are not synonyms:
+#' such a record is its own taxon.
 #' @noRd
 .lgt_is_synonym <- function(flag, status, accepted_key, usage_key) {
   (flag %in% TRUE) |
-    (!is.na(status) & toupper(status) != "ACCEPTED") |
+    (!is.na(status) & toupper(status) %in% .LGT_SYNONYM_STATUS) |
     (!is.na(accepted_key) & !is.na(usage_key) & accepted_key != usage_key)
 }
 
@@ -68,8 +72,10 @@
 #'       classification), or \code{NA} when not matched.}
 #'     \item{matched_rank}{Lower-case rank of the matched record.}
 #'     \item{is_synonym}{\code{TRUE} when the record is a synonym by any of its
-#'       synonym flag, a status other than ACCEPTED, or an accepted key that
-#'       differs from its own key.}
+#'       synonym flag, a synonym-type status (SYNONYM, HETEROTYPIC_SYNONYM,
+#'       HOMOTYPIC_SYNONYM, PROPARTE_SYNONYM, MISAPPLIED), or an accepted key
+#'       that differs from its own key. PROVISIONALLY_ACCEPTED and DOUBTFUL
+#'       records are not synonyms.}
 #'     \item{classification_path, classification_ranks, classification_ids}{
 #'       Pipe-delimited names, ranks and GBIF keys, kingdom to the matched
 #'       rank, positionally aligned.}
