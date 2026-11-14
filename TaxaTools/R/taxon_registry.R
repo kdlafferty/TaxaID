@@ -78,6 +78,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' taxon identifier; the lookup still supplies the ancestor chain, and a lookup
 #' whose accepted record differs from the pool's key is recorded as
 #' \code{status = "pool_key_conflict"} for the guard, never silently resolved.
+#' A name the pool holds under two or more different keys is not keyed from
+#' the pool at all (its identifier comes from the lookup alone); it is listed in
+#' \code{meta$pool_key_ambiguous} and reported by
+#' \code{\link{check_taxon_registry}} as an error-class
+#' \code{pool_key_ambiguous} finding.
 #'
 #' \strong{Unresolved names} get a run-local identifier under their resolved
 #' genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
@@ -199,12 +204,23 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   }
 
   # --- pool keys first --------------------------------------------------------
+  pool_key_ambiguous <- NULL
   if (!is.null(pool_keys)) {
     if (!is.data.frame(pool_keys) || !all(c("verbatim_name", "species_key") %in% names(pool_keys))) {
       stop("`pool_keys` must be NULL or a data frame with verbatim_name and species_key.")
     }
-    pk <- paste0(prefix, ":", as.character(pool_keys$species_key))[match(nm$verbatim_name, pool_keys$verbatim_name)]
-    has <- !is.na(pk) & !is.na(pool_keys$species_key[match(nm$verbatim_name, pool_keys$verbatim_name)])
+    # A name the pool holds under 2+ different keys has no one pool key: it is not keyed from the pool
+    # (match() would silently take the first) and is listed in meta$pool_key_ambiguous for the guard.
+    pkv <- pool_keys[!is.na(pool_keys$verbatim_name) & !is.na(pool_keys$species_key), c("verbatim_name", "species_key"), drop = FALSE]
+    pkv <- unique(data.frame(verbatim_name = as.character(pkv$verbatim_name), species_key = as.character(pkv$species_key),
+                             stringsAsFactors = FALSE))
+    amb_names <- unique(pkv$verbatim_name[duplicated(pkv$verbatim_name)])
+    pool_key_ambiguous <- if (length(amb_names)) data.frame(verbatim_name = amb_names,
+      species_keys = vapply(amb_names, function(v) paste(sort(pkv$species_key[pkv$verbatim_name == v]), collapse = " | "), ""),
+      in_names = amb_names %in% nm$verbatim_name, stringsAsFactors = FALSE, row.names = NULL) else NULL
+    pkv <- pkv[!pkv$verbatim_name %in% amb_names, , drop = FALSE]
+    pk <- paste0(prefix, ":", pkv$species_key)[match(nm$verbatim_name, pkv$verbatim_name)]
+    has <- !is.na(match(nm$verbatim_name, pkv$verbatim_name))
     clash <- has & !is.na(nm$taxon_id) & nm$taxon_id != pk
     nm$status[clash] <- "pool_key_conflict"
     nm$accepted_lookup[clash] <- NA_character_   # the lookup's accepted name is ANOTHER taxon's
@@ -292,7 +308,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     meta = list(run_id = run_id, key_backbone_id = key_backbone_id, authority = prefix,
                 snapshot = if (length(snaps)) paste(snaps, collapse = ",") else NA_character_,
                 frozen = FALSE, digest = NA_character_, built_at = Sys.time(),
-                taxa_conflicts = conflicts)
+                taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous)
   ), class = "taxon_registry")
 }
 
@@ -550,6 +566,13 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   pkc <- nm[nm$status %in% "pool_key_conflict", , drop = FALSE]
   if (nrow(pkc)) add("error", "pool_key_conflict", NA_character_, paste(unique(pkc$taxon_id), collapse = " | "),
                      paste(unique(pkc$verbatim_name), collapse = " | "), "lookup's accepted record differs from the pool's key", nrow(pkc))
+  # a name the pool holds under 2+ keys: not keyed from the pool, and not silently given one of them
+  pka <- registry$meta$pool_key_ambiguous
+  if (!is.null(pka) && nrow(pka)) {
+    for (i in seq_len(nrow(pka))) add("error", "pool_key_ambiguous", NA_character_, pka$species_keys[i], pka$verbatim_name[i],
+                                      if (isTRUE(pka$in_names[i])) "pool holds this name under 2+ keys; id from the lookup only"
+                                      else "pool holds this name under 2+ keys; name not in the registered tables", 1L)
+  }
   tc <- registry$meta$taxa_conflicts
   if (!is.null(tc) && nrow(tc)) {
     for (id in unique(tc$taxon_id)) add("error", "taxon_described_twice", NA_character_, id,
