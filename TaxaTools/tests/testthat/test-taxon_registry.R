@@ -827,7 +827,7 @@ test_that("REVIEW N7: CLAUDE.md's rows for the registry exports are their Rd tit
   .row("Pollicipes polymerus", "Pollicipes polymerus", "2115000", "1|54|300|400|500|600|2115000",
        "Animalia|Arthropoda|Thecostraca|Pollicipedomorpha|Pollicipedidae|Pollicipes|Pollicipes polymerus", ranks = .s7r)))
 test_that("REVIEW N3 (S0 run7): a family/order concept difference is not a homonym; another kingdom, or another phylum the context names, is", {
-  one <- function(ctx) build_taxon_registry(rbind(.names("Girella nigricans", "r2", context = ctx), .names("Pollicipes polymerus", "r2")),
+  one <- function(ctx) build_taxon_registry(rbind(.names("Girella nigricans", "r2", context = ctx), .names("Pollicipes polymerus", "r2", context = NA_character_)),
                                             run_id = "n3s", lookup = .girella_lk())$names
   n <- one("Centrarchiformes|Girellidae")
   expect_identical(n$taxon_id[n$verbatim_name == "Girella nigricans"], "gbif:2381213")      # 7f2e333d: local:Girella nigricans
