@@ -524,10 +524,13 @@ test_that("new formals of standardize_match_data go LAST: the released order is 
 }
 .skip_no_registry <- function() testthat::skip_if_not("attach_taxon_ids" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the taxon registry")
 
+# Package review 2026-11-13, N5: this test compared a call omitting `registry` with one passing registry = NULL, which
+# are identical by R semantics, so it could not fail. It now checks what can change: the default itself, and the
+# absence of the id column and the stamp.
 test_that("registry = NULL (default) leaves the output exactly as before: no taxon_id, no stamp", {
+  expect_true("registry" %in% names(formals(standardize_match_data)))
+  expect_null(formals(standardize_match_data)$registry)   # fails if the default ever becomes a registry
   a <- suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch"))
-  b <- suppressMessages(standardize_match_data(.match_raw(), "ESVId", "PercMatch", registry = NULL))
-  expect_identical(a, b)
   expect_false("taxon_id" %in% names(a))
   expect_null(attr(a, "taxon_registry"))
 })
