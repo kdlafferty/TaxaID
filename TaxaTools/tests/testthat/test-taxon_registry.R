@@ -723,3 +723,22 @@ test_that("REVIEW F6: build_taxon_registry's docs no longer claim a fuzzy answer
   expect_false(any(grepl('kept as \\code{status = "fuzzy"}', txt, fixed = TRUE)))   # 2ea632dc: present in R and Rd
   expect_false(any(grepl("^#'.*20[0-9]{2}-[0-9]{2}-[0-9]{2}", readLines(src, warn = FALSE))))   # 2ea632dc: "(Kevin, 2026-11-13: ...)"
 })
+
+# ---- Package review 2026-11-13, nice-to-have items (each FAILS on 1f3e31d0) ----------------------------
+
+# N3: an EXACT answer from a lookup with no lineage gate of its own (lookup_gbif_taxa) that lands in another kingdom
+# was accepted: the registry gated only non-exact answers. Agathis is a conifer and a braconid wasp.
+.agathis_lk <- function() .fake_lookup(.row("Agathis montana", "Agathis montana", "1800777", "1|54|216|1457|7901|1800770|1800777",
+  "Animalia|Arthropoda|Insecta|Hymenoptera|Braconidae|Agathis|Agathis montana", ranks = .s7))
+test_that("REVIEW N3: an EXACT answer that contradicts the name's own context is homonym_rejected, whichever lookup gave it", {
+  reg <- build_taxon_registry(.names("Agathis montana", "r2", context = "Plantae|Tracheophyta|Pinopsida"), run_id = "n3", lookup = .agathis_lk())
+  expect_false(identical(reg$names$taxon_id, "gbif:1800777"))         # 1f3e31d0: gbif:1800777 (the wasp), status accepted
+  expect_identical(reg$names$status, "homonym_rejected")
+  expect_match(reg$names$taxon_id, "^local:")
+  expect_false(any(reg$taxa$name %in% c("Arthropoda", "Braconidae")))
+  # the gate, not the answer, refuses: the wasp's own context, or no context, takes it
+  ok <- build_taxon_registry(.names("Agathis montana", "r2", context = "Animalia|Arthropoda|Insecta"), run_id = "n3b", lookup = .agathis_lk())
+  expect_identical(c(ok$names$taxon_id, ok$names$status), c("gbif:1800777", "accepted"))
+  nc <- build_taxon_registry(.names("Agathis montana", "r2"), run_id = "n3c", lookup = .agathis_lk())
+  expect_identical(nc$names$taxon_id, "gbif:1800777")
+})
