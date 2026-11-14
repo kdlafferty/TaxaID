@@ -346,6 +346,20 @@ test_that("GUARD CAN FAIL: a GENUS that differs is an error, unless it is the ge
   expect_true(any(check_taxon_registry(reg1, tables = list(r2 = t1), verbose = FALSE)$kind == "lineage_disagrees"))
 })
 
+test_that("GUARD CAN FAIL: attach_taxon_ids refuses to overwrite a taxon_id column it did not stamp (iNat ids)", {
+  .mock_gnv_reg()
+  reg <- freeze_taxon_registry(.caryi_reg())
+  inat <- data.frame(taxon_name = "Hypsurus caryi", taxon_id = 49917L)        # iNaturalist's own id, as check_inat_range() returns
+  expect_error(attach_taxon_ids(inat, reg, "taxon_name", "priors"), "did not stamp")
+  # a table this registry stamped is re-attachable, with the same ids
+  p <- attach_taxon_ids(data.frame(taxon_name = "Hypsurus caryi"), reg, "taxon_name", "priors")
+  expect_identical(attach_taxon_ids(p, reg, "taxon_name", "priors")$taxon_id, p$taxon_id)
+  # stamped by ANOTHER registry: refused as well
+  other <- freeze_taxon_registry(build_taxon_registry(.names("Hypsurus caryi", "priors"), run_id = "other", lookup = .real_lookup))
+  expect_error(attach_taxon_ids(attach_taxon_ids(data.frame(taxon_name = "Hypsurus caryi"), other, "taxon_name", "priors"),
+                                reg, "taxon_name", "priors"), "did not stamp")
+})
+
 test_that("taxon_in asks membership of ids, never names, and NA is never a member", {
   expect_identical(taxon_in(c("gbif:1", NA, "gbif:3"), c("gbif:1", NA)), c(TRUE, FALSE, FALSE))
   expect_error(taxon_in(1, "gbif:1"), "character")

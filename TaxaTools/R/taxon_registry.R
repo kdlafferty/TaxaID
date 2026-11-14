@@ -371,6 +371,11 @@ attach_taxon_ids <- function(x, registry, name_col, source_table, context_col = 
   if (!inherits(registry, "taxon_registry")) stop("`registry` must be a taxon_registry.")
   if (!isTRUE(registry$meta$frozen)) stop("Freeze the registry (freeze_taxon_registry()) before attaching ids: a registry that can still grow gives tables stamped from different contents.")
   if (!is.data.frame(x) || !name_col %in% names(x)) stop("`name_col` must name a column of `x`.")
+  # A taxon_id column this registry did not stamp belongs to someone else (e.g. iNaturalist's numeric
+  # taxon ids in check_inat_range() output): overwriting it would silently change what the column means.
+  if ("taxon_id" %in% names(x) && !identical(attr(x, .REGISTRY_STAMP, exact = TRUE), .registry_stamp(registry))) {
+    stop("`x` already has a taxon_id column that this registry did not stamp (another source's ids?); rename it before attaching registry ids.")
+  }
   n <- registry$names[registry$names$source_table == source_table, , drop = FALSE]
   if (!nrow(n)) stop(sprintf("The registry holds no names for source_table '%s'.", source_table))
   v <- as.character(x[[name_col]])
