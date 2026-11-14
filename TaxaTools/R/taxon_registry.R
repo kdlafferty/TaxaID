@@ -63,6 +63,25 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
              snapshot = snapshot, local = FALSE, stringsAsFactors = FALSE)
 }
 
+# Columns a lookup must return. Every one is read below; a missing one is refused, never defaulted (a defaulted
+# match_type gave every row row 1's synonym status; a missing verified turned failed lookups into local ids).
+.LOOKUP_COLUMNS <- c("matched_name", "matched_rank", "is_synonym", "classification_path", "classification_ranks",
+                     "verified", "matched", "current_record_id", "classification_ids", "match_type")
+
+#' Refuse a lookup answer that is not one row per name with every column the registry reads
+#' @noRd
+.check_lookup_shape <- function(res, n, what) {
+  miss <- if (is.data.frame(res)) setdiff(.LOOKUP_COLUMNS, names(res)) else .LOOKUP_COLUMNS
+  rows_ok <- is.data.frame(res) && nrow(res) == n
+  if (length(miss) || !rows_ok) {
+    msg <- sprintf("`lookup` (%s) must return one row per name with the verify_taxon_names(return_ids = TRUE) columns%s%s.", what,
+                   if (!rows_ok) sprintf("; it returned %s row(s) for %d name(s)", if (is.data.frame(res)) nrow(res) else "no data frame /", n) else "",
+                   if (length(miss)) paste0("; missing column(s): ", paste(miss, collapse = ", ")) else "")
+    stop(structure(class = c("taxon_registry_bad_lookup", "error", "condition"), list(message = msg, call = NULL)))
+  }
+  invisible(TRUE)
+}
+
 # Ranks a candidate's lineage is compared on in the tie-break (the name itself is the same on every candidate).
 .TB_RANKS <- c("kingdom", "phylum", "class", "order", "family", "genus")
 
@@ -254,9 +273,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   # --- one lookup per distinct (clean name, rank, context) ----------------------
   q <- unique(nm[, c("name_clean", "rank_given", "context")])
   res <- lookup(q$name_clean, q$rank_given, q$context)
-  if (!is.data.frame(res) || nrow(res) != nrow(q) || !all(c("matched_name", "current_record_id", "classification_ids") %in% names(res))) {
-    stop("`lookup` must return one row per name, with verify_taxon_names(return_ids = TRUE) columns.")
-  }
+  .check_lookup_shape(res, nrow(q), "name lookup")
   qk <- paste(q$name_clean, q$rank_given, q$context, sep = "\r")
   nk <- paste(nm$name_clean, nm$rank_given, nm$context, sep = "\r")
   r <- res[match(nk, qk), , drop = FALSE]
@@ -267,7 +284,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$accepted_lookup <- ifelse(ok, as.character(r$matched_name), NA_character_)
   nm$matched_rank <- tolower(r$matched_rank)
   nm$status <- ifelse(!ok, NA_character_,
-                ifelse(tolower(r$match_type %||% "exact") %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"), "fuzzy",
+                ifelse(tolower(r$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"), "fuzzy",
                 ifelse(r$is_synonym %in% TRUE, "synonym", "accepted")))
   # A fuzzy answer that differs from the query ONLY in the epithet's gender
   # ending is the gender rule, declared and listed; any other fuzzy answer stays
@@ -324,7 +341,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$accepted_lookup[failed | above | fzr] <- NA_character_
   nm$backend <- ifelse(!is.na(nm$taxon_id), paste0("gnverifier:", key_backbone_id), NA_character_)
   nm$backend_record_id <- ifelse(ok, r$record_id, NA_character_)
-  nm$match_type <- r$match_type %||% NA_character_
+  nm$match_type <- r$match_type
   nm$hop <- ifelse(nm$source_naming %in% "ncbi", "ncbi_name_in_key_authority", "direct")
 
   taxa <- list()
@@ -425,10 +442,11 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     need <- names(gid)[is.na(gid)]
     if (length(need)) {
       g <- lookup(need, rep("genus", length(need)), rep(NA_character_, length(need)))
+      .check_lookup_shape(g, length(need), "genus lookup")
       okg <- g$matched %in% TRUE & tolower(g$matched_rank) %in% "genus" & !is.na(g$current_record_id)
       # A non-exact genus answer (fuzzy, or GBIF's VARIANT, which the lookup reports as fuzzy) is
       # taken only where the names' own lineage agrees at kingdom and phylum; EXACT is unchanged.
-      fzg <- which(okg & tolower(g$match_type %||% "exact") %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"))
+      fzg <- which(okg & tolower(g$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"))
       for (j in fzg) {
         under <- un[grepl("^\\S+ \\S+$", nm$name_clean[un]) & gen_of(nm$name_clean[un]) == need[j]]
         ctx <- paste(unique(unlist(lapply(stats::na.omit(nm$context[under]), .split_pipe))), collapse = "|")
