@@ -401,6 +401,89 @@ test_that("GUARD CAN FAIL: no context, or the right kingdom with the wrong phylu
   expect_null(r2$meta$genus_variant_rejected)
 })
 
+# Binomials GBIF answered as a VARIANT of their GENUS, epithet exact: the 9 CI names of p8d. Six are spelling variants
+# (Pyrogophorus platyrachis -> Pyrgophorus platyrachis); three land in another kingdom (Hypnea nigrescens, a red alga ->
+# Hypena nigrescens, a moth; Physalia minuta, a siphonophore -> Physalis minuta, a plant; Gracilaria parva, a red alga ->
+# Gracillaria parva, a moth). Answers carry GBIF's own matchType, as lookup_gbif_taxa() returns it.
+.s7 <- "kingdom|phylum|class|order|family|genus|species"
+.pyrg_path <- "Animalia|Mollusca|Gastropoda|Littorinimorpha|Cochliopidae|Pyrgophorus|Pyrgophorus platyrachis"
+.pyrg_ids <- "1|52|225|1000|2299800|2299855|2299858"
+.binvar_tbl <- rbind(
+  .row("Pyrogophorus platyrachis", "Pyrgophorus platyrachis", "2299858", .pyrg_ids, .pyrg_path, ranks = .s7, mt = "Fuzzy"),
+  .row("Pyrgophorus platyrachis", "Pyrgophorus platyrachis", "2299858", .pyrg_ids, .pyrg_path, ranks = .s7),
+  .row("Pyrogophorus platyrachus", "Pyrgophorus platyrachis", "2299858", .pyrg_ids, .pyrg_path, ranks = .s7, mt = "Fuzzy"),
+  .row("Pyrogophorus coronatus", "Pyrgophorus coronatus", "2299860", "1|52|225|1000|2299800|2299855|2299860",
+       "Animalia|Mollusca|Gastropoda|Littorinimorpha|Cochliopidae|Pyrgophorus|Pyrgophorus coronatus", ranks = .s7, mt = "Fuzzy"),
+  .row("Hypnea nigrescens", "Hypena nigrescens", "1800001", "1|54|216|797|4532|1798000|1800001",
+       "Animalia|Arthropoda|Insecta|Lepidoptera|Erebidae|Hypena|Hypena nigrescens", ranks = .s7, mt = "Fuzzy"),
+  .row("Physalia minuta", "Physalis minuta", "2930001", "6|7707728|220|1176|2928997|2928998|2930001",
+       "Plantae|Tracheophyta|Magnoliopsida|Solanales|Solanaceae|Physalis|Physalis minuta", ranks = .s7, mt = "Fuzzy"),
+  .row("Gracilaria parva", "Gracillaria parva", "1749713", "1|54|216|797|7015|1749700|1749713",
+       "Animalia|Arthropoda|Insecta|Lepidoptera|Gracillariidae|Gracillaria|Gracillaria parva", ranks = .s7, mt = "Fuzzy"))
+.binvar_gmt <- c("Pyrogophorus platyrachis" = "VARIANT", "Pyrgophorus platyrachis" = "EXACT", "Pyrogophorus platyrachus" = "VARIANT",
+                 "Pyrogophorus coronatus" = "FUZZY", "Hypnea nigrescens" = "VARIANT", "Physalia minuta" = "VARIANT", "Gracilaria parva" = "VARIANT")
+.binvar_lk <- function(gmt = TRUE) {
+  lk <- .fake_lookup(.binvar_tbl)
+  function(names, rank, context) {
+    out <- lk(names, rank, context)
+    if (gmt) out$gbif_matchType <- ifelse(out$matched, unname(.binvar_gmt[names]), NA_character_)
+    out
+  }
+}
+.moll <- "Animalia|Mollusca|Gastropoda"
+
+test_that("a binomial answered as a VARIANT of its genus, epithet exact, in the name's own kingdom and phylum takes GBIF's species", {
+  reg <- freeze_taxon_registry(build_taxon_registry(rbind(.names("Pyrogophorus platyrachis", "r2", context = .moll),
+                                                          .names("Pyrgophorus platyrachis", "priors", context = .moll)),
+                                                    run_id = "bv1", lookup = .binvar_lk()))
+  n <- reg$names[match(c("Pyrogophorus platyrachis", "Pyrgophorus platyrachis"), reg$names$verbatim_name), ]
+  expect_identical(n$taxon_id, c("gbif:2299858", "gbif:2299858"))
+  expect_identical(n$status, c("genus_variant", "accepted"))
+  expect_null(reg$meta$genus_variant_rejected)
+  # one taxon under two spellings: a DECLARED merge; and a table carrying the variant genus is listed, not flagged
+  t <- attach_taxon_ids(data.frame(observation_id = c("a", "b"), taxon_name = "Pyrogophorus platyrachis",
+                                   genus = c("Pyrogophorus", "Pyrgophorus")), reg, "taxon_name", "r2")
+  chk <- check_taxon_registry(reg, tables = list(r2 = t), verbose = FALSE)
+  expect_false(any(chk$severity == "error"))
+  expect_true(any(chk$kind == "declared_merge" & chk$taxon_id == "gbif:2299858"))
+  expect_identical(chk$severity[chk$kind == "genus_variant"], "info")
+  expect_match(chk$names[chk$kind == "lineage_concept_differs"], "table Pyrogophorus", fixed = TRUE)
+})
+
+test_that("GUARD CAN FAIL: the three cross-kingdom VARIANT answers stay unresolved; the same answer IS taken where the context agrees", {
+  ctx <- c("Hypnea nigrescens" = "Plantae|Rhodophyta|Florideophyceae", "Physalia minuta" = "Animalia|Cnidaria|Hydrozoa",
+           "Gracilaria parva" = "Plantae|Rhodophyta|Florideophyceae")
+  reg <- build_taxon_registry(.names(names(ctx), "r2", context = unname(ctx)), run_id = "bv2", lookup = .binvar_lk())
+  n <- reg$names[match(names(ctx), reg$names$verbatim_name), ]
+  expect_false(any(n$taxon_id %in% c("gbif:1800001", "gbif:2930001", "gbif:1749713")))
+  expect_identical(n$taxon_id, paste0("local:", names(ctx)))
+  expect_identical(n$status, rep("fuzzy_rejected", 3L))
+  gvr <- reg$meta$genus_variant_rejected
+  expect_identical(sort(gvr$query), sort(names(ctx)))
+  expect_identical(unique(gvr$pass), "binomial")
+  expect_identical(unique(gvr$reason), "lineage does not agree at kingdom and phylum")
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_identical(unique(chk$severity[chk$kind == "genus_variant_rejected"]), "info")
+  expect_identical(sum(chk$kind == "genus_variant_rejected"), 3L)
+  # the gate, not the answer, is what refuses: the moth's own lineage as context takes it
+  r1 <- build_taxon_registry(.names("Hypnea nigrescens", "r2", context = "Animalia|Arthropoda|Insecta"), run_id = "bv3", lookup = .binvar_lk())
+  expect_identical(c(r1$names$taxon_id, r1$names$status), c("gbif:1800001", "genus_variant"))
+})
+
+test_that("GUARD CAN FAIL: no context, wrong phylum, a FUZZY (not VARIANT) answer, a changed epithet, or no gbif_matchType: not taken", {
+  one <- function(nm, ctx = .moll, gmt = TRUE) {
+    r <- build_taxon_registry(.names(nm, "r2", context = ctx), run_id = "bv4", lookup = .binvar_lk(gmt))
+    c(r$names$taxon_id, r$names$status)
+  }
+  expect_identical(one("Pyrogophorus platyrachis", NA_character_), c("local:Pyrogophorus platyrachis", "fuzzy_rejected"))
+  expect_identical(one("Pyrogophorus platyrachis", "Animalia|Chordata"), c("local:Pyrogophorus platyrachis", "fuzzy_rejected"))
+  expect_identical(one("Pyrogophorus coronatus"), c("local:Pyrogophorus coronatus", "fuzzy_rejected"))       # GBIF said FUZZY
+  expect_identical(one("Pyrogophorus platyrachus"), c("local:Pyrogophorus platyrachus", "fuzzy_rejected"))   # epithet differs too
+  expect_identical(one("Pyrogophorus platyrachis", gmt = FALSE), c("local:Pyrogophorus platyrachis", "fuzzy_rejected"))
+  r0 <- build_taxon_registry(.names("Pyrogophorus platyrachis", "r2"), run_id = "bv5", lookup = .binvar_lk())
+  expect_identical(r0$meta$genus_variant_rejected$reason, "no lineage context")
+})
+
 # Tie-break fixtures. The live case: the CI pool holds Tetraclita rubescens under two GBIF species keys
 # (2115806, 9188200); GBIF's species/match answers 9188200. Lineages here are synthetic: the two candidates
 # differ only in family, so only an authority naming one of those families can decide.

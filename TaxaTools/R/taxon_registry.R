@@ -172,7 +172,13 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' another kingdom). One narrow exception: a binomial whose epithet differs
 #' from a resolved congener's only in its Latin gender ending (\emph{Platybelone
 #' argala} / \emph{argalus}) takes that congener's identifier with
-#' \code{status = "gender_variant"}. Every use is listed by
+#' \code{status = "gender_variant"}. A second: a binomial the lookup answers
+#' as a GBIF \code{VARIANT} of its genus, with the epithet unchanged
+#' (\emph{Pyrogophorus platyrachis} / \emph{Pyrgophorus platyrachis}), takes
+#' that species' identifier with \code{status = "genus_variant"}, under the same
+#' gate: the name's own \code{context} must name the answer's kingdom and
+#' phylum, or it is refused and listed in \code{meta$genus_variant_rejected}.
+#' This needs the lookup's \code{gbif_matchType} column. Every use is listed by
 #' \code{\link{check_taxon_registry}}. No other fuzzy matching is accepted:
 #' a lookup answered by a fuzzy match is kept as \code{status = "fuzzy"}, which
 #' the guard reports as an undeclared merge if it lands on another name's
@@ -271,6 +277,30 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     same_g <- sub(" .*$", "", nm$name_clean[fz]) == sub(" .*$", "", r$matched_name[fz])
     same_s <- .epithet_stem(sub("^\\S+ ", "", nm$name_clean[fz])) == .epithet_stem(sub("^\\S+ ", "", r$matched_name[fz]))
     nm$status[fz[same_g & same_s]] <- "gender_variant"
+  }
+  # A binomial GBIF answered as an orthographic VARIANT of its GENUS, with the epithet exact
+  # (Pyrogophorus platyrachis -> Pyrgophorus platyrachis), takes GBIF's species, status
+  # genus_variant -- but only where the name's own context names the answer's kingdom and phylum,
+  # the genus-pass gate: Hypnea nigrescens, a red alga, answered as Hypena nigrescens, a moth, is
+  # refused (fuzzy_rejected) and listed. Needs the lookup's gbif_matchType; without it, never fires.
+  bin_variant_rejected <- list()
+  gmt <- if ("gbif_matchType" %in% names(r)) as.character(r$gbif_matchType) else rep(NA_character_, nrow(r))
+  gvb <- which(nm$status %in% "fuzzy" & gmt %in% "VARIANT" & nm$matched_rank %in% "species" &
+                 grepl("^\\S+ \\S+$", nm$name_clean) & grepl("^\\S+ \\S+$", r$matched_name))
+  gvb <- gvb[sub(" .*$", "", nm$name_clean[gvb]) != sub(" .*$", "", r$matched_name[gvb]) &
+               sub("^\\S+ ", "", nm$name_clean[gvb]) == sub("^\\S+ ", "", r$matched_name[gvb])]
+  for (i in gvb) {
+    ctx_i <- nm$context[i]
+    if (.genus_answer_in_context(ctx_i, r$classification_path[i], r$classification_ranks[i])) {
+      nm$status[i] <- "genus_variant"
+    } else {
+      has_ctx <- !is.na(ctx_i) && nzchar(ctx_i)
+      bin_variant_rejected[[length(bin_variant_rejected) + 1L]] <- data.frame(
+        genus_word = sub(" .*$", "", nm$name_clean[i]), answer = r$matched_name[i], answer_id = paste0(prefix, ":", r$current_record_id[i]),
+        answer_path = r$classification_path[i], context = if (has_ctx) ctx_i else NA_character_,
+        reason = if (has_ctx) "lineage does not agree at kingdom and phylum" else "no lineage context",
+        pass = "binomial", query = nm$name_clean[i], stringsAsFactors = FALSE)
+    }
   }
   # Three answers that must NOT resolve a name to the id they carry:
   #  - a lookup that FAILED (verified FALSE): status lookup_failed, no id, never a local id --
@@ -407,7 +437,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
           genus_variant_rejected[[length(genus_variant_rejected) + 1L]] <- data.frame(
             genus_word = need[j], answer = g$matched_name[j], answer_id = paste0(prefix, ":", g$current_record_id[j]),
             answer_path = g$classification_path[j], context = if (nzchar(ctx)) ctx else NA_character_,
-            reason = if (nzchar(ctx)) "lineage does not agree at kingdom and phylum" else "no lineage context", stringsAsFactors = FALSE)
+            reason = if (nzchar(ctx)) "lineage does not agree at kingdom and phylum" else "no lineage context",
+            pass = "genus", query = need[j], stringsAsFactors = FALSE)
         }
       }
       gid[need[okg]] <- paste0(prefix, ":", g$current_record_id[okg])
@@ -470,7 +501,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                 snapshot = if (length(snaps)) paste(snaps, collapse = ",") else NA_character_,
                 frozen = FALSE, digest = NA_character_, built_at = Sys.time(),
                 taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous, pool_key_tiebreaks = pool_key_tiebreaks,
-                genus_variant_rejected = if (length(genus_variant_rejected)) do.call(rbind, genus_variant_rejected) else NULL)
+                genus_variant_rejected = if (length(gvr_all <- c(bin_variant_rejected, genus_variant_rejected))) unique(do.call(rbind, gvr_all)) else NULL)
   ), class = "taxon_registry")
 }
 
@@ -710,14 +741,14 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     }
   }
   # unresolved and gender variants
-  for (s in c("unresolved_local", "gender_variant", "rank_fallback", "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
+  for (s in c("unresolved_local", "gender_variant", "genus_variant", "rank_fallback", "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
     z <- nm[nm$status %in% s, , drop = FALSE]
     if (nrow(z)) add(if (s == "lookup_failed") "error" else "info", s, NA_character_, NA_character_, paste(utils::head(sort(unique(z$verbatim_name)), 200), collapse = " | "),
                      sprintf("%d name(s)", length(unique(z$verbatim_name))), length(unique(z$verbatim_name)))
   }
   # merge audit: ids reached by 2+ different CLEAN names
   z <- nm[!is.na(nm$taxon_id), , drop = FALSE]
-  declared <- c("accepted", "synonym", "gender_variant", "pool_key_only", "pool_key_tiebreak")
+  declared <- c("accepted", "synonym", "gender_variant", "genus_variant", "pool_key_only", "pool_key_tiebreak")
   for (id in unique(z$taxon_id)) {
     w <- z[z$taxon_id == id, , drop = FALSE]
     if (length(unique(w$name_clean)) < 2L) next
@@ -747,8 +778,8 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   # non-exact genus answers refused by the lineage gate: the names under them kept plain local ids
   gvr <- registry$meta$genus_variant_rejected
   if (!is.null(gvr) && nrow(gvr)) {
-    for (i in seq_len(nrow(gvr))) add("info", "genus_variant_rejected", NA_character_, gvr$answer_id[i], gvr$genus_word[i],
-                                      sprintf("answer %s (%s): %s", gvr$answer[i], gvr$answer_path[i], gvr$reason[i]), 1L)
+    for (i in seq_len(nrow(gvr))) add("info", "genus_variant_rejected", NA_character_, gvr$answer_id[i], gvr$query[i] %||% gvr$genus_word[i],
+                                      sprintf("%s pass; answer %s (%s): %s", gvr$pass[i] %||% "genus", gvr$answer[i], gvr$answer_path[i], gvr$reason[i]), 1L)
   }
   # tie-break outcomes: a decided name is listed (info) with the authority that decided; an undecided one keeps
   # its error-class pool_key_ambiguous / pool_key_conflict finding above, and the reason is listed here
@@ -782,7 +813,7 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     # classification of the same taxon: listed (info, lineage_concept_differs), not flagged. A GENUS that disagrees
     # means the name may be another taxon (error, lineage_disagrees) -- unless the table's genus is the genus word of a
     # name registered as a SYNONYM of that taxon (the table carries the synonym's own genus): listed as info.
-    syn <- nm[nm$status %in% "synonym" & !is.na(nm$taxon_id), , drop = FALSE]
+    syn <- nm[nm$status %in% c("synonym", "genus_variant") & !is.na(nm$taxon_id), , drop = FALSE]
     syn_key <- paste(syn$taxon_id, sub(" .*$", "", syn$name_clean), sep = "\r")
     for (rk in intersect(c("genus", "family", "order"), names(x))) {
       anc <- parent_at(x$taxon_id, rk, registry)
@@ -795,7 +826,7 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
         add(lv, if (lv == "info") "lineage_concept_differs" else "lineage_disagrees", tn,
             paste(utils::head(unique(x$taxon_id[w]), 20), collapse = " | "),
             paste(utils::head(unique(sprintf("%s: table %s, registry %s", rk, x[[rk]][w], reg_name[w])), 10), collapse = "; "),
-            if (rk == "genus" && lv == "info") "genus column; the table's genus is a declared synonym's" else sprintf("%s column", rk), sum(w))
+            if (rk == "genus" && lv == "info") "genus column; the table's genus is a declared synonym's or genus variant's" else sprintf("%s column", rk), sum(w))
       }
     }
   }
