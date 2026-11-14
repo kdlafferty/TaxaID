@@ -834,7 +834,8 @@ likelihoods_ready <- TaxaAssign::join_priors(
   site              = site_spec,
   taxonomy_lookup   = match_df,
   rank_system       = detected_ranks,
-  backbone_id       = BACKBONE_ID
+  backbone_id       = BACKBONE_ID,
+  taxonomy_cache_dir = TAXONOMY_CACHE_DIR
 )
 
 # compute_posterior() pools named unreferenced rows whose point posterior is
