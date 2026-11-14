@@ -997,7 +997,7 @@ test_that("by default the fallback sends no cache_dir (the lookup is uncached)",
 
 test_that("taxonomy_cache_dir reaches verify_taxon_names() as cache_dir", {
   skip_if_not("taxonomy_cache_dir" %in% names(formals(join_priors)))
-  d <- withr::local_tempdir()
+  d <- tempfile("jp_cache_")
   got <- .jp_fallback_args(taxonomy_cache_dir = d)
   expect_identical(got$cache_dir, d)
 })
