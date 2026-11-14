@@ -27,10 +27,10 @@
 #' seven, else species for a name of two or more words, else genus.
 #' @noRd
 .lgt_target_rank <- function(names, rank) {
-  inferred <- ifelse(grepl("\\s", trimws(names)), "species", "genus")
+  inferred <- dplyr::if_else(grepl("\\s", trimws(names)), "species", "genus")
   if (is.null(rank)) return(inferred)
   r <- tolower(trimws(as.character(rank)))
-  ifelse(!is.na(r) & r %in% .LGT_RANKS, r, inferred)
+  dplyr::if_else(!is.na(r) & r %in% .LGT_RANKS, r, inferred)
 }
 
 #' A kingdom from a context string, when its first element names one
@@ -38,7 +38,7 @@
 .lgt_context_kingdom <- function(context, n) {
   if (is.null(context)) return(rep(NA_character_, n))
   first <- trimws(sub("\\|.*$", "", as.character(context)))
-  ifelse(!is.na(first) & first %in% .LGT_KINGDOMS, first, NA_character_)
+  dplyr::if_else(!is.na(first) & first %in% .LGT_KINGDOMS, first, NA_character_)
 }
 
 
@@ -142,7 +142,7 @@ lookup_gbif_taxa <- function(names, rank = NULL, context = NULL, cache_dir = NUL
   mt <- g$matchType
   matched <- mt %in% c("EXACT", "FUZZY", "VARIANT", "HIGHERRANK") & !is.na(g$usageKey)
   syn <- .lgt_is_synonym(g$gbif_synonym, g$gbif_status, g$gbif_acceptedUsageKey, g$usageKey)
-  cur <- ifelse(!is.na(g$gbif_acceptedUsageKey), g$gbif_acceptedUsageKey, g$usageKey)
+  cur <- dplyr::if_else(!is.na(g$gbif_acceptedUsageKey), g$gbif_acceptedUsageKey, g$usageKey)
   mr <- tolower(g$gbif_rank)
 
   path <- ranks <- ids <- acc <- rep(NA_character_, n)
@@ -159,19 +159,19 @@ lookup_gbif_taxa <- function(names, rank = NULL, context = NULL, cache_dir = NUL
 
   out <- data.frame(
     user_supplied_name = names,
-    matched_name = ifelse(matched, acc, NA_character_),
-    matched_rank = ifelse(matched, mr, NA_character_),
-    is_synonym = ifelse(matched, syn, NA),
+    matched_name = dplyr::if_else(matched, acc, NA_character_),
+    matched_rank = dplyr::if_else(matched, mr, NA_character_),
+    is_synonym = dplyr::if_else(matched, syn, NA),
     classification_path = path, classification_ranks = ranks,
     score = NA_real_,
     verified = mt != "ERROR",
     matched = matched,
-    record_id = ifelse(matched, as.character(g$usageKey), NA_character_),
-    current_record_id = ifelse(matched, as.character(cur), NA_character_),
+    record_id = dplyr::if_else(matched, as.character(g$usageKey), NA_character_),
+    current_record_id = dplyr::if_else(matched, as.character(cur), NA_character_),
     classification_ids = ids,
     data_source_id = 11L,
     entry_date = NA_character_,
-    match_type = ifelse(matched, ifelse(mt %in% c("FUZZY", "VARIANT"), "Fuzzy", "Exact"), NA_character_),
+    match_type = dplyr::if_else(matched, dplyr::if_else(mt %in% c("FUZZY", "VARIANT"), "Fuzzy", "Exact"), NA_character_),
     gbif_matchType = mt,
     gbif_status = g$gbif_status,
     stringsAsFactors = FALSE

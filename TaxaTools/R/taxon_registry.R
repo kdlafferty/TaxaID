@@ -40,8 +40,8 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 .asked_rank_level <- function(name_clean, rank_given) {
   given <- unname(.RANK_LADDER[tolower(rank_given)])
   nw <- lengths(strsplit(trimws(name_clean), "\\s+"))
-  shape <- ifelse(nw <= 1L, 6L, ifelse(nw == 2L, 7L, 8L))
-  ifelse(is.na(given), shape, given)
+  shape <- dplyr::if_else(nw <= 1L, 6L, dplyr::if_else(nw == 2L, 7L, 8L))
+  dplyr::if_else(is.na(given), shape, given)
 }
 
 #' @noRd
@@ -373,13 +373,13 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   r <- res[match(nk, qk), , drop = FALSE]
   ok <- r$matched %in% TRUE & !is.na(r$current_record_id) & nzchar(r$current_record_id)
 
-  nm$taxon_id <- ifelse(ok, paste0(prefix, ":", r$current_record_id), NA_character_)
+  nm$taxon_id <- dplyr::if_else(ok, paste0(prefix, ":", r$current_record_id), NA_character_)
   # the lookup's ACCEPTED name for that id: what names a taxon the lookup gave no path for
-  nm$accepted_lookup <- ifelse(ok, as.character(r$matched_name), NA_character_)
+  nm$accepted_lookup <- dplyr::if_else(ok, as.character(r$matched_name), NA_character_)
   nm$matched_rank <- tolower(r$matched_rank)
-  nm$status <- ifelse(!ok, NA_character_,
-                ifelse(tolower(r$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"), "fuzzy",
-                ifelse(r$is_synonym %in% TRUE, "synonym", "accepted")))
+  nm$status <- dplyr::if_else(!ok, NA_character_,
+                dplyr::if_else(tolower(r$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"), "fuzzy",
+                dplyr::if_else(r$is_synonym %in% TRUE, "synonym", "accepted")))
   # A fuzzy answer that differs from the query ONLY in the epithet's gender
   # ending is the gender rule, declared and listed; any other fuzzy answer stays
   # "fuzzy" and is an undeclared merge if it lands on another name's taxon.
@@ -430,15 +430,15 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$status[failed] <- "lookup_failed"; nm$taxon_id[failed] <- NA_character_
   ans_lvl <- unname(.RANK_LADDER[nm$matched_rank])
   above <- ok & (is.na(ans_lvl) | ans_lvl < .asked_rank_level(nm$name_clean, nm$rank_given))
-  nm$fallback_parent <- ifelse(above, nm$taxon_id, NA_character_)   # the answered ancestor: parent of the local id
+  nm$fallback_parent <- dplyr::if_else(above, nm$taxon_id, NA_character_)   # the answered ancestor: parent of the local id
   nm$status[above] <- "rank_fallback"; nm$taxon_id[above] <- NA_character_
   fzr <- nm$status %in% "fuzzy"
   nm$status[fzr] <- "fuzzy_rejected"; nm$taxon_id[fzr] <- NA_character_
   nm$accepted_lookup[failed | above | fzr] <- NA_character_
-  nm$backend <- ifelse(!is.na(nm$taxon_id), paste0("gnverifier:", key_backbone_id), NA_character_)
-  nm$backend_record_id <- ifelse(ok, r$record_id, NA_character_)
+  nm$backend <- dplyr::if_else(!is.na(nm$taxon_id), paste0("gnverifier:", key_backbone_id), NA_character_)
+  nm$backend_record_id <- dplyr::if_else(ok, as.character(r$record_id), NA_character_)
   nm$match_type <- r$match_type
-  nm$hop <- ifelse(nm$source_naming %in% "ncbi", "ncbi_name_in_key_authority", "direct")
+  nm$hop <- dplyr::if_else(nm$source_naming %in% "ncbi", "ncbi_name_in_key_authority", "direct")
 
   taxa <- list()
   for (i in which(!duplicated(qk) & seq_along(qk) > 0L)) {
@@ -511,7 +511,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       w <- which(nm$verbatim_name %in% names(tb_pick))
       newid <- unname(tb_pick[nm$verbatim_name[w]])
       same <- !is.na(lk_id[w]) & newid == lk_id[w]
-      nm$accepted_lookup[w] <- ifelse(same, acc0[w], NA_character_)   # the lookup's name only where it named the chosen id
+      nm$accepted_lookup[w] <- dplyr::if_else(same, acc0[w], NA_character_)   # the lookup's name only where it named the chosen id
       nm$taxon_id[w] <- newid; nm$status[w] <- "pool_key_tiebreak"
       nm$backend[w] <- paste0("tiebreak:", unname(tb_by[nm$verbatim_name[w]]))
     }
@@ -536,8 +536,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   if (length(un)) {
     gen_of <- function(x) sub(" .*$", "", x)
     ep_of <- function(x) sub("^\\S+ ", "", x)
-    ctx_of <- function(v) ifelse(is.na(v) | !nzchar(v), NA_character_, v)
-    gkey <- function(w, c) paste(w, ifelse(is.na(c), "", c), sep = "\r")
+    ctx_of <- function(v) dplyr::if_else(is.na(v) | !nzchar(v), NA_character_, v)
+    gkey <- function(w, c) paste(w, dplyr::if_else(is.na(c), "", c), sep = "\r")
     resolved <- unique(nm[!is.na(nm$taxon_id) & grepl("^\\S+ \\S+$", nm$name_clean), c("name_clean", "taxon_id", "context"), drop = FALSE])
     resolved$context <- ctx_of(resolved$context)
     kingdom_of_id <- function(id) { pp <- .path_in_taxa(id, taxa); .kingdom_of_path(pp$path, pp$ranks) }
@@ -632,7 +632,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     taxa <- rbind(taxa, data.frame(taxon_id = miss, name = nm_miss, rank = NA_character_,
                                    parent_id = NA_character_, snapshot = NA_character_, local = FALSE, stringsAsFactors = FALSE))
   }
-  taxa$authority <- ifelse(taxa$local, "run-local", prefix)
+  taxa$authority <- dplyr::if_else(taxa$local, "run-local", prefix)
   rownames(taxa) <- NULL; rownames(nm) <- NULL
 
   snaps <- sort(unique(stats::na.omit(taxa$snapshot)))
