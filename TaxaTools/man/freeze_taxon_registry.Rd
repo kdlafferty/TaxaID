@@ -17,4 +17,7 @@ After the freeze the registry cannot grow: a name it does not hold is an
 error at \code{\link{attach_taxon_ids}}, never a new row. The freeze records
 the registry's content digest, which every stamp carries, so tables stamped
 from one frozen registry can be joined and tables from any other cannot.
+A registry edited after the freeze no longer matches its digest:
+\code{\link{attach_taxon_ids}} refuses it and
+\code{\link{check_taxon_registry}} reports it as an error.
 }
