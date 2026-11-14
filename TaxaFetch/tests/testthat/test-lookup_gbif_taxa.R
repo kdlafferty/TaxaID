@@ -191,12 +191,14 @@ test_that("VARIANT is matched as a fuzzy answer; the old EXACT/FUZZY/HIGHERRANK 
   expect_identical(attr(x, "n_fuzzy"), 0L)                     # GBIF's own FUZZY count is not merged with VARIANT
 })
 
-test_that("with the registry: a VARIANT genus answer gives the genus id; a VARIANT species answer is not a name match", {
+test_that("with the registry: a VARIANT genus answer gives the genus id where the names' lineage agrees; a VARIANT species answer is not a name match", {
   skip_if_not_installed("rgbif")
   skip_if_not("build_taxon_registry" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the taxon registry")
   local_mocked_bindings(name_backbone = .backbone, .package = "rgbif")
+  # the registry takes a non-exact genus answer only where the names' context names its kingdom and phylum
   reg <- suppressMessages(TaxaTools::build_taxon_registry(
-    data.frame(verbatim_name = c("Pyrogophorus notadus", "Hypsurus karyi"), source_table = "t"),
+    data.frame(verbatim_name = c("Pyrogophorus notadus", "Hypsurus karyi"), source_table = "t",
+               context = c("Animalia|Mollusca|Gastropoda", "Animalia|Chordata")),
     run_id = "test", key_backbone_id = 11L, lookup = lookup_gbif_taxa))
   id <- reg$names$taxon_id[match(c("Pyrogophorus notadus", "Hypsurus karyi"), reg$names$verbatim_name)]
   expect_identical(id[1], "local:2299855:notadus")            # under the VARIANT genus key, not plain "local:<name>"
@@ -204,4 +206,9 @@ test_that("with the registry: a VARIANT genus answer gives the genus id; a VARIA
   st <- reg$names$status[match("Hypsurus karyi", reg$names$verbatim_name)]
   expect_false(st %in% c("accepted", "synonym"))               # a spelling variant never resolves a species by itself
   expect_false(identical(id[2], "gbif:2389310"))
+  # without lineage context the same VARIANT genus answer is refused (the registry's genus-pass gate)
+  r0 <- suppressMessages(TaxaTools::build_taxon_registry(data.frame(verbatim_name = "Pyrogophorus notadus", source_table = "t"),
+                                                         run_id = "test0", key_backbone_id = 11L, lookup = lookup_gbif_taxa))
+  expect_identical(r0$names$taxon_id, "local:Pyrogophorus notadus")
+  expect_identical(r0$meta$genus_variant_rejected$reason, "no lineage context")
 })
