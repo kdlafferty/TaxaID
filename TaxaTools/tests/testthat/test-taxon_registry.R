@@ -425,6 +425,7 @@ test_that("step 0: GBIF's own match, when it is exactly one of the candidates, d
   reg <- .tb_reg(list())                                                     # gbif_first defaults to TRUE
   expect_identical(c(reg$names$taxon_id, reg$names$status, reg$names$backend), c("gbif:9188200", "pool_key_tiebreak", "tiebreak:gbif"))
   expect_null(reg$meta$pool_key_ambiguous)
+  expect_identical(reg$meta$pool_key_tiebreaks$kind, "pool_key_ambiguous")   # one row: no spurious conflict from a first pick
   chk <- check_taxon_registry(reg, verbose = FALSE)
   expect_identical(chk$severity[chk$kind == "pool_key_tiebroken"], "info")
   expect_false(any(chk$kind == "pool_key_ambiguous"))
@@ -434,6 +435,7 @@ test_that("step 0: GBIF's own match, when it is exactly one of the candidates, d
 test_that("GUARD CAN FAIL: NCBI decides by the candidates' DISTINGUISHING terms, even against GBIF's match when step 0 is off", {
   reg <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = .lin("Balanidae"), worms = .lin("Tetraclitidae"))))
   expect_identical(c(reg$names$taxon_id, reg$names$backend), c("gbif:2115806", "tiebreak:ncbi"))   # NCBI first, and it names Balanidae
+  expect_identical(nrow(reg$meta$pool_key_tiebreaks), 1L)
   expect_true(is.na(reg$names$accepted_lookup))                              # the lookup's name belonged to the other id
   expect_true("gbif:2115806" %in% reg$taxa$taxon_id)
 })
@@ -441,6 +443,7 @@ test_that("GUARD CAN FAIL: NCBI decides by the candidates' DISTINGUISHING terms,
 test_that("an authority with no answer passes to the next (NCBI silent -> WoRMS decides)", {
   reg <- .tb_reg(list(gbif_first = FALSE, authorities = list(ncbi = function(name) NA_character_, worms = .lin("Tetraclitidae"))))
   expect_identical(c(reg$names$taxon_id, reg$names$backend), c("gbif:9188200", "tiebreak:worms"))
+  expect_identical(nrow(reg$meta$pool_key_tiebreaks), 1L)   # a decided ambiguous name is not re-keyed by a first pick (no 2nd, conflict row)
   expect_match(reg$meta$pool_key_tiebreaks$detail, "ncbi: no answer", fixed = TRUE)
 })
 

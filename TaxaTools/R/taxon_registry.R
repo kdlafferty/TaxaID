@@ -104,8 +104,8 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
       sum(check_lineage_agreement(rep(L, length(tt)), tt, ignore = character(0L)) == "agrees"), 0L)
     if (max(score) > 0L && sum(score == max(score)) == 1L) {
       w <- which.max(score)
-      return(list(id = cand_ids[w], by = a, detail = sprintf("%s lineage holds %s of %s's distinguishing terms (scores %s)",
-                                                             a, max(score), cand_ids[w], paste(score, collapse = "/"))))
+      return(list(id = cand_ids[w], by = a, detail = paste(c(notes, sprintf("%s lineage holds %s of %s's distinguishing terms (scores %s)",
+                                                             a, max(score), cand_ids[w], paste(score, collapse = "/"))), collapse = "; ")))
     }
     notes <- c(notes, sprintf("%s: not decided (scores %s)", a, paste(score, collapse = "/")))
   }
@@ -317,6 +317,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     pkv <- unique(data.frame(verbatim_name = as.character(pkv$verbatim_name), species_key = as.character(pkv$species_key),
                              stringsAsFactors = FALSE))
     amb_names <- unique(pkv$verbatim_name[duplicated(pkv$verbatim_name)])
+    amb_all <- amb_names                                     # never keyed by match(), decided or not
     lk_id <- nm$taxon_id; acc0 <- nm$accepted_lookup        # the lookup's own answer, before any pool key
     lin_cols <- intersect(.TB_RANKS, names(pool_keys))
     pool_terms <- function(v, k) {
@@ -340,7 +341,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     pool_key_ambiguous <- if (length(amb_names)) data.frame(verbatim_name = amb_names,
       species_keys = vapply(amb_names, function(v) paste(sort(pkv$species_key[pkv$verbatim_name == v]), collapse = " | "), ""),
       in_names = amb_names %in% nm$verbatim_name, stringsAsFactors = FALSE, row.names = NULL) else NULL
-    pkv <- pkv[!pkv$verbatim_name %in% amb_names, , drop = FALSE]
+    pkv <- pkv[!pkv$verbatim_name %in% amb_all, , drop = FALSE]   # a decided ambiguous name takes its id below, not a first pick
     pk <- paste0(prefix, ":", pkv$species_key)[match(nm$verbatim_name, pkv$verbatim_name)]
     has <- !is.na(match(nm$verbatim_name, pkv$verbatim_name))
     clash <- has & !is.na(nm$taxon_id) & nm$taxon_id != pk
