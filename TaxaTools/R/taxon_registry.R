@@ -174,19 +174,29 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
   identical(check_lineage_agreement(ctx, ph[[1L]], ignore = character(0)), "agrees")
 }
 
-#' Does a genus answer CONTRADICT the names' context? Yes if both name a kingdom and they differ, or if the
-#' context's non-kingdom terms share nothing with the answer's path from phylum to genus. No context, or nothing
-#' to compare on one side: no contradiction (an EXACT answer is then taken as before).
+#' Does an EXACT answer CONTRADICT the names' context? Yes if both name a kingdom and they differ, or if the context
+#' names a phylum -- a term that this run's answers use at phylum rank (\code{phyla}) -- and not the answer's own.
+#' A context that differs only at class, order or family (NCBI's Centrarchiformes|Girellidae for GBIF's
+#' Perciformes|Kyphosidae) is another classification of the same taxon, not a homonym: no contradiction. No context,
+#' or nothing to compare: no contradiction (the answer is taken). The context is unranked, so a phylum no answer
+#' uses cannot be recognised as one.
 #' @noRd
-.genus_conflicts_context <- function(ctx, path, ranks) {
+.genus_conflicts_context <- function(ctx, path, ranks, phyla = character(0L)) {
   if (is.na(ctx) || !nzchar(ctx)) return(FALSE)
   kp <- .kingdom_of_path(path, ranks); kc <- .kingdoms_of_context(ctx)
   if (!is.na(kp) && length(kc) && !(kp %in% kc)) return(TRUE)
   p <- .split_pipe(path); r <- tolower(.split_pipe(ranks)); n <- min(length(p), length(r))
-  up <- p[seq_len(n)][r[seq_len(n)] %in% c("phylum", "class", "order", "family", "genus")]
-  ct <- .split_pipe(ctx); ct <- ct[is.na(.KINGDOM_LABELS[tolower(ct)])]
-  if (!length(up) || !length(ct)) return(FALSE)
-  !any(tolower(ct) %in% tolower(up))
+  ph <- tolower(p[seq_len(n)][r[seq_len(n)] == "phylum"])
+  if (!length(ph)) return(FALSE)
+  ct_ph <- intersect(tolower(.split_pipe(ctx)), unique(c(tolower(phyla), ph)))
+  length(ct_ph) > 0L && !any(ph %in% ct_ph)
+}
+
+#' The terms a set of classification paths holds at phylum rank (the run's known phyla)
+#' @noRd
+.phyla_of <- function(paths, ranks) {
+  unique(unlist(Map(function(p, r) { p <- .split_pipe(p); r <- tolower(.split_pipe(r)); n <- min(length(p), length(r))
+    p[seq_len(n)][r[seq_len(n)] == "phylum"] }, paths, ranks), use.names = FALSE))
 }
 
 #' A taxa-table id's path and ranks, walked up its parent chain (kingdom first)
@@ -240,11 +250,13 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' undo pool-keys-first; a conflict is decided by the authorities or not at all.
 #'
 #' \strong{Homonyms.} An exact answer that contradicts the name's own
-#' \code{context} (the two name different kingdoms, or the context's other
-#' terms share nothing with the answer's phylum-to-genus path) is refused,
+#' \code{context} (the two name different kingdoms, or the context names a
+#' phylum, one the run's answers use, other than the answer's) is refused,
 #' whichever \code{lookup} gave it: the name gets
 #' \code{status = "homonym_rejected"} and takes the unresolved path below.
-#' A name with no context is not checked.
+#' A context that differs only at class, order or family is another
+#' classification of the same taxon, not a homonym. A name with no context is
+#' not checked.
 #'
 #' \strong{Coarser answers.} Every name is checked for an answer at a coarser
 #' rank than it was asked at (\code{rank_given}, else genus for one word,
@@ -357,12 +369,14 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   .check_lookup_shape(res, nrow(q), "name lookup")
   # An EXACT answer that contradicts the name's own context is a homonym, whichever lookup gave it: a lookup with no
   # lineage gate of its own (lookup_gbif_taxa()) can answer an exact name in another kingdom. Same test as the genus
-  # pass's EXACT answers (.genus_conflicts_context); non-exact answers have their own, stricter gates below.
+  # pass's EXACT answers (.genus_conflicts_context: another kingdom, or another phylum the context names; an order or
+  # family difference is a classification concept); non-exact answers have their own, stricter gates below.
   # Marked as the verify_taxon_names() lineage gate marks it, so it takes the homonym_rejected path.
   res$match_type <- as.character(res$match_type)
   nonexact_q <- tolower(res$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies")
   lg <- which(res$matched %in% TRUE & !nonexact_q & !is.na(q$context) & nzchar(q$context) & !is.na(res$classification_path))
-  lg <- lg[vapply(lg, function(j) .genus_conflicts_context(q$context[j], res$classification_path[j], res$classification_ranks[j]), TRUE)]
+  run_phyla <- .phyla_of(res$classification_path[res$matched %in% TRUE], res$classification_ranks[res$matched %in% TRUE])
+  lg <- lg[vapply(lg, function(j) .genus_conflicts_context(q$context[j], res$classification_path[j], res$classification_ranks[j], run_phyla), TRUE)]
   if (length(lg)) {
     res$verified[lg] <- FALSE; res$matched[lg] <- FALSE; res$match_type[lg] <- "LineageRejected"
     for (cc in c("matched_name", "matched_rank", "is_synonym", "current_record_id", "classification_path",
@@ -549,7 +563,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     for (k in seq_len(nrow(grp))) {
       cand <- unique(gt$taxon_id[gt$name == grp$word[k]])
       if (!length(cand)) { ask <- c(ask, k); next }
-      keep <- cand[!vapply(cand, function(id) { pp <- .path_in_taxa(id, taxa); .genus_conflicts_context(grp$ctx[k], pp$path, pp$ranks) }, TRUE)]
+      keep <- cand[!vapply(cand, function(id) { pp <- .path_in_taxa(id, taxa); .genus_conflicts_context(grp$ctx[k], pp$path, pp$ranks, run_phyla) }, TRUE)]
       if (length(keep) == 1L) { gid[k] <- keep; next }
       if (length(keep) >= 2L) {
         genus_homonym_unresolved[[length(genus_homonym_unresolved) + 1L]] <- data.frame(genus_word = grp$word[k], context = grp$ctx[k],
@@ -563,11 +577,12 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       .check_lookup_shape(g, length(ask), "genus lookup")
       okg <- g$matched %in% TRUE & tolower(g$matched_rank) %in% "genus" & !is.na(g$current_record_id)
       nonexact <- tolower(g$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies")
+      g_phyla <- c(run_phyla, .phyla_of(g$classification_path[okg], g$classification_ranks[okg]))   # fixed before the loop edits okg
       for (j in which(okg)) {
         k <- ask[j]; has_ctx <- !is.na(grp$ctx[k])
         reason <- if (nonexact[j] && !.genus_answer_in_context(grp$ctx[k], g$classification_path[j], g$classification_ranks[j])) {
           if (has_ctx) "lineage does not agree at kingdom and phylum" else "no lineage context"
-        } else if (!nonexact[j] && .genus_conflicts_context(grp$ctx[k], g$classification_path[j], g$classification_ranks[j])) {
+        } else if (!nonexact[j] && .genus_conflicts_context(grp$ctx[k], g$classification_path[j], g$classification_ranks[j], g_phyla)) {
           "exact genus answer outside the names' kingdom/phylum"
         } else NA_character_
         if (!is.na(reason)) {
