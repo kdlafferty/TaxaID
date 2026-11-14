@@ -171,6 +171,33 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
   identical(check_lineage_agreement(ctx, ph[[1L]], ignore = character(0)), "agrees")
 }
 
+#' Does a genus answer CONTRADICT the names' context? Yes if both name a kingdom and they differ, or if the
+#' context's non-kingdom terms share nothing with the answer's path from phylum to genus. No context, or nothing
+#' to compare on one side: no contradiction (an EXACT answer is then taken as before).
+#' @noRd
+.genus_conflicts_context <- function(ctx, path, ranks) {
+  if (is.na(ctx) || !nzchar(ctx)) return(FALSE)
+  kp <- .kingdom_of_path(path, ranks); kc <- .kingdoms_of_context(ctx)
+  if (!is.na(kp) && length(kc) && !(kp %in% kc)) return(TRUE)
+  p <- .split_pipe(path); r <- tolower(.split_pipe(ranks)); n <- min(length(p), length(r))
+  up <- p[seq_len(n)][r[seq_len(n)] %in% c("phylum", "class", "order", "family", "genus")]
+  ct <- .split_pipe(ctx); ct <- ct[is.na(.KINGDOM_LABELS[tolower(ct)])]
+  if (!length(up) || !length(ct)) return(FALSE)
+  !any(tolower(ct) %in% tolower(up))
+}
+
+#' A taxa-table id's path and ranks, walked up its parent chain (kingdom first)
+#' @noRd
+.path_in_taxa <- function(id, taxa) {
+  p <- character(0L); r <- character(0L); seen <- character(0L)
+  while (length(id) == 1L && !is.na(id) && !(id %in% seen)) {
+    k <- match(id, taxa$taxon_id); if (is.na(k)) break
+    seen <- c(seen, id); p <- c(taxa$name[k], p); r <- c(if (is.na(taxa$rank[k])) "" else taxa$rank[k], r)
+    id <- taxa$parent_id[k]
+  }
+  list(path = paste(p, collapse = "|"), ranks = paste(r, collapse = "|"))
+}
+
 #' Build a run's taxon registry
 #'
 #' Resolves every verbatim name the run will use, from every table, ONCE, to a
@@ -453,39 +480,62 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                snapshot = character(0), local = logical(0), stringsAsFactors = FALSE)
 
   # --- unresolved: gender variant of a resolved congener, else a local id ---------
-  genus_variant_rejected <- list()
+  # A genus id is resolved per (genus WORD, CONTEXT), never by the word alone: one word can name genera in two
+  # kingdoms (Vertebrata the red alga; Agathis the conifer and the wasp).
+  #  - genus rows already in taxa: those not contradicting the context are candidates; exactly one is taken;
+  #    two or more (or two with no context to choose) are refused and listed (genus_homonym_unresolved);
+  #  - otherwise one lookup per (word, context), WITH the context: a non-exact answer needs the kingdom+phylum
+  #    gate; an EXACT one is refused where it contradicts the context (.genus_conflicts_context);
+  #  - the gender rule takes a congener only from the same context (or, with a context, the same kingdom), and
+  #    never for a homonym_rejected name.
+  genus_variant_rejected <- list(); genus_homonym_unresolved <- list()
   un <- which(is.na(nm$taxon_id) & !nm$status %in% "lookup_failed")
   if (length(un)) {
-    resolved <- nm[!is.na(nm$taxon_id) & grepl("^\\S+ \\S+$", nm$name_clean), c("name_clean", "taxon_id"), drop = FALSE]
-    resolved <- resolved[!duplicated(resolved$name_clean), , drop = FALSE]
     gen_of <- function(x) sub(" .*$", "", x)
     ep_of <- function(x) sub("^\\S+ ", "", x)
-    # genus ids: from the taxa table (an ancestor already seen), else one lookup of the genus word
-    gwords <- unique(gen_of(nm$name_clean[un][grepl("^\\S+ \\S+$", nm$name_clean[un])]))
-    gt <- taxa[taxa$rank %in% "genus", , drop = FALSE]
-    gid <- stats::setNames(gt$taxon_id[match(gwords, gt$name)], gwords)
-    gid <- gid[!duplicated(names(gid))]
-    need <- names(gid)[is.na(gid)]
-    if (length(need)) {
-      g <- lookup(need, rep("genus", length(need)), rep(NA_character_, length(need)))
-      .check_lookup_shape(g, length(need), "genus lookup")
+    ctx_of <- function(v) ifelse(is.na(v) | !nzchar(v), NA_character_, v)
+    gkey <- function(w, c) paste(w, ifelse(is.na(c), "", c), sep = "\r")
+    resolved <- unique(nm[!is.na(nm$taxon_id) & grepl("^\\S+ \\S+$", nm$name_clean), c("name_clean", "taxon_id", "context"), drop = FALSE])
+    resolved$context <- ctx_of(resolved$context)
+    kingdom_of_id <- function(id) { pp <- .path_in_taxa(id, taxa); .kingdom_of_path(pp$path, pp$ranks) }
+    bu <- un[grepl("^\\S+ \\S+$", nm$name_clean[un])]
+    grp <- unique(data.frame(word = gen_of(nm$name_clean[bu]), ctx = ctx_of(nm$context[bu]), stringsAsFactors = FALSE))
+    gid <- stats::setNames(rep(NA_character_, nrow(grp)), gkey(grp$word, grp$ctx))
+    gt <- unique(taxa[taxa$rank %in% "genus", c("taxon_id", "name"), drop = FALSE])
+    ask <- integer(0L)
+    for (k in seq_len(nrow(grp))) {
+      cand <- unique(gt$taxon_id[gt$name == grp$word[k]])
+      if (!length(cand)) { ask <- c(ask, k); next }
+      keep <- cand[!vapply(cand, function(id) { pp <- .path_in_taxa(id, taxa); .genus_conflicts_context(grp$ctx[k], pp$path, pp$ranks) }, TRUE)]
+      if (length(keep) == 1L) { gid[k] <- keep; next }
+      if (length(keep) >= 2L) {
+        genus_homonym_unresolved[[length(genus_homonym_unresolved) + 1L]] <- data.frame(genus_word = grp$word[k], context = grp$ctx[k],
+          candidates = paste(sort(keep), collapse = " | "), stringsAsFactors = FALSE)
+        next
+      }
+      ask <- c(ask, k)                                   # every row in taxa contradicts the context: ask, with it
+    }
+    if (length(ask)) {
+      g <- lookup(grp$word[ask], rep("genus", length(ask)), grp$ctx[ask])
+      .check_lookup_shape(g, length(ask), "genus lookup")
       okg <- g$matched %in% TRUE & tolower(g$matched_rank) %in% "genus" & !is.na(g$current_record_id)
-      # A non-exact genus answer (fuzzy, or GBIF's VARIANT, which the lookup reports as fuzzy) is
-      # taken only where the names' own lineage agrees at kingdom and phylum; EXACT is unchanged.
-      fzg <- which(okg & tolower(g$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"))
-      for (j in fzg) {
-        under <- un[grepl("^\\S+ \\S+$", nm$name_clean[un]) & gen_of(nm$name_clean[un]) == need[j]]
-        ctx <- paste(unique(unlist(lapply(stats::na.omit(nm$context[under]), .split_pipe))), collapse = "|")
-        if (!.genus_answer_in_context(if (nzchar(ctx)) ctx else NA_character_, g$classification_path[j], g$classification_ranks[j])) {
+      nonexact <- tolower(g$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies")
+      for (j in which(okg)) {
+        k <- ask[j]; has_ctx <- !is.na(grp$ctx[k])
+        reason <- if (nonexact[j] && !.genus_answer_in_context(grp$ctx[k], g$classification_path[j], g$classification_ranks[j])) {
+          if (has_ctx) "lineage does not agree at kingdom and phylum" else "no lineage context"
+        } else if (!nonexact[j] && .genus_conflicts_context(grp$ctx[k], g$classification_path[j], g$classification_ranks[j])) {
+          "exact genus answer outside the names' kingdom/phylum"
+        } else NA_character_
+        if (!is.na(reason)) {
           okg[j] <- FALSE
           genus_variant_rejected[[length(genus_variant_rejected) + 1L]] <- data.frame(
-            genus_word = need[j], answer = g$matched_name[j], answer_id = paste0(prefix, ":", g$current_record_id[j]),
-            answer_path = g$classification_path[j], context = if (nzchar(ctx)) ctx else NA_character_,
-            reason = if (nzchar(ctx)) "lineage does not agree at kingdom and phylum" else "no lineage context",
-            pass = "genus", query = need[j], stringsAsFactors = FALSE)
+            genus_word = grp$word[k], answer = g$matched_name[j], answer_id = paste0(prefix, ":", g$current_record_id[j]),
+            answer_path = g$classification_path[j], context = grp$ctx[k], reason = reason,
+            pass = "genus", query = grp$word[k], stringsAsFactors = FALSE)
         }
       }
-      gid[need[okg]] <- paste0(prefix, ":", g$current_record_id[okg])
+      gid[ask[okg]] <- paste0(prefix, ":", g$current_record_id[okg])
       for (j in which(okg)) {
         a <- .ancestor_rows(g$classification_path[j], g$classification_ranks[j], g$classification_ids[j],
                             prefix, g$entry_date[j] %||% NA_character_)
@@ -493,16 +543,20 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       }
     }
     for (i in un) {
-      x <- nm$name_clean[i]
+      x <- nm$name_clean[i]; cx <- ctx_of(nm$context[i])
       if (grepl("^\\S+ \\S+$", x)) {
-        cong <- resolved[gen_of(resolved$name_clean) == gen_of(x) & resolved$name_clean != x, , drop = FALSE]
-        hit <- cong$taxon_id[.epithet_stem(ep_of(cong$name_clean)) == .epithet_stem(ep_of(x))]
-        hit <- unique(hit)
-        if (length(hit) == 1L) {
-          nm$taxon_id[i] <- hit; nm$status[i] <- "gender_variant"; nm$backend[i] <- "gender_rule"
-          next
+        if (!nm$status[i] %in% "homonym_rejected") {
+          cong <- resolved[gen_of(resolved$name_clean) == gen_of(x) & resolved$name_clean != x &
+                             .epithet_stem(ep_of(resolved$name_clean)) == .epithet_stem(ep_of(x)), , drop = FALSE]
+          same <- if (is.na(cx)) is.na(cong$context) else
+            (cong$context %in% cx) | vapply(cong$taxon_id, function(id) isTRUE(kingdom_of_id(id) %in% .kingdoms_of_context(cx)), TRUE)
+          hit <- unique(cong$taxon_id[same])
+          if (length(hit) == 1L) {
+            nm$taxon_id[i] <- hit; nm$status[i] <- "gender_variant"; nm$backend[i] <- "gender_rule"
+            next
+          }
         }
-        g <- gid[gen_of(x)]
+        g <- gid[gkey(gen_of(x), cx)]
         if (!is.na(g)) {
           nm$taxon_id[i] <- paste0("local:", sub("^[^:]+:", "", g), ":", tolower(ep_of(x)))
           taxa <- rbind(taxa, data.frame(taxon_id = nm$taxon_id[i], name = x, rank = "species", parent_id = unname(g),
@@ -545,7 +599,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                 snapshot = if (length(snaps)) paste(snaps, collapse = ",") else NA_character_,
                 frozen = FALSE, digest = NA_character_, built_at = Sys.time(),
                 taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous, pool_key_tiebreaks = pool_key_tiebreaks,
-                genus_variant_rejected = if (length(gvr_all <- c(bin_variant_rejected, genus_variant_rejected))) unique(do.call(rbind, gvr_all)) else NULL)
+                genus_variant_rejected = if (length(gvr_all <- c(bin_variant_rejected, genus_variant_rejected))) unique(do.call(rbind, gvr_all)) else NULL,
+                genus_homonym_unresolved = if (length(genus_homonym_unresolved)) unique(do.call(rbind, genus_homonym_unresolved)) else NULL)
   ), class = "taxon_registry")
 }
 
@@ -827,6 +882,12 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   if (!is.null(gvr) && nrow(gvr)) {
     for (i in seq_len(nrow(gvr))) add("info", "genus_variant_rejected", NA_character_, gvr$answer_id[i], gvr$query[i] %||% gvr$genus_word[i],
                                       sprintf("%s pass; answer %s (%s): %s", gvr$pass[i] %||% "genus", gvr$answer[i], gvr$answer_path[i], gvr$reason[i]), 1L)
+  }
+  # a genus word naming 2+ genera in taxa, with no context to choose: the names under it kept plain local ids
+  ghu <- registry$meta$genus_homonym_unresolved
+  if (!is.null(ghu) && nrow(ghu)) {
+    for (i in seq_len(nrow(ghu))) add("info", "genus_homonym_unresolved", NA_character_, ghu$candidates[i], ghu$genus_word[i],
+                                      sprintf("genus word names 2+ genera (%s); context %s", ghu$candidates[i], if (is.na(ghu$context[i])) "none" else ghu$context[i]), 1L)
   }
   # tie-break outcomes: a decided name is listed (info) with the authority that decided; an undecided one keeps
   # its error-class pool_key_ambiguous / pool_key_conflict finding above, and the reason is listed here
