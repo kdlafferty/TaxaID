@@ -671,3 +671,16 @@ test_that("REVIEW F3: only ranks EVERY candidate has, with differing values, dec
   expect_error(check_taxon_registry(reg2, mode = "error", verbose = FALSE), "pool_key_conflict")
 })
 
+# -- F4: a custom lookup missing columns gave silent wrong statuses -----------------------------------------------
+test_that("REVIEW F4: a lookup missing verified, matched, matched_rank, is_synonym or match_type is refused, never guessed", {
+  base <- .fake_lookup(rbind(
+    .row("Embiotoca caryi", "Hypsurus caryi", "2389310", "1|44|587|4269|2389309|2389310", "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi",
+         rec = "2389311", syn = TRUE),
+    .row("Hypsurus caryi", "Hypsurus caryi", "2389310", "1|44|587|4269|2389309|2389310", "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi")))
+  for (col in c("verified", "matched", "matched_rank", "is_synonym", "match_type")) {
+    lk <- local({ cc <- col; function(names, rank, context) { o <- base(names, rank, context); o[[cc]] <- NULL; o } })
+    expect_error(build_taxon_registry(.names(c("Embiotoca caryi", "Hypsurus caryi"), "r2"), run_id = "f4", lookup = lk),
+                 paste0("lookup.*", col), info = col)
+  }
+})
+
