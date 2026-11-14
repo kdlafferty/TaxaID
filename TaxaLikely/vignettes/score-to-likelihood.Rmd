@@ -210,14 +210,20 @@ likelihoods measured from the library, not one tuned constant.
 In a held-out test on one 12S library, a softmax with a fitted unknown term at
 each rank was compared with the trained model. Reads were scored with their
 own species (or genus) removed from the library, and each model was scored on
-the log probability it gave the true answer. The table gives the softmax minus
-the trained model, with 95% intervals from resampling genera:
+the log probability it gave the true answer, under the same site prior, with
+the hidden species' own prior added to the ring that would claim it. The table
+gives the softmax minus the trained model, with 95% intervals from resampling
+genera:
 
 | The read's source | Softmax minus trained model |
 |---|---|
-| a species with a reference | +1.02 [+0.81, +1.21] |
-| a species with no reference, in a referenced genus | -0.69 [-1.04, -0.33] |
-| a genus with no reference | +0.46 [-0.14, +1.08], not distinguishable from 0 |
+| a species with a reference | +1.06 [+0.85, +1.25] |
+| a species with no reference, in a referenced genus | -0.80 [-1.13, -0.46] |
+| a genus with no reference | +0.68 [+0.09, +1.30] overall (see below) |
+
+The last row is +0.68 overall, but only because the trained model's candidate
+list lacked the right family for most of these reads. Where both models had
+it, the softmax was worse: -2.02 [-2.68, -1.44].
 
 The softmax does better when the species is in the library and worse when it
 is not. The gain in log score is larger than the loss, but the loss falls on
