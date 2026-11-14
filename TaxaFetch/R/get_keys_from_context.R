@@ -28,7 +28,10 @@
 #'   name, its rank, its context ranks) and on \code{return_keys}. Only answered
 #'   rows are written; a row whose request failed (\code{matchType = "ERROR"}),
 #'   or a \code{HIGHERRANK} row whose \code{name_lookup()} recovery request
-#'   failed, is never cached and is asked again next call.
+#'   failed, is never cached and is asked again next call. A cached row older
+#'   than 365 days (the default lifetime of \code{TaxaTools::verify_taxon_names()}'s
+#'   cache), or one with no recorded write time, is asked again, so a GBIF
+#'   backbone revision reaches it.
 #' @return The input dataframe with three columns appended:
 #'   \describe{
 #'     \item{usageKey}{Integer. GBIF usage key for the matched name, or
@@ -177,6 +180,8 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
 # ------------------------------------------------------------------------------
 
 # Cache hits served by .process_gbif_row() since the last reset; read by lookup_gbif_taxa().
+# Lifetime of a get_keys_from_context() cache row, in days: verify_taxon_names()'s cache_ttl_days default.
+.GKFC_CACHE_TTL_DAYS <- 365
 .gkfc_state <- new.env(parent = emptyenv())
 .gkfc_state$cache_hits <- 0L
 
@@ -237,7 +242,9 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
     cpath <- file.path(cache_dir, paste0(.cache_hash(ckey), "_gbif_keys.rds"))
     if (file.exists(cpath)) {
       hit <- tryCatch(readRDS(cpath), error = function(e) NULL)
-      if (!is.null(hit) && identical(hit$key, ckey) && is.data.frame(hit$row)) {
+      # a row older than .GKFC_CACHE_TTL_DAYS, or with no written_at, is asked again: a backbone revision must reach it
+      age <- if (!is.null(hit) && inherits(hit$written_at, "POSIXct")) as.numeric(difftime(Sys.time(), hit$written_at, units = "days")) else NA_real_
+      if (!is.null(hit) && identical(hit$key, ckey) && is.data.frame(hit$row) && !is.na(age) && age <= .GKFC_CACHE_TTL_DAYS) {
         .gkfc_state$cache_hits <- .gkfc_state$cache_hits + 1L   # counted for lookup_gbif_taxa(); output unchanged
         return(hit$row)
       }
