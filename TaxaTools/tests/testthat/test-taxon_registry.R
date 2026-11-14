@@ -582,3 +582,59 @@ test_that("bad inputs are refused", {
   expect_error(build_taxon_registry(.names("A b", "t"), run_id = ""), "run_id")
   expect_error(build_taxon_registry(.names("A b", "t"), run_id = "r", lookup = function(...) data.frame(a = 1)), "lookup")
 })
+
+# ==== Package review 2026-11-13 (REVIEW_package_taxon_registry): each test below encodes a reviewer's failure scenario
+# ==== and FAILS on the code it reviewed (2ea632dc); the fix commit for each finding names its test.
+
+# -- F1: the unresolved-name pass took a genus id by NAME with no context ---------------------------------------
+# GBIF's only Vertebrata is the red-alga genus (see test-verify_taxon_names_ids.R). An animal "Vertebrata foo" must
+# not be hung under it; the genus lookup must be asked WITH the names' context; two homonymous genus rows already in
+# taxa must not be chosen between by match()'s first pick; a homonym_rejected name never takes a congener's id.
+.vert_alga <- .row("Vertebrata", "Vertebrata", "2680000", "6|106|342|900|901|2680000", "Plantae|Rhodophyta|Florideophyceae|Ceramiales|Rhodomelaceae|Vertebrata",
+                   ranks = .gk, rank = "genus", mt = "Exact")
+test_that("REVIEW F1a: an EXACT genus answer outside the names' kingdom/phylum is refused, and the lookup gets the context", {
+  ctx_seen <- character(0)
+  lk0 <- .fake_lookup(.vert_alga)
+  lk <- function(names, rank, context) { if (any(rank %in% "genus")) ctx_seen <<- c(ctx_seen, context[rank %in% "genus"]); lk0(names, rank, context) }
+  reg <- build_taxon_registry(.names("Vertebrata foo", "r2", context = "Animalia|Chordata"), run_id = "f1a", lookup = lk)
+  expect_false(grepl("2680000", reg$names$taxon_id))                          # 2ea632dc: local:2680000:foo, under the alga
+  expect_identical(reg$names$taxon_id, "local:Vertebrata foo")
+  expect_true(is.na(parent_at(reg$names$taxon_id, "phylum", reg)))
+  expect_identical(ctx_seen, "Animalia|Chordata")                             # 2ea632dc: NA
+  expect_true(any(check_taxon_registry(reg, verbose = FALSE)$kind == "genus_variant_rejected"))
+  # no context: an EXACT answer is taken as before
+  r0 <- build_taxon_registry(.names("Vertebrata foo", "r2"), run_id = "f1a0", lookup = lk)
+  expect_identical(r0$names$taxon_id, "local:2680000:foo")
+})
+
+test_that("REVIEW F1b: two homonymous genus rows in taxa are not chosen between by a first pick; a context that fits one chooses it", {
+  lk <- .fake_lookup(rbind(
+    .row("Agathis robusta", "Agathis robusta", "2685701", "6|7707728|194|640|3925|2685700|2685701",
+         "Plantae|Tracheophyta|Pinopsida|Pinales|Araucariaceae|Agathis|Agathis robusta", ranks = .s7),
+    .row("Agathis montana", "Agathis montana", "1300001", "1|54|216|1457|6658|1300000|1300001",
+         "Animalia|Arthropoda|Insecta|Hymenoptera|Braconidae|Agathis|Agathis montana", ranks = .s7)))
+  nm <- rbind(.names(c("Agathis robusta", "Agathis montana", "Agathis foo"), "r2"),
+              .names("Agathis bar", "r2", context = "Plantae|Tracheophyta"))
+  reg <- build_taxon_registry(nm, run_id = "f1b", lookup = lk)
+  id <- stats::setNames(reg$names$taxon_id, reg$names$verbatim_name)
+  expect_identical(unname(id["Agathis foo"]), "local:Agathis foo")           # 2ea632dc: local:<first genus row>:foo
+  expect_true(any(check_taxon_registry(reg, verbose = FALSE)$kind == "genus_homonym_unresolved"))
+  expect_identical(unname(id["Agathis bar"]), "local:2685700:bar")           # the context names the conifer's lineage
+})
+
+test_that("REVIEW F1c: a homonym_rejected binomial never takes a resolved congener's id by the gender rule", {
+  base <- .fake_lookup(.row("Vertebrata lanosa", "Vertebrata lanosa", "2680001", "6|106|342|900|901|2680000|2680001",
+                            "Plantae|Rhodophyta|Florideophyceae|Ceramiales|Rhodomelaceae|Vertebrata|Vertebrata lanosa", ranks = .s7))
+  lk <- function(names, rank, context) {
+    o <- base(names, rank, context)
+    g <- names %in% "Vertebrata lanosus"                                      # the lineage gate refused the alga for the animal name
+    o$verified[g] <- FALSE; o$match_type[g] <- "LineageRejected"; o$matched[g] <- FALSE
+    o
+  }
+  reg <- build_taxon_registry(rbind(.names("Vertebrata lanosa", "r2"), .names("Vertebrata lanosus", "r2", context = "Animalia|Chordata")),
+                              run_id = "f1c", lookup = lk)
+  ln <- reg$names[reg$names$verbatim_name == "Vertebrata lanosus", ]
+  expect_false(identical(ln$taxon_id, "gbif:2680001"))                       # 2ea632dc: gender_variant onto the alga
+  expect_false(identical(ln$status, "gender_variant"))
+})
+
