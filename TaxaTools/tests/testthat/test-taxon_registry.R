@@ -424,8 +424,9 @@ test_that("GUARD CAN FAIL: no context, or the right kingdom with the wrong phylu
                  "Pyrogophorus coronatus" = "FUZZY", "Hypnea nigrescens" = "VARIANT", "Physalia minuta" = "VARIANT", "Gracilaria parva" = "VARIANT")
 .binvar_lk <- function(gmt = TRUE) {
   lk <- .fake_lookup(.binvar_tbl)
+  # the answer does not depend on context (as GBIF species/match here); .fake_lookup has no context-free fallback
   function(names, rank, context) {
-    out <- lk(names, rank, context)
+    out <- lk(names, rank, rep(NA_character_, length(names)))
     if (gmt) out$gbif_matchType <- ifelse(out$matched, unname(.binvar_gmt[names]), NA_character_)
     out
   }
