@@ -417,6 +417,14 @@ or if any species' perfect-match point sits more than 2 floored standard
 deviations from its own fitted mean; both symptoms are recorded in
 \code{Stats} (\code{mlr_violations} and \code{max_ceiling_z}).
 
+Both checks describe the unclamped density. \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}
+evaluates H1's score term at \code{min(score, mu_score)} by default
+(\code{h1_clamp = TRUE}), so at evaluation H1 does not decline above a species'
+own mean and the H1-vs-H2 ratio cannot turn over between that mean and a
+perfect match. The warnings still identify species whose fitted mean sits
+far from a perfect match, which is worth inspecting (for example, a
+species trained on one divergent, possibly mislabelled reference pair).
+
 Under \code{score_transform = "logit"}, the transformed value of a perfect
 match is not fixed by real data but set by \code{logit_epsilon} (a
 numerical-hygiene constant), and the default sits only about one order of
