@@ -89,6 +89,46 @@
 
   ids <- unique(c(lw$taxon_name, pw$taxon_name, pw$source_taxon_name %||% character(0)))
   anc <- .registry_ancestors(ids, all_ranks, registry)
+  # A ring row (an unreferenced hypothesis above species) stands for the clade of the candidates it was built from: the
+  # candidates in its observation whose OWN lineage column at the ring's rank names the ring. Its id is their registry
+  # ancestor at that rank when they agree on one, so the ring and its candidates sit in one clade of the registry's
+  # tree (an NCBI family ring "Leuciscidae" over genera the registry places in Cyprinidae becomes the Cyprinidae ring).
+  # Where those candidates map to 2+ registry taxa, or there are none, the ring keeps the id of its own name; listed.
+  ring_rekeyed <- NULL
+  if ("hypothesis_type" %in% names(lw)) {
+    orig <- as.data.frame(likelihoods)
+    is_ring <- !lw$hypothesis_type %in% "specific_candidate" & !is.na(lw$taxon_name) &
+      lw$taxon_name_rank %in% setdiff(all_ranks, "species")
+    cand <- lw$hypothesis_type %in% "specific_candidate" & !is.na(lw$taxon_name)
+    rr <- intersect(setdiff(all_ranks, "species"), names(orig))
+    ci <- which(cand)
+    cl <- do.call(rbind, lapply(rr, function(r) data.frame(obs = as.character(lw$observation_id[ci]), rank = r,
+      ring = as.character(orig[[r]][ci]), anc = unname(anc[[r]][lw$taxon_name[ci]]), stringsAsFactors = FALSE)))
+    cl <- unique(cl[!is.na(cl$ring) & !is.na(cl$anc), , drop = FALSE])
+    key_c <- paste(cl$obs, cl$rank, cl$ring, sep = "\r")
+    per <- split(cl$anc, key_c)
+    ri <- which(is_ring & lw$taxon_name_rank %in% rr)
+    key_r <- paste(lw$observation_id[ri], lw$taxon_name_rank[ri], as.character(orig$taxon_name[ri]), sep = "\r")
+    got <- per[key_r]
+    n_a <- lengths(got)
+    one <- n_a == 1L & !vapply(got, is.null, TRUE)
+    to1 <- vapply(got, function(v) if (length(v) == 1L) v else NA_character_, "")
+    chg <- one & !is.na(to1) & to1 != lw$taxon_name[ri]
+    spl <- n_a > 1L
+    rk_rows <- list()
+    if (any(chg)) rk_rows[[1L]] <- data.frame(observation_id = lw$observation_id[ri[chg]], ring = as.character(orig$taxon_name[ri[chg]]),
+      rank = as.character(lw$taxon_name_rank[ri[chg]]), from_id = lw$taxon_name[ri[chg]], to_id = to1[chg], outcome = "rekeyed", stringsAsFactors = FALSE)
+    if (any(spl)) rk_rows[[2L]] <- data.frame(observation_id = lw$observation_id[ri[spl]], ring = as.character(orig$taxon_name[ri[spl]]),
+      rank = as.character(lw$taxon_name_rank[ri[spl]]), from_id = lw$taxon_name[ri[spl]],
+      to_id = vapply(got[spl], paste, "", collapse = "|"), outcome = "candidates_split_kept", stringsAsFactors = FALSE)
+    lw$taxon_name[ri[chg]] <- to1[chg]
+    if (length(rk_rows)) ring_rekeyed <- do.call(rbind, rk_rows[!vapply(rk_rows, is.null, TRUE)])
+    new_ids <- setdiff(unique(stats::na.omit(lw$taxon_name)), names(anc[[1L]]))
+    if (length(new_ids)) {
+      anc2 <- .registry_ancestors(new_ids, all_ranks, registry)
+      for (r in all_ranks) anc[[r]] <- c(anc[[r]], anc2[[r]])
+    }
+  }
   for (r in intersect(all_ranks, names(lw))) lw[[r]] <- unname(anc[[r]][lw$taxon_name])
   for (r in intersect(all_ranks, names(pw))) pw[[r]] <- unname(anc[[r]][pw$taxon_name])
   tax_of <- function(tab, taxa) {
@@ -115,9 +155,11 @@
     taxonomy_lookup = tax_of(taxonomy_lookup, all_ids),
     expansion_taxonomy = tax_of(expansion_taxonomy, pr_ids),
     singleton_taxonomy = tax_of(singleton_taxonomy, pr_ids),
-    display = disp, reg_name = reg_name, merged_prior_rows = kp$merged,
+    display = disp, reg_name = reg_name, merged_prior_rows = kp$merged, ring_rekeyed = ring_rekeyed,
     counts = list(n_likelihood_rows_no_id = n_lik_no_id, n_prior_names_no_id = kp$n_no_id, n_prior_rows_merged = kp$n_merged,
-                  n_likelihood_taxa_under_2plus_names = length(multi))
+                  n_likelihood_taxa_under_2plus_names = length(multi),
+                  n_ring_rows_rekeyed = sum(ring_rekeyed$outcome %in% "rekeyed"),
+                  n_ring_rows_candidates_split = sum(ring_rekeyed$outcome %in% "candidates_split_kept"))
   )
 }
 
@@ -138,6 +180,7 @@
   }
   attr(result, "registry_join_counts") <- rg$counts
   attr(result, "merged_prior_rows") <- rg$merged_prior_rows
+  attr(result, "ring_rows_rekeyed") <- rg$ring_rekeyed
   attr(result, "taxon_registry") <- stamp
   result
 }

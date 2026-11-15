@@ -74,3 +74,24 @@ test_that("join_priors(registry =) refuses an unstamped table", {
   expect_error(join_priors(.jr_lik("Hypsurus caryi"), .rg_stamp(.jr_pri("Hypsurus caryi", 20), reg, "priors"),
                            site = .jr_site, backbone_id = 11L, registry = reg), "stamp")
 })
+
+test_that("a ring row takes its candidates' registry clade; where they split, it keeps its own and is listed", {
+  .rg_skip(); reg <- .rg_registry()
+  pri <- .jr_pri(c("Hypsurus caryi", "Embiotoca jacksoni"), c(20, 5))
+  # the call's own lineage files Embiotoca caryi under genus Embiotoca, so its genus ring is named "Embiotoca"; the
+  # registry places the species in Hypsurus: the ring must be the Hypsurus ring, or ring and candidate sit in two genera
+  lik <- .jr_lik(c("Embiotoca caryi", "Embiotoca"), ranks = c("species", "genus"), types = c("specific_candidate", "unreferenced_species"))
+  out <- .jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(pri, reg, "priors"), registry = reg)
+  ring <- out[out$hypothesis_type == "unreferenced_species", ]
+  expect_identical(ring$taxon_id, .rg_id(reg, "Hypsurus"))
+  expect_identical(ring$taxon_name, "Hypsurus")
+  rk <- attr(out, "ring_rows_rekeyed")
+  expect_identical(rk$outcome, "rekeyed"); expect_identical(rk$ring, "Embiotoca")
+  # both a Hypsurus and an Embiotoca under the call's genus "Embiotoca": no single clade, so the ring keeps its own id
+  lik2 <- .jr_lik(c("Embiotoca caryi", "Embiotoca jacksoni", "Embiotoca"), ranks = c("species", "species", "genus"),
+                  types = c("specific_candidate", "specific_candidate", "unreferenced_species"))
+  out2 <- .jp(.rg_stamp(lik2, reg, "joined"), .rg_stamp(pri, reg, "priors"), registry = reg)
+  expect_identical(out2$taxon_id[out2$hypothesis_type == "unreferenced_species"], .rg_id(reg, "Embiotoca"))
+  expect_identical(attr(out2, "ring_rows_rekeyed")$outcome, "candidates_split_kept")
+  expect_identical(attr(out2, "registry_join_counts")$n_ring_rows_candidates_split, 1L)
+})
