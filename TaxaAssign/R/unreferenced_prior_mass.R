@@ -18,7 +18,8 @@
 # the function compares identifiers, never names. Prior rows of one taxon at one site (synonyms in the pool) are
 # reduced to one: the row under the registry's accepted name, else the strongest. Returns the working copies plus the
 # maps needed to put names back on the output.
-.unref_registry_inputs <- function(joined, priors, referenced, registry) {
+.unref_registry_inputs <- function(joined, priors, referenced, registry, ref_lineage_scope = c("local", "all")) {
+  ref_lineage_scope <- match.arg(ref_lineage_scope)
   if (!inherits(registry, "taxon_registry")) cli::cli_abort("{.arg registry} must be a {.cls taxon_registry} (TaxaTools::build_taxon_registry()).")
   if (!isTRUE(registry$meta$frozen)) cli::cli_abort("{.arg registry} must be frozen (TaxaTools::freeze_taxon_registry()).")
   for (a in c("joined", "taxaexpect_priors")) {
@@ -66,8 +67,11 @@
   # the display name of each prior taxon: the verbatim name of the row kept
   disp <- stats::setNames(pw$.verbatim, pw$taxon_name)
 
-  # the prior species AND the referenced species: the floor rule reads the referenced taxa's lineages from here
-  tx_ids <- unique(c(pw$taxon_name, ref))
+  # The floor rule reads the referenced taxa's lineages from this table and from the candidates in `joined`. "local"
+  # (the default) holds the local prior species only, the scope the name path uses (its `taxonomy` is the local
+  # species' table), so converting to ids changes no withholding by itself. "all" adds every referenced species'
+  # lineage; it is a separate behaviour change, measured on its own and not reachable from the exported function.
+  tx_ids <- if (ref_lineage_scope == "local") unique(pw$taxon_name) else unique(c(pw$taxon_name, ref))
   tax <- data.frame(taxon_name = tx_ids, stringsAsFactors = FALSE)
   for (r in lin) tax[[r]] <- unname(anc[[r]][tx_ids])
   list(

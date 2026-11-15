@@ -82,7 +82,7 @@ test_that("named_rows: the new species row carries its own taxon_id and its disp
   expect_false(is.null(attr(out, "taxon_registry")))
 })
 
-test_that("floor rule by id: a referenced FAMILY withholds its species from an order ring", {
+test_that("floor rule by id: withholding scope is the name path's (local + candidates); the wider scope is internal only", {
   .rg_skip(); reg <- .rg_registry()
   # the read has only an order ring; Halichoeres semicinctus is referenced but not a candidate here, so Labridae is a
   # referenced family and Oxyjulis californica (unreferenced, same family) must not be claimed by the order ring
@@ -93,7 +93,15 @@ test_that("floor rule by id: a referenced FAMILY withholds its species from an o
   js <- .rg_stamp(j[1, , drop = FALSE], reg, "joined")
   ring <- j[2, , drop = FALSE]; ring$taxon_id <- "gbif:587"
   jj <- rbind(js, ring); attr(jj, "taxon_registry") <- attr(js, "taxon_registry")
-  out <- .aupm(jj, pj, NULL, referenced_names = c(.rg_id(reg, "Embiotoca jacksoni"), .rg_id(reg, "Halichoeres semicinctus")), registry = reg)
+  refs <- c(.rg_id(reg, "Embiotoca jacksoni"), .rg_id(reg, "Halichoeres semicinctus"))
+  # default: Halichoeres semicinctus is referenced but neither local nor a candidate, so (as on the name path) its
+  # family is not known to be referenced and the order ring claims Oxyjulis californica
+  out0 <- .aupm(jj, pj, NULL, referenced_names = refs, registry = reg)
+  expect_equal(out0$unreferenced_mass[2], 0.02)
+  # the wider scope (every referenced species' lineage), reachable only internally, withholds it
+  orig <- .unref_registry_inputs
+  local_mocked_bindings(.unref_registry_inputs = function(...) orig(..., ref_lineage_scope = "all"))
+  out <- .aupm(jj, pj, NULL, referenced_names = refs, registry = reg)
   expect_identical(out$unreferenced_mass[2], 0)
   wh <- attr(out, "unreferenced_withheld")
   expect_identical(wh$taxon_name, "Oxyjulis californica"); expect_identical(wh$reason, "finer_rank_referenced_unmatched")
