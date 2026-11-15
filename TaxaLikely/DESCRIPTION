@@ -27,6 +27,7 @@ Imports:
     mvtnorm,
     parallel,
     rlang,
+    TaxaMatch,
     TaxaTools
 Suggests:
     DECIPHER,

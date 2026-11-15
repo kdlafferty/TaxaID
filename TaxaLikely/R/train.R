@@ -813,6 +813,10 @@ utils::globalVariables(c(
 #'   and `evaluate_likelihoods()`'s `evidence_col`/`min_coverage` mechanisms
 #'   all assume `"logit"` internally and will error rather than silently
 #'   produce wrong numbers if combined with a `"sqrt_mismatch"`-trained model.
+#' @param exclude_reference_suspects Logical (default `FALSE`). `FALSE`
+#'   attaches the reference-consistency table as a report and fits on all of
+#'   `raw_df`. `TRUE` drops every pair involving a reference the table marks
+#'   `suspect` before fitting. See `@section Reference-consistency table`.
 #'
 #' @section Alignment-coverage floor on pair selection:
 #' The H1 gap feature is `score - max_foreign_score`, and `max_foreign_score`
@@ -830,16 +834,52 @@ utils::globalVariables(c(
 #' It is train/inference distribution matching for one feature, not a data
 #' quality filter: it removes no pair and drops no species.
 #'
-#' @section No built-in reference-quality screening:
-#' This function does NOT screen `raw_df` for mislabeled/contaminated
-#' reference accessions before fitting; it trains on exactly what it is
-#' given. Screen with `TaxaMatch::corroborate_references_locally()` +
-#' `TaxaMatch::evaluate_reference_accessions()` directly on `reference_df`
-#' before it reaches `build_sequence_matrix()`, and exclude any accession
-#' that `evaluate_reference_accessions()`/`score_reference_labels()` resolves
-#' to `reference_action == "remove"` from `reference_df` (or from `raw_df` by
-#' `id_x`/`id_y`) before calling this function. There is no parameter here to
-#' pass a bad-accession list through.
+#' @section Reference-consistency table:
+#' Training reports how consistent each reference's label is with the other
+#' references in `raw_df`, as `attr(result, "reference_consistency")`. It is
+#' built from the library's own pairs only (no BLAST, no network), with the
+#' reference screen's own functions from TaxaMatch, at that screen's own
+#' defaults:
+#' \itemize{
+#'   \item `local_tier` from `TaxaMatch::corroborate_references_locally()`
+#'     (`"singleton"`, `"same_batch_only"`, `"disagree"`, `"corroborated"`);
+#'   \item the hierarchy-congruence vote over each reference's closest
+#'     independent partners (the vote `TaxaMatch::evaluate_reference_accessions()`
+#'     runs on BLAST hits), at its default `min_congruent_rank`, giving
+#'     `hierarchy_flag` by its `min_independent_partners` and
+#'     `hierarchy_incongruent_threshold` defaults;
+#'   \item `label_confidence` and `reference_action` from
+#'     `TaxaMatch::score_reference_labels()`, including its local
+#'     corroboration veto.
+#' }
+#' Pairs below `0.8` coverage are not counted, as in
+#' `corroborate_references_locally()`. The same vote is also run at species
+#' rank, for `best_disagreeing_pident_species` and
+#' `best_disagreeing_taxon_species`.
+#'
+#' **The pair rule.** A species with exactly two references, both
+#' `"disagree"`, cannot say which one is wrong from its two members alone.
+#' Its suspect is the member whose best disagreeing species (species-rank
+#' vote) is matched at a strictly higher identity than its partner's, AND is
+#' carried by at least two of that member's independent, species-resolved
+#' voting partners (`pair_rule_support`). If neither condition singles one
+#' out, neither member is a suspect.
+#'
+#' `suspect` is `reference_action == "remove"` or the pair rule. By default
+#' the table is a report only: the model is fitted on all of `raw_df`, and
+#' the returned list is the same as without the table. With
+#' `exclude_reference_suspects = TRUE`, every pair involving a suspect is
+#' dropped from `raw_df` before fitting, and the table marks those references
+#' `excluded`. The table is always computed on the full `raw_df`.
+#'
+#' A flag is not a verdict. A deep within-species split or a cryptic species
+#' looks the same as a mislabel from inside the library, and a species whose
+#' references all carry the same wrong name is invisible here. The full
+#' screen (`TaxaMatch::evaluate_reference_accessions()`) sees deposits
+#' outside the library and remains the arbiter; the table is a cheap first
+#' filter that also reaches references never matched by a query. When
+#' `raw_df` lacks `coverage` or a family/species column the table has no
+#' rows and its `"status"` attribute says why.
 #'
 #' @return A named list (class `"taxa_model_params"`) with slots:
 #'   \describe{
@@ -958,6 +998,15 @@ utils::globalVariables(c(
 #'       }
 #'     }
 #'   }
+#'   `attr(result, "reference_consistency")` is a data frame, one row per
+#'   reference in `raw_df`: `accession`, `species`, `n_references` (references
+#'   of that species), `local_tier`, `n_independent_conspecific`,
+#'   `best_independent_pident`, `hierarchy_flag`, `n_independent_top_matches`,
+#'   `frac_independent_below_min_congruent_rank`, `best_disagreeing_pident`,
+#'   `best_disagreeing_taxon`, `label_confidence`, `reference_action`,
+#'   `best_disagreeing_pident_species`, `best_disagreeing_taxon_species`,
+#'   `pair_rule_support`, `pair_rule_suspect`, `suspect` and `excluded`. See
+#'   `@section Reference-consistency table`.
 #'
 #' @section H1 bimodality (recorded, not warned):
 #' `Stats$h1_bimodality` runs the same two-component-normal-vs-BIC check
@@ -1047,7 +1096,8 @@ train_likelihood_model <- function(raw_df,
                                    max_gap_ceiling = NULL,
                                    score_transform = "sqrt_mismatch",
                                    min_pair_coverage = 0.8,
-                                   shrinkage = c("empirical_bayes", "fixed")) {
+                                   shrinkage = c("empirical_bayes", "fixed"),
+                                   exclude_reference_suspects = FALSE) {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
   shrinkage <- match.arg(shrinkage)
   if (!is.null(min_pair_coverage) &&
@@ -1065,6 +1115,10 @@ train_likelihood_model <- function(raw_df,
   }
   if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
+  }
+  if (!is.logical(exclude_reference_suspects) || length(exclude_reference_suspects) != 1L ||
+    is.na(exclude_reference_suspects)) {
+    stop("exclude_reference_suspects must be a single TRUE or FALSE", call. = FALSE)
   }
   # A table thinned by build_sequence_matrix(pair_retention = "best_per_partner")
   # reproduces this function's per-sequence maxima exactly only under the
@@ -1122,11 +1176,21 @@ train_likelihood_model <- function(raw_df,
     stop("anchor_perfect must be TRUE or FALSE")
   }
 
-  # No built-in reference-quality screening -- see @section "No built-in
-  # reference-quality screening" above. raw_df is trained on as-is; a caller
-  # wanting to exclude flagged accessions does so upstream, before calling
-  # this function.
+  # Reference-consistency table (see @section "Reference-consistency table"),
+  # always computed on the full raw_df. By default a report only: raw_df is
+  # trained on as-is. exclude_reference_suspects = TRUE drops every pair
+  # involving a suspect (dplyr::filter keeps raw_df's attributes).
+  ref_consistency <- .reference_consistency(raw_df, rank_system)
   raw_clean <- raw_df
+  if (exclude_reference_suspects && nrow(ref_consistency) > 0L && any(ref_consistency$suspect)) {
+    drop_ids <- ref_consistency$accession[ref_consistency$suspect]
+    raw_clean <- dplyr::filter(raw_df, !(as.character(id_x) %in% drop_ids | as.character(id_y) %in% drop_ids))
+    ref_consistency$excluded <- ref_consistency$suspect
+    message(sprintf(
+      "exclude_reference_suspects: dropped %d reference(s) (%d pair(s)) before fitting.",
+      length(drop_ids), nrow(raw_df) - nrow(raw_clean)
+    ))
+  }
 
   # ---- CONFUSION-RISK CURVES ---------------------------------------------
   # Genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank score curves
@@ -1854,7 +1918,7 @@ train_likelihood_model <- function(raw_df,
     n_species, n_singletons, mu_score_global, mu_gap_global
   ))
 
-  structure(
+  model <- structure(
     list(
       H1_Lookup = H1_Lookup,
       H1_Global_Mu = c(score_logit = mu_score_global, gap_logit = mu_gap_global),
@@ -1895,6 +1959,8 @@ train_likelihood_model <- function(raw_df,
     ),
     class = "taxa_model_params"
   )
+  attr(model, "reference_consistency") <- ref_consistency
+  model
 }
 
 #' Check H1-vs-H2 log-likelihood-ratio monotonicity at a perfect match
