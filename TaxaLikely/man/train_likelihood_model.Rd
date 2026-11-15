@@ -16,7 +16,8 @@ train_likelihood_model(
   max_gap_ceiling = NULL,
   score_transform = "sqrt_mismatch",
   min_pair_coverage = 0.8,
-  shrinkage = c("empirical_bayes", "fixed")
+  shrinkage = c("empirical_bayes", "fixed"),
+  exclude_reference_suspects = FALSE
 )
 }
 \arguments{
@@ -130,6 +131,11 @@ reported in \code{Stats$tau2_score}/\code{Stats$tau2_gap} and the per-species
 weights in \code{H1_Lookup$shrink_w_score}/\code{shrink_w_gap}.  Variance
 shrinkage always uses the fixed weight.  Needs at least 3 species;
 otherwise falls back to \code{"fixed"} with a message.}
+
+\item{exclude_reference_suspects}{Logical (default \code{FALSE}). \code{FALSE}
+attaches the reference-consistency table as a report and fits on all of
+\code{raw_df}. \code{TRUE} drops every pair involving a reference the table marks
+\code{suspect} before fitting. See \verb{@section Reference-consistency table}.}
 }
 \value{
 A named list (class \code{"taxa_model_params"}) with slots:
@@ -249,6 +255,15 @@ only RECORDS the result on the model, it does not warn -- see
 }
 }
 }
+\code{attr(result, "reference_consistency")} is a data frame, one row per
+reference in \code{raw_df}: \code{accession}, \code{species}, \code{n_references} (references
+of that species), \code{local_tier}, \code{n_independent_conspecific},
+\code{best_independent_pident}, \code{hierarchy_flag}, \code{n_independent_top_matches},
+\code{frac_independent_below_min_congruent_rank}, \code{best_disagreeing_pident},
+\code{best_disagreeing_taxon}, \code{label_confidence}, \code{reference_action},
+\code{best_disagreeing_pident_species}, \code{best_disagreeing_taxon_species},
+\code{pair_rule_support}, \code{pair_rule_suspect}, \code{suspect} and \code{excluded}. See
+\verb{@section Reference-consistency table}.
 }
 \description{
 Fits an Empirical Bayes model using pairwise within-species match scores
@@ -453,17 +468,53 @@ It is train/inference distribution matching for one feature, not a data
 quality filter: it removes no pair and drops no species.
 }
 
-\section{No built-in reference-quality screening}{
+\section{Reference-consistency table}{
 
-This function does NOT screen \code{raw_df} for mislabeled/contaminated
-reference accessions before fitting; it trains on exactly what it is
-given. Screen with \code{TaxaMatch::corroborate_references_locally()} +
-\code{TaxaMatch::evaluate_reference_accessions()} directly on \code{reference_df}
-before it reaches \code{build_sequence_matrix()}, and exclude any accession
-that \code{evaluate_reference_accessions()}/\code{score_reference_labels()} resolves
-to \code{reference_action == "remove"} from \code{reference_df} (or from \code{raw_df} by
-\code{id_x}/\code{id_y}) before calling this function. There is no parameter here to
-pass a bad-accession list through.
+Training reports how consistent each reference's label is with the other
+references in \code{raw_df}, as \code{attr(result, "reference_consistency")}. It is
+built from the library's own pairs only (no BLAST, no network), with the
+reference screen's own functions from TaxaMatch, at that screen's own
+defaults:
+\itemize{
+\item \code{local_tier} from \code{TaxaMatch::corroborate_references_locally()}
+(\code{"singleton"}, \code{"same_batch_only"}, \code{"disagree"}, \code{"corroborated"});
+\item the hierarchy-congruence vote over each reference's closest
+independent partners (the vote \code{TaxaMatch::evaluate_reference_accessions()}
+runs on BLAST hits), at its default \code{min_congruent_rank}, giving
+\code{hierarchy_flag} by its \code{min_independent_partners} and
+\code{hierarchy_incongruent_threshold} defaults;
+\item \code{label_confidence} and \code{reference_action} from
+\code{TaxaMatch::score_reference_labels()}, including its local
+corroboration veto.
+}
+Pairs below \code{0.8} coverage are not counted, as in
+\code{corroborate_references_locally()}. The same vote is also run at species
+rank, for \code{best_disagreeing_pident_species} and
+\code{best_disagreeing_taxon_species}.
+
+\strong{The pair rule.} A species with exactly two references, both
+\code{"disagree"}, cannot say which one is wrong from its two members alone.
+Its suspect is the member whose best disagreeing species (species-rank
+vote) is matched at a strictly higher identity than its partner's, AND is
+carried by at least two of that member's independent, species-resolved
+voting partners (\code{pair_rule_support}). If neither condition singles one
+out, neither member is a suspect.
+
+\code{suspect} is \code{reference_action == "remove"} or the pair rule. By default
+the table is a report only: the model is fitted on all of \code{raw_df}, and
+the returned list is the same as without the table. With
+\code{exclude_reference_suspects = TRUE}, every pair involving a suspect is
+dropped from \code{raw_df} before fitting, and the table marks those references
+\code{excluded}. The table is always computed on the full \code{raw_df}.
+
+A flag is not a verdict. A deep within-species split or a cryptic species
+looks the same as a mislabel from inside the library, and a species whose
+references all carry the same wrong name is invisible here. The full
+screen (\code{TaxaMatch::evaluate_reference_accessions()}) sees deposits
+outside the library and remains the arbiter; the table is a cheap first
+filter that also reaches references never matched by a query. When
+\code{raw_df} lacks \code{coverage} or a family/species column the table has no
+rows and its \code{"status"} attribute says why.
 }
 
 \section{H1 bimodality (recorded, not warned)}{
