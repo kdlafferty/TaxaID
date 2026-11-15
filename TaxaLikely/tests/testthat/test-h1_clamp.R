@@ -11,11 +11,14 @@ test_that("h1_clamp is the LAST formal of evaluate_likelihoods() and defaults to
 test_that("h1_clamp = FALSE reproduces v1.0 exactly (point estimate and Monte Carlo)", {
   g <- eval(parse(test_path("fixtures", "h1_clamp_v1_golden.R")))
   expect_identical(g$commit, "3e563f29")
-  expect_identical(.hc_eval(g$query, h1_clamp = FALSE), g$point)
+  # The golden was computed on one platform; another platform's floating-point arithmetic can differ in
+  # the last bits (~1e-16), so the cross-platform comparison uses a tolerance far below any real change
+  # (the clamp moves this query's likelihoods by orders of magnitude; asserted below).
+  expect_equal(.hc_eval(g$query, h1_clamp = FALSE), g$point, tolerance = 1e-12)
   set.seed(20261114)
-  expect_identical(.hc_eval(g$query, n_sims = 25L, h1_clamp = FALSE), g$mc)
-  # the golden query is one the clamp DOES change, so the identity above is not vacuous
-  expect_false(identical(.hc_eval(g$query), g$point))
+  expect_equal(.hc_eval(g$query, n_sims = 25L, h1_clamp = FALSE), g$mc, tolerance = 1e-12)
+  # the golden query is one the clamp DOES change, by far more than that tolerance, so the check above is not vacuous
+  expect_false(isTRUE(all.equal(.hc_eval(g$query), g$point, tolerance = 1e-12)))
 })
 
 test_that("the 027213 shape: v1.0 ranks a 100% match below a 91.8% congener; the clamp does not", {
