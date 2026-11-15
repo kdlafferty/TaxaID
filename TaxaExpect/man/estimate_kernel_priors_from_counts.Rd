@@ -17,7 +17,8 @@ estimate_kernel_priors_from_counts(
   site_id = NULL,
   support_weight = exp(-3),
   habitat_levels = NULL,
-  habitat_weights = NULL
+  habitat_weights = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -88,6 +89,14 @@ singleton/doubleton counts are only approximate and a warning says so.}
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}. They apply to \code{extra_occurrences} only (the
 counts carry no points to place): an extra record whose habitat could
 not be placed joins the fit at its taxon's \code{site_habitat} weight.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} matches taxa to
+\code{habitat_lookup} and \code{habitat_weights} by name. Given a registry,
+\code{occurrence_counts} and the lookup tables in use (and
+\code{extra_occurrences}, when supplied) must carry a \code{taxon_id} column stamped
+by it (\code{TaxaTools::attach_taxon_ids()}), every habitat match is by
+\code{taxon_id}, and the registry is passed on to \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}.}
 }
 \value{
 An object of class \code{"taxaexpect_kernel_priors"}, as from

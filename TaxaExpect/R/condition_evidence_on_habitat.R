@@ -53,6 +53,15 @@ utils::globalVariables(c("taxon_name"))
 #'   may fall -- pass the run's clamp weight (\code{w_scale * exp(-d_cap /
 #'   d_half)} under curve pricing). Default \code{0}.
 #' @param verbose Logical. Report counts. Default \code{TRUE}.
+#' @param registry \code{NULL} (default) or a frozen \code{taxon_registry}
+#'   (\code{TaxaTools::build_taxon_registry()}). \code{NULL} matches evidence
+#'   rows to \code{habitat_lookup} rows by \code{taxon_name}. Given a registry,
+#'   both tables must carry a \code{taxon_id} column stamped by it
+#'   (\code{TaxaTools::attach_taxon_ids()}) and rows are matched by
+#'   \code{taxon_id}, so a species whose verdict is filed under a synonym
+#'   still finds it. Where the lookup holds one taxon under several names
+#'   with different weights, the row under the registry's accepted name is
+#'   used, else the first.
 #' @return \code{evidence} with \code{weight} replaced by the conditioned
 #'   weight and three added columns: \code{habitat_weight} (\eqn{H_{site}},
 #'   \code{NA} when unknown), \code{weight_unconditioned} (the generator's
@@ -77,7 +86,7 @@ utils::globalVariables(c("taxon_name"))
 #'                   Marine = c(0.25, 0), Freshwater = c(0.75, 0), Terrestrial = c(0, 1))
 #' condition_evidence_on_habitat(ev, hab, site_habitat = "Marine", w_floor = 6.4e-5)
 condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat,
-                                          w_floor = 0, verbose = TRUE) {
+                                          w_floor = 0, verbose = TRUE, registry = NULL) {
   if (!is.data.frame(evidence) || !all(c("taxon_name", "weight") %in% names(evidence))) {
     stop(
       "condition_evidence_on_habitat: `evidence` must be a data frame with ",
@@ -109,8 +118,13 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
     evidence$habitat_zeroed <- logical(0)
     return(evidence)
   }
-  lk <- habitat_lookup[!duplicated(habitat_lookup$taxon_name), , drop = FALSE]
-  h <- as.numeric(lk[[site_habitat]])[match(evidence$taxon_name, lk$taxon_name)]
+  if (is.null(registry)) {
+    lk <- habitat_lookup[!duplicated(habitat_lookup$taxon_name), , drop = FALSE]
+    h <- as.numeric(lk[[site_habitat]])[match(evidence$taxon_name, lk$taxon_name)]
+  } else {
+    lk <- .registry_lookup_by_id(habitat_lookup, registry, "habitat_lookup", evidence, "evidence")
+    h <- as.numeric(lk[[site_habitat]])[match(evidence$taxon_id, lk$taxon_id)]
+  }
   bad_h <- !is.na(h) & (h < 0 | h > 1)
   if (any(bad_h)) {
     stop(sprintf("condition_evidence_on_habitat: %d habitat weight(s) outside [0, 1].", sum(bad_h)), call. = FALSE)

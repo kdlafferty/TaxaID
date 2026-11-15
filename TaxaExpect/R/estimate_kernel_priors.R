@@ -197,6 +197,16 @@
 #'   on the pool the estimator sees; [plot_theta_surface()] reads them from
 #'   the fit. Do not also price these records through
 #'   [generate_uncertain_habitat_evidence()], which would count them twice.
+#' @param registry `NULL` (default) or a frozen `taxon_registry`
+#'   (`TaxaTools::build_taxon_registry()`). It matters only with
+#'   `habitat_weights`. `NULL` matches each record's taxon to its habitat
+#'   weight by name (`taxon_col` against `habitat_weights$taxon_name`). Given a
+#'   registry, `occurrence_data` and `habitat_weights` must both carry a
+#'   `taxon_id` column stamped by it (`TaxaTools::attach_taxon_ids()`) and the
+#'   match is by `taxon_id`, so a record filed under a synonym finds its
+#'   taxon's weight. Where `habitat_weights` holds one taxon under several
+#'   names, the row under the registry's accepted name is used, else the first.
+#'
 #' @return An object of class `"taxaexpect_kernel_priors"`: a list with
 #'   \describe{
 #'     \item{priors}{Data frame: `taxon_name`, `grid_id`, `main_habitat`,
@@ -267,7 +277,8 @@ estimate_kernel_priors <- function(occurrence_data,
                                    count_col = NULL,
                                    support_weight = exp(-3),
                                    habitat_levels = NULL,
-                                   habitat_weights = NULL) {
+                                   habitat_weights = NULL,
+                                   registry = NULL) {
   # ---- validation -----------------------------------------------------------
   if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L) {
     stop("occurrence_data must be a non-empty data frame.")
@@ -348,8 +359,21 @@ estimate_kernel_priors <- function(occurrence_data,
   # taxon's own probability of occupying the site habitat (a fraction of a
   # record); a record placed in a different declared habitat is excluded.
   hab <- occurrence_data[[habitat_col]]
-  hw <- .habitat_record_weights(hab, occurrence_data[[taxon_col]], site_habitat,
-                                habitat_levels, habitat_weights, "estimate_kernel_priors")
+  if (!is.null(registry) && !is.null(habitat_weights)) {
+    # match records to weights by registry taxon id: the lookup keyed by id stands in for the name-keyed one
+    hw_k <- .registry_lookup_by_id(habitat_weights, registry, "habitat_weights", occurrence_data, "occurrence_data")
+    hw_names <- stats::setNames(as.character(hw_k$taxon_name), hw_k$taxon_id)
+    hw_k$taxon_name <- hw_k$taxon_id
+    hw <- .habitat_record_weights(hab, as.character(occurrence_data$taxon_id), site_habitat,
+                                  habitat_levels, hw_k, "estimate_kernel_priors")
+    if (!is.null(hw$lookup)) {
+      hw$lookup$taxon_id <- hw$lookup$taxon_name
+      hw$lookup$taxon_name <- unname(hw_names[hw$lookup$taxon_id])
+    }
+  } else {
+    hw <- .habitat_record_weights(hab, occurrence_data[[taxon_col]], site_habitat,
+                                  habitat_levels, habitat_weights, "estimate_kernel_priors")
+  }
   keep <- hw$keep & !is.na(occurrence_data[[taxon_col]]) &
     !is.na(occurrence_data[[lat_col]]) & !is.na(occurrence_data[[lon_col]])
   if (!any(keep)) {

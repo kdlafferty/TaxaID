@@ -136,6 +136,13 @@
 #'   [estimate_kernel_priors()]. They apply to `extra_occurrences` only (the
 #'   counts carry no points to place): an extra record whose habitat could
 #'   not be placed joins the fit at its taxon's `site_habitat` weight.
+#' @param registry `NULL` (default) or a frozen `taxon_registry`
+#'   (`TaxaTools::build_taxon_registry()`). `NULL` matches taxa to
+#'   `habitat_lookup` and `habitat_weights` by name. Given a registry,
+#'   `occurrence_counts` and the lookup tables in use (and
+#'   `extra_occurrences`, when supplied) must carry a `taxon_id` column stamped
+#'   by it (`TaxaTools::attach_taxon_ids()`), every habitat match is by
+#'   `taxon_id`, and the registry is passed on to [estimate_kernel_priors()].
 #' @return An object of class `"taxaexpect_kernel_priors"`, as from
 #'   [estimate_kernel_priors()], with `params$source = "gbif_counts"`,
 #'   `params$breaks_km`, `params$habitat_mode`, `params$habitat_threshold`
@@ -167,7 +174,8 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
                                   site_id = NULL,
                                   support_weight = exp(-3),
                                   habitat_levels = NULL,
-                                  habitat_weights = NULL) {
+                                  habitat_weights = NULL,
+                                  registry = NULL) {
   if (!is.data.frame(occurrence_counts) || nrow(occurrence_counts) == 0L) {
     stop("occurrence_counts must be a non-empty data frame from TaxaFetch::fetch_gbif_occurrence_counts().")
   }
@@ -211,7 +219,12 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
       is.na(habitat_threshold) || habitat_threshold <= 0 || habitat_threshold > 1) {
       stop("habitat_threshold must be a single number in (0, 1].")
     }
-    hw <- habitat_lookup[[site_habitat]][match(x$taxon_name, habitat_lookup$taxon_name)]
+    hw <- if (is.null(registry)) {
+      habitat_lookup[[site_habitat]][match(x$taxon_name, habitat_lookup$taxon_name)]
+    } else {
+      lk_id <- .registry_lookup_by_id(habitat_lookup, registry, "habitat_lookup", occurrence_counts, "occurrence_counts")
+      lk_id[[site_habitat]][match(x$taxon_id, lk_id$taxon_id)]
+    }
     n_unknown <- length(unique(x$taxon_name[is.na(hw)]))
     if (n_unknown > 0L) {
       message(sprintf(
@@ -262,30 +275,39 @@ estimate_kernel_priors_from_counts <- function(occurrence_counts,
     if (!site_known) {
       stop("extra_occurrences need the real site coordinates, but occurrence_counts carries none (attr 'query').")
     }
-    need <- c("taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat", sampling_group_col)
+    need <- c("taxon_name", if (!is.null(registry)) "taxon_id", "decimalLatitude", "decimalLongitude", "main_habitat", sampling_group_col)
     miss <- setdiff(need, names(extra_occurrences))
     if (length(miss)) {
       stop(sprintf("extra_occurrences is missing column(s): %s.", paste(miss, collapse = ", ")))
     }
     ex <- as.data.frame(extra_occurrences)[, need, drop = FALSE]
     ex$n <- 1
-    hw_ex <- .habitat_record_weights(ex$main_habitat, ex$taxon_name, site_habitat,
-                                     habitat_levels, habitat_weights, "estimate_kernel_priors_from_counts")
+    hw_ex <- if (is.null(registry) || is.null(habitat_weights)) {
+      .habitat_record_weights(ex$main_habitat, ex$taxon_name, site_habitat,
+                              habitat_levels, habitat_weights, "estimate_kernel_priors_from_counts")
+    } else {
+      hw_k <- .registry_lookup_by_id(habitat_weights, registry, "habitat_weights", extra_occurrences, "extra_occurrences")
+      hw_k$taxon_name <- hw_k$taxon_id
+      .habitat_record_weights(ex$main_habitat, ex$taxon_id, site_habitat,
+                              habitat_levels, hw_k, "estimate_kernel_priors_from_counts")
+    }
     n_extra <- sum(hw_ex$keep)
     message(sprintf(
       "estimate_kernel_priors_from_counts: %s extra record(s) in '%s' join the fit at their own coordinates.",
       format(n_extra, big.mark = ","), site_habitat
     ))
-    keep_cols <- c("taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat", sampling_group_col, "n")
+    keep_cols <- c("taxon_name", if (!is.null(registry)) "taxon_id", "decimalLatitude", "decimalLongitude", "main_habitat", sampling_group_col, "n")
     x <- rbind(x[, keep_cols, drop = FALSE], ex[, keep_cols, drop = FALSE])
   }
 
+  if (!is.null(registry)) attr(x, "taxon_registry") <- attr(occurrence_counts, "taxon_registry", exact = TRUE)
   fit <- estimate_kernel_priors(
     x, site_lat, site_lon, site_habitat,
     lambda_km = lambda_km, m = m, site_id = site_id,
     sampling_group_col = sampling_group_col, count_col = "n",
     support_weight = support_weight,
-    habitat_levels = habitat_levels, habitat_weights = habitat_weights
+    habitat_levels = habitat_levels, habitat_weights = habitat_weights,
+    registry = registry
   )
   # Pseudo-record positions are not places; do not let them look like ones.
   # A singleton whose one supporting record is a real extra record keeps

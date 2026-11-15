@@ -24,7 +24,8 @@ estimate_kernel_priors(
   count_col = NULL,
   support_weight = exp(-3),
   habitat_levels = NULL,
-  habitat_weights = NULL
+  habitat_weights = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -161,6 +162,16 @@ arguments to \code{\link[=calibrate_kernel_bandwidth]{calibrate_kernel_bandwidth
 on the pool the estimator sees; \code{\link[=plot_theta_surface]{plot_theta_surface()}} reads them from
 the fit. Do not also price these records through
 \code{\link[=generate_uncertain_habitat_evidence]{generate_uncertain_habitat_evidence()}}, which would count them twice.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). It matters only with
+\code{habitat_weights}. \code{NULL} matches each record's taxon to its habitat
+weight by name (\code{taxon_col} against \code{habitat_weights$taxon_name}). Given a
+registry, \code{occurrence_data} and \code{habitat_weights} must both carry a
+\code{taxon_id} column stamped by it (\code{TaxaTools::attach_taxon_ids()}) and the
+match is by \code{taxon_id}, so a record filed under a synonym finds its
+taxon's weight. Where \code{habitat_weights} holds one taxon under several
+names, the row under the registry's accepted name is used, else the first.}
 }
 \value{
 An object of class \code{"taxaexpect_kernel_priors"}: a list with

@@ -9,7 +9,8 @@ condition_evidence_on_habitat(
   habitat_lookup,
   site_habitat,
   w_floor = 0,
-  verbose = TRUE
+  verbose = TRUE,
+  registry = NULL
 )
 }
 \arguments{
@@ -31,6 +32,16 @@ may fall -- pass the run's clamp weight (\code{w_scale * exp(-d_cap /
 d_half)} under curve pricing). Default \code{0}.}
 
 \item{verbose}{Logical. Report counts. Default \code{TRUE}.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} matches evidence
+rows to \code{habitat_lookup} rows by \code{taxon_name}. Given a registry,
+both tables must carry a \code{taxon_id} column stamped by it
+(\code{TaxaTools::attach_taxon_ids()}) and rows are matched by
+\code{taxon_id}, so a species whose verdict is filed under a synonym
+still finds it. Where the lookup holds one taxon under several names
+with different weights, the row under the registry's accepted name is
+used, else the first.}
 }
 \value{
 \code{evidence} with \code{weight} replaced by the conditioned
