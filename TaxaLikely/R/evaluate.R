@@ -92,7 +92,8 @@ utils::globalVariables(c(
                                 min_coverage = NULL,
                                 evidence_col = NULL,
                                 evidence_max_ratio = 1,
-                                verbose = FALSE) {
+                                verbose = FALSE,
+                                h1_clamp = TRUE) {
   names(candidate_df) <- tolower(names(candidate_df))
   rank_cols <- tolower(rank_system) # coarse to fine
   # Rank immediately coarser than the finest (species) -- genus, by this
@@ -464,13 +465,20 @@ utils::globalVariables(c(
         use_mu[1L] <- mu_override[i]
       }
 
+      # Upper-tail clamp: a score ABOVE this taxon's H1 mean is never
+      # penalised. The density's score term is evaluated at min(score, mean),
+      # so H1 is non-decreasing in the score. Only the H1 density uses s_eval;
+      # the gap term, the low-side outlier test below and the H2/H3 rings keep
+      # the raw score (their means sit below H1's, so a high score must keep
+      # counting against them).
+      s_eval <- if (h1_clamp) min(s_vec[i], use_mu[1L]) else s_vec[i]
       if (use_1d) {
-        h1_vals[i] <- stats::dnorm(s_vec[i],
+        h1_vals[i] <- stats::dnorm(s_eval,
           mean = use_mu[1L],
           sd   = sqrt(use_sigma[1L, 1L])
         )
       } else {
-        x_pt <- c(s_vec[i], g_vec[i])
+        x_pt <- c(s_eval, g_vec[i])
         # Outlier filter: ONE-SIDED (low side only) score-only normal test,
         # calibrated against real 12S data (see this parameter's own
         # @param alpha docs for the real Cyprinidae/coastal-species numbers
@@ -1303,6 +1311,17 @@ utils::globalVariables(c(
 #' @param verbose Logical (default `FALSE`). When `TRUE`, prints a message
 #'   each time a species falls back to global parameters (no species-specific
 #'   lookup entry found).
+#' @param h1_clamp Logical (default `TRUE`). When `TRUE`, the H1 (species)
+#'   density's score term is evaluated at `min(score, mu_score)`: a score above
+#'   the taxon's trained H1 mean is scored as if it sat at the mean, so H1
+#'   never decreases as the match improves. The gap term, the low-side outlier
+#'   test (`alpha`) and the unreferenced rings (H2/H3) use the raw score. The
+#'   clamp acts at evaluation time on any trained model; no retraining is
+#'   needed. It matters where a taxon's H1 mean sits well below a true match,
+#'   typically a species trained on very few divergent reference pairs (for
+#'   example one mislabelled reference), where the unclamped bivariate normal
+#'   ranks a 100% match below a much weaker match to a congener. `FALSE`
+#'   reproduces the unclamped density exactly.
 #'
 #' @return A named list with two components:
 #'   \describe{
@@ -1630,9 +1649,13 @@ evaluate_likelihoods <- function(match_df,
                                  min_coverage = NULL,
                                  evidence_col = NULL,
                                  evidence_max_ratio = 1,
-                                 verbose = FALSE) {
+                                 verbose = FALSE,
+                                 h1_clamp = TRUE) {
   if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame")
+  }
+  if (!is.logical(h1_clamp) || length(h1_clamp) != 1L || is.na(h1_clamp)) {
+    stop("h1_clamp must be a single TRUE or FALSE", call. = FALSE)
   }
   if (!inherits(model_params, "taxa_model_params")) {
     stop("model_params must be a 'taxa_model_params' object from train_likelihood_model()")
@@ -1865,7 +1888,8 @@ evaluate_likelihoods <- function(match_df,
         min_coverage = min_coverage,
         evidence_col = evidence_col,
         evidence_max_ratio = evidence_max_ratio,
-        verbose = verbose
+        verbose = verbose,
+        h1_clamp = h1_clamp
       ),
       error = function(e) {
         warning(sprintf("Query '%s' failed: %s", sid, conditionMessage(e)))
