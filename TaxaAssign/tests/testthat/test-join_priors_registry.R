@@ -103,3 +103,14 @@ test_that("ring keying copes with a table that has rings but no candidates", {
   expect_identical(out$taxon_id[out$hypothesis_type == "unreferenced_species"], .rg_id(reg, "Embiotoca"))
   expect_null(attr(out, "ring_rows_rekeyed"))
 })
+
+test_that("ring keying reads the candidates' own lineage from taxonomy_lookup when the likelihoods carry none", {
+  .rg_skip(); reg <- .rg_registry()
+  lik <- .jr_lik(c("Embiotoca caryi", "Embiotoca"), ranks = c("species", "genus"), types = c("specific_candidate", "unreferenced_species"))
+  lik$genus <- NULL
+  tl <- data.frame(taxon_name = "Embiotoca caryi", genus = "Embiotoca", family = "Embiotocidae", stringsAsFactors = FALSE)
+  out <- suppressWarnings(suppressMessages(join_priors(.rg_stamp(lik, reg, "joined"), .rg_stamp(.jr_pri("Hypsurus caryi", 20), reg, "priors"),
+    site = .jr_site, taxonomy_lookup = tl, rank_system = c("family", "genus", "species"), backbone_id = 11L, registry = reg)))
+  expect_identical(out$taxon_id[out$hypothesis_type == "unreferenced_species"], .rg_id(reg, "Hypsurus"))
+  expect_identical(attr(out, "ring_rows_rekeyed")$outcome, "rekeyed")
+})

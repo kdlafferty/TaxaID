@@ -100,10 +100,24 @@
     is_ring <- !lw$hypothesis_type %in% "specific_candidate" & !is.na(lw$taxon_name) &
       lw$taxon_name_rank %in% setdiff(all_ranks, "species")
     cand <- lw$hypothesis_type %in% "specific_candidate" & !is.na(lw$taxon_name)
-    rr <- intersect(setdiff(all_ranks, "species"), names(orig))
+    # a candidate's own-source lineage: the likelihoods' column where present, else the caller's taxonomy_lookup (the
+    # name path fills lineage from it), matched by the candidate's own name
+    tl <- if (is.data.frame(taxonomy_lookup) && "taxon_name" %in% names(taxonomy_lookup)) {
+      as.data.frame(taxonomy_lookup)[!duplicated(taxonomy_lookup$taxon_name), , drop = FALSE]
+    } else NULL
+    own_lin <- function(r, idx) {
+      v <- if (r %in% names(orig)) as.character(orig[[r]][idx]) else rep(NA_character_, length(idx))
+      if (!is.null(tl) && r %in% names(tl)) {
+        f <- is.na(v)
+        v[f] <- as.character(tl[[r]][match(as.character(orig$taxon_name[idx[f]]), tl$taxon_name)])
+      }
+      v
+    }
+    rr <- setdiff(all_ranks, "species")
+    rr <- rr[vapply(rr, function(r) r %in% names(orig) || (!is.null(tl) && r %in% names(tl)), TRUE)]
     ci <- which(cand)
     cl <- do.call(rbind, lapply(rr, function(r) data.frame(obs = as.character(lw$observation_id[ci]), rank = rep(r, length(ci)),
-      ring = as.character(orig[[r]][ci]), anc = unname(anc[[r]][lw$taxon_name[ci]]), stringsAsFactors = FALSE)))
+      ring = own_lin(r, ci), anc = unname(anc[[r]][lw$taxon_name[ci]]), stringsAsFactors = FALSE)))
     if (is.null(cl)) cl <- data.frame(obs = character(0), rank = character(0), ring = character(0), anc = character(0), stringsAsFactors = FALSE)
     cl <- unique(cl[!is.na(cl$ring) & !is.na(cl$anc), , drop = FALSE])
     key_c <- paste(cl$obs, cl$rank, cl$ring, sep = "\r")
