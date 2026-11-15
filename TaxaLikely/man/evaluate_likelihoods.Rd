@@ -18,7 +18,8 @@ evaluate_likelihoods(
   min_coverage = NULL,
   evidence_col = NULL,
   evidence_max_ratio = 1,
-  verbose = FALSE
+  verbose = FALSE,
+  h1_clamp = TRUE
 )
 }
 \arguments{
@@ -135,6 +136,18 @@ default has been.}
 \item{verbose}{Logical (default \code{FALSE}). When \code{TRUE}, prints a message
 each time a species falls back to global parameters (no species-specific
 lookup entry found).}
+
+\item{h1_clamp}{Logical (default \code{TRUE}). When \code{TRUE}, the H1 (species)
+density's score term is evaluated at \code{min(score, mu_score)}: a score above
+the taxon's trained H1 mean is scored as if it sat at the mean, so H1
+never decreases as the match improves. The gap term, the low-side outlier
+test (\code{alpha}) and the unreferenced rings (H2/H3) use the raw score. The
+clamp acts at evaluation time on any trained model; no retraining is
+needed. It matters where a taxon's H1 mean sits well below a true match,
+typically a species trained on very few divergent reference pairs (for
+example one mislabelled reference), where the unclamped bivariate normal
+ranks a 100\% match below a much weaker match to a congener. \code{FALSE}
+reproduces the unclamped density exactly.}
 }
 \value{
 A named list with two components:
