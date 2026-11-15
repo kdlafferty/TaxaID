@@ -409,9 +409,9 @@ against, before they're trusted as candidates or used to train a
 likelihood model, independent of whatever else happens to be in a
 caller's own taxon list. This applies equally to a training reference
 set (screen it before
-`TaxaLikely::build_sequence_matrix()`/`train_likelihood_model()`, which
-have no built-in reference-quality screening of their own) and to the
-accessions your query candidates actually matched.
+`TaxaLikely::build_sequence_matrix()`/`train_likelihood_model()`; training
+itself reports only a library-internal check, built from these same
+functions) and to the accessions your query candidates actually matched.
 
 Unfortunately, screening many thousands of references by for mislabeling
 can be very time consuming. Pack a lunch.

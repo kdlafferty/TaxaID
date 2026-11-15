@@ -11,3 +11,15 @@
   completeness against the taxa a study could plausibly encounter.
 * Expands the candidate set to taxa that have no reference of their own, so a
   species absent from the database can still be considered.
+* `evaluate_likelihoods()` evaluates the species (H1) density's score term at
+  `min(score, mean)` by default (`h1_clamp = TRUE`), so a match better than a
+  species' trained mean is never scored lower than one at the mean. This
+  matters for a species trained on one divergent reference pair, where the
+  unclamped density could rank a 100% match below a much weaker match to a
+  congener. `h1_clamp = FALSE` gives the unclamped density.
+* `train_likelihood_model()` attaches a reference-consistency table,
+  `attr(model, "reference_consistency")`, built from the library's own pairs
+  with TaxaMatch's reference-screen functions plus one stated rule for species
+  with two references. It is a report by default;
+  `exclude_reference_suspects = TRUE` fits without the suspects. TaxaLikely
+  now imports TaxaMatch.

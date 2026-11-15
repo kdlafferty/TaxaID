@@ -215,7 +215,8 @@ message(sprintf(
 # ==============================================================================
 # 5.  REMOVE FLAGGED REFERENCE ERRORS FROM THE QUERY MATCH OBJECT
 # ==============================================================================
-# train_likelihood_model() has no built-in reference-quality screening.
+# train_likelihood_model() reports a library-internal check only
+# (attr(model, "reference_consistency")); the verdicts come from TaxaMatch.
 # Screen the query match object's own accessions directly via TaxaMatch,
 # using the SAME reference_df/
 # ref_matrix already built in Steps 1-2 for the free local-corroboration check.

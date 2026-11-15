@@ -69,6 +69,16 @@ state only.
   relabels the row `unresolved_species` and leaves likelihoods unchanged;
   `TaxaAssign::compute_posterior()` then moves that row's posterior onto the genus's
   referenced species, pro rata by their posteriors.
+- `evaluate_likelihoods(h1_clamp = TRUE)` (default) evaluates H1's score term at
+  `min(score, mu_score)`; the gap term, the low-side `alpha` test and H2/H3 use the raw
+  score. `FALSE` reproduces the unclamped density exactly (tested against golden outputs
+  from 3e563f29).
+- `train_likelihood_model()` attaches `attr(model, "reference_consistency")`, built with
+  TaxaMatch's screen functions (`corroborate_references_locally()`, the internal
+  `.compute_hierarchy_congruence()` via `:::`, `score_reference_labels()`) plus the
+  two-reference pair rule. Report only unless `exclude_reference_suspects = TRUE`; the
+  returned list is otherwise unchanged. Processed in chunks of references, so memory is
+  bounded by the chunk.
 
 ## Conventions
 

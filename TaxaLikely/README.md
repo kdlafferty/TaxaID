@@ -85,8 +85,9 @@ model at every sharpness tried.
 ## Installation
 
 ``` r
-# Requires TaxaTools (foundation package)
+# Requires TaxaTools (foundation package) and TaxaMatch
 devtools::install("path/to/TaxaTools")
+devtools::install("path/to/TaxaMatch")
 devtools::install("path/to/TaxaLikely")
 
 # Bioconductor (Gentleman et al. 2004) dependency for reference matrix
@@ -149,8 +150,9 @@ length filtering, primer trimming, and exact-sequence dereplication at
 database-build time. Neither CRABS nor TaxaLikely catches mislabeled
 sequences where the species annotation is wrong but the sequence itself
 is valid: these produce within-species distances that look like
-between-species distances and inflate false-positive rates. Screening
-for this lives in TaxaMatch, not TaxaLikely:
+between-species distances and inflate false-positive rates. The full
+screen for this lives in TaxaMatch; training reports a cheaper,
+library-internal check (see below):
 
 ``` r
 ref_matrix <- build_sequence_matrix(ref)
@@ -529,12 +531,28 @@ Caching and resources section.
 
 ## Detecting Mislabeled References {#detecting-mislabeled-references}
 
-TaxaLikely has no built-in reference-quality screening.
-`train_likelihood_model()` trains on whatever `raw_df`/`ref_matrix` it's
-given. To avoid entering mislabeled references into the training set,
-screen it first, upstream, via TaxaMatch's [Reference Accession
+The full screen runs upstream, via TaxaMatch's [Reference Accession
 Quality](https://github.com/kdlafferty/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)
-section.
+section: it compares each reference with GenBank deposits outside the
+library and gives the verdicts.
+
+`train_likelihood_model()` also reports a library-internal check,
+`attr(model, "reference_consistency")`: the same screen's functions run on
+the library's own pairs, with no network. It flags references whose label
+disagrees with their closest relatives in the library, including ones no
+query ever matches. For a species with only two references it names the
+member whose closest other-species match is higher and backed by at least
+two references of that species. By default it is a report and the model
+is fitted on everything; `exclude_reference_suspects = TRUE` fits without
+the flagged references. A flag is not a verdict: use it to choose what the
+full screen should examine.
+
+``` r
+model <- train_likelihood_model(ref_matrix)
+rc <- attr(model, "reference_consistency")
+rc[rc$suspect, c("accession", "species", "local_tier", "reference_action",
+                 "best_disagreeing_taxon_species", "pair_rule_suspect")]
+```
 
 ### Data types other than DNA sequences
 
