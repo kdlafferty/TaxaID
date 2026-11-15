@@ -472,6 +472,15 @@
 #'   "Updating assignments after new reference data" section of
 #'   `vignette("taxonomic-assignment", package = "TaxaAssign")`.
 #'
+#' @param registry `NULL` (default) or a frozen `taxon_registry`
+#'   (`TaxaTools::build_taxon_registry()`). `NULL` fills missing lineage of
+#'   unreferenced hypotheses (with `lookup_missing_taxonomy = TRUE`) and places
+#'   phyla for `cross_phylum_eps` through `TaxaTools::verify_taxon_names()`.
+#'   Given a registry, `posterior_df` must carry a `taxon_id` column whose
+#'   ids all belong to it (as [join_priors()] with the same registry gives),
+#'   and both read the registry's own tree instead: no name is looked up, a
+#'   hypothesis whose id the registry holds is `"matched"`, and only empty
+#'   lineage cells are filled, as before. `backbone_id` is then not needed.
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
@@ -880,8 +889,10 @@ posterior_consensus <- function(posterior_df,
                                 likelihood_consensus = TRUE,
                                 robust_prior_s = 0,
                                 cross_phylum_eps = 0,
-                                reference_snapshot = NULL) {
+                                reference_snapshot = NULL,
+                                registry = NULL) {
   consensus_method <- match.arg(consensus_method)
+  if (!is.null(registry)) .registry_check_ids(posterior_df, registry, "posterior_df")
   if (!is.null(reference_snapshot) &&
     (!is.character(reference_snapshot) || length(reference_snapshot) != 1L ||
       is.na(reference_snapshot) || !nzchar(reference_snapshot))) {
@@ -1042,7 +1053,31 @@ posterior_consensus <- function(posterior_df,
   # absence of taxonomy.
   lookup_status <- character(0L)
   lookup_needed <- NULL
-  if (lookup_missing_taxonomy) {
+  if (lookup_missing_taxonomy && !is.null(registry)) {
+    # lineage from the registry's tree by taxon id: no lookup, so nothing can fail
+    tax_cols_present <- intersect(rank_system_eff, names(posterior_df))
+    if (length(tax_cols_present) > 0) {
+      needs_tax <- .is_unreferenced_type(posterior_df$hypothesis_type) &
+        rowSums(is.na(posterior_df[, tax_cols_present, drop = FALSE])) > 0
+      ids <- as.character(posterior_df$taxon_id)
+      u <- unique(ids[needs_tax & !is.na(ids)])
+      if (length(u) > 0L) {
+        lookup_needed <- needs_tax
+        held <- u %in% registry$taxa$taxon_id
+        lookup_status <- stats::setNames(ifelse(held, "matched", "not_found"), u)
+        reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
+        for (tc in tax_cols_present) {
+          a <- stats::setNames(TaxaTools::parent_at(u, tc, registry), u)
+          val <- unname(reg_name[unname(a[ids])])
+          fill <- needs_tax & is.na(posterior_df[[tc]]) & !is.na(val)
+          if (any(fill)) posterior_df[[tc]][fill] <- val[fill]
+        }
+        # lookup_status is keyed by id here; the per-observation summary below reads it through taxon_name
+        lookup_status <- stats::setNames(unname(lookup_status[ids[needs_tax]]), posterior_df$taxon_name[needs_tax])
+        lookup_status <- lookup_status[!duplicated(names(lookup_status))]
+      }
+    }
+  } else if (lookup_missing_taxonomy) {
     if (is.null(backbone_id)) {
       cli::cli_abort(c(
         "{.arg backbone_id} must be specified explicitly when \\
@@ -1163,10 +1198,14 @@ posterior_consensus <- function(posterior_df,
   lineage_map <- list()
   if (consensus_method == "credible_node" && cross_phylum_eps > 0 &&
     "phylum" %in% rank_system_eff && "phylum" %in% names(posterior_df)) {
-    lineage_map <- .phylum_lineage_map(
-      posterior_df$phylum[!is.na(posterior_df$taxon_name)],
-      backbone_id, taxonomy_cache_dir
-    )
+    lineage_map <- if (is.null(registry)) {
+      .phylum_lineage_map(
+        posterior_df$phylum[!is.na(posterior_df$taxon_name)],
+        backbone_id, taxonomy_cache_dir
+      )
+    } else {
+      .registry_phylum_lineage_map(posterior_df$phylum[!is.na(posterior_df$taxon_name)], registry)
+    }
     if (!length(lineage_map)) {
       message("posterior_consensus: cross_phylum_eps could not place any phylum on the backbone; it compares names, as before.")
     }

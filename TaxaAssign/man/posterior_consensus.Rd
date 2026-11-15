@@ -23,7 +23,8 @@ posterior_consensus(
   likelihood_consensus = TRUE,
   robust_prior_s = 0,
   cross_phylum_eps = 0,
-  reference_snapshot = NULL
+  reference_snapshot = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -355,6 +356,16 @@ result is exactly as without the argument. \code{\link[=update_prior_from_consen
 reports a consensus that mixes labelled and unlabelled rows. See the
 "Updating assignments after new reference data" section of
 \code{vignette("taxonomic-assignment", package = "TaxaAssign")}.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} fills missing lineage of
+unreferenced hypotheses (with \code{lookup_missing_taxonomy = TRUE}) and places
+phyla for \code{cross_phylum_eps} through \code{TaxaTools::verify_taxon_names()}.
+Given a registry, \code{posterior_df} must carry a \code{taxon_id} column whose
+ids all belong to it (as \code{\link[=join_priors]{join_priors()}} with the same registry gives),
+and both read the registry's own tree instead: no name is looked up, a
+hypothesis whose id the registry holds is \code{"matched"}, and only empty
+lineage cells are filled, as before. \code{backbone_id} is then not needed.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:

@@ -42,9 +42,9 @@ library(dplyr)
 
 # ---- the argument -------------------------------------------------------------
 
-test_that("reference_snapshot is the LAST formal and defaults to NULL", {
+test_that("reference_snapshot follows the earlier formals (then registry) and defaults to NULL", {
   f <- formals(posterior_consensus)
-  expect_identical(utils::tail(names(f), 1L), "reference_snapshot")
+  expect_identical(utils::tail(names(f), 2L), c("reference_snapshot", "registry"))
   expect_null(f$reference_snapshot)
 })
 

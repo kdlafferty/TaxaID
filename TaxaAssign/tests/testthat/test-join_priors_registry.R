@@ -114,3 +114,22 @@ test_that("ring keying reads the candidates' own lineage from taxonomy_lookup wh
   expect_identical(out$taxon_id[out$hypothesis_type == "unreferenced_species"], .rg_id(reg, "Hypsurus"))
   expect_identical(attr(out, "ring_rows_rekeyed")$outcome, "rekeyed")
 })
+
+test_that("posterior_consensus(registry =) fills unreferenced lineage from the tree and makes no lookup", {
+  .rg_skip(); reg <- .rg_registry()
+  expect_identical(utils::tail(names(formals(posterior_consensus)), 1L), "registry")
+  lik <- .jr_lik(c("Embiotoca caryi", "Embiotoca jacksoni", "Embiotocidae"), ranks = c("species", "species", "family"),
+                 types = c("specific_candidate", "specific_candidate", "unreferenced_genus"))
+  jp <- .jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(.jr_pri(c("Hypsurus caryi", "Embiotoca jacksoni"), c(20, 5)), reg, "priors"), registry = reg)
+  jp$score_likelihood_mean <- jp$score_likelihood; jp$score_likelihood_sd <- 0.01
+  set.seed(1); post <- suppressMessages(compute_posterior(jp, n_sims = 50L))
+  expect_true("taxon_id" %in% names(post))
+  post$order <- NA_character_   # a hole the name path would look up
+  local_mocked_bindings(verify_taxon_names = function(...) stop("lookup made"), .package = "TaxaTools")
+  cons <- suppressWarnings(suppressMessages(posterior_consensus(post, rank_system = c("order", "family", "genus", "species"),
+            lookup_missing_taxonomy = TRUE, registry = reg)))
+  expect_identical(nrow(cons), 1L)
+  expect_false(identical(cons$unreferenced_taxonomy_lookup, "lookup_failed"))
+  bad <- post; bad$taxon_id[1] <- "gbif:999999"
+  expect_error(suppressMessages(posterior_consensus(bad, lookup_missing_taxonomy = TRUE, registry = reg)), "does not")
+})

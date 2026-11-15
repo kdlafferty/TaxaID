@@ -199,3 +199,32 @@
   attr(result, "taxon_registry") <- stamp
   result
 }
+
+# A table that has passed through functions outside the registry's reach (compute_posterior()) may have lost its stamp;
+# what it must still hold is a taxon_id column whose ids all belong to `registry`.
+.registry_check_ids <- function(x, registry, arg) {
+  if (!inherits(registry, "taxon_registry")) cli::cli_abort("{.arg registry} must be a {.cls taxon_registry} (TaxaTools::build_taxon_registry()).")
+  if (!isTRUE(registry$meta$frozen)) cli::cli_abort("{.arg registry} must be frozen (TaxaTools::freeze_taxon_registry()).")
+  if (!"taxon_id" %in% names(x)) cli::cli_abort("{.arg {arg}} has no {.field taxon_id} column: run join_priors() with the same {.arg registry}.")
+  s <- attr(x, "taxon_registry", exact = TRUE)
+  if (!is.null(s) && !identical(s$digest, registry$meta$digest)) cli::cli_abort("{.arg {arg}} was stamped by a different registry than {.arg registry}.")
+  bad <- setdiff(stats::na.omit(as.character(x$taxon_id)), registry$taxa$taxon_id)
+  if (length(bad)) cli::cli_abort("{.arg {arg}} holds {length(bad)} taxon id(s) that {.arg registry} does not (e.g. {.val {utils::head(bad, 3)}}): another registry's ids?")
+  invisible(TRUE)
+}
+
+# The cross-phylum rule's lineage map (phylum name -> root-to-phylum path of names), read from the registry's tree.
+.registry_phylum_lineage_map <- function(phyla, registry) {
+  phyla <- unique(phyla[!is.na(phyla) & nzchar(phyla)])
+  t <- registry$taxa
+  par <- stats::setNames(t$parent_id, t$taxon_id); nm <- stats::setNames(t$name, t$taxon_id)
+  out <- stats::setNames(vector("list", length(phyla)), phyla)
+  for (p in phyla) {
+    id <- t$taxon_id[t$name %in% p & t$rank %in% "phylum"][1]
+    if (is.na(id)) next
+    path <- character(0); k <- 0L
+    while (!is.na(id) && k < 100L) { path <- c(unname(nm[id]), path); id <- unname(par[id]); k <- k + 1L }
+    out[[p]] <- path
+  }
+  out[!vapply(out, is.null, logical(1))]
+}
