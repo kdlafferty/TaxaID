@@ -697,6 +697,14 @@ utils::globalVariables(c(
 #' deviations from its own fitted mean; both symptoms are recorded in
 #' `Stats` (`mlr_violations` and `max_ceiling_z`).
 #'
+#' Both checks describe the unclamped density. [evaluate_likelihoods()]
+#' evaluates H1's score term at `min(score, mu_score)` by default
+#' (`h1_clamp = TRUE`), so at evaluation H1 does not decline above a species'
+#' own mean and the H1-vs-H2 ratio cannot turn over between that mean and a
+#' perfect match. The warnings still identify species whose fitted mean sits
+#' far from a perfect match, which is worth inspecting (for example, a
+#' species trained on one divergent, possibly mislabelled reference pair).
+#'
 #' Under `score_transform = "logit"`, the transformed value of a perfect
 #' match is not fixed by real data but set by `logit_epsilon` (a
 #' numerical-hygiene constant), and the default sits only about one order of
@@ -1822,7 +1830,9 @@ train_likelihood_model <- function(raw_df,
       "mlr_violations. This does not necessarily make any single likelihood value ",
       "wrong, but the 'more identity is always at least as much evidence' property does ",
       "not hold for these species and is worth inspecting directly (e.g. via ",
-      "interpret_model())."
+      "interpret_model()). This describes the unclamped density: ",
+      "evaluate_likelihoods(h1_clamp = TRUE), the default, holds H1 flat above each ",
+      "species' mean."
     ), length(mlr_check$violations), nrow(H1_Lookup)), call. = FALSE)
   }
   if (isTRUE(mlr_check$max_z > 2)) {
@@ -1833,7 +1843,9 @@ train_likelihood_model <- function(raw_df,
       "harmless (real production models typically run well under 1 SD); a value this ",
       "large is worth checking against score_transform (\"logit\" is the more fragile ",
       "of the two -- see this function's \"Non-monotonic score->likelihood shape\" ",
-      "@section) and against how many reference sequences this species has."
+      "@section) and against how many reference sequences this species has. ",
+      "evaluate_likelihoods(h1_clamp = TRUE), the default, does not let H1 decay ",
+      "above the mean, but a mean this far from a perfect match still deserves a look."
     ), mlr_check$max_z_species, mlr_check$max_z), call. = FALSE)
   }
 
