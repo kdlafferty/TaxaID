@@ -12,6 +12,78 @@
   df[, cols, drop = FALSE]
 }
 
+# Registry path of add_unreferenced_prior_mass(): the same algorithm, run on working copies keyed by taxon_id.
+# `taxon_name` of the copies holds the taxon_id, the lineage columns hold ancestor ids walked up the registry's own
+# tree (TaxaTools::parent_at()), and `referenced` is a set of ids, so every membership test, merge and scope match in
+# the function compares identifiers, never names. Prior rows of one taxon at one site (synonyms in the pool) are
+# reduced to one: the row under the registry's accepted name, else the strongest. Returns the working copies plus the
+# maps needed to put names back on the output.
+.unref_registry_inputs <- function(joined, priors, referenced, registry) {
+  if (!inherits(registry, "taxon_registry")) cli::cli_abort("{.arg registry} must be a {.cls taxon_registry} (TaxaTools::build_taxon_registry()).")
+  if (!isTRUE(registry$meta$frozen)) cli::cli_abort("{.arg registry} must be frozen (TaxaTools::freeze_taxon_registry()).")
+  for (a in c("joined", "taxaexpect_priors")) {
+    x <- if (a == "joined") joined else priors
+    s <- attr(x, "taxon_registry", exact = TRUE)
+    if (!"taxon_id" %in% names(x) || is.null(s)) {
+      cli::cli_abort("{.arg {a}} has no {.field taxon_id} column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.")
+    }
+    if (!identical(s$digest, registry$meta$digest)) cli::cli_abort("{.arg {a}} was stamped by a different registry than {.arg registry}.")
+  }
+  if (!is.character(referenced)) cli::cli_abort("With {.arg registry}, {.arg referenced_names} must be a character vector of taxon ids.")
+  ref <- unique(referenced[!is.na(referenced)])
+  unk <- setdiff(ref, registry$taxa$taxon_id)
+  if (length(unk)) {
+    cli::cli_abort("With {.arg registry}, {.arg referenced_names} must hold taxon ids of that registry; {length(unk)} are not (e.g. {.val {utils::head(unk, 3)}}).")
+  }
+  lin <- c("genus", "family", "order", "class", "phylum")
+  ids <- unique(stats::na.omit(c(as.character(joined$taxon_id), as.character(priors$taxon_id), ref)))
+  anc <- lapply(stats::setNames(lin, lin), function(r) stats::setNames(TaxaTools::parent_at(ids, r, registry), ids))
+  reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
+  reg_rank <- stats::setNames(registry$taxa$rank, registry$taxa$taxon_id)
+
+  jw <- as.data.frame(joined)
+  jw$taxon_name <- as.character(jw$taxon_id)
+  for (r in intersect(lin, names(jw))) jw[[r]] <- unname(anc[[r]][jw$taxon_name])
+  # a ring row whose id sits at another rank than the row's own (a name resolved to a coarser taxon) cannot scope
+  ring <- !jw$hypothesis_type %in% "specific_candidate" & !is.na(jw$taxon_name) & !jw$taxon_name_rank %in% "species"
+  rank_mismatch <- ring & !mapply(identical, unname(reg_rank[jw$taxon_name]), as.character(jw$taxon_name_rank))
+
+  pw <- as.data.frame(priors)
+  pw$.verbatim <- as.character(pw$taxon_name)
+  n_prior_no_id <- length(unique(pw$.verbatim[is.na(pw$taxon_id) & !is.na(pw$.verbatim)]))
+  pw <- pw[!is.na(pw$taxon_id), , drop = FALSE]
+  pw$taxon_name <- as.character(pw$taxon_id)
+  # one prior row per (site, habitat, taxon): the accepted name's row, else the strongest
+  site_cols <- intersect(c("grid_id", "main_habitat"), names(pw))
+  acc <- pw$.verbatim == unname(reg_name[pw$taxon_name])
+  acc[is.na(acc)] <- FALSE
+  pw <- pw[order(!acc, -pw$theta_mean), , drop = FALSE]
+  key <- do.call(paste, c(pw[c(site_cols, "taxon_name", "taxon_name_rank")], sep = "\r"))
+  merged <- pw[duplicated(key) | duplicated(key, fromLast = TRUE), c(site_cols, "taxon_name", ".verbatim", "theta_mean"), drop = FALSE]
+  pw <- pw[!duplicated(key), , drop = FALSE]
+  names(merged)[names(merged) == "taxon_name"] <- "taxon_id"
+  names(merged)[names(merged) == ".verbatim"] <- "taxon_name"
+  # the display name of each prior taxon: the verbatim name of the row kept
+  disp <- stats::setNames(pw$.verbatim, pw$taxon_name)
+
+  # the prior species AND the referenced species: the floor rule reads the referenced taxa's lineages from here
+  tx_ids <- unique(c(pw$taxon_name, ref))
+  tax <- data.frame(taxon_name = tx_ids, stringsAsFactors = FALSE)
+  for (r in lin) tax[[r]] <- unname(anc[[r]][tx_ids])
+  list(
+    joined = jw, priors = pw, taxonomy = tax, referenced = ref, display = disp, reg_name = reg_name,
+    ref_genera = unique(stats::na.omit(unname(anc$genus[ref]))), genus_of = anc$genus,
+    merged_prior_rows = merged,
+    counts = list(
+      n_joined_rows_no_id = sum(is.na(joined$taxon_id) & !is.na(joined$taxon_name)),
+      n_prior_names_no_id = n_prior_no_id,
+      n_ring_rows_rank_mismatch = sum(rank_mismatch),
+      n_prior_rows_merged = nrow(merged) - length(unique(do.call(paste, c(merged[c(site_cols, "taxon_id")], sep = "\r"))))
+    ),
+    rank_mismatch = rank_mismatch
+  )
+}
+
 #' Add the prior mass of unreferenced local relatives to generic hypotheses
 #'
 #' A posterior is normalised over the hypotheses an observation carries, so it
@@ -104,6 +176,32 @@
 #'   where its lineage has a referenced taxon for this marker. `"genus"`: only
 #'   a referenced genus withholds a species, so a species whose family has a
 #'   reference can still be claimed by an order, class or phylum ring.
+#' @param registry `NULL` (default) or a frozen `taxon_registry`
+#'   (`TaxaTools::build_taxon_registry()`). `NULL` matches taxa by name, as
+#'   described above. Given a registry, taxa are matched by identifier only
+#'   (see Matching by taxon identifier): `joined` and `taxaexpect_priors` must
+#'   carry a `taxon_id` column stamped by this registry
+#'   (`TaxaTools::attach_taxon_ids()`), `referenced_names` holds taxon ids of
+#'   the referenced species, and `taxonomy` is not used (it may be `NULL`).
+#'
+#' @section Matching by taxon identifier:
+#'   With `registry`, every test of "is this species referenced?", "is it
+#'   already a candidate?" and "does it fall in this ring's scope?" compares
+#'   registry taxon ids, and each species' genus, family, order, class and
+#'   phylum come from the registry's own tree (`TaxaTools::parent_at()`), not
+#'   from any table's lineage columns or from the text of a binomial. A species
+#'   held under two names (a synonym in the pool and the accepted name in the
+#'   references) is therefore one species: it is referenced if either name is,
+#'   and it is counted once. Where the prior table holds one taxon under two
+#'   or more names at one site, the row under the registry's accepted name is
+#'   kept (else the strongest), and the rows set aside are listed in
+#'   `attr(result, "unreferenced_merged_prior_rows")`. Output names are the
+#'   tables' own: `joined` rows keep theirs, and a named species row takes the
+#'   name of the prior row kept. `unreferenced_mass_check` gains
+#'   `n_joined_rows_no_id`, `n_prior_names_no_id`, `n_ring_rows_rank_mismatch`
+#'   (ring rows whose id the registry holds at another rank; they gain no
+#'   mass) and `n_prior_rows_merged`; the members and withheld tables gain a
+#'   `taxon_id` column.
 #'
 #' @return `joined` with `prior_mean`, `prior_alpha` and `prior_beta` updated
 #'   on rows that gained mass, plus `prior_mean_floor` (the prior before this
@@ -168,9 +266,55 @@ add_unreferenced_prior_mass <- function(joined,
                                         unreferenced_types = c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_order", "unreferenced_class"),
                                         mismatch_message_fraction = 0.05,
                                         named_rows = FALSE,
-                                        withhold = c("finest", "genus")) {
+                                        withhold = c("finest", "genus"),
+                                        registry = NULL) {
   # --- Validation --------------------------------------------------------------
   withhold <- match.arg(withhold)
+  joined_in <- joined
+  rg <- NULL
+  if (!is.null(registry)) {
+    rg <- .unref_registry_inputs(joined, taxaexpect_priors, referenced_names, registry)
+    joined <- rg$joined
+    taxaexpect_priors <- rg$priors
+    taxonomy <- rg$taxonomy
+    referenced_names <- rg$referenced
+  }
+  # Registry path: put the tables' own names back on the output (the working copies carried ids in taxon_name and
+  # in the lineage columns), give each named species row its own taxon_id, and attach the id-side diagnostics.
+  .finish <- function(out) {
+    if (is.null(rg)) return(out)
+    n0 <- nrow(joined_in)
+    lin_cols <- intersect(c("genus", "family", "order", "class", "phylum"), names(joined_in))
+    scope_name <- stats::setNames(as.character(joined_in$taxon_name), rg$joined$taxon_name)
+    scope_name <- scope_name[!is.na(names(scope_name)) & !duplicated(names(scope_name))]
+    nm_of <- function(id, pref) { v <- unname(pref[id]); w <- is.na(v) & !is.na(id); v[w] <- unname(rg$reg_name[id[w]]); v }
+    sc <- out$unreferenced_scope
+    out$unreferenced_scope <- nm_of(sc, scope_name)
+    idx0 <- seq_len(n0)
+    out$taxon_name[idx0] <- as.character(joined_in$taxon_name)
+    for (r in lin_cols) out[[r]][idx0] <- joined_in[[r]]
+    if (nrow(out) > n0) {
+      idx1 <- seq.int(n0 + 1L, nrow(out))
+      ids <- as.character(out$taxon_name[idx1])
+      out$taxon_id[idx1] <- ids
+      out$taxon_name[idx1] <- nm_of(ids, rg$display)
+      if ("species" %in% names(out)) out$species[idx1] <- out$taxon_name[idx1]
+      for (r in lin_cols) out[[r]][idx1] <- unname(rg$reg_name[as.character(out[[r]][idx1])])
+    }
+    for (a in c("unreferenced_scope_members", "unreferenced_withheld")) {
+      d <- attr(out, a)
+      if (is.null(d)) next
+      ids <- as.character(d$taxon_name)
+      d$taxon_name <- nm_of(ids, rg$display)
+      d$scope <- nm_of(as.character(d$scope), scope_name)
+      d$taxon_id <- ids
+      attr(out, a) <- d
+    }
+    attr(out, "unreferenced_mass_check") <- c(attr(out, "unreferenced_mass_check"), rg$counts)
+    attr(out, "unreferenced_merged_prior_rows") <- rg$merged_prior_rows
+    attr(out, "taxon_registry") <- attr(joined_in, "taxon_registry", exact = TRUE)
+    out
+  }
   req_j <- c(
     "observation_id", "taxon_name", "taxon_name_rank", "hypothesis_type",
     "prior_mean", "prior_alpha", "prior_beta"
@@ -245,7 +389,8 @@ add_unreferenced_prior_mass <- function(joined,
   gen <- which(out$hypothesis_type %in% unreferenced_types &
     !is.na(out$taxon_name) & out$taxon_name_rank %in% setdiff(names(taxonomy), "taxon_name") &
     out$taxon_name_rank != "species" &
-    (is.na(expected_rank) | out$taxon_name_rank == expected_rank))
+    (is.na(expected_rank) | out$taxon_name_rank == expected_rank) &
+    (if (is.null(rg)) TRUE else !rg$rank_mismatch))
   out$unreferenced_scope[gen] <- out$taxon_name[gen]
   out$unreferenced_scope_rank[gen] <- out$taxon_name_rank[gen]
   out$unreferenced_mass[gen] <- 0
@@ -257,7 +402,7 @@ add_unreferenced_prior_mass <- function(joined,
       scope_rank = character(0), reason = character(0), stringsAsFactors = FALSE
     )
     cli::cli_inform("No generic unreferenced rows with a taxonomic scope; priors unchanged.")
-    return(out)
+    return(.finish(out))
   }
 
   # --- Local unreferenced species pool --------------------------------------------
@@ -269,11 +414,11 @@ add_unreferenced_prior_mass <- function(joined,
   # family ("Cottidae", "Icelinus") under taxon_name_rank "species". They are
   # coarse sightings of species already in the pool, not further unsampled
   # species, so only binomials are summed. The excluded rows are counted.
-  is_sp <- TaxaTools::is_plausible_binomial(pr$taxon_name)
+  is_sp <- TaxaTools::is_plausible_binomial(if (is.null(rg)) pr$taxon_name else pr$.verbatim)
   n_coarse_excluded <- length(unique(pr$taxon_name[!is_sp]))
   pr <- pr[is_sp, , drop = FALSE]
   has_hab <- "main_habitat" %in% names(pr) && "main_habitat" %in% names(out)
-  pr$hab <- if (has_hab) pr$main_habitat else NA_character_
+  pr$hab <- if (has_hab) pr$main_habitat else rep(NA_character_, nrow(pr))
   pr$var <- if (all(c("alpha", "beta") %in% names(pr))) {
     a <- pr$alpha
     b <- pr$beta
@@ -316,7 +461,9 @@ add_unreferenced_prior_mass <- function(joined,
   # references were compared with the read and did not match, and a family,
   # order, class or phylum ring ("some unreferenced genus of ...") cannot be
   # this species. It is then not claimed at all, and reported.
-  ref_genera <- unique(sub(" .*$", "", ref[!is.na(ref)]))
+  # (with a registry, the genus is the registry's ancestor, never the text before the first space)
+  ref_genera <- if (is.null(rg)) unique(sub(" .*$", "", ref[!is.na(ref)])) else rg$ref_genera
+  genus_word <- if (is.null(rg)) function(x) sub(" .*$", "", x) else function(x) unname(rg$genus_of[x])
   # Referenced taxa at every rank above species, from the referenced species'
   # own lineages: their `taxonomy` rows, and the lineage columns `joined`
   # carries on its named candidates (referenced by construction).
@@ -345,7 +492,7 @@ add_unreferenced_prior_mass <- function(joined,
     m <- m[!key %in% named_key & !key %in% claimed, , drop = FALSE]
     if (nrow(m) == 0L) next
     if (r != "genus") {
-      ref_gen <- sub(" .*$", "", m$taxon_name) %in% ref_genera
+      ref_gen <- genus_word(m$taxon_name) %in% ref_genera
       why <- c("finer_rank_referenced_unmatched", "genus_referenced_unmatched")[ref_gen + 1L]
       if (withhold == "finest") {
         for (rr in finer) {
@@ -501,5 +648,5 @@ add_unreferenced_prior_mass <- function(joined,
       scope_rank = character(0), taxon_name = character(0), theta_mean = numeric(0)
     )
   }
-  out
+  .finish(out)
 }

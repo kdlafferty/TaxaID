@@ -14,7 +14,8 @@ add_unreferenced_prior_mass(
     "unreferenced_family", "unreferenced_order", "unreferenced_class"),
   mismatch_message_fraction = 0.05,
   named_rows = FALSE,
-  withhold = c("finest", "genus")
+  withhold = c("finest", "genus"),
+  registry = NULL
 )
 }
 \arguments{
@@ -67,6 +68,14 @@ out of a ring too coarse for it (see Withheld species). \code{"finest"}
 where its lineage has a referenced taxon for this marker. \code{"genus"}: only
 a referenced genus withholds a species, so a species whose family has a
 reference can still be claimed by an order, class or phylum ring.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} matches taxa by name, as
+described above. Given a registry, taxa are matched by identifier only
+(see Matching by taxon identifier): \code{joined} and \code{taxaexpect_priors} must
+carry a \code{taxon_id} column stamped by this registry
+(\code{TaxaTools::attach_taxon_ids()}), \code{referenced_names} holds taxon ids of
+the referenced species, and \code{taxonomy} is not used (it may be \code{NULL}).}
 }
 \value{
 \code{joined} with \code{prior_mean}, \code{prior_alpha} and \code{prior_beta} updated
@@ -135,6 +144,27 @@ silently inflates the added mass. As a check, every named
 \code{specific_candidate} in \code{joined} is a referenced species by construction;
 the function reports how many of them are missing from \code{referenced_names}
 and messages when that fraction exceeds \code{mismatch_message_fraction}.
+}
+
+\section{Matching by taxon identifier}{
+
+With \code{registry}, every test of "is this species referenced?", "is it
+already a candidate?" and "does it fall in this ring's scope?" compares
+registry taxon ids, and each species' genus, family, order, class and
+phylum come from the registry's own tree (\code{TaxaTools::parent_at()}), not
+from any table's lineage columns or from the text of a binomial. A species
+held under two names (a synonym in the pool and the accepted name in the
+references) is therefore one species: it is referenced if either name is,
+and it is counted once. Where the prior table holds one taxon under two
+or more names at one site, the row under the registry's accepted name is
+kept (else the strongest), and the rows set aside are listed in
+\code{attr(result, "unreferenced_merged_prior_rows")}. Output names are the
+tables' own: \code{joined} rows keep theirs, and a named species row takes the
+name of the prior row kept. \code{unreferenced_mass_check} gains
+\code{n_joined_rows_no_id}, \code{n_prior_names_no_id}, \code{n_ring_rows_rank_mismatch}
+(ring rows whose id the registry holds at another rank; they gain no
+mass) and \code{n_prior_rows_merged}; the members and withheld tables gain a
+\code{taxon_id} column.
 }
 
 \section{Withheld species}{
