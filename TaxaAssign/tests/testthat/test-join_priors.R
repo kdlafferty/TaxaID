@@ -955,13 +955,13 @@ test_that("join_priors carries the fallthrough table on every return", {
 
 # ---- taxonomy_cache_dir: the fallback's name lookups use the run's name cache ----
 
-test_that("REVIEW JP: taxonomy_cache_dir is the LAST formal, default NULL, released formals an exact prefix", {
+test_that("REVIEW JP: taxonomy_cache_dir follows the released formals (then registry), default NULL, released formals an exact prefix", {
   f <- names(formals(join_priors))
   released <- c("likelihoods", "taxaexpect_priors", "site", "taxonomy_lookup", "rank_system",
                 "expansion_taxonomy", "expansion_min_prior", "expansion_cumulative_prior",
                 "singleton_taxonomy", "backbone_id")
   expect_identical(f[seq_along(released)], released)
-  expect_identical(f[-seq_along(released)], "taxonomy_cache_dir")
+  expect_identical(f[-seq_along(released)], c("taxonomy_cache_dir", "registry"))
   expect_null(formals(join_priors)$taxonomy_cache_dir)
 })
 

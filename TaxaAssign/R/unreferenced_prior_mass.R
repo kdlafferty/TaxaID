@@ -20,16 +20,7 @@
 # maps needed to put names back on the output.
 .unref_registry_inputs <- function(joined, priors, referenced, registry, ref_lineage_scope = c("local", "all")) {
   ref_lineage_scope <- match.arg(ref_lineage_scope)
-  if (!inherits(registry, "taxon_registry")) cli::cli_abort("{.arg registry} must be a {.cls taxon_registry} (TaxaTools::build_taxon_registry()).")
-  if (!isTRUE(registry$meta$frozen)) cli::cli_abort("{.arg registry} must be frozen (TaxaTools::freeze_taxon_registry()).")
-  for (a in c("joined", "taxaexpect_priors")) {
-    x <- if (a == "joined") joined else priors
-    s <- attr(x, "taxon_registry", exact = TRUE)
-    if (!"taxon_id" %in% names(x) || is.null(s)) {
-      cli::cli_abort("{.arg {a}} has no {.field taxon_id} column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.")
-    }
-    if (!identical(s$digest, registry$meta$digest)) cli::cli_abort("{.arg {a}} was stamped by a different registry than {.arg registry}.")
-  }
+  .registry_check_tables(registry, list(joined = joined, taxaexpect_priors = priors))
   if (!is.character(referenced)) cli::cli_abort("With {.arg registry}, {.arg referenced_names} must be a character vector of taxon ids.")
   ref <- unique(referenced[!is.na(referenced)])
   unk <- setdiff(ref, registry$taxa$taxon_id)
@@ -38,7 +29,7 @@
   }
   lin <- c("genus", "family", "order", "class", "phylum")
   ids <- unique(stats::na.omit(c(as.character(joined$taxon_id), as.character(priors$taxon_id), ref)))
-  anc <- lapply(stats::setNames(lin, lin), function(r) stats::setNames(TaxaTools::parent_at(ids, r, registry), ids))
+  anc <- .registry_ancestors(ids, lin, registry)
   reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
   reg_rank <- stats::setNames(registry$taxa$rank, registry$taxa$taxon_id)
 
@@ -49,21 +40,10 @@
   ring <- !jw$hypothesis_type %in% "specific_candidate" & !is.na(jw$taxon_name) & !jw$taxon_name_rank %in% "species"
   rank_mismatch <- ring & !mapply(identical, unname(reg_rank[jw$taxon_name]), as.character(jw$taxon_name_rank))
 
-  pw <- as.data.frame(priors)
-  pw$.verbatim <- as.character(pw$taxon_name)
-  n_prior_no_id <- length(unique(pw$.verbatim[is.na(pw$taxon_id) & !is.na(pw$.verbatim)]))
-  pw <- pw[!is.na(pw$taxon_id), , drop = FALSE]
-  pw$taxon_name <- as.character(pw$taxon_id)
   # one prior row per (site, habitat, taxon): the accepted name's row, else the strongest
-  site_cols <- intersect(c("grid_id", "main_habitat"), names(pw))
-  acc <- pw$.verbatim == unname(reg_name[pw$taxon_name])
-  acc[is.na(acc)] <- FALSE
-  pw <- pw[order(!acc, -pw$theta_mean), , drop = FALSE]
-  key <- do.call(paste, c(pw[c(site_cols, "taxon_name", "taxon_name_rank")], sep = "\r"))
-  merged <- pw[duplicated(key) | duplicated(key, fromLast = TRUE), c(site_cols, "taxon_name", ".verbatim", "theta_mean"), drop = FALSE]
-  pw <- pw[!duplicated(key), , drop = FALSE]
-  names(merged)[names(merged) == "taxon_name"] <- "taxon_id"
-  names(merged)[names(merged) == ".verbatim"] <- "taxon_name"
+  kp <- .registry_key_priors(priors, registry)
+  pw <- kp$priors
+  merged <- kp$merged
   # the display name of each prior taxon: the verbatim name of the row kept
   disp <- stats::setNames(pw$.verbatim, pw$taxon_name)
 
@@ -80,9 +60,9 @@
     merged_prior_rows = merged,
     counts = list(
       n_joined_rows_no_id = sum(is.na(joined$taxon_id) & !is.na(joined$taxon_name)),
-      n_prior_names_no_id = n_prior_no_id,
+      n_prior_names_no_id = kp$n_no_id,
       n_ring_rows_rank_mismatch = sum(rank_mismatch),
-      n_prior_rows_merged = nrow(merged) - length(unique(do.call(paste, c(merged[c(site_cols, "taxon_id")], sep = "\r"))))
+      n_prior_rows_merged = kp$n_merged
     ),
     rank_mismatch = rank_mismatch
   )

@@ -662,6 +662,29 @@ utils::globalVariables(c(
 #'   fallback, so answered lookups are reused and a rerun with a filled cache
 #'   makes no name requests. Same meaning as in [posterior_consensus()].
 #'   `NULL` looks every name up afresh.
+#' @param registry `NULL` (default) or a frozen `taxon_registry`
+#'   (`TaxaTools::build_taxon_registry()`). `NULL` joins on names, as
+#'   described above. Given a registry, `likelihoods` and `taxaexpect_priors`
+#'   must carry a `taxon_id` column stamped by it
+#'   (`TaxaTools::attach_taxon_ids()`), and every join, match and lineage
+#'   test compares registry taxon ids (see Joining by taxon identifier).
+#'
+#' @section Joining by taxon identifier:
+#'   With `registry`, a candidate meets its prior when both carry the same
+#'   taxon id, so a call under one name finds a prior filed under a synonym.
+#'   Every lineage column (`kingdom` to `genus`) and the taxonomy tables
+#'   (`taxonomy_lookup`, `expansion_taxonomy`, `singleton_taxonomy`) are taken
+#'   from the registry's own tree for the taxa they cover; the rank columns a
+#'   caller supplied in those tables say which ranks are used, and their
+#'   values are not read. The genus is never parsed from a binomial and the
+#'   backbone fallback lookup is not made. Rows of one observation holding one
+#'   taxon under two names become one hypothesis. Where the prior table holds
+#'   one taxon under two or more names at a site, the row under the registry's
+#'   accepted name is kept (attribute `merged_prior_rows` lists the rest).
+#'   Output rows carry `taxon_id`; `taxon_name` is the likelihoods' own name,
+#'   or the registry's accepted name where the likelihoods held the taxon
+#'   under several; lineage columns carry the registry's names. Attribute
+#'   `registry_join_counts` reports rows and names with no id and the merges.
 #' @return A data frame ready for [compute_posterior()], with columns
 #'   `prior_mean`, `prior_alpha`, and `prior_beta` added. All input columns are
 #'   preserved. Additional columns from `taxaexpect_priors`
@@ -760,7 +783,8 @@ join_priors <- function(likelihoods,
                         expansion_cumulative_prior = 0.90,
                         singleton_taxonomy = NULL,
                         backbone_id,
-                        taxonomy_cache_dir = NULL) {
+                        taxonomy_cache_dir = NULL,
+                        registry = NULL) {
   # ---- Input validation -----------------------------------------------------
   if (!is.data.frame(likelihoods)) {
     cli::cli_abort("{.arg likelihoods} must be a data frame.")
@@ -803,6 +827,20 @@ join_priors <- function(likelihoods,
     cli::cli_abort(
       "{.arg taxaexpect_priors} is missing required column(s): {.field {missing_priors}}"
     )
+  }
+
+  # With a registry every table is keyed by taxon id from here on; names are put back at the end.
+  .jp_rg <- NULL
+  if (!is.null(registry)) {
+    .jp_stamp <- attr(likelihoods, "taxon_registry", exact = TRUE)
+    .jp_rg <- .jp_registry_inputs(likelihoods, taxaexpect_priors, taxonomy_lookup, expansion_taxonomy, singleton_taxonomy, registry)
+    .jp_sc <- attr(taxaexpect_priors, "search_center", exact = TRUE)
+    likelihoods <- .jp_rg$likelihoods
+    taxaexpect_priors <- .jp_rg$priors
+    if (!is.null(.jp_sc)) attr(taxaexpect_priors, "search_center") <- .jp_sc
+    taxonomy_lookup <- .jp_rg$taxonomy_lookup
+    expansion_taxonomy <- .jp_rg$expansion_taxonomy
+    singleton_taxonomy <- .jp_rg$singleton_taxonomy
   }
 
   # Blank rank values ("" for an absent genus/species in a reference
@@ -1648,8 +1686,14 @@ join_priors <- function(likelihoods,
     }
   }
 
-  # Derive genus from species binomials when genus column is NA
-  result <- result |>
+  # Derive genus from species binomials when genus column is NA. With a registry the genus is the registry's
+  # ancestor of the row's taxon (an id has no genus word, and the text of a binomial is not its genus).
+  if (!is.null(registry)) {
+    .g_ids <- unique(stats::na.omit(result$taxon_name))
+    .g_of <- stats::setNames(TaxaTools::parent_at(.g_ids, "genus", registry), .g_ids)
+    result$genus <- dplyr::coalesce(if ("genus" %in% names(result)) as.character(result$genus) else NA_character_, unname(.g_of[result$taxon_name]))
+  }
+  if (is.null(registry)) result <- result |>
     dplyr::mutate(genus = dplyr::coalesce(
       genus,
       dplyr::if_else(taxon_name_rank == "species",
@@ -1732,7 +1776,8 @@ join_priors <- function(likelihoods,
   # every run AND could never be satisfied by its own answer, because the NA
   # that triggered it is still NA after a fully successful lookup. Queries are
   # batched on unique taxon_names.
-  if (length(rank_cols_in_df) >= 2L &&
+  # (name path only: with a registry the lineage comes from its tree, and no lookup is made)
+  if (is.null(registry) && length(rank_cols_in_df) >= 2L &&
     requireNamespace("TaxaTools", quietly = TRUE)) {
     if ("taxon_name_rank" %in% names(result)) {
       # rank_system runs coarsest to finest, so "above the row's own rank" is a
@@ -1952,6 +1997,7 @@ join_priors <- function(likelihoods,
     ))
   }
 
+  if (!is.null(.jp_rg)) result <- .jp_registry_finish(result, .jp_rg, .jp_stamp)
   cli::cli_inform(
     "join_priors: {nrow(result)} row(s) ready for {.fn compute_posterior}."
   )

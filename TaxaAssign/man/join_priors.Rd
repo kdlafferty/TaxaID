@@ -15,7 +15,8 @@ join_priors(
   expansion_cumulative_prior = 0.9,
   singleton_taxonomy = NULL,
   backbone_id,
-  taxonomy_cache_dir = NULL
+  taxonomy_cache_dir = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -122,6 +123,13 @@ to \code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}} a
 fallback, so answered lookups are reused and a rerun with a filled cache
 makes no name requests. Same meaning as in \code{\link[=posterior_consensus]{posterior_consensus()}}.
 \code{NULL} looks every name up afresh.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} joins on names, as
+described above. Given a registry, \code{likelihoods} and \code{taxaexpect_priors}
+must carry a \code{taxon_id} column stamped by it
+(\code{TaxaTools::attach_taxon_ids()}), and every join, match and lineage
+test compares registry taxon ids (see Joining by taxon identifier).}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns
@@ -309,6 +317,25 @@ within-family score discrimination is available.
 Rows whose coarse-rank constraint finds no matching species in
 \code{taxaexpect_priors} (e.g. a family absent from the study region) are left
 unchanged and receive the dark diversity floor prior.
+}
+
+\section{Joining by taxon identifier}{
+
+With \code{registry}, a candidate meets its prior when both carry the same
+taxon id, so a call under one name finds a prior filed under a synonym.
+Every lineage column (\code{kingdom} to \code{genus}) and the taxonomy tables
+(\code{taxonomy_lookup}, \code{expansion_taxonomy}, \code{singleton_taxonomy}) are taken
+from the registry's own tree for the taxa they cover; the rank columns a
+caller supplied in those tables say which ranks are used, and their
+values are not read. The genus is never parsed from a binomial and the
+backbone fallback lookup is not made. Rows of one observation holding one
+taxon under two names become one hypothesis. Where the prior table holds
+one taxon under two or more names at a site, the row under the registry's
+accepted name is kept (attribute \code{merged_prior_rows} lists the rest).
+Output rows carry \code{taxon_id}; \code{taxon_name} is the likelihoods' own name,
+or the registry's accepted name where the likelihoods held the taxon
+under several; lineage columns carry the registry's names. Attribute
+\code{registry_join_counts} reports rows and names with no id and the merges.
 }
 
 \section{Taxa that matched no prior}{
