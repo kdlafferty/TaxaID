@@ -95,3 +95,11 @@ test_that("a ring row takes its candidates' registry clade; where they split, it
   expect_identical(attr(out2, "ring_rows_rekeyed")$outcome, "candidates_split_kept")
   expect_identical(attr(out2, "registry_join_counts")$n_ring_rows_candidates_split, 1L)
 })
+
+test_that("ring keying copes with a table that has rings but no candidates", {
+  .rg_skip(); reg <- .rg_registry()
+  lik <- .jr_lik("Embiotoca", ranks = "genus", types = "unreferenced_species")
+  out <- .jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(.jr_pri("Hypsurus caryi", 20), reg, "priors"), registry = reg)
+  expect_identical(out$taxon_id[out$hypothesis_type == "unreferenced_species"], .rg_id(reg, "Embiotoca"))
+  expect_null(attr(out, "ring_rows_rekeyed"))
+})

@@ -102,8 +102,9 @@
     cand <- lw$hypothesis_type %in% "specific_candidate" & !is.na(lw$taxon_name)
     rr <- intersect(setdiff(all_ranks, "species"), names(orig))
     ci <- which(cand)
-    cl <- do.call(rbind, lapply(rr, function(r) data.frame(obs = as.character(lw$observation_id[ci]), rank = r,
+    cl <- do.call(rbind, lapply(rr, function(r) data.frame(obs = as.character(lw$observation_id[ci]), rank = rep(r, length(ci)),
       ring = as.character(orig[[r]][ci]), anc = unname(anc[[r]][lw$taxon_name[ci]]), stringsAsFactors = FALSE)))
+    if (is.null(cl)) cl <- data.frame(obs = character(0), rank = character(0), ring = character(0), anc = character(0), stringsAsFactors = FALSE)
     cl <- unique(cl[!is.na(cl$ring) & !is.na(cl$anc), , drop = FALSE])
     key_c <- paste(cl$obs, cl$rank, cl$ring, sep = "\r")
     per <- split(cl$anc, key_c)
