@@ -75,6 +75,7 @@ CONFIG <- list(
   review_cache_dir  = list("REVIEW_CACHE_DIR",  'file.path(CACHE_ROOT, "review")',    "LLM review cache"),
   inat_cache_dir    = list("INAT_CACHE_DIR",    'file.path(CACHE_ROOT, "inat")',      "iNaturalist range cache"),
   taxonomy_cache_dir = list("TAXONOMY_CACHE_DIR", 'file.path(CACHE_ROOT, "taxonomy")', "Name-lookup cache shared by every name verification, GBIF key and consensus taxonomy lookup: once filled, a rerun makes no name requests"),
+  use_taxon_registry = list("USE_TAXON_REGISTRY", "TRUE", "Match taxa across tables by GBIF taxon id (one frozen registry per run); outputs carry GBIF accepted names"),
   include_domestic_priors = list("INCLUDE_DOMESTIC_PRIORS", "FALSE", "Add domestic/food-species priors"),
   include_group_priors    = list("INCLUDE_GROUP_PRIORS",    "TRUE",  "Add group-level prior support"),
   include_downranking     = list("INCLUDE_DOWNRANKING",     "TRUE",  "Allow posterior downranking"),

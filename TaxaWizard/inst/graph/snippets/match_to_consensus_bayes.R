@@ -56,6 +56,34 @@ top_likelihoods <- TaxaLikely::filter_top_hypotheses(
   rank_system = detected_ranks
 )
 
+# --- One taxon registry for the run (taxa matched by GBIF id, not by name) ---
+# With {{use_taxon_registry}} TRUE, every name in the likelihoods and the priors is
+# resolved ONCE to a GBIF Backbone taxon id (TaxaFetch::lookup_gbif_taxa(), answers
+# cached in {{taxonomy_cache_dir}}, so a rerun asks nothing). The registry is then
+# frozen, both tables are stamped, and join_priors() and posterior_consensus() match
+# taxa by id: a call under a synonym finds the prior filed under the accepted name,
+# one taxon under two names is one hypothesis, and family/order come from the GBIF
+# tree. Output names are GBIF accepted names; taxon_name_verbatim keeps each row's
+# own name. check_taxon_registry(mode = "error") stops here if a lookup FAILED or
+# two different taxa were merged without a declared synonymy, rather than guessing.
+taxon_registry <- NULL
+if (isTRUE({{use_taxon_registry}})) {
+  .reg_tab <- function(x, tab) {
+    d <- unique(data.frame(verbatim_name = as.character(x$taxon_name),
+                           rank_given = if ("taxon_name_rank" %in% names(x)) as.character(x$taxon_name_rank) else NA_character_,
+                           source_table = tab, stringsAsFactors = FALSE))
+    d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
+  }
+  taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
+    rbind(.reg_tab(top_likelihoods, "likelihoods"), .reg_tab({{priors_var}}, "priors")),
+    run_id = format(Sys.time(), "run-%Y%m%d-%H%M%S"), key_backbone_id = 11L,
+    lookup = function(names, rank, context) TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = {{taxonomy_cache_dir}})
+  ))
+  invisible(TaxaTools::check_taxon_registry(taxon_registry, mode = "error"))
+  top_likelihoods <- TaxaTools::attach_taxon_ids(top_likelihoods, taxon_registry, "taxon_name", "likelihoods")
+  {{priors_var}} <- TaxaTools::attach_taxon_ids({{priors_var}}, taxon_registry, "taxon_name", "priors")
+}
+
 # 2. Join the occurrence priors, then compute posteriors.
 #    If your observations span more than one distinct site, call
 #    TaxaAssign::combine_multisite_priors() on the joined table before
@@ -67,7 +95,8 @@ likelihoods_ready <- TaxaAssign::join_priors(
   site              = {{site}},
   rank_system       = detected_ranks,
   backbone_id       = {{backbone_id}},
-  taxonomy_cache_dir = {{taxonomy_cache_dir}}
+  taxonomy_cache_dir = {{taxonomy_cache_dir}},
+  registry          = taxon_registry
 )
 result <- TaxaAssign::compute_posterior(likelihoods_ready)
 
@@ -82,7 +111,8 @@ consensus <- TaxaAssign::posterior_consensus(
   consensus_method = "credible_node",
   robust_prior_s   = 0,
   cross_phylum_eps = 0,
-  taxonomy_cache_dir = {{taxonomy_cache_dir}}
+  taxonomy_cache_dir = {{taxonomy_cache_dir}},
+  registry         = taxon_registry
 )
 
 # 4. Confirmation update, then Round 2 consensus. n_sims defaults to 1000,
@@ -96,7 +126,8 @@ consensus <- TaxaAssign::posterior_consensus(
   consensus_method = "credible_node",
   robust_prior_s   = 0,
   cross_phylum_eps = 0,
-  taxonomy_cache_dir = {{taxonomy_cache_dir}}
+  taxonomy_cache_dir = {{taxonomy_cache_dir}},
+  registry         = taxon_registry
 )
 
 message("Bayesian pathway complete. ", sum(consensus$is_resolved), " of ",

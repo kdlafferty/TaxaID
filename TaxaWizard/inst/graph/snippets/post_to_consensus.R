@@ -81,7 +81,9 @@ consensus <- TaxaAssign::posterior_consensus(
   consensus_method        = "credible_node",
   robust_prior_s          = 0,
   cross_phylum_eps        = 0,
-  taxonomy_cache_dir      = {{taxonomy_cache_dir}}
+  taxonomy_cache_dir      = {{taxonomy_cache_dir}},
+  # the run's taxon registry when the posterior step built one: lineage from its tree, no name lookups
+  registry                = if (exists("taxon_registry")) taxon_registry else NULL
 )
 
 # Optional: empirical Bayes refinement. n_sims defaults to 1000, which
@@ -102,7 +104,9 @@ consensus_final <- TaxaAssign::posterior_consensus(
   consensus_method        = "credible_node",
   robust_prior_s          = 0,
   cross_phylum_eps        = 0,
-  taxonomy_cache_dir      = {{taxonomy_cache_dir}}
+  taxonomy_cache_dir      = {{taxonomy_cache_dir}},
+  # the run's taxon registry when the posterior step built one: lineage from its tree, no name lookups
+  registry                = if (exists("taxon_registry")) taxon_registry else NULL
 ) |> TaxaAssign::add_slash_taxon()
 # add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
 # consensus_taxon is in consensus_final).
