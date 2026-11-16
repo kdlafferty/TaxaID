@@ -30,3 +30,14 @@
   in `taxon_name_verbatim`. `posterior_consensus()` keys `group_priors` and
   `species_reference` by registry identifier as well, and refuses a name in
   either that the registry does not hold.
+* A ring row with `ring_member_clades` set gets, in
+  `add_unreferenced_prior_mass()`, the prior mass of the union of its member
+  clades at the ring's own rank, not of everything under the rank it is named
+  at; with `registry =`, a member clade with no single registry id, or with an
+  id at another rank, is withheld and listed in
+  `attr(, "ring_member_clades_withheld")`. In `join_priors(registry =)` such a
+  ring is keyed at the registry's lowest common ancestor of the observation's
+  candidates in its member clades, which can be finer or coarser than the
+  likelihood table's label; it is listed in `attr(, "ring_rows_rekeyed")` with
+  outcome `"lca_registry"` (or `"lca_registry_none"` where no ancestor is
+  shared).

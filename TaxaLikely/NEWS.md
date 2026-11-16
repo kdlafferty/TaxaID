@@ -31,3 +31,12 @@
   taxon registry, a reference congener whose identifier equals a candidate's is
   not restored as a second candidate, and `candidate_species_filter` matches a
   reference species under any registered name.
+* `evaluate_likelihoods()` returns `ring_member_clades`. When the candidates
+  tied with an observation's ring anchor (the top transformed score, within
+  1e-9, with a real hit preferred over a restored row) hold two or more values at an outer
+  ring's rank, that ring is named at their lowest common rank, searching the
+  match table's coarser lineage columns too and requiring every tied candidate
+  to hold the common value, and `ring_member_clades` lists their values at the
+  ring's own rank, separated by `|`. It is `NA` on every other row. The ring's
+  likelihood is unchanged: it is still evaluated at the anchor the tie-break
+  picks, which shares the tied candidates' score.
