@@ -125,7 +125,9 @@
     cl <- unique(cl[!is.na(cl$ring) & !is.na(cl$anc), , drop = FALSE])
     key_c <- paste(cl$obs, cl$rank, cl$ring, sep = "\r")
     per <- split(cl$anc, key_c)
-    ri <- which(is_ring & lw$taxon_name_rank %in% rr)
+    # a tied-anchor ring (ring_member_clades set) is keyed below, at the registry LCA of its member clades
+    is_lca <- if ("ring_member_clades" %in% names(orig)) !is.na(orig$ring_member_clades) & !lw$hypothesis_type %in% "specific_candidate" else rep(FALSE, nrow(lw))
+    ri <- which(is_ring & lw$taxon_name_rank %in% rr & !is_lca)
     key_r <- paste(lw$observation_id[ri], lw$taxon_name_rank[ri], as.character(orig$taxon_name[ri]), sep = "\r")
     got <- per[key_r]
     n_a <- lengths(got)
@@ -140,7 +142,44 @@
       rank = as.character(lw$taxon_name_rank[ri[spl]]), from_id = lw$taxon_name[ri[spl]],
       to_id = vapply(got[spl], paste, "", collapse = "|"), outcome = "candidates_split_kept", stringsAsFactors = FALSE)
     lw$taxon_name[ri[chg]] <- to1[chg]
-    if (length(rk_rows)) ring_rekeyed <- do.call(rbind, rk_rows[!vapply(rk_rows, is.null, TRUE)])
+    # A tied-anchor ring: TaxaLikely named it at the lowest common rank of its tied candidates in the likelihoods' own
+    # lineage and listed their clades at the ring's own rank. Here it takes the registry's (GBIF's) lowest common
+    # ancestor of the observation's candidates in those clades: the finest rank, from the ring's own rank upwards, at
+    # which they share ONE registry ancestor. Its id and taxon_name_rank follow the registry, finer or coarser than the
+    # likelihoods' label; with no common ancestor the row keeps the id of its own name. Listed, outcome "lca_registry".
+    li <- which(is_lca)
+    if (length(li)) {
+      own_rank <- .unreferenced_ring_rank(lw$hypothesis_type[li])
+      lca_rows <- lapply(seq_along(li), function(k) {
+        i <- li[k]; mr <- own_rank[k]
+        if (is.na(mr) || !mr %in% all_ranks) return(NULL)
+        mem <- strsplit(as.character(orig$ring_member_clades[i]), "|", fixed = TRUE)[[1L]]
+        co <- ci[as.character(lw$observation_id[ci]) == as.character(lw$observation_id[i])]
+        sel <- co[own_lin(mr, co) %in% mem]
+        cid <- unique(stats::na.omit(lw$taxon_name[sel]))
+        up <- rev(all_ranks[seq_len(match(mr, all_ranks))])   # the ring's own rank, then coarser
+        to <- NA_character_; to_rank <- NA_character_
+        if (length(cid)) for (r in up) {
+          a <- unique(unname(anc[[r]][cid]))
+          if (length(a) == 1L && !is.na(a)) { to <- a; to_rank <- r; break }
+        }
+        data.frame(row = i, observation_id = lw$observation_id[i], ring = as.character(orig$taxon_name[i]),
+                   rank = as.character(lw$taxon_name_rank[i]), from_id = lw$taxon_name[i], to_id = to, to_rank = to_rank,
+                   n_member_candidates = length(cid),
+                   outcome = if (is.na(to)) "lca_registry_none" else "lca_registry", stringsAsFactors = FALSE)
+      })
+      lr <- do.call(rbind, lca_rows[!vapply(lca_rows, is.null, TRUE)])
+      if (!is.null(lr) && nrow(lr)) {
+        ok <- !is.na(lr$to_id)
+        lw$taxon_name[lr$row[ok]] <- lr$to_id[ok]
+        lw$taxon_name_rank[lr$row[ok]] <- lr$to_rank[ok]
+        rk_rows[[3L]] <- lr[, setdiff(names(lr), "row")]
+      }
+    }
+    if (length(rk_rows)) ring_rekeyed <- do.call(rbind, lapply(rk_rows[!vapply(rk_rows, is.null, TRUE)], function(d) {
+      for (cc in setdiff(c("to_rank", "n_member_candidates"), names(d))) d[[cc]] <- NA
+      d
+    }))
     new_ids <- setdiff(unique(stats::na.omit(lw$taxon_name)), names(anc[[1L]]))
     if (length(new_ids)) {
       anc2 <- .registry_ancestors(new_ids, all_ranks, registry)
@@ -184,7 +223,9 @@
     counts = list(n_likelihood_rows_no_id = n_lik_no_id, n_prior_names_no_id = kp$n_no_id, n_prior_rows_merged = kp$n_merged,
                   n_likelihood_taxa_under_2plus_names = length(multi),
                   n_ring_rows_rekeyed = sum(ring_rekeyed$outcome %in% "rekeyed"),
-                  n_ring_rows_candidates_split = sum(ring_rekeyed$outcome %in% "candidates_split_kept"))
+                  n_ring_rows_candidates_split = sum(ring_rekeyed$outcome %in% "candidates_split_kept"),
+                  n_lca_rings_registry = sum(ring_rekeyed$outcome %in% "lca_registry"),
+                  n_lca_rings_registry_none = sum(ring_rekeyed$outcome %in% "lca_registry_none"))
   )
 }
 
