@@ -34,7 +34,7 @@ OUT  <- Sys.getenv("TAXAID_TEMPLATE_OUT",
 CANONICAL_PATH <- c(
   "seq_to_match", "match_to_taxa", "taxa_to_refs", "refs_to_matrix",
   "matrix_to_model", "model_match_to_lik", "taxa_to_occ", "occ_to_std",
-  "tables_to_registry", "dist_to_priors_by_group", "lik_prior_to_post", "post_to_consensus",
+  "dist_to_priors_by_group", "tables_to_registry", "lik_prior_to_post", "post_to_consensus",
   "taxa_to_context", "consensus_to_reviewed"
 )
 

@@ -101,7 +101,7 @@
       {
         "id": "taxon_registry",
         "label": "Taxon Registry",
-        "description": "One frozen registry for the run: every name the run joins on (match, likelihoods, references, occurrences) resolved once to a GBIF Backbone taxon id, so later steps match taxa by id and report GBIF accepted names"
+        "description": "One frozen registry for the run: every name the run joins on (match, likelihoods, references, occurrences, priors) resolved once to a GBIF Backbone taxon id, so later steps match taxa by id and report GBIF accepted names"
       }
     ],
     "outputs": [
@@ -313,11 +313,12 @@
         "match_df",
         "likelihoods",
         "reference_df",
-        "std_occurrences"
+        "std_occurrences",
+        "priors"
       ],
       "to": "taxon_registry",
       "label": "Build the run's taxon registry (one GBIF id per taxon)",
-      "description": "Resolve every name in the match object, the likelihoods, the reference database and the standardized occurrences ONCE to a GBIF Backbone taxon id (TaxaFetch::lookup_gbif_taxa, cached), freeze the registry, stop on an error-class finding, and stamp the occurrence table. The prior and posterior steps reuse this one registry: a synonym meets its accepted name, one taxon under two names is one hypothesis, lineage comes from the GBIF tree, and outputs carry GBIF accepted names.",
+      "description": "After the priors are built, resolve every name in the match object, the likelihoods, the reference database, the standardized occurrences and the finished prior table ONCE to a GBIF Backbone taxon id (TaxaFetch::lookup_gbif_taxa, cached), freeze the registry, stop on an error-class finding, and stamp the occurrence table. The prior and posterior steps reuse this one registry: a synonym meets its accepted name, one taxon under two names is one hypothesis, lineage comes from the GBIF tree, and outputs carry GBIF accepted names.",
       "packages": [
         "TaxaTools",
         "TaxaFetch"
