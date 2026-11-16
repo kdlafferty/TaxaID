@@ -116,12 +116,18 @@ different ranks and so get different answers. Within one (name,
 candidates are the identifiers the lookup accepted for that name and
 context. One candidate is taken by every row of the name (rows refused as a
 homonym, answered at a coarser rank, or not answered), with
-\code{status = "lineage_rule"}. Of two or more, the one whose parent is the
-taxon just above the name in its \code{context} is taken, else the one whose
-path holds that taxon. When the lineage decides none, or there is no context,
-every row of the name is unresolved (\code{status = "lineage_unresolved"},
-listed in \code{meta$lineage_unresolved}), never a guess. Choices are listed
-in \code{meta$lineage_rule}.
+\code{status = "lineage_rule"}. Of two or more candidates all at genus or
+species, the name's \code{context} breaks the tie: the one whose parent is
+the taxon just above the name in its \code{context} is taken, else the one
+whose path holds that taxon. When any candidate is at family or above, the
+key backbone alone decides and the context is not read: of candidates nested
+in the backbone's own classification, the one that is an ancestor of all the
+others is taken (a backbone genus named like its own family is filed under
+that family). When neither decides, or a genus or species tie has no
+context, every row of the name is unresolved
+(\code{status = "lineage_unresolved"}, listed in
+\code{meta$lineage_unresolved}), never a guess. Choices are listed in
+\code{meta$lineage_rule}.
 
 \strong{Run-local descriptions.} A run-local identifier described once with
 a rank or parent and once without is one description, the given one; two

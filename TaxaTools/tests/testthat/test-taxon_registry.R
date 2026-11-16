@@ -898,7 +898,7 @@ test_that("lineage rule: Polyarthra asked at genus and at order is the rotifer g
   expect_false(any(chk$severity == "error"))
 })
 
-test_that("lineage rule: Scopelarchidae is the family (its parent is the order in its lineage), not GBIF's genus of that name", {
+test_that("lineage rule: Scopelarchidae is the GBIF family, not the GBIF genus of that name filed under it (backbone tree, above genus)", {
   ctx <- "Chordata|Actinopteri|Aulopiformes|Scopelarchidae"
   lk <- .rank_lookup(rbind(
     .ans("Scopelarchidae", "family", "2966", "Animalia|Chordata|Aulopiformes|Scopelarchidae", "kingdom|phylum|order|family", "1|44|1050|2966"),
@@ -912,17 +912,39 @@ test_that("lineage rule: Scopelarchidae is the family (its parent is the order i
   expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind == "name_to_2plus_taxa"))
 })
 
-test_that("NEGATIVE lineage rule: two candidates and NO lineage to decide are unresolved and error-class, never a guess", {
+test_that("lineage rule above genus reads the backbone only: Scopelarchidae with NO context is still the family", {
   lk <- .rank_lookup(rbind(
     .ans("Scopelarchidae", "family", "2966", "Animalia|Chordata|Aulopiformes|Scopelarchidae", "kingdom|phylum|order|family", "1|44|1050|2966"),
     .ans("Scopelarchidae", "genus", "11111900", "Animalia|Chordata|Aulopiformes|Scopelarchidae|Scopelarchidae", "kingdom|phylum|order|family|genus", "1|44|1050|2966|11111900")))
   reg <- build_taxon_registry(rbind(.names("Scopelarchidae", "priors", rank_given = "family"),
                                     .names("Scopelarchidae", "priors", rank_given = "genus")), run_id = "lr3", lookup = lk)
-  expect_false(any(reg$names$taxon_id %in% c("gbif:2966", "gbif:11111900")))
+  expect_identical(unique(reg$names$taxon_id), "gbif:2966")
+})
+
+test_that("NEGATIVE lineage rule: same-named candidates above genus that the backbone does NOT nest are unresolved, error-class", {
+  lk <- .rank_lookup(rbind(
+    .ans("Twinidae", "family", "501", "Animalia|Chordata|Perciformes|Twinidae", "kingdom|phylum|order|family", "1|44|587|501"),
+    .ans("Twinidae", "order", "502", "Animalia|Chordata|Twinidae", "kingdom|phylum|order", "1|44|502")))
+  reg <- build_taxon_registry(rbind(.names("Twinidae", "priors", rank_given = "family", context = "Chordata|Perciformes"),
+                                    .names("Twinidae", "priors", rank_given = "order", context = "Chordata|Perciformes")), run_id = "lr3n", lookup = lk)
+  expect_false(any(reg$names$taxon_id %in% c("gbif:501", "gbif:502")))
   expect_true(all(reg$names$status == "lineage_unresolved"))
   chk <- check_taxon_registry(reg, verbose = FALSE)
-  expect_true(any(chk$kind == "lineage_unresolved" & chk$severity == "error" & chk$names == "Scopelarchidae"))
+  expect_true(any(chk$kind == "lineage_unresolved" & chk$severity == "error" & chk$names == "Twinidae"))
   expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "lineage_unresolved")
+})
+
+test_that("lineage rule at genus: the name's lineage breaks a tie between two genera; with NO lineage the name is unresolved", {
+  lk <- .rank_lookup(rbind(
+    .ans("Homonymus", "genus", "600", "Animalia|Chordata|Perciformes|Labridae|Homonymus", "kingdom|phylum|order|family|genus", "1|44|587|40|600"),
+    .ans("Homonymus", "", "601", "Animalia|Chordata|Perciformes|Gobiidae|Homonymus", "kingdom|phylum|order|family|genus", "1|44|587|41|601")))
+  two <- function(ctx) rbind(.names("Homonymus", "priors", rank_given = "genus", context = ctx), .names("Homonymus", "calls", rank_given = NA_character_, context = ctx))
+  reg <- build_taxon_registry(two("Chordata|Perciformes|Gobiidae"), run_id = "lr6", lookup = lk)
+  expect_identical(unique(reg$names$taxon_id), "gbif:601")
+  # NEGATIVE: no lineage, no guess
+  reg0 <- build_taxon_registry(two(NA_character_), run_id = "lr6n", lookup = lk)
+  expect_true(all(reg0$names$status == "lineage_unresolved"))
+  expect_true(any(check_taxon_registry(reg0, verbose = FALSE)$kind == "lineage_unresolved"))
 })
 
 test_that("lineage rule: Chromis is the fish its lineage names, not a mollusc homonym another table's answer gave", {
@@ -937,9 +959,8 @@ test_that("lineage rule: Chromis is the fish its lineage names, not a mollusc ho
   expect_false(any(reg$names$taxon_id %in% "gbif:9990001"))
 })
 
-test_that("lineage rule: Bigyra asked at phylum and at class takes the one accepted GBIF id (one-candidate reading)", {
-  # .REGISTRY_ONE_CANDIDATE_TAKES = TRUE. If the maintainer chooses the strict reading (no lineage above the name ->
-  # unresolved), set it FALSE and change the next expectation to: all(reg$names$status == "lineage_unresolved").
+test_that("lineage rule: Bigyra asked at phylum and at class is the one accepted GBIF phylum", {
+  # The sole accepted candidate is taken (maintainer, 2026-11-16: the GBIF backbone decides at family and above).
   lk <- .rank_lookup(rbind(
     .ans("Bigyra", "phylum", "8158183", "Chromista|Bigyra", "kingdom|phylum", "4|8158183"),
     .ans("Bigyra", "class", "8158183", "Chromista|Bigyra", "kingdom|phylum", "4|8158183")))

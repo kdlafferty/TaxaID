@@ -32,11 +32,6 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 # Rank ladder for "was the name answered at a coarser rank than it was asked at?". Below species everything is one
 # step (infraspecific). A rank not on the ladder cannot be compared: an ANSWER at such a rank counts as coarser
 # (refused, not accepted); a name ASKED at such a rank falls back to the shape rule.
-# The lineage rule (build_taxon_registry): when one (name, context) has exactly ONE accepted candidate, its other rows
-# were refused as a homonym, fell back to a coarser rank, or got no answer, AND the context holds no lineage above the
-# name (Bigyra: its context is "Bigyra"), do those rows take the candidate (TRUE), or is the whole group unresolved and
-# listed (FALSE)? A maintainer's decision, held in one place. With a lineage above the name the candidate is taken.
-.REGISTRY_ONE_CANDIDATE_TAKES <- TRUE
 .RANK_LADDER <- c(kingdom = 1L, phylum = 2L, class = 3L, order = 4L, family = 5L, genus = 6L, species = 7L,
                   subspecies = 8L, variety = 8L, form = 8L, forma = 8L, infraspecies = 8L, infraspecific = 8L)
 
@@ -275,12 +270,18 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' candidates are the identifiers the lookup accepted for that name and
 #' context. One candidate is taken by every row of the name (rows refused as a
 #' homonym, answered at a coarser rank, or not answered), with
-#' \code{status = "lineage_rule"}. Of two or more, the one whose parent is the
-#' taxon just above the name in its \code{context} is taken, else the one whose
-#' path holds that taxon. When the lineage decides none, or there is no context,
-#' every row of the name is unresolved (\code{status = "lineage_unresolved"},
-#' listed in \code{meta$lineage_unresolved}), never a guess. Choices are listed
-#' in \code{meta$lineage_rule}.
+#' \code{status = "lineage_rule"}. Of two or more candidates all at genus or
+#' species, the name's \code{context} breaks the tie: the one whose parent is
+#' the taxon just above the name in its \code{context} is taken, else the one
+#' whose path holds that taxon. When any candidate is at family or above, the
+#' key backbone alone decides and the context is not read: of candidates nested
+#' in the backbone's own classification, the one that is an ancestor of all the
+#' others is taken (a backbone genus named like its own family is filed under
+#' that family). When neither decides, or a genus or species tie has no
+#' context, every row of the name is unresolved
+#' (\code{status = "lineage_unresolved"}, listed in
+#' \code{meta$lineage_unresolved}), never a guess. Choices are listed in
+#' \code{meta$lineage_rule}.
 #'
 #' \strong{Run-local descriptions.} A run-local identifier described once with
 #' a rank or parent and once without is one description, the given one; two
@@ -476,16 +477,19 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$match_type <- r$match_type
   nm$hop <- dplyr::if_else(nm$source_naming %in% "ncbi", "ncbi_name_in_key_authority", "direct")
 
-  # --- the lineage rule: within one (name, context) the rank a table asked at is a HINT, the lineage decides ---
+  # --- the lineage rule: within one (name, context) the rank a table asked at is a HINT ---
   # Tables can ask one name at different ranks (a posterior row at order, a prior at genus) and get different answers.
   # One name in one lineage is one taxon. The candidates are the ids the lookup ACCEPTED for that (name, context):
   #  - one candidate: every row of the group takes it (rows refused as a homonym, fallen to a coarser rank, or given
-  #    no answer), status lineage_rule. With no lineage ABOVE the name (the context is the name alone, or none), it is
-  #    taken only while .REGISTRY_ONE_CANDIDATE_TAKES is TRUE; FALSE makes such a group unresolved and listed;
-  #  - two or more: the candidate whose PARENT is the context's taxon just above the name (or the context's last taxon
-  #    when the name is not in it) is taken, else the one whose path holds that taxon; exactly one, or none is taken;
-  #  - none decided, or no context to decide with: every row of the group is unresolved (status lineage_unresolved),
-  #    listed in meta$lineage_unresolved and error-class in check_taxon_registry(). No guess.
+  #    no answer), status lineage_rule;
+  #  - two or more, ALL at genus or species: the name's own lineage (context) breaks the tie -- the candidate whose
+  #    PARENT is the context's taxon just above the name (or the context's last taxon when the name is not in it), else
+  #    the one whose path holds that taxon;
+  #  - two or more, ANY at family or above: the key backbone alone decides, the context is not read -- of candidates
+  #    nested in the backbone's own classification, the one that is an ancestor of all the others (a backbone genus
+  #    named like its own family is filed under that family);
+  #  - none decided, or no context where one is needed: every row of the group is unresolved (status
+  #    lineage_unresolved), listed in meta$lineage_unresolved and error-class in check_taxon_registry(). No guess.
   lineage_unresolved <- list(); lineage_rule <- list()
   ctx0 <- dplyr::if_else(is.na(nm$context) | !nzchar(nm$context), NA_character_, nm$context)
   gk <- paste(nm$name_clean, dplyr::if_else(is.na(ctx0), "", ctx0), sep = "\r")
@@ -499,12 +503,18 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     w <- rows_of[[g]]
     cw <- w[is_cand[w]]; cand <- unique(nm$taxon_id[cw])
     pick <- NA_character_; why <- NA_character_
+    crow <- cw[match(cand, nm$taxon_id[cw])]
+    lvl <- unname(.RANK_LADDER[tolower(nm$matched_rank[crow])])
     if (length(cand) == 1L) {
-      above <- setdiff(.split_pipe(ctx0[w[1L]] %||% NA_character_), nm$name_clean[w[1L]])   # the lineage ABOVE the name
-      if (length(above) || isTRUE(.REGISTRY_ONE_CANDIDATE_TAKES)) pick <- cand else
-        why <- "one accepted candidate and no lineage above the name; the other rows were refused or fell back"
+      pick <- cand
+    } else if (!all(!is.na(lvl) & lvl >= .RANK_LADDER[["genus"]])) {
+      # family and above: the backbone's own tree, no context
+      bare <- sub("^[^:]+:", "", cand); cids <- lapply(crow, function(i) .split_pipe(r$classification_ids[i]))
+      anc <- vapply(seq_along(cand), function(i) all(vapply(seq_along(cand)[-i], function(j) bare[i] %in% cids[[j]], TRUE)), TRUE)
+      if (sum(anc) == 1L) pick <- cand[anc] else
+        why <- sprintf("%d accepted candidates at family or above, not nested in the backbone's classification", length(cand))
     } else if (is.na(ctx0[w[1L]])) {
-      why <- "two or more accepted candidates and no lineage context"
+      why <- "two or more accepted candidates at genus or species and no lineage context"
     } else {
       cx <- .split_pipe(ctx0[w[1L]]); x <- nm$name_clean[w[1L]]
       at <- match(x, cx)
