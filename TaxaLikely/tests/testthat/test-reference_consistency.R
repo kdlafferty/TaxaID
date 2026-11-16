@@ -7,10 +7,21 @@
   m
 }
 
-test_that("exclude_reference_suspects is the LAST formal of train_likelihood_model() and defaults to FALSE", {
+test_that("exclude_reference_suspects is the LAST formal of train_likelihood_model() and defaults to TRUE", {
+  # default flipped to TRUE on 2026-11-15 (maintainer decision after held-out non-inferiority)
   f <- formals(train_likelihood_model)
   expect_identical(utils::tail(names(f), 1L), "exclude_reference_suspects")
-  expect_identical(f$exclude_reference_suspects, FALSE)
+  expect_identical(f$exclude_reference_suspects, TRUE)
+})
+
+test_that("the default excludes the suspects: omitting the argument is exclude_reference_suspects = TRUE", {
+  df <- .rc_raw_df()
+  m <- .rc_train(df)
+  expect_identical(m, .rc_train(df, exclude_reference_suspects = TRUE))
+  # and it differs from the report-only fit on this fixture, which has two suspects
+  expect_false(identical(.rc_strip(m), .rc_strip(.rc_train(df, exclude_reference_suspects = FALSE))))
+  expect_setequal(attr(m, "reference_consistency")$accession[attr(m, "reference_consistency")$excluded],
+                  c("AF488489", "MT999001"))
 })
 
 test_that("the TaxaMatch internal helper the table reuses still exists with the arguments passed to it", {
@@ -24,10 +35,10 @@ test_that("the TaxaMatch internal helper the table reuses still exists with the 
   expect_true(all(c("min_independent_partners", "hierarchy_incongruent_threshold") %in% names(fe)))
 })
 
-test_that("default (report only): the returned model is v1.0's exactly, with the table attached", {
+test_that("exclude_reference_suspects = FALSE (report only): the returned model is v1.0's exactly, with the table attached", {
   g <- eval(parse(test_path("fixtures", "reference_consistency_v1_golden.R")))
   expect_identical(g$commit, "3e563f29")
-  m <- .rc_train(.rc_raw_df())
+  m <- .rc_train(.rc_raw_df(), exclude_reference_suspects = FALSE)
   # cross-platform golden: floating-point arithmetic can differ in the last bits (~1e-16) between platforms
   expect_equal(.rc_strip(m), g$model, tolerance = 1e-12)
   rc <- attr(m, "reference_consistency")
@@ -76,15 +87,15 @@ test_that("exclude_reference_suspects = TRUE trains without the suspects and rec
   expect_setequal(rc$accession[rc$excluded], c("AF488489", "MT999001"))
   expect_identical(rc$excluded, rc$suspect)
   keep <- !(df$id_x %in% c("AF488489", "MT999001") | df$id_y %in% c("AF488489", "MT999001"))
-  expect_identical(.rc_strip(m), .rc_strip(.rc_train(df[keep, , drop = FALSE])))
+  expect_identical(.rc_strip(m), .rc_strip(.rc_train(df[keep, , drop = FALSE], exclude_reference_suspects = FALSE)))
   # P. verticalis is left with one reference, so it has no within-species H1 row
   expect_false("Pleuro verticalis" %in% m$H1_Lookup$lookup_key[m$H1_Lookup$n_obs_species > 0])
 })
 
-test_that("exclusion with no suspects trains exactly as the default", {
+test_that("exclusion with no suspects trains exactly as the report-only fit", {
   df <- .rc_raw_df()
   df <- df[!(df$id_x %in% c("AF488489", "MT999001") | df$id_y %in% c("AF488489", "MT999001")), ]
-  m0 <- .rc_train(df)
+  m0 <- .rc_train(df, exclude_reference_suspects = FALSE)
   m1 <- .rc_train(df, exclude_reference_suspects = TRUE)
   expect_false(any(attr(m1, "reference_consistency")$suspect))
   expect_identical(m1, m0)
