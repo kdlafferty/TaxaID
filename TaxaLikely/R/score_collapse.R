@@ -24,6 +24,24 @@
 # evaluate them as real alternatives.
 
 
+
+# restore_suppressed_candidates(registry =): the registry must be frozen and each table must carry a taxon_id column
+# stamped by it.
+.rsc_check_registry <- function(registry, tables) {
+  if (!inherits(registry, "taxon_registry")) {
+    stop("restore_suppressed_candidates: 'registry' must be a taxon_registry (TaxaTools::build_taxon_registry()).", call. = FALSE)
+  }
+  if (!isTRUE(registry$meta$frozen)) stop("restore_suppressed_candidates: 'registry' must be frozen (TaxaTools::freeze_taxon_registry()).", call. = FALSE)
+  for (a in names(tables)) {
+    s <- attr(tables[[a]], "taxon_registry", exact = TRUE)
+    if (!"taxon_id" %in% names(tables[[a]]) || is.null(s)) {
+      stop(sprintf("restore_suppressed_candidates: '%s' has no taxon_id column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.", a), call. = FALSE)
+    }
+    if (!identical(s$digest, registry$meta$digest)) stop(sprintf("restore_suppressed_candidates: '%s' was stamped by a different registry than 'registry'.", a), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Detect pipeline rules that suppress candidate rows in a match object
 #'
 #' Inspects a match object for evidence that an upstream tool suppressed
@@ -420,6 +438,18 @@ detect_suppressed_candidates <- function(match_obj,
 #'   more than one call, so that a restored score does not depend on which
 #'   batch its observation landed in.
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
+#' @param registry \code{NULL} (default) or a frozen \code{taxon_registry}
+#'   (\code{TaxaTools::build_taxon_registry()}). \code{NULL} decides "is this
+#'   reference species already a candidate?" and "is it in
+#'   \code{candidate_species_filter}?" by name. Given a registry,
+#'   \code{match_obj} and \code{reference_df} must carry a \code{taxon_id}
+#'   column stamped by it (\code{TaxaTools::attach_taxon_ids()}), and both
+#'   tests also compare registry taxon ids: a reference species held under a
+#'   synonym of a candidate's name is that candidate, not a congener to
+#'   restore, and a filter name matches a reference species under any of its
+#'   registered names. Genus grouping and the likelihood-model lookups stay on
+#'   the reference's own names, the names the model was trained on. Restored
+#'   rows carry the reference species' own \code{taxon_id}.
 #'
 #' @section Measured restored scores:
 #' A restored row's score is the QUERY's identity to the candidate whenever
@@ -647,7 +677,8 @@ restore_suppressed_candidates <- function(match_obj,
                                           min_query_coverage = 0.8,
                                           dropped_matches = NULL,
                                           measured_offset = NULL,
-                                          verbose = TRUE) {
+                                          verbose = TRUE,
+                                          registry = NULL) {
   # ---- validate ---------------------------------------------------------------
   if (!is.data.frame(match_obj)) {
     stop("restore_suppressed_candidates: 'match_obj' must be a data frame.",
@@ -713,6 +744,13 @@ restore_suppressed_candidates <- function(match_obj,
 
   max_per_obs <- as.integer(max_per_obs)
 
+  # ---- registry: "same taxon?" by id ------------------------------------------
+  ref_sp_id <- NULL
+  filt_ids <- character(0)
+  if (!is.null(registry)) {
+    .rsc_check_registry(registry, list(match_obj = match_obj, reference_df = reference_df))
+  }
+
   # ---- auto-detect rank_system ------------------------------------------------
   if (is.null(rank_system)) {
     canonical <- TaxaTools::extended_ranks
@@ -733,6 +771,26 @@ restore_suppressed_candidates <- function(match_obj,
 
   genus_col <- rank_system[length(rank_system) - 1L]
   species_col <- rank_system[length(rank_system)]
+  if (!is.null(registry)) {
+    # each reference species name -> its taxon id (the id of its rows); filter names -> ids through the registry's
+    # name table (a name registered to one id only)
+    rs <- reference_df[!is.na(reference_df[[species_col]]) & !is.na(reference_df$taxon_id), c(species_col, "taxon_id"), drop = FALSE]
+    rs <- rs[!duplicated(rs[[species_col]]), , drop = FALSE]
+    ref_sp_id <- stats::setNames(as.character(rs$taxon_id), rs[[species_col]])
+    if (!is.null(candidate_species_filter)) {
+      nm <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+      one <- !nm$verbatim_name %in% nm$verbatim_name[duplicated(nm$verbatim_name)]
+      nm <- nm[one, , drop = FALSE]
+      filt_ids <- unique(stats::na.omit(nm$taxon_id[match(candidate_species_filter, nm$verbatim_name)]))
+    }
+  }
+  # Is a reference species in candidate_species_filter? By name, or (with a registry) by id.
+  .in_filter <- function(sp) {
+    if (is.null(candidate_species_filter)) return(rep(TRUE, length(sp)))
+    by_name <- sp %in% candidate_species_filter
+    if (is.null(ref_sp_id) || length(filt_ids) == 0L) return(by_name)
+    by_name | unname(ref_sp_id[sp]) %in% filt_ids
+  }
 
   for (col in c(genus_col, species_col)) {
     if (!col %in% names(match_obj)) {
@@ -911,12 +969,17 @@ restore_suppressed_candidates <- function(match_obj,
     other_species <- unique(ref_genus_rows[[species_col]])
     other_species <- other_species[!is.na(other_species) &
       !other_species %in% present_species]
+    if (!is.null(registry) && length(other_species)) {
+      # a reference species held under a synonym of a candidate's name IS that candidate
+      present_ids <- unique(stats::na.omit(as.character(obs_rows$taxon_id)))
+      other_species <- other_species[!unname(ref_sp_id[other_species]) %in% present_ids]
+    }
 
     if (no_score_path) {
       # No real evidence exists to source Purpose A/B from -- restore every
       # (optionally filtered) congener with the flat synthetic gap.
       if (!is.null(no_score_target_species)) {
-        other_species <- other_species[other_species %in% no_score_target_species]
+        other_species <- other_species[.in_filter(other_species)]
       }
       if (length(other_species) == 0L) next
       if (length(other_species) > max_per_obs) {
@@ -998,8 +1061,7 @@ restore_suppressed_candidates <- function(match_obj,
     # Measure every admissible candidate in one alignment call (see
     # .measure_query_identity()); cached per (species, query).
     if (can_measure && !is.na(query_seq_measure)) {
-      adm_sp <- other_species[is.null(candidate_species_filter) |
-        other_species %in% candidate_species_filter | !is.na(anchor_transform)]
+      adm_sp <- other_species[.in_filter(other_species) | !is.na(anchor_transform)]
       adm_sp <- adm_sp[!vapply(paste0("measure::", adm_sp, "::", query_seq_measure),
         exists, logical(1), envir = align_cache, inherits = FALSE)]
       if (length(adm_sp)) {
@@ -1037,8 +1099,7 @@ restore_suppressed_candidates <- function(match_obj,
       # Measure only a candidate that could be admitted: Purpose B needs the
       # filter, Purpose A needs model_params. The rest are never restored, so
       # aligning the query to their references would be wasted work.
-      admissible <- is.null(candidate_species_filter) || sp %in% candidate_species_filter ||
-        !is.na(anchor_transform)
+      admissible <- .in_filter(sp) || !is.na(anchor_transform)
       if (admissible && can_measure && !is.na(query_seq_measure)) {
         mkey <- paste0("measure::", sp, "::", query_seq_measure)
         measured <- align_cache[[mkey]]
@@ -1154,7 +1215,7 @@ restore_suppressed_candidates <- function(match_obj,
       }
 
       # ---- Purpose B: wide, plausibility-gated max_dist sanity floor.
-      in_filter <- is.null(candidate_species_filter) || sp %in% candidate_species_filter
+      in_filter <- .in_filter(sp)
       clears_dist <- !is.na(restored_p) && restored_p >= (1 - max_dist)
       purpose_b_pass <- in_filter && clears_dist
 
@@ -1202,7 +1263,7 @@ restore_suppressed_candidates <- function(match_obj,
       score_col = score_col, sequence_col = sequence_col, scale_100 = scale_100,
       max_dist = max_dist, min_query_coverage = min_query_coverage,
       measured_cal = measured_cal, max_per_obs = max_per_obs,
-      region_matched = region_matched, align_cache = align_cache
+      region_matched = region_matched, align_cache = align_cache, ref_sp_id = ref_sp_id
     )
     if (!is.null(repl)) {
       if (verbose) {
@@ -1218,6 +1279,11 @@ restore_suppressed_candidates <- function(match_obj,
       restored_df <- dplyr::bind_rows(restored_df, repl)
       n_restored_rows <- n_restored_rows + nrow(repl)
     }
+  }
+
+  # restored rows were built from the anchor's row: give each the reference species' own taxon id
+  if (!is.null(registry) && !is.null(restored_df) && nrow(restored_df) > 0L) {
+    restored_df$taxon_id <- unname(ref_sp_id[as.character(restored_df[[species_col]])])
   }
 
   restoration_skipped_df <- if (length(restoration_skipped_list) > 0L) {
@@ -1309,7 +1375,7 @@ restore_suppressed_candidates <- function(match_obj,
                                   observation_id_col, genus_col, species_col, rank_system,
                                   score_col, sequence_col, scale_100, max_dist,
                                   min_query_coverage, region_matched, align_cache,
-                                  measured_cal = NULL, max_per_obs = 10L) {
+                                  measured_cal = NULL, max_per_obs = 10L, ref_sp_id = NULL) {
   if (!all(c(genus_col, species_col) %in% names(dropped_matches))) {
     stop(sprintf(
       "restore_suppressed_candidates: 'dropped_matches' needs columns '%s' and '%s'.",
@@ -1323,6 +1389,11 @@ restore_suppressed_candidates <- function(match_obj,
   dm <- dm[!duplicated(gkey), , drop = FALSE]
   key <- function(df) paste(df[[observation_id_col]], df[[species_col]], sep = "\r")
   held <- c(key(match_obj), if (!is.null(restored_df) && nrow(restored_df)) key(restored_df))
+  held_id <- if (!is.null(ref_sp_id)) {
+    rid <- if (!is.null(restored_df) && nrow(restored_df)) unname(ref_sp_id[as.character(restored_df[[species_col]])]) else character(0)
+    c(paste(match_obj[[observation_id_col]], match_obj$taxon_id, sep = "\r"),
+      if (length(rid)) paste(restored_df[[observation_id_col]], rid, sep = "\r"))
+  } else character(0)
 
   ref <- reference_df[!is.na(reference_df[[species_col]]) & !is.na(reference_df[[genus_col]]), , drop = FALSE]
   if (region_matched) ref <- ref[ref$trim_path %in% .REGION_PLACED_PATHS, , drop = FALSE]
@@ -1337,6 +1408,10 @@ restore_suppressed_candidates <- function(match_obj,
     q <- tmpl[[sequence_col]]
     sps <- unique(g_ref[[species_col]])
     sps <- sps[!paste(obs, sps, sep = "\r") %in% held]
+    if (!is.null(ref_sp_id) && length(sps)) {
+      # a species held under a synonym in this observation is already held
+      sps <- sps[!paste(obs, unname(ref_sp_id[sps]), sep = "\r") %in% held_id]
+    }
     if (!length(sps)) next
     todo <- sps[!vapply(paste0("measure::", sps, "::", q), exists, logical(1),
       envir = align_cache, inherits = FALSE
@@ -1374,6 +1449,7 @@ restore_suppressed_candidates <- function(match_obj,
       new_row[["restored_offset_out_of_range"]] <- am$out_of_range
       rows[[length(rows) + 1L]] <- new_row
       held <- c(held, paste(obs, sp, sep = "\r"))
+      if (!is.null(ref_sp_id)) held_id <- c(held_id, paste(obs, unname(ref_sp_id[sp]), sep = "\r"))
     }
   }
   if (length(rows) == 0L) return(NULL)

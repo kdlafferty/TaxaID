@@ -31,7 +31,8 @@ restore_suppressed_candidates(
   min_query_coverage = 0.8,
   dropped_matches = NULL,
   measured_offset = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  registry = NULL
 )
 }
 \arguments{
@@ -213,6 +214,19 @@ more than one call, so that a restored score does not depend on which
 batch its observation landed in.}
 
 \item{verbose}{Logical. Emit summary messages (default \code{TRUE}).}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} decides "is this
+reference species already a candidate?" and "is it in
+\code{candidate_species_filter}?" by name. Given a registry,
+\code{match_obj} and \code{reference_df} must carry a \code{taxon_id}
+column stamped by it (\code{TaxaTools::attach_taxon_ids()}), and both
+tests also compare registry taxon ids: a reference species held under a
+synonym of a candidate's name is that candidate, not a congener to
+restore, and a filter name matches a reference species under any of its
+registered names. Genus grouping and the likelihood-model lookups stay on
+the reference's own names, the names the model was trained on. Restored
+rows carry the reference species' own \code{taxon_id}.}
 }
 \value{
 \code{match_obj} with restored \code{"suppressed_candidate"} rows
