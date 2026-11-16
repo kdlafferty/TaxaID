@@ -1,0 +1,650 @@
+[
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "local_lookup, by = \"genus\"",
+    "verdict": "display_filler",
+    "reason": "fill_higher_ranks is a display filler; with a registry, lineage comes from the tree (Kevin 2y), never this"
+  },
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "own_val <- own_lookup[[r]][match(filled$taxon_name[amb_rows],",
+    "verdict": "display_filler",
+    "reason": "fill_higher_ranks is a display filler; with a registry, lineage comes from the tree (Kevin 2y), never this"
+  },
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "j <- match(work$genus, lin_primary$genus)",
+    "verdict": "display_filler",
+    "reason": "fill_higher_ranks is a display filler; with a registry, lineage comes from the tree (Kevin 2y), never this"
+  },
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "j <- match(work$genus, lin_fb$genus)",
+    "verdict": "display_filler",
+    "reason": "fill_higher_ranks is a display filler; with a registry, lineage comes from the tree (Kevin 2y), never this"
+  },
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "i <- match(all_names, work$taxon_name)",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "i <- match(genera, lineage$genus)",
+    "verdict": "display_filler",
+    "reason": "fill_higher_ranks is a display filler; with a registry, lineage comes from the tree (Kevin 2y), never this"
+  },
+  {
+    "file": "TaxaTools/R/fill_higher_ranks.R",
+    "code": "j <- match(fb$genus[k], primary$genus)",
+    "verdict": "display_filler",
+    "reason": "fill_higher_ranks is a display filler; with a registry, lineage comes from the tree (Kevin 2y), never this"
+  },
+  {
+    "file": "TaxaTools/R/taxon_registry.R",
+    "code": "fz <- which(nm$status %in% \"fuzzy\" & grepl(\"^\\\\S+ \\\\S+$\", nm$name_clean) & grepl(\"^\\\\S+ \\\\S+$\", r$matched_name))",
+    "verdict": "resolver",
+    "reason": "the taxon registry itself (resolver, join helper, guard)"
+  },
+  {
+    "file": "TaxaTools/R/taxon_registry.R",
+    "code": "gvb <- which(nm$status %in% \"fuzzy\" & gmt %in% \"VARIANT\" & nm$matched_rank %in% \"species\" &",
+    "verdict": "resolver",
+    "reason": "the taxon registry itself (resolver, join helper, guard)"
+  },
+  {
+    "file": "TaxaTools/R/taxon_registry.R",
+    "code": "gt <- unique(taxa[taxa$rank %in% \"genus\", c(\"taxon_id\", \"name\"), drop = FALSE])",
+    "verdict": "resolver",
+    "reason": "the taxon registry itself (resolver, join helper, guard)"
+  },
+  {
+    "file": "TaxaTools/R/taxon_registry.R",
+    "code": "okg <- g$matched %in% TRUE & tolower(g$matched_rank) %in% \"genus\" & !is.na(g$current_record_id)",
+    "verdict": "resolver",
+    "reason": "the taxon registry itself (resolver, join helper, guard)"
+  },
+  {
+    "file": "TaxaFetch/R/check_geographic_outliers.R",
+    "code": "match(local_occurrences$species, local_counts$species)",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFetch/R/check_geographic_outliers.R",
+    "code": "match(global_occ$species, global_counts$species)",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFetch/R/dataone_standardize.R",
+    "code": "has_species <- any(mapping %in% c(\"scientificName\", \"specificEpithet\", \"genus\"),",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaHabitat/R/build_habitat_lookup.R",
+    "code": "pos <- match(parsed$taxon_name, taxon_list)",
+    "verdict": "reviewed",
+    "reason": "matches names an LLM echoed to the names it was asked: within call"
+  },
+  {
+    "file": "TaxaHabitat/R/build_habitat_lookup.R",
+    "code": "out <- out[order(match(out$taxon_name, taxon_list)), , drop = FALSE]",
+    "verdict": "reviewed",
+    "reason": "matches names an LLM echoed to the names it was asked: within call"
+  },
+  {
+    "file": "TaxaHabitat/R/spatial_review_decisions.R",
+    "code": "if (\"taxon_name\" %in% names(dec) && !(is.character(dec$taxon_name) || is.factor(dec$taxon_name))) {",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaHabitat/R/spatial_review_decisions.R",
+    "code": "if (!\"taxon_name\" %in% names(old)) old$taxon_name <- NA_character_",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaHabitat/R/spatial_review_decisions.R",
+    "code": "oi <- match(paste(new$point_id, new$taxon_name, sep = \"\\x1f\"),",
+    "verdict": "reviewed",
+    "reason": "decisions keyed by the pool point_id + the pool own name; the pool keeps its names under the registry; carried files are registered at ingestion in the template"
+  },
+  {
+    "file": "TaxaHabitat/R/spatial_review_decisions.R",
+    "code": "dec_taxon <- if (\"taxon_name\" %in% names(dec)) as.character(dec$taxon_name) else rep(NA_character_, nrow(dec))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaExpect/R/apply_undetected_evidence.R",
+    "code": "result <- dplyr::left_join(result, tax_lookup, by = \"taxon_name\")",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaExpect/R/condition_evidence_on_habitat.R",
+    "code": "h <- as.numeric(lk[[site_habitat]])[match(evidence$taxon_name, lk$taxon_name)]",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaExpect/R/estimate_kernel_priors_from_counts.R",
+    "code": "habitat_lookup[[site_habitat]][match(x$taxon_name, habitat_lookup$taxon_name)]",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaExpect/R/estimate_kernel_priors_from_counts.R",
+    "code": "j <- match(fit$singletons$taxon_name, sup_ex$taxon_name)",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaExpect/R/generate_domestic_food_priors.R",
+    "code": "result <- dplyr::left_join(result, tax_lookup, by = \"taxon_name\")",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaExpect/R/generate_undetected_diversity.R",
+    "code": "by = c(\"source_taxon_name\" = \"taxon_name\")",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaExpect/R/utils_internal.R",
+    "code": "h <- hv[match(as.character(taxa), lk$taxon_name)]",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaMatch/R/blast_sequences.R",
+    "code": "sp <- if (\"species\" %in% names(basic)) basic$species else rep(NA_character_, nrow(basic))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaMatch/R/blast_sequences.R",
+    "code": "ge <- if (\"genus\" %in% names(basic)) basic$genus else rep(NA_character_, nrow(basic))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaMatch/R/convert_taxonomy_backbone.R",
+    "code": "genus_pos <- match(\"genus\", rank_system)",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaMatch/R/evaluate_reference_accessions.R",
+    "code": "if (!\"species.y\" %in% names(sm)) sm$species.y <- NA_character_",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/assign_scores.R",
+    "code": "genus_col <- if (\"genus\" %in% names(h1_agg)) \"genus\" else NULL",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaLikely/R/assign_scores.R",
+    "code": "family_col <- if (\"family\" %in% names(h1_agg)) \"family\" else NULL",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaLikely/R/calibrate_query_noise.R",
+    "code": "sp_rank <- priors[priors$taxon_name_rank %in% \"species\" & !is.na(priors$taxon_name), , drop = FALSE]",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/calibrate_query_noise.R",
+    "code": "match(top$genus, genus_summary$genus)",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaLikely/R/evaluate.R",
+    "code": "gi <- match(g, lk$genus)",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaLikely/R/evaluate.R",
+    "code": "by = c(\"observation_id\", \"taxon_name\")",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/evaluate.R",
+    "code": "by = c(\"observation_id\", \"taxon_name\" = \".genus\")",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/evaluate.R",
+    "code": "dplyr::anti_join(preserved_genera, by = c(\"observation_id\", \".genus\")) |>",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/matrix_size.R",
+    "code": "sp_code <- match(rows$species, all_species)",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/matrix_size.R",
+    "code": "sp_genus <- match(rows$genus, unique(rows$genus))[match(seq_along(all_species), sp_code)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/restore_hierarchy.R",
+    "code": "gidx <- match(genus, model_params$H2_Lookup$genus)",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaLikely/R/score_collapse.R",
+    "code": "unname(mb[match(sp_m, names(mb))]), # match(), not [[: a species may be \"\"",
+    "verdict": "within",
+    "reason": "alignment-measure cache keyed by the reference species label it measured; the id tests sit beside it (registry =)"
+  },
+  {
+    "file": "TaxaLikely/R/score_collapse.R",
+    "code": "unname(mb[match(sp_m, names(mb))]), # match(), not [[: a species may be \"\"",
+    "verdict": "within",
+    "reason": "alignment-measure cache keyed by the reference species label it measured; the id tests sit beside it (registry =)"
+  },
+  {
+    "file": "TaxaLikely/R/suggest_unreferenced_species.R",
+    "code": "fam_col <- if (\"family\" %in% names(parsed)) as.character(parsed$family) else NULL",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/support_curves.R",
+    "code": "same_genus_pop <- collapsed[collapsed$pair_type %in% c(\"within-species\", \"congeneric\"), , drop = FALSE]",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaLikely/R/train.R",
+    "code": "H2_Lookup$q_identical <- q_lookup$q_identical[match(H2_Lookup$genus, q_lookup$genus)]",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaLikely/R/train.R",
+    "code": "m <- match(genus, H2_Lookup$genus)",
+    "verdict": "model",
+    "reason": "likelihood-model lookup: NCBI reference names against a model trained on them; kept (design: reviewed in 3(a))"
+  },
+  {
+    "file": "TaxaAssign/R/group_priors.R",
+    "code": "if (\"species\" %in% rank_cols && !\"species\" %in% names(taxonomy_map)) {",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "by = \"taxon_name\", all.x = TRUE",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "by = c(\"taxon_name\", \"taxon_name_rank\", \"grid_id\", \"main_habitat\")",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "by = c(\"taxon_name\", \"taxon_name_rank\", \"grid_id\")",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "\"{n_coarse_unmatched} likelihood row(s) have a coarse-rank taxon_name_rank ({paste(sort(unique(result$taxon_name_rank[is.na(result$alpha) & result$taxon_name_rank %in% coarser_than_finest & !is.na(result$taxon_name)])), collapse = ', ')}) that cannot join to species-level priors.\",",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "by = \"taxon_name\", all.x = TRUE",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "oi <- match(unmod_df$taxon_name, own$taxon_name)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "taxaexpect_priors$undetected_type %in% \"evidence_blend\", c(\"taxon_name\", \"prior_mix_w\"), drop = FALSE]",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "ev_df <- merge(data.frame(taxon_name = ev$taxon_name, w = ev$prior_mix_w),",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "sing_tax_norm[, c(\"taxon_name\", st_rank_cols), drop = FALSE], by = \"taxon_name\", all.x = TRUE)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "unref_df              = unmod_df[!is.na(match(unmod_df$taxon_name, result$taxon_name[is_unmod & result$taxon_name_rank %in% \"species\"])), , drop = FALSE],",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "idx <- match(result$taxon_name, unmod_groups$taxon_name)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "rm_i <- match(paste(result$taxon_name_rank[ring], result$taxon_name[ring], sep = \"\\r\"), rk)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "idx <- match(result$taxon_name, lookup_slim$taxon_name)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "idx <- match(result$taxon_name, lookup_slim$taxon_name)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "result$genus <- dplyr::coalesce(if (\"genus\" %in% names(result)) as.character(result$genus) else NA_character_, unname(.g_of[result$taxon_name]))",
+    "verdict": "registry_internal",
+    "reason": "registry path: genus from the registry tree by id"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "dplyr::left_join(fam_lookup, by = \"genus\", suffix = c(\"\", \".fill\")) |>",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/join_priors.R",
+    "code": "vargs$input_rank <- as.character(result$taxon_name_rank)[match(names_to_query, result$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "rk %in% \"species\" & !is.na(tn)",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "ring <- isU & !(rk %in% \"species\") & !is.na(rk) & !is.na(tn)",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "gen_col <- if (\"genus\" %in% names(df)) as.character(df$genus) else rep(NA_character_, n)",
+    "verdict": "converted_upstream",
+    "reason": "reads lineage columns that join_priors(registry =) writes from the registry tree by id"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "fam <- if (\"family\" %in% names(df)) as.character(df$family) else rep(NA_character_, n)",
+    "verdict": "converted_upstream",
+    "reason": "reads lineage columns that join_priors(registry =) writes from the registry tree by id"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "coarse <- !(rk[ri] %in% c(\"genus\", \"species\"))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "!(rk %in% \"species\") & !is.na(rk) & !is.na(out$taxon_name)",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/pool_unreferenced.R",
+    "code": "!(rk %in% \"species\") & !is.na(rk) & !is.na(result$taxon_name) &",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/posterior_consensus.R",
+    "code": "args$input_rank <- as.character(posterior_df$taxon_name_rank)[match(unref_names, posterior_df$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/posterior_consensus.R",
+    "code": "matched <- if (\"matched\" %in% names(v)) v$matched %in% TRUE else ok & !is.na(v$matched_name)",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/posterior_consensus.R",
+    "code": "idx <- match(posterior_df$taxon_name, verified_flat$taxon_name)",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/registry_keys.R",
+    "code": "is_ring <- !lw$hypothesis_type %in% \"specific_candidate\" & !is.na(lw$taxon_name) &",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/registry_keys.R",
+    "code": "lw$taxon_name_rank %in% setdiff(all_ranks, \"species\")",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/registry_keys.R",
+    "code": "cand <- lw$hypothesis_type %in% \"specific_candidate\" & !is.na(lw$taxon_name)",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/registry_keys.R",
+    "code": "v[f] <- as.character(tl[[r]][match(as.character(orig$taxon_name[idx[f]]), tl$taxon_name)])",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/registry_keys.R",
+    "code": "pr_key <- ifelse(pw$taxon_name %in% registry$taxa$taxon_id, pw$taxon_name,",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/site_utils.R",
+    "code": "if (all(c(\"taxon_name\", \"taxon_name_rank\") %in% names(df)) && is.character(df$taxon_name)) {",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "ring <- !jw$hypothesis_type %in% \"specific_candidate\" & !is.na(jw$taxon_name) & !jw$taxon_name_rank %in% \"species\"",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "if (\"species\" %in% names(out)) out$species[idx1] <- out$taxon_name[idx1]",
+    "verdict": "registry_internal",
+    "reason": "registry path: taxon_name holds the taxon id; lineage columns hold registry ancestor ids"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "!is.na(out$taxon_name) & out$taxon_name_rank %in% setdiff(names(taxonomy), \"taxon_name\") &",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "pr <- merge(pr[, c(\"taxon_name\", \"hab\", \"theta_mean\", \"var\")], tax, by = \"taxon_name\")",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "if (\"species\" %in% names(new)) new$species <- mem$taxon_name",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "tx <- tax[match(mem$taxon_name, tax$taxon_name), , drop = FALSE]",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaAssign/R/update_prior_from_consensus.R",
+    "code": "g6_cand <- unique(oid_ur[changed & !(lr_row %in% \"species\")])",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/update_prior_from_consensus.R",
+    "code": "g6_reverted <- sort(unique(as.character(chk$observation_id[chk$consensus_rank %in% \"species\"])))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/compute_local_occurrence_distance.R",
+    "code": "dplyr::left_join(counts, by = \"taxon_name\") |>",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaFlag/R/compute_local_occurrence_distance.R",
+    "code": "dplyr::left_join(nearest_rows, by = \"taxon_name\") |>",
+    "verdict": "converted",
+    "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
+  },
+  {
+    "file": "TaxaFlag/R/compute_local_occurrence_distance.R",
+    "code": "if (!is.null(registry)) result$taxon_id <- q_id[match(result$taxon_name, taxa_unique)]",
+    "verdict": "registry_internal",
+    "reason": "registry path: id of each called name"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "pipeline_ctx$pipeline_note[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "weight_ctx$weight_note[match(taxa_info$taxon_name, weight_ctx$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "spatial_ctx$spatial_note[match(taxa_info$taxon_name, spatial_ctx$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "pipeline_ctx$has_unprecedented[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "pipeline_ctx$has_indistinguishable[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "review_df <- merge(review_df, flag_lookup, by = \"taxon_name\", all.x = TRUE, sort = FALSE)",
+    "verdict": "reviewed",
+    "reason": "flag_lookup is built in the same call from taxa_info: within call. A persisted review-cache miss on a renamed taxon causes a re-review or a stop, never a silent mismatch"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "ct <- if (\"consensus_taxon\" %in% names(input_df)) as.character(input_df[[\"consensus_taxon\"]][rows]) else rep(NA_character_, length(rows))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/review_assignments.R",
+    "code": "parsed <- parsed[order(match(parsed$taxon_name, taxa_batch$taxon_name)), ,",
+    "verdict": "reviewed",
+    "reason": "matches names an LLM echoed to the names it was asked: within call"
+  },
+  {
+    "file": "TaxaFlag/R/screen_assignments.R",
+    "code": "if (is.null(p) || !r %in% c(\"species\", \"genus\")) return(list(found = FALSE))",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/screen_assignments.R",
+    "code": "in_call <- if (r == \"species\") p$taxon_name == tx[i] else (p$genus %in% tx[i] | p$taxon_name == tx[i])",
+    "verdict": "reviewed",
+    "reason": "compares posterior/consensus names that all derive from one run registry (taxon_id -> accepted name); the export guard catches a name on two ids"
+  },
+  {
+    "file": "TaxaFlag/R/screen_assignments.R",
+    "code": "keep <- q$taxon_name_rank %in% c(\"species\", \"genus\") & q$hypothesis_type %in% \"specific_candidate\" &",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/screen_assignments.R",
+    "code": "idx <- which(!in_call & p$genus %in% G & p$taxon_name != G); q <- p[idx, ]",
+    "verdict": "reviewed",
+    "reason": "compares posterior/consensus names that all derive from one run registry (taxon_id -> accepted name); the export guard catches a name on two ids"
+  },
+  {
+    "file": "TaxaFlag/R/screen_assignments.R",
+    "code": "idx <- which(!in_call & p$family %in% Fm & !(p$genus %in% G) & p$taxon_name_rank %in% c(\"species\", \"genus\"))",
+    "verdict": "reviewed",
+    "reason": "compares posterior/consensus names that all derive from one run registry (taxon_id -> accepted name); the export guard catches a name on two ids"
+  },
+  {
+    "file": "TaxaFlag/R/screen_assignments.R",
+    "code": "if (wht[i] %in% \"unreferenced_species\" && cr[i] %in% \"species\" && geo[i] %in% \"likely\") {",
+    "verdict": "fp",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaFlag/R/taxaflag_clear_cache.R",
+    "code": "pos <- match(rows$taxon_name, taxa_info$taxon_name)",
+    "verdict": "within",
+    "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  }
+]
