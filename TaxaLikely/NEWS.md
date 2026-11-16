@@ -20,9 +20,13 @@
 * `train_likelihood_model()` attaches a reference-consistency table,
   `attr(model, "reference_consistency")`, built from the library's own pairs
   with TaxaMatch's reference-screen functions plus one stated rule for species
-  with two references. It is a report by default;
-  `exclude_reference_suspects = TRUE` fits without the suspects. TaxaLikely
-  now imports TaxaMatch.
+  with two references. By default (`exclude_reference_suspects = TRUE`) the
+  model is fitted without the references the table marks suspect; they stay
+  candidates at evaluation. `exclude_reference_suspects = FALSE` makes the
+  table a report only and fits on every reference. TRUE was made the default
+  after held-out tests on two fish 12S libraries showed it scored within 0.01
+  of fitting on everything in every cell, since most users will not screen
+  references separately. TaxaLikely now imports TaxaMatch.
 * `restore_suppressed_candidates(registry = )` (off by default): with a frozen
   taxon registry, a reference congener whose identifier equals a candidate's is
   not restored as a second candidate, and `candidate_species_filter` matches a

@@ -542,10 +542,11 @@ the library's own pairs, with no network. It flags references whose label
 disagrees with their closest relatives in the library, including ones no
 query ever matches. For a species with only two references it names the
 member whose closest other-species match is higher and backed by at least
-two references of that species. By default it is a report and the model
-is fitted on everything; `exclude_reference_suspects = TRUE` fits without
-the flagged references. A flag is not a verdict: use it to choose what the
-full screen should examine.
+two references of that species. By default the model is fitted without the
+flagged references, which remain candidates for queries;
+`exclude_reference_suspects = FALSE` makes the table a report only and fits
+on everything. A flag is not a verdict: use it to choose what the full
+screen should examine.
 
 ``` r
 model <- train_likelihood_model(ref_matrix)

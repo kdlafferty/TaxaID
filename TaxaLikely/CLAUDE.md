@@ -76,8 +76,9 @@ state only.
 - `train_likelihood_model()` attaches `attr(model, "reference_consistency")`, built with
   TaxaMatch's screen functions (`corroborate_references_locally()`, the internal
   `.compute_hierarchy_congruence()` via `:::`, `score_reference_labels()`) plus the
-  two-reference pair rule. Report only unless `exclude_reference_suspects = TRUE`; the
-  returned list is otherwise unchanged. Processed in chunks of references, so memory is
+  two-reference pair rule. `exclude_reference_suspects = TRUE` (the default since
+  2026-11-15) fits without the suspects; `FALSE` is report only and the returned list is
+  otherwise unchanged (v1.0 golden, 3e563f29). Processed in chunks of references, so memory is
   bounded by the chunk.
 - `restore_suppressed_candidates(registry = )` (default `NULL`): "already a candidate?" and "in the filter?" also
   compare registry taxon ids; genus grouping and model lookups stay on the reference's own names.
