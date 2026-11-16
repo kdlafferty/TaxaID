@@ -17,7 +17,7 @@ train_likelihood_model(
   score_transform = "sqrt_mismatch",
   min_pair_coverage = 0.8,
   shrinkage = c("empirical_bayes", "fixed"),
-  exclude_reference_suspects = FALSE
+  exclude_reference_suspects = TRUE
 )
 }
 \arguments{
@@ -132,10 +132,12 @@ weights in \code{H1_Lookup$shrink_w_score}/\code{shrink_w_gap}.  Variance
 shrinkage always uses the fixed weight.  Needs at least 3 species;
 otherwise falls back to \code{"fixed"} with a message.}
 
-\item{exclude_reference_suspects}{Logical (default \code{FALSE}). \code{FALSE}
-attaches the reference-consistency table as a report and fits on all of
-\code{raw_df}. \code{TRUE} drops every pair involving a reference the table marks
-\code{suspect} before fitting. See \verb{@section Reference-consistency table}.}
+\item{exclude_reference_suspects}{Logical (default \code{TRUE}). \code{TRUE} drops
+every pair involving a reference the reference-consistency table marks
+\code{suspect} before fitting; excluded references remain candidates at
+evaluation. \code{FALSE} attaches the table as a report only and fits on all
+of \code{raw_df}, which reproduces the 1.0.0 pre-release fit. See
+\verb{@section Reference-consistency table}.}
 }
 \value{
 A named list (class \code{"taxa_model_params"}) with slots:
@@ -501,11 +503,15 @@ voting partners (\code{pair_rule_support}). If neither condition singles one
 out, neither member is a suspect.
 
 \code{suspect} is \code{reference_action == "remove"} or the pair rule. By default
-the table is a report only: the model is fitted on all of \code{raw_df}, and
-the returned list is the same as without the table. With
-\code{exclude_reference_suspects = TRUE}, every pair involving a suspect is
+(\code{exclude_reference_suspects = TRUE}), every pair involving a suspect is
 dropped from \code{raw_df} before fitting, and the table marks those references
-\code{excluded}. The table is always computed on the full \code{raw_df}.
+\code{excluded}. With \code{exclude_reference_suspects = FALSE} the table is a report
+only: the model is fitted on all of \code{raw_df}, and the returned list is the
+same as without the table. The table is always computed on the full
+\code{raw_df}. The default was chosen on held-out data (leave-species-out and
+leave-genus-out folds on two fish 12S libraries): excluding suspects
+scored within 0.01 of fitting on everything in every cell, and most users
+will not run a separate reference screen before training.
 
 A flag is not a verdict. A deep within-species split or a cryptic species
 looks the same as a mislabel from inside the library, and a species whose
