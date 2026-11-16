@@ -342,7 +342,9 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' @param pool_keys \code{NULL} or a data frame with \code{verbatim_name} and
 #'   \code{species_key}: the occurrence pool's accepted key per name, used as the
 #'   identifier ahead of any lookup. Optional \code{kingdom} ... \code{genus}
-#'   columns give each key's lineage for the tie-break.
+#'   columns give each key's lineage for the tie-break. An optional
+#'   \code{genus_key} column gives each key's own genus key, which checks where
+#'   a key no lookup described is placed (see Value).
 #' @param lookup \code{NULL} (default: \code{verify_taxon_names()} against
 #'   \code{key_backbone_id} with \code{cache_dir}) or a function
 #'   \code{function(names, rank, context)} returning a table shaped like
@@ -362,7 +364,14 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #'   Candidate lineages come from the lookup's classification and from optional
 #'   \code{kingdom} ... \code{genus} columns of \code{pool_keys}.
 #' @return An object of class \code{taxon_registry}: a list with \code{taxa},
-#'   \code{names} and \code{meta}, unfrozen.
+#'   \code{names} and \code{meta}, unfrozen. Every node of the key authority
+#'   has a rank. An answer whose accepted record is a usage below species (not
+#'   in its own classification path, which ends at a species) takes that
+#'   species, and \code{meta$infraspecific_accepted} lists the lookup's own
+#'   accepted id. A pool key no lookup described is a species placed under the
+#'   one genus node its genus word names, or under none when that word names
+#'   two or more genus nodes or none; \code{meta$pool_key_placed} lists each,
+#'   with its \code{genus_key} when \code{pool_keys} gives one.
 #' @seealso \code{\link{freeze_taxon_registry}}, \code{\link{attach_taxon_ids}},
 #'   \code{\link{join_by_taxon}}, \code{\link{check_taxon_registry}}
 #' @export
@@ -418,6 +427,33 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     res$verified[lg] <- FALSE; res$matched[lg] <- FALSE; res$match_type[lg] <- "LineageRejected"
     for (cc in c("matched_name", "matched_rank", "is_synonym", "current_record_id", "classification_path",
                  "classification_ranks", "classification_ids")) res[[cc]][lg] <- NA
+  }
+  # The registry's finest rank is species. An answer whose accepted record is not in its own classification path,
+  # where that path ends at a species, is an accepted usage BELOW species (GBIF keys a synonym of a subspecies,
+  # variety or form to that usage): the name takes the species its path ends at. Kept as answered, the id had no taxa
+  # row and became a node with no rank and no parent, named by the species binomial beside the ranked species: one
+  # accepted name under two ids. The lookup's own accepted id is listed in meta$infraspecific_accepted.
+  infraspecific_accepted <- NULL
+  ia <- which(res$matched %in% TRUE & !is.na(res$current_record_id) & !is.na(res$classification_ids) & !is.na(res$classification_ranks))
+  if (length(ia)) {
+    ids_l <- lapply(ia, function(j) .split_pipe(res$classification_ids[j]))
+    rk_l <- lapply(ia, function(j) tolower(.split_pipe(res$classification_ranks[j])))
+    nm_l <- lapply(ia, function(j) .split_pipe(res$classification_path[j]))
+    hit <- vapply(seq_along(ia), function(k) {
+      n <- min(length(ids_l[[k]]), length(rk_l[[k]]), length(nm_l[[k]]))
+      n > 0L && rk_l[[k]][n] == "species" && !as.character(res$current_record_id[ia[k]]) %in% ids_l[[k]][seq_len(n)]
+    }, TRUE)
+    if (any(hit)) {
+      k <- which(hit); j <- ia[k]
+      n <- vapply(k, function(x) min(length(ids_l[[x]]), length(rk_l[[x]]), length(nm_l[[x]])), 1L)
+      sp_id <- vapply(seq_along(k), function(x) ids_l[[k[x]]][n[x]], "")
+      sp_nm <- vapply(seq_along(k), function(x) nm_l[[k[x]]][n[x]], "")
+      infraspecific_accepted <- data.frame(name = q$name_clean[j], rank_given = q$rank_given[j], context = q$context[j],
+                                           accepted_record_id = paste0(prefix, ":", res$current_record_id[j]),
+                                           answer_rank = tolower(as.character(res$matched_rank[j])),
+                                           taxon_id = paste0(prefix, ":", sp_id), species = sp_nm, stringsAsFactors = FALSE)
+      res$current_record_id[j] <- sp_id; res$matched_name[j] <- sp_nm; res$matched_rank[j] <- "species"
+    }
   }
   qk <- paste(q$name_clean, q$rank_given, q$context, sep = "\r")
   nk <- paste(nm$name_clean, nm$rank_given, nm$context, sep = "\r")
@@ -780,13 +816,33 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   # named by the lookup's ACCEPTED name for that id -- never by whichever verbatim name
   # happened to arrive first, which may be a synonym and would make the accepted name
   # look like an undeclared second name. The verbatim name only when there is none.
+  pool_key_placed <- NULL
   miss <- setdiff(stats::na.omit(nm$taxon_id), taxa$taxon_id)
   if (length(miss)) {
     acc <- nm[!is.na(nm$accepted_lookup), c("taxon_id", "accepted_lookup"), drop = FALSE]
     nm_miss <- acc$accepted_lookup[match(miss, acc$taxon_id)]
     nm_miss[is.na(nm_miss)] <- nm$name_clean[match(miss[is.na(nm_miss)], nm$taxon_id)]
-    taxa <- rbind(taxa, data.frame(taxon_id = miss, name = nm_miss, rank = NA_character_,
-                                   parent_id = NA_character_, snapshot = NA_character_, local = FALSE, stringsAsFactors = FALSE))
+    rk_miss <- rep(NA_character_, length(miss)); par_miss <- rep(NA_character_, length(miss))
+    # A pool key no lookup described is a species key (the pool keys species-rank binomials). Its parent is the ONE
+    # genus node in taxa its genus word names; two or more (homonym genera) or none leave the parent NA, listed --
+    # never a guess. A genus_key column in pool_keys is the key's own genus: listed beside the placement, and a
+    # placement under another genus is an error-class finding at check_taxon_registry().
+    pko <- which(miss %in% nm$taxon_id[nm$status %in% "pool_key_only"])
+    if (length(pko)) {
+      gk_of <- if (!is.null(pool_keys) && "genus_key" %in% names(pool_keys)) {
+        g <- pool_keys[!is.na(pool_keys$species_key) & !is.na(pool_keys$genus_key), c("species_key", "genus_key"), drop = FALSE]
+        stats::setNames(paste0(prefix, ":", as.character(g$genus_key)), paste0(prefix, ":", as.character(g$species_key)))
+      } else character(0L)
+      gen_nodes <- taxa[taxa$rank %in% "genus", c("taxon_id", "name"), drop = FALSE]
+      cand <- lapply(pko, function(j) sort(unique(gen_nodes$taxon_id[gen_nodes$name == sub(" .*$", "", nm_miss[j])])))
+      rk_miss[pko] <- "species"
+      par_miss[pko] <- vapply(cand, function(cc) if (length(cc) == 1L) cc else NA_character_, "")
+      pool_key_placed <- data.frame(taxon_id = miss[pko], name = nm_miss[pko], genus_word = sub(" .*$", "", nm_miss[pko]),
+                                    candidates = vapply(cand, function(cc) paste(cc, collapse = " | "), ""),
+                                    parent_id = par_miss[pko], genus_key = unname(gk_of[miss[pko]]), stringsAsFactors = FALSE)
+    }
+    taxa <- rbind(taxa, data.frame(taxon_id = miss, name = nm_miss, rank = rk_miss,
+                                   parent_id = par_miss, snapshot = NA_character_, local = FALSE, stringsAsFactors = FALSE))
   }
   taxa$authority <- dplyr::if_else(taxa$local, "run-local", prefix)
   rownames(taxa) <- NULL; rownames(nm) <- NULL
@@ -801,7 +857,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                 genus_variant_rejected = if (length(gvr_all <- c(bin_variant_rejected, genus_variant_rejected))) unique(do.call(rbind, gvr_all)) else NULL,
                 genus_homonym_unresolved = if (length(genus_homonym_unresolved)) unique(do.call(rbind, genus_homonym_unresolved)) else NULL,
                 lineage_rule = if (length(lineage_rule)) do.call(rbind, lineage_rule) else NULL,
-                lineage_unresolved = if (length(lineage_unresolved)) do.call(rbind, lineage_unresolved) else NULL)
+                lineage_unresolved = if (length(lineage_unresolved)) do.call(rbind, lineage_unresolved) else NULL,
+                infraspecific_accepted = infraspecific_accepted, pool_key_placed = pool_key_placed)
   ), class = "taxon_registry")
 }
 
@@ -1039,9 +1096,14 @@ parent_at <- function(ids, rank, registry) {
 #'   error-class, read from its \code{taxon_name} (or \code{consensus_taxon})
 #'   column. Leave it \code{FALSE} for input tables, which legitimately hold
 #'   one taxon under several verbatim names.
-#' @return A data frame of findings: \code{severity} (\code{"error"} or
-#'   \code{"info"}), \code{kind}, \code{table}, \code{taxon_id}, \code{names},
-#'   \code{detail}, \code{n}.
+#' @return A data frame of findings: \code{severity} (\code{"error"},
+#'   \code{"warning"} or \code{"info"}), \code{kind}, \code{table},
+#'   \code{taxon_id}, \code{names}, \code{detail}, \code{n}. Warnings do not
+#'   stop \code{mode = "error"}: \code{accepted_name_multiple_ids} (one accepted
+#'   name at one rank under two or more ranked ids in one kingdom, with the id a
+#'   pool-key tie-break chose) and \code{pool_key_unplaced} (a pool key placed
+#'   under no genus). A pool key placed under a genus other than its pool
+#'   \code{genus_key} is \code{pool_key_parent_mismatch} (error).
 #' @export
 check_taxon_registry <- function(registry, tables = list(), mode = c("report", "error"), verbose = TRUE, export = FALSE) {
   mode <- match.arg(mode)
@@ -1140,6 +1202,53 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   if (!is.null(lu) && nrow(lu)) {
     for (i in seq_len(nrow(lu))) add("error", "lineage_unresolved", NA_character_, lu$candidates[i], lu$name[i],
                                      sprintf("%s; lineage %s", lu$reason[i], if (is.na(lu$context[i])) "none" else lu$context[i]), 1L)
+  }
+  # a name whose accepted usage is below species took the species its path ends at (info, listed with the lookup's id)
+  ia <- registry$meta$infraspecific_accepted
+  if (!is.null(ia) && nrow(ia)) {
+    for (id in unique(ia$taxon_id)) {
+      w <- ia[ia$taxon_id == id, , drop = FALSE]
+      add("info", "infraspecific_accepted", NA_character_, id, paste(sort(unique(w$name)), collapse = " | "),
+          sprintf("accepted usage below species (%s) taken as its species %s", paste(sort(unique(w$accepted_record_id)), collapse = ", "),
+                  w$species[1L]), nrow(w))
+    }
+  }
+  # a pool key no lookup described: placed under the one genus its genus word names (info); unplaced (warning) when
+  # that word names 2+ genus nodes or none; placed under a genus other than the pool's own genus_key (error)
+  pp <- registry$meta$pool_key_placed
+  if (!is.null(pp) && nrow(pp)) {
+    for (i in seq_len(nrow(pp))) {
+      if (!is.na(pp$genus_key[i]) && !is.na(pp$parent_id[i]) && pp$parent_id[i] != pp$genus_key[i]) {
+        add("error", "pool_key_parent_mismatch", NA_character_, pp$taxon_id[i], pp$name[i],
+            sprintf("placed under %s by its genus word; the pool's genus key is %s", pp$parent_id[i], pp$genus_key[i]), 1L)
+      } else if (is.na(pp$parent_id[i])) {
+        add("warning", "pool_key_unplaced", NA_character_, pp$taxon_id[i], pp$name[i],
+            sprintf("species with no parent: genus word %s names %s", pp$genus_word[i],
+                    if (nzchar(pp$candidates[i])) sprintf("2+ genus nodes (%s)", pp$candidates[i]) else "no genus node"), 1L)
+      } else {
+        add("info", "pool_key_placed", NA_character_, pp$taxon_id[i], pp$name[i],
+            sprintf("species under %s (genus word %s)%s", pp$parent_id[i], pp$genus_word[i],
+                    if (is.na(pp$genus_key[i])) "; no pool genus key to verify" else "; matches the pool's genus key"), 1L)
+      }
+    }
+  }
+  # one accepted name at one rank under 2+ ranked ids of the key authority, in one kingdom: a backbone duplicate,
+  # listed (warning), never merged; the id a pool-key tie-break chose is named. Homonyms in different kingdoms are
+  # different taxa and are not listed.
+  tx <- registry$taxa[!registry$taxa$local & !is.na(registry$taxa$rank), c("taxon_id", "name", "rank"), drop = FALSE]
+  nr <- paste(tx$name, tx$rank, sep = "\r")
+  dup <- tx[nr %in% nr[duplicated(nr)], , drop = FALSE]
+  if (nrow(dup)) {
+    dup$kingdom <- parent_at(dup$taxon_id, "kingdom", registry)
+    tbk <- registry$meta$pool_key_tiebreaks
+    for (g in split(dup, paste(dup$name, dup$rank, dup$kingdom, sep = "\r"))) {
+      if (nrow(g) < 2L) next
+      ids <- sort(unique(g$taxon_id))
+      ch <- if (!is.null(tbk) && nrow(tbk)) unique(stats::na.omit(tbk$chosen[tbk$chosen %in% ids])) else character(0L)
+      add("warning", "accepted_name_multiple_ids", NA_character_, paste(ids, collapse = " | "), g$name[1L],
+          sprintf("%s under %d ids in %s%s", g$rank[1L], length(ids), if (is.na(g$kingdom[1L])) "an unknown kingdom" else registry$taxa$name[match(g$kingdom[1L], registry$taxa$taxon_id)],
+                  if (length(ch)) paste0("; pool_key_tiebreak chose ", paste(ch, collapse = ", ")) else ""), length(ids))
+    }
   }
   tc <- registry$meta$taxa_conflicts
   if (!is.null(tc) && nrow(tc)) {

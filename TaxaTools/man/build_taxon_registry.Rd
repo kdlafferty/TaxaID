@@ -30,7 +30,9 @@ data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default
 \item{pool_keys}{\code{NULL} or a data frame with \code{verbatim_name} and
 \code{species_key}: the occurrence pool's accepted key per name, used as the
 identifier ahead of any lookup. Optional \code{kingdom} ... \code{genus}
-columns give each key's lineage for the tie-break.}
+columns give each key's lineage for the tie-break. An optional
+\code{genus_key} column gives each key's own genus key, which checks where
+a key no lookup described is placed (see Value).}
 
 \item{lookup}{\code{NULL} (default: \code{verify_taxon_names()} against
 \code{key_backbone_id} with \code{cache_dir}) or a function
@@ -55,7 +57,14 @@ Candidate lineages come from the lookup's classification and from optional
 }
 \value{
 An object of class \code{taxon_registry}: a list with \code{taxa},
-\code{names} and \code{meta}, unfrozen.
+\code{names} and \code{meta}, unfrozen. Every node of the key authority
+has a rank. An answer whose accepted record is a usage below species (not
+in its own classification path, which ends at a species) takes that
+species, and \code{meta$infraspecific_accepted} lists the lookup's own
+accepted id. A pool key no lookup described is a species placed under the
+one genus node its genus word names, or under none when that word names
+two or more genus nodes or none; \code{meta$pool_key_placed} lists each,
+with its \code{genus_key} when \code{pool_keys} gives one.
 }
 \description{
 Resolves every verbatim name the run will use, from every table, ONCE, to a

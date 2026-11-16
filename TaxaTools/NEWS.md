@@ -35,6 +35,15 @@
   (error-class), never a guess. A placeholder "<Taxon> gen." is a run-local
   genus under <Taxon>, and a reference label "<binomial>_cluster<n>" answered as
   that binomial is a declared merge (`cluster_label`).
+* Every registry node of the key authority has a rank. A name whose accepted
+  usage is below species (a synonym of a subspecies, variety or form) takes
+  the species its own classification ends at, and the lookup's own id is
+  listed. A pool key no lookup described is a species under the one genus its
+  genus word names, or under none (a warning) when that word names two or more
+  genera or none; a `genus_key` column in `pool_keys` checks that placement
+  (`pool_key_parent_mismatch`, error-class). `check_taxon_registry()` lists one
+  accepted name at one rank under two or more ids in one kingdom
+  (`accepted_name_multiple_ids`, a warning, never merged).
 * A genus answered only by a fuzzy or variant match is taken by the registry
   only where the names under it agree with it at kingdom and phylum, since a
   misspelt genus can match a genus in another kingdom.

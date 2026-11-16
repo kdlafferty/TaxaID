@@ -1027,3 +1027,139 @@ test_that("a cluster label '<binomial>_cluster<n>' answered as that binomial is 
   reg2 <- build_taxon_registry(.names(c("Stigmella salicis", "Stigmella aurella_cluster2"), "reference"), run_id = "cl2", lookup = lk)
   expect_true(any(check_taxon_registry(reg2, verbose = FALSE)$kind == "undeclared_merge"))
 })
+
+# ---- every accepted node has a rank and a parent ------------------------------------------------------------
+# Every accepted registry node has a rank and a parent. Two ways a run made one without them (CalIntertidal C0: 158
+# GBIF nodes with rank NA and parent NA, 418 name rows on them):
+#  (i)  GBIF keys a synonym of a SUBSPECIES (or variety, form) to that infraspecific usage, which is not in the
+#       answer's own classification path (the path ends at the species). The id had no taxa row and became a node named
+#       by the species binomial, beside the ranked species node: one accepted name under two ids.
+#  (ii) A pool species key that no lookup described.
+# Plus the finding for one accepted name at one rank under 2+ ranked ids (a backbone duplicate), which is listed, never
+# merged. Synthetic answers through .fake_lookup()/.row()/.names() from test-taxon_registry.R.
+
+.lim_path <- "Animalia|Arthropoda|Lepidoptera|Nymphalidae|Limenitis|Limenitis iphiclus"
+.lim_ids <- "1|54|797|7017|5131972|5131982"
+
+test_that("(i) a synonym whose accepted usage is below species takes the species its own path ends at", {
+  lk <- .fake_lookup(rbind(
+    # GBIF: Adelpha iphicleola is a SYNONYM of Limenitis iphiclus iphicleola (6226224, a subspecies), path to the species
+    .row("Adelpha iphicleola", "Limenitis iphiclus", "6226224", .lim_ids, .lim_path, rec = "10236487", syn = TRUE),
+    .row("Limenitis iphiclus", "Limenitis iphiclus", "5131982", .lim_ids, .lim_path)))
+  reg <- build_taxon_registry(.names(c("Adelpha iphicleola", "Limenitis iphiclus"), "reference"), run_id = "i1", lookup = lk)
+  ids <- reg$names$taxon_id[match(c("Adelpha iphicleola", "Limenitis iphiclus"), reg$names$verbatim_name)]
+  expect_identical(ids, c("gbif:5131982", "gbif:5131982"))
+  expect_identical(reg$names$status[reg$names$verbatim_name == "Adelpha iphicleola"], "synonym")
+  expect_identical(reg$names$backend_record_id[reg$names$verbatim_name == "Adelpha iphicleola"], "10236487")
+  expect_false(any(is.na(reg$taxa$rank[!reg$taxa$local])))
+  expect_false("gbif:6226224" %in% reg$taxa$taxon_id)
+  expect_identical(reg$taxa$parent_id[reg$taxa$taxon_id == "gbif:5131982"], "gbif:5131972")
+  # the lookup's own accepted id is kept, listed
+  ia <- reg$meta$infraspecific_accepted
+  expect_identical(ia$accepted_record_id, "gbif:6226224")
+  expect_identical(ia$taxon_id, "gbif:5131982")
+  expect_identical(ia$name, "Adelpha iphicleola")
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$severity == "error"))
+  expect_true(any(chk$kind == "infraspecific_accepted" & chk$taxon_id == "gbif:5131982"))
+})
+
+test_that("(i) the same species is reached when the infraspecific synonym is the ONLY name (its species row is not pruned)", {
+  lk <- .fake_lookup(.row("Adelpha iphicleola", "Limenitis iphiclus", "6226224", .lim_ids, .lim_path, rec = "10236487", syn = TRUE))
+  reg <- build_taxon_registry(.names("Adelpha iphicleola", "reference"), run_id = "i2", lookup = lk)
+  expect_identical(reg$names$taxon_id, "gbif:5131982")
+  expect_identical(reg$taxa$rank[reg$taxa$taxon_id == "gbif:5131982"], "species")
+  expect_identical(parent_at("gbif:5131982", "genus", reg), "gbif:5131972")
+  expect_false(any(is.na(reg$taxa$rank)))
+})
+
+test_that("(i) NEGATIVE: an answer whose accepted record IS in its own path is untouched, and nothing is listed", {
+  lk <- .fake_lookup(rbind(
+    .row("Embiotoca caryi", "Hypsurus caryi", "2389310", "1|44|587|4287|2389300|2389310",
+         "Animalia|Chordata|Perciformes|Embiotocidae|Hypsurus|Hypsurus caryi", rec = "2389311", syn = TRUE),
+    # a path that stops above species (no species entry): not this rule either
+    .row("Oxyjulis californica", "Oxyjulis californica", "2383301", "1|44|587|4300|2383300",
+         "Animalia|Chordata|Perciformes|Labridae|Oxyjulis", ranks = "kingdom|phylum|order|family|genus")))
+  reg <- build_taxon_registry(.names(c("Embiotoca caryi", "Oxyjulis californica"), "priors"), run_id = "i3", lookup = lk)
+  expect_identical(reg$names$taxon_id[reg$names$verbatim_name == "Embiotoca caryi"], "gbif:2389310")
+  expect_identical(reg$names$taxon_id[reg$names$verbatim_name == "Oxyjulis californica"], "gbif:2383301")
+  expect_null(reg$meta$infraspecific_accepted)
+  expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind == "infraspecific_accepted"))
+})
+
+.ast_path <- "Animalia|Echinodermata|Paxillosida|Astropectinidae|Astropecten"
+.ast_ids <- "1|50|7019|5538|2269836"
+.ast_lk <- function(extra = NULL) .fake_lookup(rbind(
+  # the lookup knows the genus only: the binomial falls back to it
+  .row("Astropecten verrilli", "Astropecten", "2269836", .ast_ids, .ast_path, ranks = "kingdom|phylum|order|family|genus", rank = "genus"),
+  .row("Astropecten armatus", "Astropecten armatus", "5186480", paste0(.ast_ids, "|5186480"), paste0(.ast_path, "|Astropecten armatus")),
+  extra))
+
+test_that("(ii) a pool key no lookup described is a species under the ONE registry genus its genus word names", {
+  reg <- build_taxon_registry(.names(c("Astropecten verrilli", "Astropecten armatus"), "pool"), run_id = "p1", lookup = .ast_lk(),
+                              pool_keys = data.frame(verbatim_name = "Astropecten verrilli", species_key = "5186479"))
+  expect_identical(reg$names$status[reg$names$verbatim_name == "Astropecten verrilli"], "pool_key_only")
+  r <- reg$taxa[reg$taxa$taxon_id == "gbif:5186479", ]
+  expect_identical(c(r$name, r$rank, r$parent_id), c("Astropecten verrilli", "species", "gbif:2269836"))
+  expect_false(any(is.na(reg$taxa$rank[!reg$taxa$local])))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$severity %in% c("error", "warning")))
+  expect_true(any(chk$kind == "pool_key_placed" & chk$taxon_id == "gbif:5186479"))
+})
+
+test_that("(ii) GUARD: two genus nodes of that name, or none, leave the pool key a species with no parent and a warning; never a guess", {
+  # a homonym genus Astropecten in another kingdom, reached by another name
+  homonym <- .row("Astropecten plantaris", "Astropecten plantaris", "7777002", "6|7707728|7777001|7777002",
+                  "Plantae|Tracheophyta|Astropecten|Astropecten plantaris", ranks = "kingdom|phylum|genus|species")
+  reg <- build_taxon_registry(.names(c("Astropecten verrilli", "Astropecten armatus", "Astropecten plantaris"), "pool"), run_id = "p2",
+                              lookup = .ast_lk(homonym), pool_keys = data.frame(verbatim_name = "Astropecten verrilli", species_key = "5186479"))
+  r <- reg$taxa[reg$taxa$taxon_id == "gbif:5186479", ]
+  expect_identical(r$rank, "species"); expect_true(is.na(r$parent_id))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  w <- chk[chk$kind == "pool_key_unplaced", ]
+  expect_identical(w$severity, "warning")
+  expect_match(w$detail, "gbif:2269836")
+  expect_match(w$detail, "gbif:7777001")
+  expect_false(any(chk$severity == "error"))
+  # no genus of that name at all
+  lk0 <- .fake_lookup(.row("Nothing asked", "Nothing asked", "1", "1", "Animalia", ranks = "kingdom", rank = "kingdom"))
+  reg0 <- build_taxon_registry(.names("Hancockia californica", "pool"), run_id = "p3", lookup = lk0,
+    pool_keys = data.frame(verbatim_name = "Hancockia californica", species_key = "5190039"))
+  r0 <- reg0$taxa[reg0$taxa$taxon_id == "gbif:5190039", ]
+  expect_identical(r0$rank, "species"); expect_true(is.na(r0$parent_id))
+  expect_identical(check_taxon_registry(reg0, verbose = FALSE)$severity[check_taxon_registry(reg0, verbose = FALSE)$kind == "pool_key_unplaced"], "warning")
+})
+
+test_that("(ii) GUARD CAN FAIL: a pool genus_key that is not the genus the name placed it under is an error-class finding", {
+  pk <- data.frame(verbatim_name = "Astropecten verrilli", species_key = "5186479", genus_key = "2269836")
+  reg <- build_taxon_registry(.names(c("Astropecten verrilli", "Astropecten armatus"), "pool"), run_id = "p4", lookup = .ast_lk(), pool_keys = pk)
+  expect_false(any(check_taxon_registry(reg, verbose = FALSE)$severity == "error"))
+  pk$genus_key <- "9999999"
+  reg2 <- build_taxon_registry(.names(c("Astropecten verrilli", "Astropecten armatus"), "pool"), run_id = "p5", lookup = .ast_lk(), pool_keys = pk)
+  chk <- check_taxon_registry(reg2, verbose = FALSE)
+  e <- chk[chk$kind == "pool_key_parent_mismatch", ]
+  expect_identical(e$severity, "error"); expect_identical(e$taxon_id, "gbif:5186479")
+  expect_error(check_taxon_registry(reg2, mode = "error", verbose = FALSE), "pool_key_parent_mismatch")
+})
+
+test_that("one accepted name at one rank under 2+ ranked ids in one kingdom is listed (warning), with the id a tie-break chose; homonyms across kingdoms are not", {
+  des <- "Chromista|Ochrophyta|Desmarestiales|Desmarestiaceae|Desmarestia"; dids <- "4|98|7700|7724|3200019"
+  lk <- .fake_lookup(rbind(
+    .row("Desmarestia ligulata", "Desmarestia ligulata", "5423338", paste0(dids, "|5423338"), paste0(des, "|Desmarestia ligulata")),
+    .row("Desmarestia tabacoides", "Desmarestia ligulata", "7932887", paste0(dids, "|8402529"), paste0(des, "|Desmarestia ligulata"),
+         rec = "5423367", syn = TRUE),
+    .row("Agathis montana", "Agathis montana", "1800777", "1|54|216|1457|7901|1800770|1800777",
+         "Animalia|Arthropoda|Insecta|Hymenoptera|Braconidae|Agathis|Agathis montana",
+         ranks = "kingdom|phylum|class|order|family|genus|species"),
+    .row("Agathis silvestris", "Agathis montana", "5285000", "6|7707728|194|3925|5284999|5285000",
+         "Plantae|Tracheophyta|Pinopsida|Araucariaceae|Agathis|Agathis montana", ranks = "kingdom|phylum|class|family|genus|species")))
+  reg <- build_taxon_registry(.names(c("Desmarestia ligulata", "Desmarestia tabacoides", "Agathis montana", "Agathis silvestris"), "ref"),
+                              run_id = "m1", lookup = lk)
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  m <- chk[chk$kind == "accepted_name_multiple_ids", ]
+  expect_identical(nrow(m), 1L)
+  expect_identical(m$severity, "warning")
+  expect_identical(m$names, "Desmarestia ligulata")
+  expect_identical(m$taxon_id, "gbif:5423338 | gbif:8402529")
+  expect_false(any(chk$severity == "error"))
+})

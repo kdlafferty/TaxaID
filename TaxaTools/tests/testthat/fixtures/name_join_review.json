@@ -61,6 +61,12 @@
   },
   {
     "file": "TaxaTools/R/taxon_registry.R",
+    "code": "gen_nodes <- taxa[taxa$rank %in% \"genus\", c(\"taxon_id\", \"name\"), drop = FALSE]",
+    "verdict": "resolver",
+    "reason": "the taxon registry itself (resolver, join helper, guard)"
+  },
+  {
+    "file": "TaxaTools/R/taxon_registry.R",
     "code": "okg <- g$matched %in% TRUE & tolower(g$matched_rank) %in% \"genus\" & !is.na(g$current_record_id)",
     "verdict": "resolver",
     "reason": "the taxon registry itself (resolver, join helper, guard)"

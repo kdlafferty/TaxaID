@@ -31,9 +31,14 @@ column. Leave it \code{FALSE} for input tables, which legitimately hold
 one taxon under several verbatim names.}
 }
 \value{
-A data frame of findings: \code{severity} (\code{"error"} or
-\code{"info"}), \code{kind}, \code{table}, \code{taxon_id}, \code{names},
-\code{detail}, \code{n}.
+A data frame of findings: \code{severity} (\code{"error"},
+\code{"warning"} or \code{"info"}), \code{kind}, \code{table},
+\code{taxon_id}, \code{names}, \code{detail}, \code{n}. Warnings do not
+stop \code{mode = "error"}: \code{accepted_name_multiple_ids} (one accepted
+name at one rank under two or more ranked ids in one kingdom, with the id a
+pool-key tie-break chose) and \code{pool_key_unplaced} (a pool key placed
+under no genus). A pool key placed under a genus other than its pool
+\code{genus_key} is \code{pool_key_parent_mismatch} (error).
 }
 \description{
 The guard. It reports, per table: taxa held under two or more verbatim names
