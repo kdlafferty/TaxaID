@@ -11,3 +11,8 @@
   binaries -- and repairs a script from an error the user pastes back.
 * Supports a CLI (readline) and a Shiny chat interface over a stateless LLM
   engine.
+* The workflow snippets build one frozen taxon registry per run
+  (`USE_TAXON_REGISTRY`, default `TRUE`) through the GBIF Backbone, stamp the
+  likelihoods and priors, and pass it to `join_priors()` and
+  `posterior_consensus()`, so taxa are matched by identifier and outputs carry
+  GBIF accepted names.

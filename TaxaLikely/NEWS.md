@@ -23,3 +23,7 @@
   with two references. It is a report by default;
   `exclude_reference_suspects = TRUE` fits without the suspects. TaxaLikely
   now imports TaxaMatch.
+* `restore_suppressed_candidates(registry = )` (off by default): with a frozen
+  taxon registry, a reference congener whose identifier equals a candidate's is
+  not restored as a second candidate, and `candidate_species_filter` matches a
+  reference species under any registered name.

@@ -21,3 +21,10 @@
   fallback's lookups, so a rerun with a filled cache makes no name requests.
 * Provides empirical Bayes prior refinement and a score-based consensus for
   comparison, and generates a report of the assignment run.
+* With a frozen taxon registry, `join_priors()`, `add_unreferenced_prior_mass()`
+  and `posterior_consensus()` (`registry =`, off by default) match taxa by
+  registry identifier instead of by name: a call under a synonym finds the
+  prior filed under the accepted name, one taxon under two names is one
+  hypothesis, lineage comes from the registry's tree (no backbone lookup), and
+  output names are the registry's accepted names, with each row's own name kept
+  in `taxon_name_verbatim`.

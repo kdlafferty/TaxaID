@@ -10,3 +10,6 @@
   for habitat and scope, the bounds the model gave with it.
 * Appends categorical flag columns to consensus data frames, leaving the
   assignment itself unchanged.
+* `compute_local_occurrence_distance(registry = )` (off by default): with a
+  frozen taxon registry, occurrence records match the called taxa by registry
+  identifier, so records filed under a synonym are counted.

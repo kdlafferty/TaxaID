@@ -34,3 +34,6 @@
 * `verify_taxon_names(return_ids = TRUE)` adds the record identifiers the
   Global Names Verifier returns (`record_id`, `current_record_id`,
   `classification_ids`, `data_source_id`, `entry_date`, `match_type`).
+* `check_taxon_registry(export = TRUE)` holds output tables to the export
+  rules: no taxon under two display names and no display name on two taxa,
+  both error-class.
