@@ -2083,6 +2083,19 @@ evaluate_likelihoods <- function(match_df,
   # columns are NA, e.g. reference identified only at a rank coarser than
   # rank_system specifies).  Rows are always dropped from $likelihoods.
   # observation_ids with NO surviving rows are returned in $unresolved with a warning.
+  # A ring whose tied anchors share no rank at all (ring_member_clades set, taxon_name NA) carries a likelihood: it is
+  # never dropped with the NA-name rows below, which would remove its mass from the observation without a trace.
+  lca_na <- is.na(out$taxon_name) & !is.na(out$ring_member_clades)
+  if (any(lca_na)) {
+    stop(sprintf(
+      paste0(
+        "%d ring row(s) in %d observation(s) have no name: the candidates tied with the ring anchor share no rank ",
+        "in rank_system or in match_df's coarser lineage columns (ring_member_clades, e.g. '%s'). Dropping them would ",
+        "remove their likelihood. Supply the coarser lineage the candidates share (e.g. a kingdom column) in match_df."
+      ),
+      sum(lca_na), length(unique(out$observation_id[lca_na])), out$ring_member_clades[which(lca_na)[1L]]
+    ), call. = FALSE)
+  }
   na_name <- is.na(out$taxon_name)
   all_na_sids <- character(0L)
   if (any(na_name)) {

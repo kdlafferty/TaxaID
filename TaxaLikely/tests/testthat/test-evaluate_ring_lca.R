@@ -139,3 +139,17 @@ test_that("evaluate_likelihoods() carries ring_member_clades to its output, NA w
   expect_true(all(is.na(res$ring_member_clades[res$observation_id == "untied"])))
   expect_true(all(is.finite(a$score_likelihood_mean)))   # the Monte Carlo maps rings by type, not by name
 })
+
+test_that("evaluate_likelihoods() refuses to drop a ring whose tied anchors share no rank (its likelihood would vanish)", {
+  skip_if_not_installed("TaxaTools")
+  df <- .lca_18s()[1:2, ]; df$kingdom <- c("Eukaryota", "Metazoa")
+  expect_error(suppressWarnings(suppressMessages(TaxaLikely::evaluate_likelihoods(
+    match_df = df, model_params = .lca_params("class"), rank_system = c("class", "order", "family", "genus", "species"),
+    n_sims = 0, ratio_threshold = 0))), "have no name")
+  # with the shared kingdom present the same tie is named, and nothing is dropped
+  df$kingdom <- "Eukaryota"
+  res <- suppressWarnings(suppressMessages(TaxaLikely::evaluate_likelihoods(
+    match_df = df, model_params = .lca_params("class"), rank_system = c("class", "order", "family", "genus", "species"),
+    n_sims = 0, ratio_threshold = 0)))$likelihoods
+  expect_identical(res$taxon_name[res$hypothesis_type == "unreferenced_order"], "Eukaryota")
+})

@@ -39,4 +39,6 @@
   to hold the common value, and `ring_member_clades` lists their values at the
   ring's own rank, separated by `|`. It is `NA` on every other row. The ring's
   likelihood is unchanged: it is still evaluated at the anchor the tie-break
-  picks, which shares the tied candidates' score.
+  picks, which shares the tied candidates' score. When the tied candidates
+  share no rank at all, `evaluate_likelihoods()` stops with an error naming
+  the clades rather than dropping the ring and its likelihood.
