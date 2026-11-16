@@ -51,11 +51,28 @@
   # (the default) holds the local prior species only, the scope the name path uses (its `taxonomy` is the local
   # species' table), so converting to ids changes no withholding by itself. "all" adds every referenced species'
   # lineage; it is a separate behaviour change, measured on its own and not reachable from the exported function.
+  # A tied-anchor ring lists its member clades by NAME (ring_member_clades, from the likelihoods); each is mapped to
+  # one taxon id through the registry's names table, else its accepted name. A name with no id, or with two, maps to
+  # NA and that clade is withheld (attr "ring_member_clades_withheld"), never guessed.
+  member_id <- character(0)
+  if ("ring_member_clades" %in% names(jw)) {
+    mn <- unique(unlist(strsplit(stats::na.omit(as.character(jw$ring_member_clades)), "|", fixed = TRUE)))
+    if (length(mn)) {
+      nt <- registry$names[!is.na(registry$names$verbatim_name) & !is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")]
+      nt <- unique(rbind(nt, data.frame(verbatim_name = registry$taxa$name, taxon_id = registry$taxa$taxon_id, stringsAsFactors = FALSE)))
+      nt <- nt[nt$verbatim_name %in% mn, , drop = FALSE]
+      n_ids <- tapply(nt$taxon_id, nt$verbatim_name, function(x) length(unique(x)))
+      member_id <- stats::setNames(rep(NA_character_, length(mn)), mn)
+      one <- names(n_ids)[n_ids == 1L]
+      member_id[one] <- nt$taxon_id[match(one, nt$verbatim_name)]
+    }
+  }
   tx_ids <- if (ref_lineage_scope == "local") unique(pw$taxon_name) else unique(c(pw$taxon_name, ref))
   tax <- data.frame(taxon_name = tx_ids, stringsAsFactors = FALSE)
   for (r in lin) tax[[r]] <- unname(anc[[r]][tx_ids])
   list(
     joined = jw, priors = pw, taxonomy = tax, referenced = ref, display = disp, reg_name = reg_name,
+    reg_rank = reg_rank, member_id = member_id,
     ref_genera = unique(stats::na.omit(unname(anc$genus[ref]))), genus_of = anc$genus,
     merged_prior_rows = merged,
     counts = list(
@@ -275,6 +292,11 @@ add_unreferenced_prior_mass <- function(joined,
     nm_of <- function(id, pref) { v <- unname(pref[id]); w <- is.na(v) & !is.na(id); v[w] <- unname(rg$reg_name[id[w]]); v }
     sc <- out$unreferenced_scope
     out$unreferenced_scope <- nm_of(sc, scope_name)
+    # a tied-anchor ring's scope is already its member clades' names (ring_member_clades), not an id
+    if ("ring_member_clades" %in% names(out)) {
+      k <- which(!is.na(out$ring_member_clades) & !is.na(sc))
+      out$unreferenced_scope[k] <- sc[k]
+    }
     idx0 <- seq_len(n0)
     out$taxon_name[idx0] <- as.character(joined_in$taxon_name)
     for (r in lin_cols) out[[r]][idx0] <- joined_in[[r]]
@@ -380,7 +402,45 @@ add_unreferenced_prior_mass <- function(joined,
   out$unreferenced_scope_rank[gen] <- out$taxon_name_rank[gen]
   out$unreferenced_mass[gen] <- 0
   out$unreferenced_n_species[gen] <- 0L
-  if (length(gen) == 0L) {
+  # Tied-anchor rings. TaxaLikely names an outer ring at the lowest common rank of the candidates tied with its anchor
+  # when they span clades, and lists those clades at the ring's OWN rank in ring_member_clades. Such a ring's scope is
+  # the UNION of its member clades at that rank -- not everything under the common rank. The clades are disjoint at
+  # that rank, and members are deduplicated per (row, species) below as for any ring, so nothing is counted twice.
+  # A row whose ring_member_clades is NA is handled exactly as before.
+  lca_rows <- if ("ring_member_clades" %in% names(out)) {
+    which(out$hypothesis_type %in% unreferenced_types & !is.na(out$ring_member_clades) & !is.na(expected_rank))
+  } else {
+    integer(0)
+  }
+  gen <- setdiff(gen, lca_rows)
+  lca_sc <- data.frame(row = integer(0), member = character(0), rank = character(0), scope = character(0), stringsAsFactors = FALSE)
+  lca_withheld <- data.frame(observation_id = character(0), row = integer(0), member_clade = character(0),
+                             scope_rank = character(0), reason = character(0), stringsAsFactors = FALSE)
+  if (length(lca_rows)) {
+    mm <- strsplit(as.character(out$ring_member_clades[lca_rows]), "|", fixed = TRUE)
+    lca_sc <- data.frame(row = rep(lca_rows, lengths(mm)), member = unlist(mm),
+                         rank = rep(expected_rank[lca_rows], lengths(mm)), stringsAsFactors = FALSE)
+    lca_sc$scope <- lca_sc$member
+    if (!is.null(rg)) {
+      lca_sc$scope <- unname(rg$member_id[lca_sc$member])
+      bad_rank <- !is.na(lca_sc$scope) & !mapply(identical, unname(rg$reg_rank[lca_sc$scope]), lca_sc$rank)
+      why <- dplyr::if_else(is.na(lca_sc$scope), "member_clade_no_registry_id",
+                            dplyr::if_else(bad_rank, "member_clade_rank_mismatch", NA_character_))
+      if (any(!is.na(why))) {
+        w <- !is.na(why)
+        lca_withheld <- data.frame(observation_id = as.character(out$observation_id[lca_sc$row[w]]), row = lca_sc$row[w],
+                                   member_clade = lca_sc$member[w], scope_rank = lca_sc$rank[w], reason = why[w],
+                                   stringsAsFactors = FALSE)
+        lca_sc <- lca_sc[!w, , drop = FALSE]
+      }
+    }
+    out$unreferenced_scope[lca_rows] <- as.character(out$ring_member_clades[lca_rows])
+    out$unreferenced_scope_rank[lca_rows] <- expected_rank[lca_rows]
+    out$unreferenced_mass[lca_rows] <- 0
+    out$unreferenced_n_species[lca_rows] <- 0L
+  }
+  if (length(gen) == 0L && nrow(lca_sc) == 0L) {
+    attr(out, "ring_member_clades_withheld") <- lca_withheld
     attr(out, "unreferenced_mass_check") <- check
     attr(out, "unreferenced_withheld") <- data.frame(
       observation_id = character(0), taxon_name = character(0), scope = character(0),
@@ -422,12 +482,13 @@ add_unreferenced_prior_mass <- function(joined,
 
   check$n_coarse_prior_rows_excluded <- n_coarse_excluded
 
+  grow <- c(gen, lca_sc$row)
   gdf <- data.frame(
-    row = gen,
-    observation_id = as.character(out$observation_id[gen]),
-    scope = out$taxon_name[gen],
-    rank = out$taxon_name_rank[gen],
-    hab = if (has_hab) out$main_habitat[gen] else NA_character_,
+    row = grow,
+    observation_id = as.character(out$observation_id[grow]),
+    scope = c(out$taxon_name[gen], lca_sc$scope),
+    rank = c(out$taxon_name_rank[gen], lca_sc$rank),
+    hab = if (has_hab) out$main_habitat[grow] else NA_character_,
     stringsAsFactors = FALSE
   )
   named <- unique(data.frame(
@@ -602,7 +663,7 @@ add_unreferenced_prior_mass <- function(joined,
       unreferenced local species added under {length(unique(mem$row))} ring row(s).")
   }
   cli::cli_inform(c(
-    "Unreferenced prior mass at {.val {grid_id}}: {n_changed} of {length(gen)} generic \\
+    "Unreferenced prior mass at {.val {grid_id}}: {n_changed} of {length(gen) + length(lca_rows)} generic \\
     row(s) gained mass from unreferenced local relatives \\
     (median added {signif(stats::median(out$unreferenced_mass[gen][out$unreferenced_mass[gen] > 0]), 3)}).",
     "i" = "{check$n_candidates_not_referenced} of {check$n_candidates} named candidate(s) \\
@@ -620,6 +681,7 @@ add_unreferenced_prior_mass <- function(joined,
     ))
   }
   attr(out, "unreferenced_withheld") <- withheld_df
+  attr(out, "ring_member_clades_withheld") <- lca_withheld
   attr(out, "unreferenced_mass_check") <- check
   attr(out, "unreferenced_scope_members") <- if (!is.null(mem_all) && nrow(mem_all) > 0L) {
     data.frame(
