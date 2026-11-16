@@ -7,7 +7,7 @@ utils::globalVariables(c(
   "observation_id", "Query_ID",
   ".data", "rank_score", "best_rank_score",
   "coverage",
-  "is_restored", ".genus", ".all_restored", "h2_delta_source",
+  "is_restored", ".genus", ".all_restored", "h2_delta_source", "ring_member_clades",
   "species_confusion_risk", "genus_confusion_risk", "family_confusion_risk",
   "own_rank_confusion_risk"
 ))
@@ -211,6 +211,24 @@ utils::globalVariables(c(
       score_logit = .transform_p(p_med, score_transform, logit_epsilon)
     )
 
+  # Lineage columns COARSER than rank_system that candidate_df carries (e.g.
+  # phylum and kingdom when rank_system starts at class). Read ONLY to name an
+  # outer ring at its tied candidates' lowest common rank (the ring rows
+  # below); no likelihood and no other column uses them.
+  lca_extra_cols <- local({
+    lad <- TaxaTools::standard_ranks
+    k <- match(rank_cols[1L], lad)
+    if (is.na(k) || k <= 1L) character(0) else intersect(lad[seq_len(k - 1L)], names(candidate_df))
+  })
+  cand_extra <- if (length(lca_extra_cols) > 0L) {
+    candidate_df |>
+      dplyr::group_by(taxon_name) |>
+      dplyr::summarise(dplyr::across(dplyr::all_of(lca_extra_cols), dplyr::first), .groups = "drop") |>
+      as.data.frame()
+  } else {
+    NULL
+  }
+
   if (nrow(cand) == 0L) {
     return(data.frame(
       hypothesis_type = character(0),
@@ -228,6 +246,7 @@ utils::globalVariables(c(
       genus_confusion_risk = numeric(0),
       family_confusion_risk = numeric(0),
       own_rank_confusion_risk = numeric(0),
+      ring_member_clades = character(0),
       best_identity = numeric(0),
       stringsAsFactors = FALSE
     ))
@@ -538,19 +557,31 @@ utils::globalVariables(c(
     # then the highest H1 density (relative 1e-9); then the highest raw
     # identity (1e-9). Only a final exact tie falls to the FIRST in candidate
     # order, which is the sole order-dependent step.
-    .pick_anchor <- function(idx) {
+    top <- function(v, tol) {
+      v[is.na(v)] <- -Inf
+      v >= max(v) - tol
+    }
+    # The candidates an anchor is chosen AMONG: the top transformed score
+    # (ties within 1e-9), then a real BLAST hit over a restored row. They
+    # share the score; only the H1 density and raw identity separate them
+    # after this. .pick_anchor() and the outer-ring label (unit_tied below)
+    # both use this one set, so the two cannot drift apart.
+    .tied_set <- function(idx) {
       if (length(idx) <= 1L) {
         return(idx)
-      }
-      top <- function(v, tol) {
-        v[is.na(v)] <- -Inf
-        v >= max(v) - tol
       }
       idx <- idx[top(s_vec[idx], 1e-9)]
       if (length(idx) > 1L && !is.null(restored_vec)) {
         r <- restored_vec[idx] %in% TRUE
         if (any(r) && any(!r)) idx <- idx[!r]
       }
+      idx
+    }
+    .pick_anchor <- function(idx) {
+      if (length(idx) <= 1L) {
+        return(idx)
+      }
+      idx <- .tied_set(idx)
       if (length(idx) > 1L) {
         hv <- h1_vals[idx]
         idx <- idx[top(hv, abs(max(hv, na.rm = TRUE)) * 1e-9)]
@@ -561,6 +592,11 @@ utils::globalVariables(c(
 
     unit_pool <- if (any(has_tax)) which(has_tax) else seq_len(n_c)
     unit_anchor <- .pick_anchor(unit_pool)
+    # The candidates tied with the unit anchor (same transformed score, after
+    # the real-hit-over-restored step). When they disagree on the clade an
+    # outer ring is named for, the ring is named at their lowest common rank
+    # (see the ring rows in .evaluate_one_query()).
+    unit_tied <- .tied_set(unit_pool)
     zero_all <- length(unit_anchor) == 0L || all(s_vec == 0)
     if (length(unit_anchor) == 0L) unit_anchor <- 1L
 
@@ -691,7 +727,7 @@ utils::globalVariables(c(
     list(
       h1 = h1_vals, h2 = h2_val, h3 = h3_val, rings = ring_vals,
       h2_anchor = unname(h2_anchor), h3_anchor = unname(h3_anchor),
-      unit_anchor = unit_anchor,
+      unit_anchor = unit_anchor, unit_tied = unit_tied,
       h2_delta_source = stats::setNames(vapply(h2_res, `[[`, character(1), "src"), h2_keys),
       h3_delta_source = stats::setNames(vapply(h3_res, `[[`, character(1), "src"), h3_keys),
       ring_delta_source = u_res$src,
@@ -812,7 +848,39 @@ utils::globalVariables(c(
 
   # Outer ring rows: named by the unit anchor's own order (class); skipped
   # when the anchor has no real value at that rank.
+  #
+  # Tied anchors across clades. The unit anchor is chosen among the candidates
+  # tied on the top transformed score (primary$unit_tied); after the score,
+  # only the H1 density and raw identity separate them. When those tied
+  # candidates hold two or more real values at a ring's rank, the ring's
+  # clade is not determined by the read: it is named at the tied candidates'
+  # lowest common rank instead (lineage at and above it kept, finer ranks NA,
+  # coarser lineage columns of candidate_df included in the search), and
+  # ring_member_clades lists the tied values at the ring's own rank. When no
+  # rank is common to them, every lineage column and taxon_name are NA. The
+  # ring's VALUE is unchanged: it is still evaluated at the tie-broken anchor,
+  # which shares the tied candidates' score.
   unit_row <- .anchor_row(primary$unit_anchor)
+  tied <- primary$unit_tied
+  lca_ladder <- c(lca_extra_cols, rank_cols) # coarse to fine
+  # values of the tied candidates at `col`; all_real = TRUE returns NULL when
+  # any tied candidate lacks a real value there (a common rank must hold for
+  # EVERY tied candidate, not just those that carry the rank)
+  .tied_values <- function(col, all_real = FALSE) {
+    v <- if (col %in% names(cand)) {
+      cand[[col]][tied]
+    } else if (!is.null(cand_extra) && col %in% names(cand_extra)) {
+      cand_extra[[col]][match(cand$taxon_name[tied], cand_extra$taxon_name)]
+    } else {
+      character(0)
+    }
+    v <- as.character(v)
+    ok <- !is.na(v) & nzchar(trimws(v)) & !.is_placeholder_rank(v)
+    if (all_real && (length(v) == 0L || !all(ok))) {
+      return(NULL)
+    }
+    sort(unique(v[ok]))
+  }
   ring_rows <- list()
   for (ri in seq_along(model_params$Rings %||% list())) {
     R <- model_params$Rings[[ri]]
@@ -820,16 +888,47 @@ utils::globalVariables(c(
     v <- unit_row[[R$rank]]
     if (is.na(v) || .is_placeholder_rank(v)) next
     finer <- rank_cols[seq_along(rank_cols) > match(R$rank, rank_cols)]
-    ring_rows[[length(ring_rows) + 1L]] <- .ring_row(
+    rw <- .ring_row(
       primary$unit_anchor, finer, R$hypothesis_type,
       primary$rings[ri], primary$ring_delta_source
     )
+    rw$ring_member_clades <- NA_character_
+    members <- if (length(tied) > 1L) .tied_values(R$rank) else character(0)
+    if (length(members) > 1L) {
+      above <- rev(lca_ladder[seq_len(match(R$rank, lca_ladder) - 1L)]) # finest first
+      lca_rank <- NA_character_
+      lca_name <- NA_character_
+      for (cr in above) {
+        cv <- .tied_values(cr, all_real = TRUE)
+        if (length(cv) == 1L) {
+          lca_rank <- cr
+          lca_name <- cv
+          break
+        }
+      }
+      for (bc in intersect(rank_cols, names(rw))) {
+        if (is.na(lca_rank) || match(bc, lca_ladder) > match(lca_rank, lca_ladder)) rw[[bc]] <- NA_character_
+      }
+      if (!is.na(lca_rank) && lca_rank %in% names(rw)) rw[[lca_rank]] <- lca_name
+      rw$ring_member_clades <- paste(members, collapse = "|")
+      rw$.lca_name <- lca_name
+      rw$.lca_rank <- lca_rank
+    }
+    ring_rows[[length(ring_rows) + 1L]] <- rw
   }
 
   res <- dplyr::bind_rows(c(list(df_h1), h2_rows_l, h3_rows_l, ring_rows))
 
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
+  # a tied-anchor ring keeps its lowest-common-rank name, which can lie above
+  # rank_system (candidate_df's coarser lineage) or be NA (no common rank)
+  if (!"ring_member_clades" %in% names(res)) res$ring_member_clades <- NA_character_
+  lca_k <- which(!is.na(res$ring_member_clades))
+  if (length(lca_k) > 0L) {
+    res$taxon_name[lca_k] <- res$.lca_name[lca_k]
+    res$taxon_name_rank[lca_k] <- res$.lca_rank[lca_k]
+  }
 
   # ---- CONFUSION-RISK COLUMNS ------------------------------------------------
   # species_confusion_risk/genus_confusion_risk/family_confusion_risk: a
@@ -918,6 +1017,7 @@ utils::globalVariables(c(
       # each unreferenced_species/unreferenced_genus group has a
       # single row, so first() is unambiguous.
       h2_delta_source = dplyr::first(h2_delta_source),
+      ring_member_clades = dplyr::first(ring_member_clades),
       .groups = "drop"
     )
 
@@ -1137,7 +1237,7 @@ utils::globalVariables(c(
       score_likelihood, score_likelihood_mean, score_likelihood_sd,
       score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
       species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-      own_rank_confusion_risk, best_identity
+      own_rank_confusion_risk, ring_member_clades, best_identity
     ) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
@@ -1972,6 +2072,7 @@ evaluate_likelihoods <- function(match_df,
       genus_confusion_risk = numeric(0L),
       family_confusion_risk = numeric(0L),
       own_rank_confusion_risk = numeric(0L),
+      ring_member_clades = character(0L),
       best_identity = numeric(0L),
       stringsAsFactors = FALSE
     )
@@ -2026,7 +2127,7 @@ evaluate_likelihoods <- function(match_df,
     score_likelihood_cov, score_likelihood_evidence,
     h2_delta_source,
     species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-    own_rank_confusion_risk, best_identity
+    own_rank_confusion_risk, ring_member_clades, best_identity
   )
 
   # ---- ABSOLUTE-FIT COLUMNS ---------------------------------------------------
