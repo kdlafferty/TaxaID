@@ -10,10 +10,27 @@
 # data frame with real genus/family columns ({{taxonomy_map_var}}, e.g. the
 # occurrences_clean object from earlier in this pipeline). Set
 # {{include_group_priors}} to FALSE to skip entirely.
+# With the run's taxon registry, the map is the registry's own tree over the
+# priors' taxon ids, so groups are the clades the consensus is formed on (a
+# genus the registry places in another family sums into THAT family) and every
+# group name is one the registry holds; posterior_consensus(registry =) refuses
+# a group or reference name it cannot resolve.
+.consensus_taxonomy_map <- if (exists("taxon_registry") && !is.null(taxon_registry) &&
+                               "taxon_id" %in% names({{taxaexpect_priors_var}})) {
+  .tm <- unique(data.frame(taxon_name = as.character({{taxaexpect_priors_var}}$taxon_name),
+                           taxon_id = as.character({{taxaexpect_priors_var}}$taxon_id), stringsAsFactors = FALSE))
+  .tm <- .tm[!is.na(.tm$taxon_name) & !is.na(.tm$taxon_id) & !duplicated(.tm$taxon_name), , drop = FALSE]
+  .reg_nm <- stats::setNames(taxon_registry$taxa$name, taxon_registry$taxa$taxon_id)
+  for (.r in c("class", "order", "family", "genus")) .tm[[.r]] <- unname(.reg_nm[TaxaTools::parent_at(.tm$taxon_id, .r, taxon_registry)])
+  .tm$taxon_id <- NULL
+  .tm
+} else {
+  {{taxonomy_map_var}}
+}
 group_priors_obj <- if (isTRUE({{include_group_priors}})) {
   TaxaAssign::compute_group_priors(
     taxaexpect_priors = {{taxaexpect_priors_var}},
-    taxonomy_map      = {{taxonomy_map_var}}
+    taxonomy_map      = .consensus_taxonomy_map
   )
 } else {
   NULL
@@ -42,7 +59,7 @@ species_reference_df <- if (isTRUE({{include_downranking}})) {
   {{taxaexpect_priors_var}}[.not_clamp, , drop = FALSE] |>
     dplyr::filter(!is.na(taxon_name)) |>
     dplyr::distinct(taxon_name) |>
-    dplyr::left_join({{taxonomy_map_var}}, by = "taxon_name") |>
+    dplyr::left_join(.consensus_taxonomy_map, by = "taxon_name") |>
     unique()
 } else {
   NULL

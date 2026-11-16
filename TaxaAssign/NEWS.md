@@ -27,4 +27,6 @@
   prior filed under the accepted name, one taxon under two names is one
   hypothesis, lineage comes from the registry's tree (no backbone lookup), and
   output names are the registry's accepted names, with each row's own name kept
-  in `taxon_name_verbatim`.
+  in `taxon_name_verbatim`. `posterior_consensus()` keys `group_priors` and
+  `species_reference` by registry identifier as well, and refuses a name in
+  either that the registry does not hold.

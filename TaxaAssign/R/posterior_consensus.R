@@ -481,6 +481,13 @@
 #'   and both read the registry's own tree instead: no name is looked up, a
 #'   hypothesis whose id the registry holds is `"matched"`, and only empty
 #'   lineage cells are filled, as before. `backbone_id` is then not needed.
+#'   `group_priors` and `species_reference` are keyed by the registry too:
+#'   each group's (`rank`, `taxon`) and each reference species is resolved to
+#'   its registry id and renamed to the registry's accepted name, the
+#'   reference's coarser rank columns are replaced by that id's ancestors in
+#'   the registry's tree, and groups that land on one id are summed. A name
+#'   with no single id in the registry is an error, as in
+#'   `TaxaTools::attach_taxon_ids()`.
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
@@ -998,6 +1005,11 @@ posterior_consensus <- function(posterior_df,
       "{.arg species_reference} must be a data.frame, an \\
       {.cls unreferenced_species_result} object, or NULL."
     )
+  }
+  # With a registry the consensus names are the registry's: key the caller's group and reference tables the same way
+  if (!is.null(registry)) {
+    if (!is.null(group_priors)) group_priors <- .registry_group_priors(group_priors, registry)
+    if (!is.null(species_reference)) species_reference <- .registry_species_reference(species_reference, registry)
   }
 
   # --- Resolve rank system ----------------------------------------------------

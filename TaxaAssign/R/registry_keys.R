@@ -238,3 +238,77 @@
   }
   out[!vapply(out, is.null, logical(1))]
 }
+
+# Names of a caller's table resolved to registry ids: the registry's name table first (a name registered to one id), then
+# its taxa by accepted name. A name held under 2+ ids is narrowed by `ranks` (the taxon's rank in the registry) where
+# that leaves one. Returns the ids (NA where unresolved) with attribute "unresolved": the names with no single id.
+.registry_resolve_names <- function(nm, ranks, registry) {
+  nm <- as.character(nm); ranks <- if (is.null(ranks)) rep(NA_character_, length(nm)) else rep_len(as.character(ranks), length(nm))
+  rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+  by_name <- split(as.character(rn$taxon_id), rn$verbatim_name)
+  by_acc <- split(as.character(registry$taxa$taxon_id), registry$taxa$name)
+  rk_of <- stats::setNames(as.character(registry$taxa$rank), registry$taxa$taxon_id)
+  key <- paste(nm, ranks, sep = "\r")
+  u <- !duplicated(key) & !is.na(nm)
+  one <- vapply(which(u), function(i) {
+    ids <- by_name[[nm[i]]] %||% by_acc[[nm[i]]] %||% character(0)
+    if (length(ids) > 1L && !is.na(ranks[i])) { r <- ids[rk_of[ids] %in% ranks[i]]; if (length(r)) ids <- r }
+    if (length(ids) == 1L) ids else NA_character_
+  }, "")
+  out <- unname(stats::setNames(one, key[u])[key])
+  out[is.na(nm)] <- NA_character_
+  attr(out, "unresolved") <- unique(nm[!is.na(nm) & is.na(out)])
+  out
+}
+
+.registry_abort_unresolved <- function(bad, arg) {
+  if (!length(bad)) return(invisible(TRUE))
+  cli::cli_abort(c("{length(bad)} name(s) in {.arg {arg}} have no single id in {.arg registry} (e.g. {.val {utils::head(bad, 5)}}).",
+    "i" = "Register the table's names before the freeze, as {.fn TaxaTools::attach_taxon_ids} requires; a name the registry does not hold would otherwise silently match nothing."))
+}
+
+# posterior_consensus(registry =): group_priors renamed to the registry's accepted name of each group's id, so a group
+# filed under a synonym or a superseded name meets the consensus the registry names; groups that land on one (rank, id)
+# are summed (theta_sum capped at 1, as compute_group_priors() caps it).
+.registry_group_priors <- function(gp, registry) {
+  reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
+  id <- if ("taxon_id" %in% names(gp)) {
+    bad <- setdiff(stats::na.omit(as.character(gp$taxon_id)), registry$taxa$taxon_id)
+    if (length(bad)) cli::cli_abort("{.arg group_priors} holds {length(bad)} taxon id(s) that {.arg registry} does not (e.g. {.val {utils::head(bad, 3)}}).")
+    as.character(gp$taxon_id)
+  } else {
+    r <- .registry_resolve_names(gp$taxon, gp$rank, registry)
+    .registry_abort_unresolved(attr(r, "unresolved"), "group_priors"); r
+  }
+  gp <- as.data.frame(gp)
+  gp$taxon_id <- id
+  gp$taxon <- ifelse(is.na(id), as.character(gp$taxon), unname(reg_name[id]))
+  k <- paste(gp$rank, gp$taxon, sep = "\r")
+  if (anyDuplicated(k)) {
+    th <- vapply(split(gp$theta_sum, k), sum, 0)
+    nmem <- if ("n_members" %in% names(gp)) vapply(split(gp$n_members, k), sum, 0) else NULL
+    gp <- gp[!duplicated(k), , drop = FALSE]; k1 <- k[!duplicated(k)]
+    gp$theta_sum <- pmin(unname(th[k1]), 1)
+    if (!is.null(nmem)) gp$n_members <- as.integer(unname(nmem[k1]))
+  }
+  rownames(gp) <- NULL
+  gp
+}
+
+# posterior_consensus(registry =): species_reference on the registry's names and tree. The finest column (taxon_name,
+# else species) becomes the accepted name of its id, and every coarser rank column the reference carries becomes that
+# id's ancestor in the registry's tree, so downranking walks the same tree the consensus was formed on.
+.registry_species_reference <- function(sr, registry) {
+  if (inherits(sr, "unreferenced_species_result")) sr <- .build_species_ref(sr, "species")
+  if (is.null(sr)) return(NULL)
+  sr <- as.data.frame(sr)
+  fin <- if ("taxon_name" %in% names(sr)) "taxon_name" else if ("species" %in% names(sr)) "species" else return(sr)
+  id <- .registry_resolve_names(sr[[fin]], "species", registry)
+  .registry_abort_unresolved(attr(id, "unresolved"), "species_reference")
+  reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
+  sr[[fin]] <- unname(reg_name[id])
+  for (r in setdiff(intersect(c("kingdom", "phylum", "class", "order", "family", "genus", "species"), names(sr)), fin)) {
+    sr[[r]] <- unname(reg_name[TaxaTools::parent_at(id, r, registry)])
+  }
+  unique(sr)
+}

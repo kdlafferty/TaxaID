@@ -365,7 +365,14 @@ Given a registry, \code{posterior_df} must carry a \code{taxon_id} column whose
 ids all belong to it (as \code{\link[=join_priors]{join_priors()}} with the same registry gives),
 and both read the registry's own tree instead: no name is looked up, a
 hypothesis whose id the registry holds is \code{"matched"}, and only empty
-lineage cells are filled, as before. \code{backbone_id} is then not needed.}
+lineage cells are filled, as before. \code{backbone_id} is then not needed.
+\code{group_priors} and \code{species_reference} are keyed by the registry too:
+each group's (\code{rank}, \code{taxon}) and each reference species is resolved to
+its registry id and renamed to the registry's accepted name, the
+reference's coarser rank columns are replaced by that id's ancestors in
+the registry's tree, and groups that land on one id are summed. A name
+with no single id in the registry is an error, as in
+\code{TaxaTools::attach_taxon_ids()}.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
