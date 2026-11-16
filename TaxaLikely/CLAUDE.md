@@ -79,6 +79,8 @@ state only.
   two-reference pair rule. Report only unless `exclude_reference_suspects = TRUE`; the
   returned list is otherwise unchanged. Processed in chunks of references, so memory is
   bounded by the chunk.
+- `restore_suppressed_candidates(registry = )` (default `NULL`): "already a candidate?" and "in the filter?" also
+  compare registry taxon ids; genus grouping and model lookups stay on the reference's own names.
 
 ## Conventions
 

@@ -86,6 +86,10 @@ state only.
 - `verify_taxon_names()` takes `input_rank` (the rank the caller means each name at) and `lineage` (a pipe-delimited ancestor string). A name is not a key: one string can match several unrelated NCBI nodes, so these two disambiguate, and an unresolved ambiguity goes to `decisions` or stops rather than being guessed.
 - `fill_higher_ranks()` takes `input_rank` for the same reason and `fill_ranks` for which ranks to fill (`"family"` by default).
 - `call_api()` takes `temperature`, defaulting to `NULL`, which sends no temperature field and keeps the provider's own default. Some current models reject the parameter outright, which is why the default sends nothing.
+- `check_taxon_registry(export = TRUE)` holds every table passed to the export rules (no taxon under two display
+  names, no display name on two taxa). `tests/testthat/test-source_check_name_joins.R` fails on any name join in the
+  nine packages that is neither converted to taxon ids nor listed with its reason in
+  `fixtures/name_join_review.json`.
 
 ## Conventions
 

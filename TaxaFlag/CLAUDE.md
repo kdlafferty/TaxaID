@@ -55,6 +55,7 @@ state only.
   removes a row. The flag-only reporting pattern (`llm_review_flag`, expert
   keep/exclude, `review_flag_stands`) lives in the TaxaWizard workflow template, not
   in this package.
+- `compute_local_occurrence_distance(registry = )` (default `NULL`): records match the called taxa by registry id.
 
 ## Conventions
 
