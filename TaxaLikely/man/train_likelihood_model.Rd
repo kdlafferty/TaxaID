@@ -136,7 +136,7 @@ otherwise falls back to \code{"fixed"} with a message.}
 every pair involving a reference the reference-consistency table marks
 \code{suspect} before fitting; excluded references remain candidates at
 evaluation. \code{FALSE} attaches the table as a report only and fits on all
-of \code{raw_df}, which reproduces the 1.0.0 pre-release fit. See
+of \code{raw_df}. See
 \verb{@section Reference-consistency table}.}
 }
 \value{
@@ -508,10 +508,10 @@ dropped from \code{raw_df} before fitting, and the table marks those references
 \code{excluded}. With \code{exclude_reference_suspects = FALSE} the table is a report
 only: the model is fitted on all of \code{raw_df}, and the returned list is the
 same as without the table. The table is always computed on the full
-\code{raw_df}. The default was chosen on held-out data (leave-species-out and
-leave-genus-out folds on two fish 12S libraries): excluding suspects
-scored within 0.01 of fitting on everything in every cell, and most users
-will not run a separate reference screen before training.
+\code{raw_df}. Exclusion is the default because most users will not run a
+separate reference screen before training, and on held-out data
+(leave-species-out and leave-genus-out folds on two fish 12S libraries)
+it scores within 0.01 of fitting on everything in every cell.
 
 A flag is not a verdict. A deep within-species split or a cryptic species
 looks the same as a mislabel from inside the library, and a species whose
