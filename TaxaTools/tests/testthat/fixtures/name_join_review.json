@@ -552,12 +552,6 @@
     "reason": "registry = : this line runs on taxon ids (working copy keyed by id), or is the name path kept for registry = NULL"
   },
   {
-    "file": "TaxaFlag/R/compute_local_occurrence_distance.R",
-    "code": "if (!is.null(registry)) result$taxon_id <- q_id[match(result$taxon_name, taxa_unique)]",
-    "verdict": "registry_internal",
-    "reason": "registry path: id of each called name"
-  },
-  {
     "file": "TaxaFlag/R/review_assignments.R",
     "code": "pipeline_ctx$pipeline_note[match(taxa_info$taxon_name, pipeline_ctx$taxon_name)]",
     "verdict": "within",
@@ -646,5 +640,11 @@
     "code": "pos <- match(rows$taxon_name, taxa_info$taxon_name)",
     "verdict": "within",
     "reason": "not a cross-table name join (design classification, DESIGN_taxon_registry_name_joins_2026-11-13.csv)"
+  },
+  {
+    "file": "TaxaAssign/R/registry_keys.R",
+    "code": "fin <- if (\"taxon_name\" %in% names(sr)) \"taxon_name\" else if (\"species\" %in% names(sr)) \"species\" else return(sr)",
+    "verdict": "fp",
+    "reason": "chooses which column of species_reference holds the species name; no join on a name"
   }
 ]
