@@ -860,3 +860,106 @@ test_that("export rules: an output table may not hold one taxon under two names,
   g <- check_taxon_registry(reg, list(plausible = two), verbose = FALSE, export = TRUE)
   expect_true(any(g$kind == "display_name_two_ids" & g$severity == "error"))
 })
+
+# --- the lineage rule: one name in one lineage is one taxon; the rank a table asked at is a hint ---------------------
+# Cases from the CalIntertidal C0 registry (2026-11-16): Polyarthra, Scopelarchidae and Bigyra each held TWO ids because
+# tables asked them at different ranks; Chromis must be the fish its sequences matched. Answers here depend on the RANK
+# asked (as GBIF's do), so .fake_lookup() (keyed on name and context) is not enough.
+.rank_lookup <- function(tbl) {
+  function(names, rank, context) {
+    i <- vapply(seq_along(names), function(j) {
+      w <- which(tbl$q == names[j] & (tbl$asked == (rank[j] %||% "") | (is.na(rank[j]) & tbl$asked == "")))
+      if (length(w)) w[1L] else NA_integer_
+    }, 1L)
+    hit <- !is.na(i)
+    data.frame(user_supplied_name = names, matched_name = ifelse(hit, tbl$matched[i], NA), matched_rank = ifelse(hit, tbl$rank[i], NA),
+               is_synonym = FALSE, classification_path = ifelse(hit, tbl$path[i], NA), classification_ranks = ifelse(hit, tbl$ranks[i], NA),
+               score = NA_real_, verified = TRUE, matched = hit, record_id = ifelse(hit, tbl$cur[i], NA),
+               current_record_id = ifelse(hit, tbl$cur[i], NA), classification_ids = ifelse(hit, tbl$ids[i], NA), data_source_id = 11L,
+               entry_date = "2024-01-11", match_type = ifelse(hit, "Exact", NA), stringsAsFactors = FALSE)
+  }
+}
+.ans <- function(q, asked, cur, path, ranks, ids, rank = sub("^.*\\|", "", ranks)) {
+  data.frame(q = q, asked = asked, matched = sub("^.*\\|", "", path), cur = cur, path = path, ranks = ranks, ids = ids, rank = rank, stringsAsFactors = FALSE)
+}
+
+test_that("lineage rule: Polyarthra asked at genus and at order is the rotifer genus in every table", {
+  ctx <- "Eukaryota|Rotifera|Eurotatoria|Ploima|Synchaetidae"
+  lk <- .rank_lookup(rbind(
+    .ans("Polyarthra", "genus", "1003101", "Animalia|Rotifera|Eurotatoria|Ploima|Synchaetidae|Polyarthra", "kingdom|phylum|class|order|family|genus", "1|91|92|93|94|1003101"),
+    .ans("Polyarthra", "order", "777", "Animalia|Arthropoda|Polyarthra", "kingdom|phylum|order", "1|54|777")))
+  reg <- build_taxon_registry(rbind(.names("Polyarthra", "match", rank_given = "genus", context = ctx),
+                                    .names("Polyarthra", "posteriors", rank_given = "order", context = ctx)), run_id = "lr1", lookup = lk)
+  expect_identical(reg$names$taxon_id, c("gbif:1003101", "gbif:1003101"))
+  expect_identical(reg$names$status[reg$names$source_table == "posteriors"], "lineage_rule")
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$kind == "name_to_2plus_taxa"))
+  expect_true(any(chk$kind == "lineage_rule" & chk$names == "Polyarthra" & chk$severity == "info"))
+  expect_false(any(chk$severity == "error"))
+})
+
+test_that("lineage rule: Scopelarchidae is the family (its parent is the order in its lineage), not GBIF's genus of that name", {
+  ctx <- "Chordata|Actinopteri|Aulopiformes|Scopelarchidae"
+  lk <- .rank_lookup(rbind(
+    .ans("Scopelarchidae", "family", "2966", "Animalia|Chordata|Aulopiformes|Scopelarchidae", "kingdom|phylum|order|family", "1|44|1050|2966"),
+    .ans("Scopelarchidae", "genus", "11111900", "Animalia|Chordata|Aulopiformes|Scopelarchidae|Scopelarchidae", "kingdom|phylum|order|family|genus", "1|44|1050|2966|11111900"),
+    .ans("Scopelarchidae", "", "11111900", "Animalia|Chordata|Aulopiformes|Scopelarchidae|Scopelarchidae", "kingdom|phylum|order|family|genus", "1|44|1050|2966|11111900")))
+  reg <- build_taxon_registry(rbind(.names("Scopelarchidae", "priors", rank_given = "family", context = ctx),
+                                    .names("Scopelarchidae", "priors", rank_given = "genus", context = ctx),
+                                    .names("Scopelarchidae", "habitat", rank_given = NA_character_, context = ctx)), run_id = "lr2", lookup = lk)
+  expect_identical(unique(reg$names$taxon_id), "gbif:2966")
+  expect_identical(reg$taxa$rank[reg$taxa$taxon_id == "gbif:2966"], "family")
+  expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind == "name_to_2plus_taxa"))
+})
+
+test_that("NEGATIVE lineage rule: two candidates and NO lineage to decide are unresolved and error-class, never a guess", {
+  lk <- .rank_lookup(rbind(
+    .ans("Scopelarchidae", "family", "2966", "Animalia|Chordata|Aulopiformes|Scopelarchidae", "kingdom|phylum|order|family", "1|44|1050|2966"),
+    .ans("Scopelarchidae", "genus", "11111900", "Animalia|Chordata|Aulopiformes|Scopelarchidae|Scopelarchidae", "kingdom|phylum|order|family|genus", "1|44|1050|2966|11111900")))
+  reg <- build_taxon_registry(rbind(.names("Scopelarchidae", "priors", rank_given = "family"),
+                                    .names("Scopelarchidae", "priors", rank_given = "genus")), run_id = "lr3", lookup = lk)
+  expect_false(any(reg$names$taxon_id %in% c("gbif:2966", "gbif:11111900")))
+  expect_true(all(reg$names$status == "lineage_unresolved"))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_true(any(chk$kind == "lineage_unresolved" & chk$severity == "error" & chk$names == "Scopelarchidae"))
+  expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "lineage_unresolved")
+})
+
+test_that("lineage rule: Chromis is the fish its lineage names, not a mollusc homonym another table's answer gave", {
+  ctx <- "Chordata|Actinopteri|Perciformes|Pomacentridae"
+  lk <- .rank_lookup(rbind(
+    .ans("Chromis", "genus", "2394300", "Animalia|Chordata|Perciformes|Pomacentridae|Chromis", "kingdom|phylum|order|family|genus", "1|44|587|4365|2394300"),
+    .ans("Chromis", "", "9990001", "Animalia|Mollusca|Gastropoda|Chromis", "kingdom|phylum|class|genus", "1|52|225|9990001")))
+  reg <- build_taxon_registry(rbind(.names("Chromis", "priors", rank_given = "genus", context = ctx),
+                                    .names("Chromis", "plausible_top", rank_given = NA_character_, context = ctx)), run_id = "lr4", lookup = lk)
+  expect_identical(reg$names$taxon_id, c("gbif:2394300", "gbif:2394300"))
+  expect_identical(parent_at("gbif:2394300", "family", reg), "gbif:4365")
+  expect_false(any(reg$names$taxon_id %in% "gbif:9990001"))
+})
+
+test_that("lineage rule: Bigyra asked at phylum and at class takes the one accepted GBIF id (one-candidate reading)", {
+  # .REGISTRY_ONE_CANDIDATE_TAKES = TRUE. If the maintainer chooses the strict reading (no lineage above the name ->
+  # unresolved), set it FALSE and change the next expectation to: all(reg$names$status == "lineage_unresolved").
+  lk <- .rank_lookup(rbind(
+    .ans("Bigyra", "phylum", "8158183", "Chromista|Bigyra", "kingdom|phylum", "4|8158183"),
+    .ans("Bigyra", "class", "8158183", "Chromista|Bigyra", "kingdom|phylum", "4|8158183")))
+  reg <- build_taxon_registry(rbind(.names("Bigyra", "consensus", rank_given = "phylum", context = "Bigyra"),
+                                    .names("Bigyra", "consensus", rank_given = "class", context = "Bigyra"),
+                                    .names("Bigyra", "lineage", rank_given = NA_character_, context = "Bigyra")), run_id = "lr5", lookup = lk)
+  expect_identical(reg$names$taxon_id, rep("gbif:8158183", 3L))
+  expect_false(any(grepl("^local:", reg$taxa$taxon_id)))
+  expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind %in% c("name_to_2plus_taxa", "taxon_described_twice")))
+})
+
+test_that("F-a: a run-local id given a rank in one table and none in another is ONE description; two different ranks stay a conflict", {
+  lk <- .rank_lookup(.ans("Nothing", "genus", "1", "A|B", "kingdom|phylum", "1|2")[0, ])
+  reg <- build_taxon_registry(rbind(.names("Acrocephalus", "priors", rank_given = "genus"), .names("Acrocephalus", "plausible", rank_given = NA_character_)),
+                              run_id = "fa1", lookup = lk)
+  expect_identical(unique(reg$names$taxon_id), "local:Acrocephalus")
+  expect_identical(reg$taxa$rank[reg$taxa$taxon_id == "local:Acrocephalus"], "genus")
+  expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind == "taxon_described_twice"))
+  # NEGATIVE: two DIFFERENT given ranks are two descriptions, still an error
+  reg2 <- build_taxon_registry(rbind(.names("Crambidae gen.", "a", rank_given = "genus"), .names("Crambidae gen.", "b", rank_given = "species")),
+                               run_id = "fa2", lookup = lk)
+  expect_true(any(check_taxon_registry(reg2, verbose = FALSE)$kind == "taxon_described_twice"))
+})

@@ -110,6 +110,23 @@ species for two, infraspecific for three or more): such a name gets
 \code{status = "rank_fallback"} and a run-local identifier under the
 answered ancestor, never that ancestor's identifier.
 
+\strong{One name, one lineage, one taxon.} Tables can ask one name at
+different ranks and so get different answers. Within one (name,
+\code{context}), \code{rank_given} is a hint and the lineage decides: the
+candidates are the identifiers the lookup accepted for that name and
+context. One candidate is taken by every row of the name (rows refused as a
+homonym, answered at a coarser rank, or not answered), with
+\code{status = "lineage_rule"}. Of two or more, the one whose parent is the
+taxon just above the name in its \code{context} is taken, else the one whose
+path holds that taxon. When the lineage decides none, or there is no context,
+every row of the name is unresolved (\code{status = "lineage_unresolved"},
+listed in \code{meta$lineage_unresolved}), never a guess. Choices are listed
+in \code{meta$lineage_rule}.
+
+\strong{Run-local descriptions.} A run-local identifier described once with
+a rank or parent and once without is one description, the given one; two
+different given ranks or parents remain a conflict.
+
 \strong{Unresolved names} get a run-local identifier under their resolved
 genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
 the genus is unknown. The genus is resolved per genus word AND \code{context}:

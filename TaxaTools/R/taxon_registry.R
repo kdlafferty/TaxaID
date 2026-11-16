@@ -32,6 +32,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 # Rank ladder for "was the name answered at a coarser rank than it was asked at?". Below species everything is one
 # step (infraspecific). A rank not on the ladder cannot be compared: an ANSWER at such a rank counts as coarser
 # (refused, not accepted); a name ASKED at such a rank falls back to the shape rule.
+# The lineage rule (build_taxon_registry): when one (name, context) has exactly ONE accepted candidate, its other rows
+# were refused as a homonym, fell back to a coarser rank, or got no answer, AND the context holds no lineage above the
+# name (Bigyra: its context is "Bigyra"), do those rows take the candidate (TRUE), or is the whole group unresolved and
+# listed (FALSE)? A maintainer's decision, held in one place. With a lineage above the name the candidate is taken.
+.REGISTRY_ONE_CANDIDATE_TAKES <- TRUE
 .RANK_LADDER <- c(kingdom = 1L, phylum = 2L, class = 3L, order = 4L, family = 5L, genus = 6L, species = 7L,
                   subspecies = 8L, variety = 8L, form = 8L, forma = 8L, infraspecies = 8L, infraspecific = 8L)
 
@@ -264,6 +269,23 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' \code{status = "rank_fallback"} and a run-local identifier under the
 #' answered ancestor, never that ancestor's identifier.
 #'
+#' \strong{One name, one lineage, one taxon.} Tables can ask one name at
+#' different ranks and so get different answers. Within one (name,
+#' \code{context}), \code{rank_given} is a hint and the lineage decides: the
+#' candidates are the identifiers the lookup accepted for that name and
+#' context. One candidate is taken by every row of the name (rows refused as a
+#' homonym, answered at a coarser rank, or not answered), with
+#' \code{status = "lineage_rule"}. Of two or more, the one whose parent is the
+#' taxon just above the name in its \code{context} is taken, else the one whose
+#' path holds that taxon. When the lineage decides none, or there is no context,
+#' every row of the name is unresolved (\code{status = "lineage_unresolved"},
+#' listed in \code{meta$lineage_unresolved}), never a guess. Choices are listed
+#' in \code{meta$lineage_rule}.
+#'
+#' \strong{Run-local descriptions.} A run-local identifier described once with
+#' a rank or parent and once without is one description, the given one; two
+#' different given ranks or parents remain a conflict.
+#'
 #' \strong{Unresolved names} get a run-local identifier under their resolved
 #' genus (\code{local:<genus id>:<epithet>}), or \code{local:<name>} when even
 #' the genus is unknown. The genus is resolved per genus word AND \code{context}:
@@ -454,6 +476,68 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$match_type <- r$match_type
   nm$hop <- dplyr::if_else(nm$source_naming %in% "ncbi", "ncbi_name_in_key_authority", "direct")
 
+  # --- the lineage rule: within one (name, context) the rank a table asked at is a HINT, the lineage decides ---
+  # Tables can ask one name at different ranks (a posterior row at order, a prior at genus) and get different answers.
+  # One name in one lineage is one taxon. The candidates are the ids the lookup ACCEPTED for that (name, context):
+  #  - one candidate: every row of the group takes it (rows refused as a homonym, fallen to a coarser rank, or given
+  #    no answer), status lineage_rule. With no lineage ABOVE the name (the context is the name alone, or none), it is
+  #    taken only while .REGISTRY_ONE_CANDIDATE_TAKES is TRUE; FALSE makes such a group unresolved and listed;
+  #  - two or more: the candidate whose PARENT is the context's taxon just above the name (or the context's last taxon
+  #    when the name is not in it) is taken, else the one whose path holds that taxon; exactly one, or none is taken;
+  #  - none decided, or no context to decide with: every row of the group is unresolved (status lineage_unresolved),
+  #    listed in meta$lineage_unresolved and error-class in check_taxon_registry(). No guess.
+  lineage_unresolved <- list(); lineage_rule <- list()
+  ctx0 <- dplyr::if_else(is.na(nm$context) | !nzchar(nm$context), NA_character_, nm$context)
+  gk <- paste(nm$name_clean, dplyr::if_else(is.na(ctx0), "", ctx0), sep = "\r")
+  is_cand <- nm$status %in% c("accepted", "synonym") & !is.na(nm$taxon_id)
+  movable <- is.na(nm$taxon_id) & !failed & (is.na(nm$status) | nm$status %in% c("homonym_rejected", "rank_fallback"))
+  n_cand <- tapply(dplyr::if_else(is_cand, nm$taxon_id, NA_character_), gk, function(v) length(unique(stats::na.omit(v))))
+  any_mov <- tapply(movable, gk, any)
+  todo <- names(n_cand)[n_cand >= 2L | (n_cand == 1L & any_mov[names(n_cand)])]
+  rows_of <- if (length(todo)) split(which(gk %in% todo), gk[gk %in% todo]) else list()
+  for (g in names(rows_of)) {
+    w <- rows_of[[g]]
+    cw <- w[is_cand[w]]; cand <- unique(nm$taxon_id[cw])
+    pick <- NA_character_; why <- NA_character_
+    if (length(cand) == 1L) {
+      above <- setdiff(.split_pipe(ctx0[w[1L]] %||% NA_character_), nm$name_clean[w[1L]])   # the lineage ABOVE the name
+      if (length(above) || isTRUE(.REGISTRY_ONE_CANDIDATE_TAKES)) pick <- cand else
+        why <- "one accepted candidate and no lineage above the name; the other rows were refused or fell back"
+    } else if (is.na(ctx0[w[1L]])) {
+      why <- "two or more accepted candidates and no lineage context"
+    } else {
+      cx <- .split_pipe(ctx0[w[1L]]); x <- nm$name_clean[w[1L]]
+      at <- match(x, cx)
+      anchor <- if (is.na(at)) cx[length(cx)] else if (at > 1L) cx[at - 1L] else NA_character_
+      pth <- lapply(cand, function(id) .split_pipe(r$classification_path[cw[match(id, nm$taxon_id[cw])]]))
+      par <- vapply(pth, function(p) if (length(p) >= 2L) p[length(p) - 1L] else NA_character_, "")
+      p1 <- cand[!is.na(anchor) & par %in% anchor]
+      p2 <- cand[!is.na(anchor) & vapply(pth, function(p) anchor %in% p[-length(p)], TRUE)]
+      if (length(p1) == 1L) pick <- p1 else if (length(p2) == 1L) pick <- p2 else
+        why <- sprintf("%d accepted candidates; the lineage (%s) decides none", length(cand), ctx0[w[1L]])
+    }
+    if (!is.na(pick)) {
+      mv <- w[nm$taxon_id[w] %in% NA | nm$taxon_id[w] != pick]
+      mv <- mv[movable[mv] | is_cand[mv]]
+      if (!length(mv)) next
+      src <- cw[match(pick, nm$taxon_id[cw])]
+      lineage_rule[[length(lineage_rule) + 1L]] <- data.frame(name = nm$name_clean[w[1L]], context = ctx0[w[1L]], chosen = pick,
+        candidates = paste(sort(cand), collapse = " | "), rows_moved = length(mv),
+        from = paste(sort(unique(paste0(dplyr::if_else(is.na(nm$status[mv]), "no answer", nm$status[mv]), "@",
+                                        dplyr::if_else(is.na(nm$rank_given[mv]), "no rank", nm$rank_given[mv])))), collapse = "; "),
+        stringsAsFactors = FALSE)
+      nm$taxon_id[mv] <- pick; nm$status[mv] <- "lineage_rule"; nm$fallback_parent[mv] <- NA_character_
+      nm$accepted_lookup[mv] <- nm$accepted_lookup[src]; nm$matched_rank[mv] <- nm$matched_rank[src]
+      nm$backend[mv] <- "lineage_rule"; nm$backend_record_id[mv] <- nm$backend_record_id[src]
+    } else {
+      lineage_unresolved[[length(lineage_unresolved) + 1L]] <- data.frame(name = nm$name_clean[w[1L]], context = ctx0[w[1L]],
+        candidates = paste(sort(cand), collapse = " | "), reason = why, stringsAsFactors = FALSE)
+      un_w <- w[is_cand[w] | movable[w]]
+      nm$taxon_id[un_w] <- NA_character_; nm$status[un_w] <- "lineage_unresolved"; nm$fallback_parent[un_w] <- NA_character_
+      nm$accepted_lookup[un_w] <- NA_character_; nm$backend[un_w] <- NA_character_
+    }
+  }
+
   taxa <- list()
   for (i in which(!duplicated(qk) & seq_along(qk) > 0L)) {
     if (!(res$matched[i] %in% TRUE) || is.na(res$current_record_id[i])) next
@@ -640,6 +724,19 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   }
   taxa <- taxa[taxa$taxon_id %in% keep, , drop = FALSE]
 
+  # --- a run-local id described once WITH a rank (or parent) and once without is one description: the given one.
+  # Two different given ranks or parents stay two descriptions (the conflict below).
+  if (any(taxa$local %in% TRUE)) {
+    li <- which(taxa$local %in% TRUE)
+    one <- function(v) { u <- unique(stats::na.omit(v)); if (length(u) == 1L) u else if (length(u)) "\r2+" else NA_character_ }
+    for (cc in c("rank", "parent_id")) {
+      f <- tapply(taxa[[cc]][li], taxa$taxon_id[li], one)
+      fv <- unname(f[taxa$taxon_id[li]])
+      fill <- !is.na(fv) & fv != "\r2+" & is.na(taxa[[cc]][li])
+      taxa[[cc]][li[fill]] <- fv[fill]
+    }
+  }
+
   # --- taxa: one row per id; a second, DIFFERENT description of an id is a conflict ---
   key <- paste(taxa$taxon_id, taxa$name, taxa$rank, taxa$parent_id, sep = "\r")
   taxa <- taxa[!duplicated(key), , drop = FALSE]
@@ -668,7 +765,9 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                 frozen = FALSE, digest = NA_character_, built_at = Sys.time(),
                 taxa_conflicts = conflicts, pool_key_ambiguous = pool_key_ambiguous, pool_key_tiebreaks = pool_key_tiebreaks,
                 genus_variant_rejected = if (length(gvr_all <- c(bin_variant_rejected, genus_variant_rejected))) unique(do.call(rbind, gvr_all)) else NULL,
-                genus_homonym_unresolved = if (length(genus_homonym_unresolved)) unique(do.call(rbind, genus_homonym_unresolved)) else NULL)
+                genus_homonym_unresolved = if (length(genus_homonym_unresolved)) unique(do.call(rbind, genus_homonym_unresolved)) else NULL,
+                lineage_rule = if (length(lineage_rule)) do.call(rbind, lineage_rule) else NULL,
+                lineage_unresolved = if (length(lineage_unresolved)) do.call(rbind, lineage_unresolved) else NULL)
   ), class = "taxon_registry")
 }
 
@@ -882,7 +981,9 @@ parent_at <- function(ids, rank, registry) {
 #' different names, each with the relationship its backend declared, and an
 #' error-class finding where none was declared (a fuzzy match onto another
 #' name's taxon, a pool key that disagrees with the lookup); conflicting
-#' descriptions of one identifier; and, for stamped tables, a missing stamp, the
+#' descriptions of one identifier; names whose lineage chose among their
+#' candidates (\code{lineage_rule}, info) or chose none
+#' (\code{lineage_unresolved}, error); and, for stamped tables, a missing stamp, the
 #' same taxon twice in one observation (by \code{taxon_id} and
 #' \code{hypothesis_type}), and table lineage columns that disagree with the
 #' registry's tree. The registry's tree is the authority: a family or order
@@ -945,7 +1046,7 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
   }
   # merge audit: ids reached by 2+ different CLEAN names
   z <- nm[!is.na(nm$taxon_id), , drop = FALSE]
-  declared <- c("accepted", "synonym", "gender_variant", "genus_variant", "pool_key_only", "pool_key_tiebreak")
+  declared <- c("accepted", "synonym", "gender_variant", "genus_variant", "pool_key_only", "pool_key_tiebreak", "lineage_rule")
   for (id in unique(z$taxon_id)) {
     w <- z[z$taxon_id == id, , drop = FALSE]
     if (length(unique(w$name_clean)) < 2L) next
@@ -992,6 +1093,19 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
                                       NA_character_, if (is.na(tbk$chosen[i])) tbk$candidates[i] else tbk$chosen[i], tbk$verbatim_name[i],
                                       sprintf("%s; candidates %s; %s", tbk$kind[i], tbk$candidates[i],
                                               if (is.na(tbk$by[i])) tbk$detail[i] else paste0("decided by ", tbk$by[i], ": ", tbk$detail[i])), 1L)
+  }
+  # the lineage rule: a name whose rows a table asked at another rank took the candidate its lineage names (info);
+  # a name whose lineage decided none of its candidates, or that had none to decide with, is unresolved (error)
+  lr <- registry$meta$lineage_rule
+  if (!is.null(lr) && nrow(lr)) {
+    for (i in seq_len(nrow(lr))) add("info", "lineage_rule", NA_character_, lr$chosen[i], lr$name[i],
+                                     sprintf("candidates %s; lineage %s; %d row(s) moved from %s", lr$candidates[i],
+                                             if (is.na(lr$context[i])) "none" else lr$context[i], lr$rows_moved[i], lr$from[i]), lr$rows_moved[i])
+  }
+  lu <- registry$meta$lineage_unresolved
+  if (!is.null(lu) && nrow(lu)) {
+    for (i in seq_len(nrow(lu))) add("error", "lineage_unresolved", NA_character_, lu$candidates[i], lu$name[i],
+                                     sprintf("%s; lineage %s", lu$reason[i], if (is.na(lu$context[i])) "none" else lu$context[i]), 1L)
   }
   tc <- registry$meta$taxa_conflicts
   if (!is.null(tc) && nrow(tc)) {

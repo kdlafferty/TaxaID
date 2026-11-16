@@ -43,7 +43,9 @@ names that map to two or more taxa; unresolved and run-local names; the
 different names, each with the relationship its backend declared, and an
 error-class finding where none was declared (a fuzzy match onto another
 name's taxon, a pool key that disagrees with the lookup); conflicting
-descriptions of one identifier; and, for stamped tables, a missing stamp, the
+descriptions of one identifier; names whose lineage chose among their
+candidates (\code{lineage_rule}, info) or chose none
+(\code{lineage_unresolved}, error); and, for stamped tables, a missing stamp, the
 same taxon twice in one observation (by \code{taxon_id} and
 \code{hypothesis_type}), and table lineage columns that disagree with the
 registry's tree. The registry's tree is the authority: a family or order
