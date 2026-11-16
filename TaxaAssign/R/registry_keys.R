@@ -165,11 +165,12 @@
   all_ids <- unique(stats::na.omit(c(lw$taxon_name, pr_ids)))
 
   # Output names are the registry's accepted names (GBIF by default), derived from taxon_id: the name is a display
-  # column, never the key. Each likelihood row's own name(s) are kept as taxon_name_verbatim, per observation and id.
+  # column, never the key. Each likelihood row's own name(s) are kept as taxon_name_verbatim, per observation and id:
+  # the id the row ends up under (lw holds the likelihoods' rows in order), so a rekeyed ring keeps its own name.
   nn <- table(lik_names$id)
   multi <- names(nn)[nn > 1L]
   disp <- reg_name
-  vb <- unique(data.frame(k = paste(as.character(likelihoods$observation_id), as.character(likelihoods$taxon_id), sep = "\r"),
+  vb <- unique(data.frame(k = paste(as.character(likelihoods$observation_id), as.character(lw$taxon_name), sep = "\r"),
                           n = as.character(likelihoods$taxon_name), stringsAsFactors = FALSE))
   vb <- vb[!is.na(vb$n), , drop = FALSE]
   verbatim <- vapply(split(vb$n, vb$k), function(v) paste(sort(unique(v)), collapse = " | "), "")
