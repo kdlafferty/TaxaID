@@ -260,7 +260,9 @@
 #'   (\code{TaxaTools::build_taxon_registry()}). \code{NULL} adds rank columns
 #'   by joining \code{taxon_name} to \code{taxonomy$taxon_name}. Given a
 #'   registry, each output name resolves through the registry's name table (a
-#'   name registered to exactly one taxon), the rows gain \code{taxon_id}, and
+#'   name registered to exactly one taxon), the rows gain
+#'   \code{registry_taxon_id} (not \code{taxon_id}, which
+#'   \code{TaxaTools::attach_taxon_ids()} reserves for a table it stamped), and
 #'   the rank columns are the registry's accepted names for that taxon's
 #'   ancestors, so a name filed under a synonym is still placed. The rank
 #'   columns used are those of \code{taxonomy} when supplied, else genus to

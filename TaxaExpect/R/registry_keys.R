@@ -27,8 +27,10 @@
 
 # Rank columns for a table's names read from the registry's tree: each name in `name_col` resolves through the
 # registry's name table (a name registered to exactly one taxon); `id_col` receives the id and each of `cols` the
-# registry's name for that taxon's ancestor at the rank. Names the registry does not hold get NA throughout.
-.registry_lineage_cols <- function(x, registry, cols, name_col = "taxon_name", id_col = "taxon_id", caller = "") {
+# registry's name for that taxon's ancestor at the rank. Names the registry does not hold get NA throughout. The id
+# column is not `taxon_id`: that name is reserved for a table attach_taxon_ids() stamped, and these rows are bound
+# into a prior table that is stamped later, which would refuse an unstamped taxon_id as another source's ids.
+.registry_lineage_cols <- function(x, registry, cols, name_col = "taxon_name", id_col = "registry_taxon_id", caller = "") {
   if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
     stop(sprintf("%s: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).", caller), call. = FALSE)
   }
