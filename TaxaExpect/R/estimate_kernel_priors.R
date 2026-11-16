@@ -206,6 +206,9 @@
 #'   match is by `taxon_id`, so a record filed under a synonym finds its
 #'   taxon's weight. Where `habitat_weights` holds one taxon under several
 #'   names, the row under the registry's accepted name is used, else the first.
+#'   The fit stores that weight under every name its records carry for the
+#'   taxon, so [plot_theta_surface()], which matches records by name, weights
+#'   them as the fit did.
 #'
 #' @return An object of class `"taxaexpect_kernel_priors"`: a list with
 #'   \describe{
@@ -367,8 +370,20 @@ estimate_kernel_priors <- function(occurrence_data,
     hw <- .habitat_record_weights(hab, as.character(occurrence_data$taxon_id), site_habitat,
                                   habitat_levels, hw_k, "estimate_kernel_priors")
     if (!is.null(hw$lookup)) {
-      hw$lookup$taxon_id <- hw$lookup$taxon_name
-      hw$lookup$taxon_name <- unname(hw_names[hw$lookup$taxon_id])
+      # stored for plot_theta_surface(), which matches records by NAME: one row under each name the fit's records
+      # carry for an id (the synonym a record is filed under included), then the lookup's own name, so the surface
+      # weights every record as this fit did
+      lk_id <- as.character(hw$lookup$taxon_name)
+      on <- unique(data.frame(taxon_name = as.character(occurrence_data[[taxon_col]]), taxon_id = as.character(occurrence_data$taxon_id),
+                              stringsAsFactors = FALSE))
+      on <- on[!is.na(on$taxon_name) & on$taxon_id %in% lk_id, , drop = FALSE]
+      ids <- c(on$taxon_id, lk_id)
+      st <- hw$lookup[match(ids, lk_id), , drop = FALSE]
+      st$taxon_id <- ids
+      st$taxon_name <- c(on$taxon_name, unname(hw_names[lk_id]))
+      st <- st[!duplicated(st$taxon_name), , drop = FALSE]
+      rownames(st) <- NULL
+      hw$lookup <- st
     }
   } else {
     hw <- .habitat_record_weights(hab, occurrence_data[[taxon_col]], site_habitat,

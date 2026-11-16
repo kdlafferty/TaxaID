@@ -171,7 +171,10 @@ registry, \code{occurrence_data} and \code{habitat_weights} must both carry a
 \code{taxon_id} column stamped by it (\code{TaxaTools::attach_taxon_ids()}) and the
 match is by \code{taxon_id}, so a record filed under a synonym finds its
 taxon's weight. Where \code{habitat_weights} holds one taxon under several
-names, the row under the registry's accepted name is used, else the first.}
+names, the row under the registry's accepted name is used, else the first.
+The fit stores that weight under every name its records carry for the
+taxon, so \code{\link[=plot_theta_surface]{plot_theta_surface()}}, which matches records by name, weights
+them as the fit did.}
 }
 \value{
 An object of class \code{"taxaexpect_kernel_priors"}: a list with

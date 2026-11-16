@@ -112,3 +112,31 @@ test_that("evidence and domestic rows placed by the registry can be bound to a p
   expect_false("taxon_id" %in% names(d))
   expect_identical(d$genus, "Hypsurus")
 })
+
+test_that("a registry-built fit's stored habitat weights reproduce its own counts on the surface (site identity)", {
+  .rg_skip(); reg <- .rg_registry()
+  set.seed(45); n <- 300
+  nm <- sample(c("Embiotoca jacksoni", "Embiotoca caryi", "Hypsurus caryi"), n, TRUE)
+  occ <- data.frame(taxon_name = nm, decimalLatitude = 34 + stats::rnorm(n, 0, 0.3), decimalLongitude = -119 + stats::rnorm(n, 0, 0.3),
+                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  occ$main_habitat[seq(1, n, by = 3)] <- "Uncertain"
+  # the weight is filed under the accepted name; records sit under it AND under its synonym
+  kp <- suppressWarnings(suppressMessages(estimate_kernel_priors(.rg_stamp(occ, reg, "joined"), 34, -119, "Marine", lambda_km = 25, m = 2,
+          habitat_levels = c("Marine", "Freshwater"), habitat_weights = .rg_stamp(.hab_lookup(), reg, "priors"), registry = reg)))
+  # the record weights the stored lookup gives by name equal the ones the fit used by id
+  w <- TaxaExpect:::.habitat_record_weights(occ$main_habitat, occ$taxon_name, "Marine", kp$params$habitat_levels,
+                                            kp$params$habitat_weights, "test")$weight
+  expect_equal(w[occ$main_habitat == "Uncertain" & occ$taxon_name == "Embiotoca caryi"],
+               rep(0.8, sum(occ$main_habitat == "Uncertain" & occ$taxon_name == "Embiotoca caryi")))
+  surf <- TaxaExpect:::.theta_surface_engine(
+    occ, 34, -119, "Marine", lambda_km = 25, m = 2,
+    covariate_col = NULL, covariate_at = NULL, lambda_covariate = NULL, lambda_latitude = NULL,
+    taxon = unique(kp$priors$taxon_name), n_grid = 200L, bbox = NULL,
+    taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat",
+    habitat_levels = kp$params$habitat_levels, habitat_weights = kp$params$habitat_weights)
+  i0 <- which.min(abs(surf$lat_grid - 34)); j0 <- which.min(abs(surf$lon_grid - (-119)))
+  expect_equal(surf$n_eff[i0, j0], kp$n_eff, tolerance = 1e-2)
+  for (tx in unique(kp$priors$taxon_name)) {
+    expect_equal(surf$theta[[tx]][i0, j0], kp$priors$theta_mean[kp$priors$taxon_name == tx][1], tolerance = 1e-2, info = tx)
+  }
+})
