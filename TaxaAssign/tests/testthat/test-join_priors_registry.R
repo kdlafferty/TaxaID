@@ -135,3 +135,17 @@ test_that("posterior_consensus(registry =) fills unreferenced lineage from the t
   bad <- post; bad$taxon_id[1] <- "gbif:999999"
   expect_error(suppressMessages(posterior_consensus(bad, lookup_missing_taxonomy = TRUE, registry = reg)), "does not")
 })
+
+test_that("prior rows keyed: a singleton mirror takes its source species' lineage; a row with no id keeps its own", {
+  .rg_skip(); reg <- .rg_registry()
+  pri <- data.frame(taxon_name = c("Hypsurus caryi", NA, NA), taxon_name_rank = "species", grid_id = "s1", main_habitat = "Rocky",
+                    alpha = c(20, 0.5, 0.5), beta = c(80, 99.5, 99.5), undetected_type = c(NA, "singleton_mirror", "global_floor"),
+                    source_taxon_name = c(NA, "Embiotoca caryi", NA), genus = c("x", "Embiotoca", "keep"), family = c("x", "y", "keep"),
+                    stringsAsFactors = FALSE)
+  pri_s <- .rg_stamp(pri, reg, "priors")
+  rg <- TaxaAssign:::.jp_registry_inputs(.rg_stamp(.jr_lik("Hypsurus caryi"), reg, "joined"), pri_s, NULL, NULL, NULL, reg)
+  pw <- rg$priors
+  expect_identical(pw$genus[2], .rg_id(reg, "Hypsurus"))     # mirror: its source (Embiotoca caryi = Hypsurus caryi)'s genus
+  expect_identical(pw$genus[3], "keep"); expect_identical(pw$family[3], "keep")   # floor row: untouched
+  expect_identical(pw$genus[1], .rg_id(reg, "Hypsurus"))
+})

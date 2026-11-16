@@ -72,6 +72,11 @@
   # source_taxon_name (a singleton mirror's source species) is a name in the same prior table: key it the same way
   name_to_id <- unique(data.frame(n = as.character(priors$taxon_name), id = as.character(priors$taxon_id), stringsAsFactors = FALSE))
   name_to_id <- name_to_id[!is.na(name_to_id$id) & !duplicated(name_to_id$n), , drop = FALSE]
+  # a source species that is not itself a prior row: the registry's own name table (names registered to one id only)
+  rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+  rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
+  rn <- rn[!rn$verbatim_name %in% name_to_id$n, , drop = FALSE]
+  name_to_id <- rbind(name_to_id, data.frame(n = rn$verbatim_name, id = rn$taxon_id, stringsAsFactors = FALSE))
   if ("source_taxon_name" %in% names(pw)) {
     pw$source_taxon_name <- name_to_id$id[match(as.character(pw$source_taxon_name), name_to_id$n)]
   }
@@ -143,7 +148,12 @@
     }
   }
   for (r in intersect(all_ranks, names(lw))) lw[[r]] <- unname(anc[[r]][lw$taxon_name])
-  for (r in intersect(all_ranks, names(pw))) pw[[r]] <- unname(anc[[r]][pw$taxon_name])
+  # prior rows: a row with an id takes its own ancestors; a singleton mirror (no taxon of its own) takes its source
+  # species' ancestors; any other row keeps the lineage it came with
+  pr_key <- ifelse(pw$taxon_name %in% registry$taxa$taxon_id, pw$taxon_name,
+                   if ("source_taxon_name" %in% names(pw)) as.character(pw$source_taxon_name) else NA_character_)
+  has_key <- !is.na(pr_key) & pr_key %in% registry$taxa$taxon_id
+  for (r in intersect(all_ranks, names(pw))) pw[[r]][has_key] <- unname(anc[[r]][pr_key[has_key]])
   tax_of <- function(tab, taxa) {
     if (is.null(tab)) return(NULL)
     cols <- intersect(all_ranks, names(tab))
