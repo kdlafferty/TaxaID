@@ -134,8 +134,9 @@ compute_local_occurrence_distance <- function(taxon_names,
       id_of(occurrence_data[[taxon_col]])
     }
     q_id <- id_of(taxa_unique)
-    # each record is filed under the input name whose id it shares (first such name), else its own name
-    rec_name <- taxa_unique[match(occ_id, q_id)]
+    # each record is filed under the input name whose id it shares (first such name), else its own name; a record
+    # with no id shares none (NA never matches NA)
+    rec_name <- taxa_unique[match(occ_id, q_id, incomparables = NA)]
     occurrence_data <- as.data.frame(occurrence_data)
     occurrence_data[[taxon_col]] <- ifelse(is.na(rec_name), as.character(occurrence_data[[taxon_col]]), rec_name)
   }
