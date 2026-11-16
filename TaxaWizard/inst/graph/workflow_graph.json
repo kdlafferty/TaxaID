@@ -97,6 +97,11 @@
         "id": "site_table",
         "label": "Site Table",
         "description": "Per-observation spatial grouping table (observation_id, lat, lon, spatial_group_id, spatial_group_N) from build_site_table() + group_observations_by_bbox()/assign_spatial_group(). Required for the multi-site priors and multi-site posterior-combination paths -- use this ONLY when observations come from more than one distinct site/sampling location that should be modeled separately, not pooled into one grid."
+      },
+      {
+        "id": "taxon_registry",
+        "label": "Taxon Registry",
+        "description": "One frozen registry for the run: every name the run joins on (match, likelihoods, references, occurrences) resolved once to a GBIF Backbone taxon id, so later steps match taxa by id and report GBIF accepted names"
       }
     ],
     "outputs": [
@@ -301,6 +306,32 @@
       "requires": [
         "key:llm"
       ]
+    },
+    {
+      "id": "tables_to_registry",
+      "from": [
+        "match_df",
+        "likelihoods",
+        "reference_df",
+        "std_occurrences"
+      ],
+      "to": "taxon_registry",
+      "label": "Build the run's taxon registry (one GBIF id per taxon)",
+      "description": "Resolve every name in the match object, the likelihoods, the reference database and the standardized occurrences ONCE to a GBIF Backbone taxon id (TaxaFetch::lookup_gbif_taxa, cached), freeze the registry, stop on an error-class finding, and stamp the occurrence table. The prior and posterior steps reuse this one registry: a synonym meets its accepted name, one taxon under two names is one hypothesis, lineage comes from the GBIF tree, and outputs carry GBIF accepted names.",
+      "packages": [
+        "TaxaTools",
+        "TaxaFetch"
+      ],
+      "functions": [
+        "build_taxon_registry",
+        "freeze_taxon_registry",
+        "check_taxon_registry",
+        "attach_taxon_ids",
+        "lookup_gbif_taxa"
+      ],
+      "snippet": "tables_to_registry.R",
+      "time_estimate": "seconds (cached) to minutes (first run: one GBIF request per new name)",
+      "requires": []
     },
     {
       "id": "dist_to_priors_by_group",

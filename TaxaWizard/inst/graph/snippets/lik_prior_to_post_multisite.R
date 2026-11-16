@@ -29,18 +29,13 @@ site_spec <- merge(
 site_spec$spatial_group_id <- NULL
 
 # --- Join priors per site, then combine multi-site candidates ---
-# --- One taxon registry for the run (taxa matched by GBIF id, not by name) ---
-# With {{use_taxon_registry}} TRUE, every name in the likelihoods and the priors is
-# resolved ONCE to a GBIF Backbone taxon id (TaxaFetch::lookup_gbif_taxa(), answers
-# cached in {{taxonomy_cache_dir}}, so a rerun asks nothing). The registry is then
-# frozen, both tables are stamped, and join_priors() and posterior_consensus() match
-# taxa by id: a call under a synonym finds the prior filed under the accepted name,
-# one taxon under two names is one hypothesis, and family/order come from the GBIF
-# tree. Output names are GBIF accepted names; taxon_name_verbatim keeps each row's
-# own name. check_taxon_registry(mode = "error") stops here if a lookup FAILED or
-# two different taxa were merged without a declared synonymy, rather than guessing.
-taxon_registry <- NULL
-if (isTRUE({{use_taxon_registry}})) {
+# --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
+# The registry built once for the run (edge tables_to_registry) is reused here; the
+# likelihoods and priors are stamped with it and join_priors() / posterior_consensus()
+# match taxa by id. Used on its own (no earlier registry), this step builds one from
+# the likelihood and prior names. Set {{use_taxon_registry}} to FALSE to join on names.
+if (!exists("taxon_registry")) taxon_registry <- NULL
+if (isTRUE({{use_taxon_registry}}) && is.null(taxon_registry)) {
   .reg_tab <- function(x, tab) {
     d <- unique(data.frame(verbatim_name = as.character(x$taxon_name),
                            rank_given = if ("taxon_name_rank" %in% names(x)) as.character(x$taxon_name_rank) else NA_character_,
@@ -53,6 +48,8 @@ if (isTRUE({{use_taxon_registry}})) {
     lookup = function(names, rank, context) TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = {{taxonomy_cache_dir}})
   ))
   invisible(TaxaTools::check_taxon_registry(taxon_registry, mode = "error"))
+}
+if (isTRUE({{use_taxon_registry}})) {
   {{lik_var}} <- TaxaTools::attach_taxon_ids({{lik_var}}, taxon_registry, "taxon_name", "likelihoods")
   {{priors_var}} <- TaxaTools::attach_taxon_ids({{priors_var}}, taxon_registry, "taxon_name", "priors")
 }

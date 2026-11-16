@@ -34,7 +34,7 @@ OUT  <- Sys.getenv("TAXAID_TEMPLATE_OUT",
 CANONICAL_PATH <- c(
   "seq_to_match", "match_to_taxa", "taxa_to_refs", "refs_to_matrix",
   "matrix_to_model", "model_match_to_lik", "taxa_to_occ", "occ_to_std",
-  "dist_to_priors_by_group", "lik_prior_to_post", "post_to_consensus",
+  "tables_to_registry", "dist_to_priors_by_group", "lik_prior_to_post", "post_to_consensus",
   "taxa_to_context", "consensus_to_reviewed"
 )
 
@@ -96,7 +96,8 @@ DATAFLOW <- c(
   lik_var = "likelihoods", priors_var = "priors",
   taxaexpect_priors_var = "priors", consensus_var = "consensus",
   context_var = "context_df", taxonomy_map_var = "taxa",
-  habitat_lookup_var = "habitat_lookup", site_table_var = "site_table"
+  habitat_lookup_var = "habitat_lookup", site_table_var = "site_table",
+  std_var = "std_occurrences", reference_var = "reference_df", registry_var = "taxon_registry"
 )
 
 # The graph and its snippets come from the repository under ROOT when it holds

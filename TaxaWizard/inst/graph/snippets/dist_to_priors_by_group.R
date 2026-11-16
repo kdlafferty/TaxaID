@@ -117,7 +117,10 @@ print(kernel_priors_fit$budget)
 # handles every group at once -- no per-group loop needed.
 priors_undetected <- TaxaExpect::generate_undetected_diversity(
   model_obj = kernel_priors_fit,
-  taxonomy  = std_occurrences
+  taxonomy  = std_occurrences,
+  # the run's taxon registry, when one was built: each singleton mirror is placed
+  # on the GBIF tree by its source species' id, not by the name's own text
+  registry  = if (exists("{{registry_var}}")) {{registry_var}} else NULL
 )
 
 priors <- dplyr::bind_rows(kernel_priors_fit$priors, priors_undetected) |>
@@ -148,7 +151,8 @@ if (isTRUE({{include_domestic_priors}})) {
     model_obj = kernel_priors_pooled,
     lat       = {{lat}},
     lng       = {{lon}},
-    grid_id   = kernel_priors_fit$params$site_id
+    grid_id   = kernel_priors_fit$params$site_id,
+    registry  = if (exists("{{registry_var}}")) {{registry_var}} else NULL
   )
   priors <- dplyr::bind_rows(priors, domestic_priors)
   message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
