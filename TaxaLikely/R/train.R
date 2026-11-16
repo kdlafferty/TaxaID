@@ -813,10 +813,12 @@ utils::globalVariables(c(
 #'   and `evaluate_likelihoods()`'s `evidence_col`/`min_coverage` mechanisms
 #'   all assume `"logit"` internally and will error rather than silently
 #'   produce wrong numbers if combined with a `"sqrt_mismatch"`-trained model.
-#' @param exclude_reference_suspects Logical (default `FALSE`). `FALSE`
-#'   attaches the reference-consistency table as a report and fits on all of
-#'   `raw_df`. `TRUE` drops every pair involving a reference the table marks
-#'   `suspect` before fitting. See `@section Reference-consistency table`.
+#' @param exclude_reference_suspects Logical (default `TRUE`). `TRUE` drops
+#'   every pair involving a reference the reference-consistency table marks
+#'   `suspect` before fitting; excluded references remain candidates at
+#'   evaluation. `FALSE` attaches the table as a report only and fits on all
+#'   of `raw_df`, which reproduces the 1.0.0 pre-release fit. See
+#'   `@section Reference-consistency table`.
 #'
 #' @section Alignment-coverage floor on pair selection:
 #' The H1 gap feature is `score - max_foreign_score`, and `max_foreign_score`
@@ -866,11 +868,15 @@ utils::globalVariables(c(
 #' out, neither member is a suspect.
 #'
 #' `suspect` is `reference_action == "remove"` or the pair rule. By default
-#' the table is a report only: the model is fitted on all of `raw_df`, and
-#' the returned list is the same as without the table. With
-#' `exclude_reference_suspects = TRUE`, every pair involving a suspect is
+#' (`exclude_reference_suspects = TRUE`), every pair involving a suspect is
 #' dropped from `raw_df` before fitting, and the table marks those references
-#' `excluded`. The table is always computed on the full `raw_df`.
+#' `excluded`. With `exclude_reference_suspects = FALSE` the table is a report
+#' only: the model is fitted on all of `raw_df`, and the returned list is the
+#' same as without the table. The table is always computed on the full
+#' `raw_df`. The default was chosen on held-out data (leave-species-out and
+#' leave-genus-out folds on two fish 12S libraries): excluding suspects
+#' scored within 0.01 of fitting on everything in every cell, and most users
+#' will not run a separate reference screen before training.
 #'
 #' A flag is not a verdict. A deep within-species split or a cryptic species
 #' looks the same as a mislabel from inside the library, and a species whose
@@ -1097,7 +1103,7 @@ train_likelihood_model <- function(raw_df,
                                    score_transform = "sqrt_mismatch",
                                    min_pair_coverage = 0.8,
                                    shrinkage = c("empirical_bayes", "fixed"),
-                                   exclude_reference_suspects = FALSE) {
+                                   exclude_reference_suspects = TRUE) {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
   shrinkage <- match.arg(shrinkage)
   if (!is.null(min_pair_coverage) &&
@@ -1177,9 +1183,9 @@ train_likelihood_model <- function(raw_df,
   }
 
   # Reference-consistency table (see @section "Reference-consistency table"),
-  # always computed on the full raw_df. By default a report only: raw_df is
-  # trained on as-is. exclude_reference_suspects = TRUE drops every pair
-  # involving a suspect (dplyr::filter keeps raw_df's attributes).
+  # always computed on the full raw_df. By default (exclude_reference_suspects
+  # = TRUE) every pair involving a suspect is dropped (dplyr::filter keeps
+  # raw_df's attributes); FALSE trains on raw_df as-is (report only).
   ref_consistency <- .reference_consistency(raw_df, rank_system)
   raw_clean <- raw_df
   if (exclude_reference_suspects && nrow(ref_consistency) > 0L && any(ref_consistency$suspect)) {
