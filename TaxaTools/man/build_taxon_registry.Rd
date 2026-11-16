@@ -81,8 +81,8 @@ the pool at all (its identifier comes from the lookup alone); it is listed in
 \strong{Tie-break} (off by default, \code{tiebreak}). Where a name has two
 or more candidate ids (\code{pool_key_ambiguous}, or a
 \code{pool_key_conflict} between the pool's key and the lookup's), the
-candidates are decided by, in order: for \code{pool_key_ambiguous} only,
-the lookup's own answer when it is exactly one of the pool's keys
+candidates are decided by, in order: the lookup's own answer (the key
+backbone's match) when it is exactly one of the candidates
 (\code{gbif_first}); then each of \code{authorities} in turn. The
 candidates' lineages are compared rank by rank: a rank distinguishes only
 where every candidate has a value there and the values differ (a rank one
@@ -91,9 +91,12 @@ candidate scores 1 if the authority's lineage holds its term; strictly the
 highest score wins. A decided name gets
 \code{status = "pool_key_tiebreak"}; an undecided one keeps its
 error-class finding. Candidates with identical lineages are never decided.
-Step 0 never applies to a \code{pool_key_conflict}: there the lookup's key
-is one of the two candidates by construction, so it would always win and
-undo pool-keys-first; a conflict is decided by the authorities or not at all.
+Step 0 applies to a \code{pool_key_conflict} as well: there the lookup's key
+is one of the two candidates by construction, so with \code{gbif_first} the
+key backbone's match always wins over the pool's key (the maintainer's rule:
+the key backbone decides). Every pool key it overrules is listed by
+\code{check_taxon_registry()} (\code{pool_key_tiebroken}). Pool keys first
+still holds where no tie-break is requested.
 
 \strong{Homonyms.} An exact answer that contradicts the name's own
 \code{context} (the two name different kingdoms, or the context names a

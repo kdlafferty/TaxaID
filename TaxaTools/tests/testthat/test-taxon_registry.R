@@ -546,25 +546,33 @@ test_that("GUARD CAN FAIL: identical candidate lineages, or an authority naming 
   expect_true(is.na(nolin$meta$pool_key_tiebreaks$chosen))                   # a candidate with no lineage: never decided by lineage
 })
 
-test_that("GUARD CAN FAIL: step 0 never settles a pool_key_conflict (it would always pick the lookup); authorities can", {
+test_that("GUARD CAN FAIL: with gbif_first the key backbone decides a pool_key_conflict and the overruled pool key is listed; without it, authorities or nothing", {
   lk <- .fake_lookup(.row("Pachycheles holosericus", "Pachycheles holosericus", "5000", "1|18|300|400|501|601|5000",
                           "Animalia|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles|Pachycheles holosericus", ranks = .tk7))
   pool <- data.frame(verbatim_name = "Pachycheles holosericus", species_key = "11156704", kingdom = "Animalia", phylum = "Arthropoda",
                      class = "Malacostraca", order = "Decapoda", family = "Paguridae", genus = "Pachycheles", stringsAsFactors = FALSE)
   .pc <- function(tb) build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "c", pool_keys = pool, lookup = lk, tiebreak = tb)
-  for (tb in list(NULL, list(), list(gbif_first = TRUE))) {          # off, and step 0 with no authorities: the conflict stays
+  for (tb in list(NULL, list(gbif_first = FALSE))) {                 # off, and no step 0 with no authorities: the conflict stays
     reg <- .pc(tb)
     expect_identical(c(reg$names$taxon_id, reg$names$status), c("gbif:11156704", "pool_key_conflict"))
     expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE), "pool_key_conflict")
   }
-  expect_true(is.na(.pc(list())$meta$pool_key_tiebreaks$chosen))
-  on <- .pc(list(authorities = list(ncbi = function(name) "Metazoa|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles")))
+  expect_true(is.na(.pc(list(gbif_first = FALSE))$meta$pool_key_tiebreaks$chosen))
+  # the maintainer's rule: the key backbone decides, also against the pool's key (gbif_first defaults to TRUE in a list)
+  for (tb in list(list(), list(gbif_first = TRUE))) {
+    g <- .pc(tb)
+    expect_identical(c(g$names$taxon_id, g$names$status, g$names$backend), c("gbif:5000", "pool_key_tiebreak", "tiebreak:gbif"))
+    gchk <- check_taxon_registry(g, verbose = FALSE)
+    expect_false(any(gchk$kind == "pool_key_conflict"))
+    expect_true(any(gchk$kind == "pool_key_tiebroken" & gchk$severity == "info" & grepl("gbif:11156704", gchk$detail)))   # the overruled key is listed
+  }
+  on <- .pc(list(gbif_first = FALSE, authorities = list(ncbi = function(name) "Metazoa|Arthropoda|Malacostraca|Decapoda|Porcellanidae|Pachycheles")))
   expect_identical(c(on$names$taxon_id, on$names$status, on$names$backend, on$names$accepted_lookup),
                    c("gbif:5000", "pool_key_tiebreak", "tiebreak:ncbi", "Pachycheles holosericus"))
   chk <- check_taxon_registry(on, verbose = FALSE)
   expect_false(any(chk$kind == "pool_key_conflict"))
   expect_true(any(chk$kind == "pool_key_tiebroken" & grepl("pool_key_conflict", chk$detail)))
-  pool_side <- .pc(list(authorities = list(ncbi = function(name) "Metazoa|Arthropoda|Paguridae")))
+  pool_side <- .pc(list(gbif_first = FALSE, authorities = list(ncbi = function(name) "Metazoa|Arthropoda|Paguridae")))
   expect_identical(pool_side$names$taxon_id, "gbif:11156704")             # NCBI naming the pool key's family keeps the pool key
   expect_identical(pool_side$names$status, "pool_key_tiebreak")
 })
@@ -672,11 +680,11 @@ test_that("REVIEW F3: only ranks EVERY candidate has, with differing values, dec
                      stringsAsFactors = FALSE)                               # only family and genus columns
   ncbi <- function(name) "Metazoa|Arthropoda|Malacostraca|Decapoda|Paguridae|Pachycheles"
   reg <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "f3", pool_keys = pool, lookup = lk,
-                              tiebreak = list(authorities = list(ncbi = ncbi)))
+                              tiebreak = list(gbif_first = FALSE, authorities = list(ncbi = ncbi)))
   expect_identical(reg$meta$pool_key_tiebreaks$chosen, "gbif:11156704")       # 2ea632dc: gbif:5000 (scores 1/3 on missing ranks)
   # no rank that both have and that differs: undecided
   reg2 <- build_taxon_registry(.names("Pachycheles holosericus", "r2"), run_id = "f3b", pool_keys = pool[, c("verbatim_name", "species_key", "genus")],
-                               lookup = lk, tiebreak = list(authorities = list(ncbi = ncbi)))
+                               lookup = lk, tiebreak = list(gbif_first = FALSE, authorities = list(ncbi = ncbi)))
   expect_true(is.na(reg2$meta$pool_key_tiebreaks$chosen))                    # 2ea632dc: gbif:5000
   expect_error(check_taxon_registry(reg2, mode = "error", verbose = FALSE), "pool_key_conflict")
 })
@@ -980,7 +988,42 @@ test_that("F-a: a run-local id given a rank in one table and none in another is 
   expect_identical(reg$taxa$rank[reg$taxa$taxon_id == "local:Acrocephalus"], "genus")
   expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind == "taxon_described_twice"))
   # NEGATIVE: two DIFFERENT given ranks are two descriptions, still an error
-  reg2 <- build_taxon_registry(rbind(.names("Crambidae gen.", "a", rank_given = "genus"), .names("Crambidae gen.", "b", rank_given = "species")),
+  reg2 <- build_taxon_registry(rbind(.names("Unknownia", "a", rank_given = "genus"), .names("Unknownia", "b", rank_given = "family")),
                                run_id = "fa2", lookup = lk)
   expect_true(any(check_taxon_registry(reg2, verbose = FALSE)$kind == "taxon_described_twice"))
+})
+
+test_that("a placeholder '<Taxon> gen.' is ONE run-local genus under <Taxon>, whatever rank its tables gave", {
+  # CalIntertidal C0 v4 (2026-11-16): "Crambidae gen." registered from a species column and a genus column was described
+  # twice (taxon_described_twice). The token states the rank.
+  lk <- .rank_lookup(rbind(
+    .ans("Crambidae gen.", "species", "8841", "Animalia|Arthropoda|Insecta|Lepidoptera|Crambidae", "kingdom|phylum|class|order|family", "1|54|216|797|8841"),
+    .ans("Crambidae gen.", "genus", "8841", "Animalia|Arthropoda|Insecta|Lepidoptera|Crambidae", "kingdom|phylum|class|order|family", "1|54|216|797|8841")))
+  reg <- build_taxon_registry(rbind(.names("Crambidae gen.", "match", rank_given = "species"), .names("Crambidae gen.", "posteriors", rank_given = "genus")),
+                              run_id = "ph1", lookup = lk)
+  id <- unique(reg$names$taxon_id[reg$names$verbatim_name == "Crambidae gen."])
+  expect_identical(id, "local:Crambidae gen.")
+  expect_identical(reg$taxa$rank[reg$taxa$taxon_id == id], "genus")
+  expect_identical(reg$taxa$parent_id[reg$taxa$taxon_id == id], "gbif:8841")
+  expect_false(any(check_taxon_registry(reg, verbose = FALSE)$kind == "taxon_described_twice"))
+  # NEGATIVE: an ordinary name keeps the rank its table gave; only the token decides
+  expect_identical(TaxaTools:::.placeholder_rank(c("Crambidae gen.", "Fooidae sp.", "Foo bar", "Foo gen", "Foo cf.")),
+                   c("genus", NA, NA, NA, NA))
+})
+
+test_that("a cluster label '<binomial>_cluster<n>' answered as that binomial is a declared merge; answered as ANOTHER species it is not", {
+  lk <- .fake_lookup(rbind(
+    .row("Stigmella salicis", "Stigmella salicis", "5769751", "1|54|216|797|60|5769751", "Animalia|Arthropoda|Lepidoptera|Nepticulidae|Stigmella|Stigmella salicis"),
+    .row("Stigmella salicis_cluster2", "Stigmella salicis", "5769751", "1|54|216|797|60|5769751", "Animalia|Arthropoda|Lepidoptera|Nepticulidae|Stigmella|Stigmella salicis"),
+    .row("Stigmella salicis_cluster3", "Stigmella salicis", "5769751", "1|54|216|797|60|5769751", "Animalia|Arthropoda|Lepidoptera|Nepticulidae|Stigmella|Stigmella salicis"),
+    .row("Stigmella aurella_cluster2", "Stigmella salicis", "5769751", "1|54|216|797|60|5769751", "Animalia|Arthropoda|Lepidoptera|Nepticulidae|Stigmella|Stigmella salicis")))
+  reg <- build_taxon_registry(.names(c("Stigmella salicis", "Stigmella salicis_cluster2", "Stigmella salicis_cluster3"), "reference"), run_id = "cl1", lookup = lk)
+  expect_identical(unique(reg$names$taxon_id), "gbif:5769751")
+  expect_identical(sort(reg$names$status), c("accepted", "cluster_label", "cluster_label"))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$kind == "undeclared_merge"))
+  expect_true(any(chk$kind == "declared_merge" & chk$taxon_id == "gbif:5769751"))
+  # NEGATIVE: a cluster label of ANOTHER species landing on this taxon stays an undeclared merge
+  reg2 <- build_taxon_registry(.names(c("Stigmella salicis", "Stigmella aurella_cluster2"), "reference"), run_id = "cl2", lookup = lk)
+  expect_true(any(check_taxon_registry(reg2, verbose = FALSE)$kind == "undeclared_merge"))
 })

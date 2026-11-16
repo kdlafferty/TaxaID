@@ -21,10 +21,20 @@
   name with two or more pool keys, the same taxon twice in one observation, or
   a table lineage that contradicts the registry.
 * `build_taxon_registry(tiebreak = )` decides between two or more GBIF
-  candidate identifiers for one name: the lookup's own answer when it is one
-  of the pool's keys, then the lineage of each listed authority (e.g. NCBI,
-  then WoRMS). Off by default; candidates with identical lineages are never
-  decided.
+  candidate identifiers for one name: the lookup's own answer (the key
+  backbone's match) when it is one of the candidates, then the lineage of each
+  listed authority (e.g. NCBI, then WoRMS). This covers a conflict between the
+  pool's key and the lookup's as well as a name the pool holds under several
+  keys: with `gbif_first`, the key backbone decides (the maintainer's rule), and
+  every pool key it overrules is listed by `check_taxon_registry()`. Off by
+  default; candidates with identical lineages are never decided.
+* `build_taxon_registry()` treats the rank a table asked a name at as a hint:
+  one name in one lineage is one taxon. Above genus the key backbone's own
+  classification decides between candidates; at genus and species the name's
+  lineage breaks a tie; an undecided name is `lineage_unresolved`
+  (error-class), never a guess. A placeholder "<Taxon> gen." is a run-local
+  genus under <Taxon>, and a reference label "<binomial>_cluster<n>" answered as
+  that binomial is a declared merge (`cluster_label`).
 * A genus answered only by a fuzzy or variant match is taken by the registry
   only where the names under it agree with it at kingdom and phylum, since a
   misspelt genus can match a genus in another kingdom.

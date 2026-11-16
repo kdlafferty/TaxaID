@@ -32,6 +32,17 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 # Rank ladder for "was the name answered at a coarser rank than it was asked at?". Below species everything is one
 # step (infraspecific). A rank not on the ladder cannot be compared: an ANSWER at such a rank counts as coarser
 # (refused, not accepted); a name ASKED at such a rank falls back to the shape rule.
+# A placeholder name "<Taxon> gen." names an unidentified genus BELOW <Taxon>. Its run-local id takes the rank the token
+# states, whatever rank a table gave the name (a species column holding "Crambidae gen." does not make it a species).
+# ("<Taxon> sp." needs no entry: clean_taxon_names() already reads it as <Taxon>.) The one place this mapping is held.
+.PLACEHOLDER_RANK <- c(gen. = "genus")
+.placeholder_rank <- function(x) {
+  tok <- dplyr::if_else(grepl("^\\S+ [a-z]+\\.$", x), sub("^\\S+ ", "", x), NA_character_)
+  unname(.PLACEHOLDER_RANK[tok])
+}
+# A reference label "<binomial>_cluster<digits>" (a within-species sequence cluster) names that species: answered as
+# the binomial it carries, it is a declared merge (status cluster_label), not a second taxon.
+.CLUSTER_LABEL <- "^([A-Z][a-z]+ [a-z][a-z-]+)_cluster[0-9]+$"
 .RANK_LADDER <- c(kingdom = 1L, phylum = 2L, class = 3L, order = 4L, family = 5L, genus = 6L, species = 7L,
                   subspecies = 8L, variety = 8L, form = 8L, forma = 8L, infraspecies = 8L, infraspecific = 8L)
 
@@ -235,8 +246,8 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' \strong{Tie-break} (off by default, \code{tiebreak}). Where a name has two
 #' or more candidate ids (\code{pool_key_ambiguous}, or a
 #' \code{pool_key_conflict} between the pool's key and the lookup's), the
-#' candidates are decided by, in order: for \code{pool_key_ambiguous} only,
-#' the lookup's own answer when it is exactly one of the pool's keys
+#' candidates are decided by, in order: the lookup's own answer (the key
+#' backbone's match) when it is exactly one of the candidates
 #' (\code{gbif_first}); then each of \code{authorities} in turn. The
 #' candidates' lineages are compared rank by rank: a rank distinguishes only
 #' where every candidate has a value there and the values differ (a rank one
@@ -245,9 +256,12 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' highest score wins. A decided name gets
 #' \code{status = "pool_key_tiebreak"}; an undecided one keeps its
 #' error-class finding. Candidates with identical lineages are never decided.
-#' Step 0 never applies to a \code{pool_key_conflict}: there the lookup's key
-#' is one of the two candidates by construction, so it would always win and
-#' undo pool-keys-first; a conflict is decided by the authorities or not at all.
+#' Step 0 applies to a \code{pool_key_conflict} as well: there the lookup's key
+#' is one of the two candidates by construction, so with \code{gbif_first} the
+#' key backbone's match always wins over the pool's key (the maintainer's rule:
+#' the key backbone decides). Every pool key it overrules is listed by
+#' \code{check_taxon_registry()} (\code{pool_key_tiebroken}). Pool keys first
+#' still holds where no tie-break is requested.
 #'
 #' \strong{Homonyms.} An exact answer that contradicts the name's own
 #' \code{context} (the two name different kingdoms, or the context names a
@@ -417,6 +431,10 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$status <- dplyr::if_else(!ok, NA_character_,
                 dplyr::if_else(tolower(r$match_type) %in% c("fuzzy", "partialfuzzy", "partialfuzzyspecies"), "fuzzy",
                 dplyr::if_else(r$is_synonym %in% TRUE, "synonym", "accepted")))
+  # a cluster label answered as exactly the binomial it carries is that species, declared
+  cl <- ok & grepl(.CLUSTER_LABEL, nm$name_clean) & !(r$is_synonym %in% TRUE) &
+    sub(.CLUSTER_LABEL, "\\1", nm$name_clean) == as.character(r$matched_name)
+  nm$status[cl] <- "cluster_label"
   # A fuzzy answer that differs from the query ONLY in the epithet's gender
   # ending is the gender rule, declared and listed; any other fuzzy answer stays
   # "fuzzy" and is an undeclared merge if it lands on another name's taxon.
@@ -600,11 +618,12 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       for (v in unique(nm$verbatim_name[clash])) {
         i <- which(clash & nm$verbatim_name == v)[1L]
         ids <- c(pk[i], lk_id[i])
-        # no step 0 here: the lookup's key is one of the two candidates by construction, so "GBIF's own match
-        # decides" would always side with the lookup and silently reverse pool-keys-first. Authorities only.
+        # step 0 applies here too (the maintainer's rule: the key backbone decides): with gbif_first, the backbone's own
+        # match -- the lookup's key, one of the two candidates -- wins over the pool's key, and the overruled pool key is
+        # listed (pool_key_tiebroken, by gbif). Without gbif_first, the authorities decide or nothing does.
         tb <- .registry_tiebreak(v, ids, list(pool_terms(v, sub("^[^:]+:", "", pk[i])),
                                               .tb_terms_of_path(r$classification_path[i], r$classification_ranks[i])), lk_id[i],
-                                 utils::modifyList(tiebreak, list(gbif_first = FALSE)))
+                                 tiebreak)
         tb_rows[[length(tb_rows) + 1L]] <- data.frame(verbatim_name = v, kind = "pool_key_conflict", candidates = paste(ids, collapse = " | "),
                                                       chosen = tb$id, by = tb$by, detail = tb$detail, stringsAsFactors = FALSE)
         if (!is.na(tb$id)) { tb_pick[v] <- tb$id; tb_by[v] <- tb$by }
@@ -733,6 +752,11 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     keep <- c(keep, up); frontier <- up
   }
   taxa <- taxa[taxa$taxon_id %in% keep, , drop = FALSE]
+
+  # --- a placeholder's run-local id takes the rank its token states (.PLACEHOLDER_RANK), over any rank a table gave
+  ph <- .placeholder_rank(taxa$name)
+  fixr <- taxa$local %in% TRUE & !is.na(ph)
+  taxa$rank[fixr] <- ph[fixr]
 
   # --- a run-local id described once WITH a rank (or parent) and once without is one description: the given one.
   # Two different given ranks or parents stay two descriptions (the conflict below).
@@ -1049,14 +1073,14 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     }
   }
   # unresolved and gender variants
-  for (s in c("unresolved_local", "gender_variant", "genus_variant", "rank_fallback", "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
+  for (s in c("unresolved_local", "gender_variant", "genus_variant", "cluster_label", "rank_fallback", "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
     z <- nm[nm$status %in% s, , drop = FALSE]
     if (nrow(z)) add(if (s == "lookup_failed") "error" else "info", s, NA_character_, NA_character_, paste(utils::head(sort(unique(z$verbatim_name)), 200), collapse = " | "),
                      sprintf("%d name(s)", length(unique(z$verbatim_name))), length(unique(z$verbatim_name)))
   }
   # merge audit: ids reached by 2+ different CLEAN names
   z <- nm[!is.na(nm$taxon_id), , drop = FALSE]
-  declared <- c("accepted", "synonym", "gender_variant", "genus_variant", "pool_key_only", "pool_key_tiebreak", "lineage_rule")
+  declared <- c("accepted", "synonym", "gender_variant", "genus_variant", "cluster_label", "pool_key_only", "pool_key_tiebreak", "lineage_rule")
   for (id in unique(z$taxon_id)) {
     w <- z[z$taxon_id == id, , drop = FALSE]
     if (length(unique(w$name_clean)) < 2L) next
