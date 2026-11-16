@@ -14,7 +14,13 @@ check_taxon_registry(
 \arguments{
 \item{registry}{A \code{taxon_registry}.}
 
-\item{tables}{Named list of data frames to check (optional).}
+\item{tables}{Named list of data frames to check (optional). An entry whose
+name starts with \code{"export:"} is an OUTPUT table and is also held to
+the export rules: no taxon id under two display names
+(\code{id_two_display_names}) and no display name on two taxon ids
+(\code{display_name_two_ids}), both error-class, read from its
+\code{taxon_name} (or \code{consensus_taxon}) column. Input tables are
+not: they legitimately hold one taxon under several verbatim names.}
 
 \item{mode}{\code{"report"} (default): return the findings. \code{"error"}:
 stop if any error-class finding exists.}

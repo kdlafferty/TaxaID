@@ -893,7 +893,13 @@ parent_at <- function(ids, rank, registry) {
 #' edited after the freeze is \code{registry_digest_mismatch} (error).
 #'
 #' @param registry A \code{taxon_registry}.
-#' @param tables Named list of data frames to check (optional).
+#' @param tables Named list of data frames to check (optional). An entry whose
+#'   name starts with \code{"export:"} is an OUTPUT table and is also held to
+#'   the export rules: no taxon id under two display names
+#'   (\code{id_two_display_names}) and no display name on two taxon ids
+#'   (\code{display_name_two_ids}), both error-class, read from its
+#'   \code{taxon_name} (or \code{consensus_taxon}) column. Input tables are
+#'   not: they legitimately hold one taxon under several verbatim names.
 #' @param mode \code{"report"} (default): return the findings. \code{"error"}:
 #'   stop if any error-class finding exists.
 #' @param verbose Print a summary. Default \code{TRUE}.
@@ -998,6 +1004,21 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     s <- attr(x, .REGISTRY_STAMP, exact = TRUE)
     if (is.null(s) || !"taxon_id" %in% names(x)) { add("error", "missing_stamp", tn, NA_character_, NA_character_, "table not passed through attach_taxon_ids()", nrow(x)); next }
     if (!is.null(stamp) && !identical(s, stamp)) add("error", "foreign_stamp", tn, NA_character_, NA_character_, sprintf("stamped by %s/%s", s$run_id, s$digest), nrow(x))
+    if (startsWith(tn, "export:")) {
+      ncol_disp <- intersect(c("taxon_name", "consensus_taxon"), names(x))[1]
+      if (!is.na(ncol_disp)) {
+        pr <- unique(data.frame(id = as.character(x$taxon_id), nm = as.character(x[[ncol_disp]]), stringsAsFactors = FALSE))
+        pr <- pr[!is.na(pr$id) & !is.na(pr$nm), , drop = FALSE]
+        for (id in unique(pr$id[duplicated(pr$id)])) {
+          add("error", "id_two_display_names", tn, id, paste(sort(unique(pr$nm[pr$id == id])), collapse = " | "),
+              sprintf("one taxon under %d names in an output table", length(unique(pr$nm[pr$id == id]))), sum(x$taxon_id %in% id))
+        }
+        for (v in unique(pr$nm[duplicated(pr$nm)])) {
+          add("error", "display_name_two_ids", tn, paste(sort(unique(pr$id[pr$nm == v])), collapse = " | "), v,
+              "one display name on two taxa in an output table", sum(x[[ncol_disp]] %in% v))
+        }
+      }
+    }
     if ("observation_id" %in% names(x)) {
       k <- paste(x$observation_id, x$taxon_id, if ("hypothesis_type" %in% names(x)) x$hypothesis_type else "", sep = "\r")
       d <- duplicated(k) & !is.na(x$taxon_id)

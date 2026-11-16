@@ -837,3 +837,24 @@ test_that("REVIEW N3 (S0 run7): a family/order concept difference is not a homon
   expect_identical(one("Plantae|Rhodophyta")$status[1], "homonym_rejected")                # another kingdom
   expect_identical(one("Animalia|Mollusca")$status[1], "accepted")                         # Mollusca: no answer in this run uses it as a phylum
 })
+
+test_that("export rules: an output table may not hold one taxon under two names, nor one name on two taxa (input tables may)", {
+  lk <- .fake_lookup(rbind(
+    .row("Seriola lalandi", "Seriola lalandi", "100", "1|44|587|90|91|100", "Animalia|Chordata|Perciformes|Carangidae|Seriola|Seriola lalandi"),
+    .row("Seriola aureovittata", "Seriola lalandi", "100", "1|44|587|90|91|100", "Animalia|Chordata|Perciformes|Carangidae|Seriola|Seriola lalandi", rec = "101", syn = TRUE),
+    .row("Seriola dorsalis", "Seriola dorsalis", "102", "1|44|587|90|91|102", "Animalia|Chordata|Perciformes|Carangidae|Seriola|Seriola dorsalis")))
+  reg <- freeze_taxon_registry(build_taxon_registry(.names(c("Seriola lalandi", "Seriola aureovittata", "Seriola dorsalis"), "plausible"),
+                                                    run_id = "ex1", lookup = lk))
+  plaus <- suppressMessages(attach_taxon_ids(data.frame(taxon_name = c("Seriola lalandi", "Seriola aureovittata", "Seriola dorsalis"),
+                                                        stringsAsFactors = FALSE), reg, "taxon_name", "plausible"))
+  as_input <- check_taxon_registry(reg, list(plausible = plaus), verbose = FALSE)
+  expect_false(any(as_input$kind %in% c("id_two_display_names", "display_name_two_ids")))
+  as_export <- check_taxon_registry(reg, list(`export:plausible` = plaus), verbose = FALSE)
+  f <- as_export[as_export$kind == "id_two_display_names", ]
+  expect_identical(nrow(f), 1L); expect_identical(f$severity, "error"); expect_identical(f$names, "Seriola aureovittata | Seriola lalandi")
+  expect_error(check_taxon_registry(reg, list(`export:plausible` = plaus), mode = "error", verbose = FALSE), "id_two_display_names")
+  # one display name on two taxa
+  two <- plaus; two$taxon_name[3] <- "Seriola lalandi"; two <- two[-2, ]; attr(two, "taxon_registry") <- attr(plaus, "taxon_registry")
+  g <- check_taxon_registry(reg, list(`export:plausible` = two), verbose = FALSE)
+  expect_true(any(g$kind == "display_name_two_ids" & g$severity == "error"))
+})
