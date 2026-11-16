@@ -24,3 +24,22 @@
   lk <- lk[order(!acc, seq_len(nrow(lk))), , drop = FALSE]
   lk[!duplicated(lk$taxon_id), , drop = FALSE]
 }
+
+# Rank columns for a table's names read from the registry's tree: each name in `name_col` resolves through the
+# registry's name table (a name registered to exactly one taxon); `id_col` receives the id and each of `cols` the
+# registry's name for that taxon's ancestor at the rank. Names the registry does not hold get NA throughout.
+.registry_lineage_cols <- function(x, registry, cols, name_col = "taxon_name", id_col = "taxon_id", caller = "") {
+  if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
+    stop(sprintf("%s: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).", caller), call. = FALSE)
+  }
+  rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+  rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
+  x[[id_col]] <- rn$taxon_id[match(as.character(x[[name_col]]), rn$verbatim_name)]
+  reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
+  u <- unique(stats::na.omit(x[[id_col]]))
+  for (rc in cols) {
+    a <- stats::setNames(TaxaTools::parent_at(u, rc, registry), u)
+    x[[rc]] <- unname(reg_name[unname(a[x[[id_col]]])])
+  }
+  x
+}

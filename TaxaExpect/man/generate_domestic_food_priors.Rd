@@ -20,7 +20,8 @@ generate_domestic_food_priors(
   max_ess = 50,
   taxonomy = NULL,
   api_token = Sys.getenv("INAT_API_TOKEN"),
-  verbose = FALSE
+  verbose = FALSE,
+  registry = NULL
 )
 }
 \arguments{
@@ -101,6 +102,16 @@ without it, that step is skipped with a message.}
 \code{INAT_API_TOKEN} environment variable.}
 
 \item{verbose}{Logical. Print progress. Default FALSE.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} adds rank columns
+by joining \code{taxon_name} to \code{taxonomy$taxon_name}. Given a
+registry, each output name resolves through the registry's name table (a
+name registered to exactly one taxon), the rows gain \code{taxon_id}, and
+the rank columns are the registry's accepted names for that taxon's
+ancestors, so a name filed under a synonym is still placed. The rank
+columns used are those of \code{taxonomy} when supplied, else genus to
+phylum; \code{taxonomy}'s values are not read.}
 }
 \value{
 A tibble with one row per resolved domestic/food/plant taxon:

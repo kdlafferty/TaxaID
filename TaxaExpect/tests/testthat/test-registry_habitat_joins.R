@@ -71,3 +71,23 @@ test_that("generate_undetected_diversity(registry =): a singleton mirror is plac
   expect_identical(m1$genus, "Hypsurus"); expect_identical(m1$family, "Embiotocidae")
   expect_identical(m1$source_taxon_id, .rg_id(reg, "Hypsurus caryi"))
 })
+
+test_that("apply_undetected_evidence / generate_domestic_food_priors: registry is the LAST formal; evidence rows placed on the tree", {
+  .rg_skip(); reg <- .rg_registry()
+  for (f in list(apply_undetected_evidence, generate_domestic_food_priors)) {
+    expect_identical(utils::tail(names(formals(f)), 1L), "registry"); expect_null(formals(f)$registry)
+  }
+  pri <- tibble::tibble(taxon_name = c(NA, NA, "Embiotoca jacksoni"), taxon_name_rank = c(NA, NA, "species"),
+    grid_id = c(NA, "Grid_A", "Grid_A"), alpha = c(1, 0.05, 40), beta = c(999, 1.95, 60), theta_mean = c(0.001, 0.025, 0.4),
+    theta_sd = NA_real_, model_tier = c("tier3_undetected", "tier3_undetected", "tier1"),
+    undetected_type = c("global_floor", "singleton_mirror", NA), source_taxon_name = c(NA, "Embiotoca jacksoni", NA),
+    main_habitat = c(NA, "Lentic", "Lentic"))
+  ev <- tibble::tibble(taxon_name = "Embiotoca caryi", weight = 0.5, p_conc = 4, source = "invasive_watch")
+  tax_text <- tibble::tibble(taxon_name = "Embiotoca caryi", genus = "Embiotoca", family = "Embiotocidae")
+  run <- function(...) suppressWarnings(suppressMessages(apply_undetected_evidence(pri, structure(list(), class = "taxaexpect_kernel_priors"),
+                                        ev, grid_id = "Grid_A", main_habitat = "Lentic", taxonomy = tax_text, ...)))
+  expect_identical(run()$genus, "Embiotoca")   # the defect: genus from the synonym's text
+  out <- run(registry = reg)
+  expect_identical(out$genus, "Hypsurus"); expect_identical(out$family, "Embiotocidae")
+  expect_identical(out$taxon_id, .rg_id(reg, "Hypsurus caryi"))
+})

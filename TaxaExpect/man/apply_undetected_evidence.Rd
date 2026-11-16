@@ -15,7 +15,8 @@ apply_undetected_evidence(
   sampling_group = NULL,
   group_fallback = c("pooled_qualifying", "error", "skip"),
   min_group_n_eff = 100,
-  min_group_f1 = 1L
+  min_group_f1 = 1L,
+  registry = NULL
 )
 }
 \arguments{
@@ -107,6 +108,16 @@ taxa with a message. Ignored for single-group fits.}
 before its own budget is trusted: at least this many effective records
 (default \code{100}) and this many neighborhood singletons (default
 \code{1}). Ignored for single-group fits.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} adds rank columns
+by joining \code{taxon_name} to \code{taxonomy$taxon_name}. Given a
+registry, each output name resolves through the registry's name table (a
+name registered to exactly one taxon), the rows gain \code{taxon_id}, and
+the rank columns are the registry's accepted names for that taxon's
+ancestors, so a name filed under a synonym is still placed. The rank
+columns used are those of \code{taxonomy} when supplied, else genus to
+phylum; \code{taxonomy}'s values are not read.}
 }
 \value{
 A tibble with one row per eligible taxon named in \code{evidence}:
