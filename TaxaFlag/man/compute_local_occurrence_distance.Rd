@@ -12,7 +12,8 @@ compute_local_occurrence_distance(
   taxon_col = "taxon_name",
   lat_col = "decimalLatitude",
   lon_col = "decimalLongitude",
-  date_col = NULL
+  date_col = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -41,6 +42,17 @@ without a second lookup. Default \code{NULL} (no age column requested;
 \code{nearest_date} is simply absent from the output). No parsing/normalization
 is done on the raw value; a \code{"year"}
 column comes back as whatever numeric/character type it already was.}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} matches
+\code{taxon_names} to \code{occurrence_data[[taxon_col]]} by name. Given a
+registry, both resolve to registry taxon ids and records match by id, so
+a record filed under a synonym of the called name is counted. A record's
+own \code{taxon_id} is used when \code{occurrence_data} carries this
+registry's stamp; otherwise its name resolves through the registry's
+name table (a name registered to exactly one taxon), as do
+\code{taxon_names}. The output keeps one row per input name and gains
+\code{taxon_id}.}
 }
 \value{
 A data frame, one row per unique entry in \code{taxon_names}:

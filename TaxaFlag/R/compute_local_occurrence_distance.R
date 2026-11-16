@@ -44,6 +44,16 @@
 #'   is done on the raw value; a `"year"`
 #'   column comes back as whatever numeric/character type it already was.
 #'
+#' @param registry \code{NULL} (default) or a frozen \code{taxon_registry}
+#'   (\code{TaxaTools::build_taxon_registry()}). \code{NULL} matches
+#'   \code{taxon_names} to \code{occurrence_data[[taxon_col]]} by name. Given a
+#'   registry, both resolve to registry taxon ids and records match by id, so
+#'   a record filed under a synonym of the called name is counted. A record's
+#'   own \code{taxon_id} is used when \code{occurrence_data} carries this
+#'   registry's stamp; otherwise its name resolves through the registry's
+#'   name table (a name registered to exactly one taxon), as do
+#'   \code{taxon_names}. The output keeps one row per input name and gains
+#'   \code{taxon_id}.
 #' @return A data frame, one row per unique entry in `taxon_names`:
 #'   \describe{
 #'     \item{taxon_name}{As supplied.}
@@ -88,7 +98,8 @@ compute_local_occurrence_distance <- function(taxon_names,
                                               taxon_col = "taxon_name",
                                               lat_col = "decimalLatitude",
                                               lon_col = "decimalLongitude",
-                                              date_col = NULL) {
+                                              date_col = NULL,
+                                              registry = NULL) {
   if (!is.character(taxon_names) || length(taxon_names) == 0L) {
     stop("compute_local_occurrence_distance: taxon_names must be a non-empty character vector.")
   }
@@ -109,6 +120,25 @@ compute_local_occurrence_distance <- function(taxon_names,
   use_date <- !is.null(date_col) && date_col %in% names(occurrence_data)
 
   taxa_unique <- unique(taxon_names)
+  if (!is.null(registry)) {
+    if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
+      stop("compute_local_occurrence_distance: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).")
+    }
+    rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+    rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
+    id_of <- function(v) rn$taxon_id[match(as.character(v), rn$verbatim_name)]
+    st <- attr(occurrence_data, "taxon_registry", exact = TRUE)
+    occ_id <- if ("taxon_id" %in% names(occurrence_data) && !is.null(st) && identical(st$digest, registry$meta$digest)) {
+      as.character(occurrence_data$taxon_id)
+    } else {
+      id_of(occurrence_data[[taxon_col]])
+    }
+    q_id <- id_of(taxa_unique)
+    # each record is filed under the input name whose id it shares (first such name), else its own name
+    rec_name <- taxa_unique[match(occ_id, q_id)]
+    occurrence_data <- as.data.frame(occurrence_data)
+    occurrence_data[[taxon_col]] <- ifelse(is.na(rec_name), as.character(occurrence_data[[taxon_col]]), rec_name)
+  }
 
   occ_dist <- occurrence_data |>
     dplyr::filter(
@@ -143,6 +173,7 @@ compute_local_occurrence_distance <- function(taxon_names,
     dplyr::left_join(counts, by = "taxon_name") |>
     dplyr::left_join(nearest_rows, by = "taxon_name") |>
     dplyr::mutate(n_local_records = dplyr::coalesce(.data$n_local_records, 0L))
+  if (!is.null(registry)) result$taxon_id <- q_id[match(result$taxon_name, taxa_unique)]
 
   result
 }
