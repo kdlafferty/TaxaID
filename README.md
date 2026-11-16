@@ -992,14 +992,14 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 64                 | 36         | Yes      |
+| TaxaTools   | 64                 | 37         | Yes      |
 | TaxaFetch   | 33                 | 30         | Yes      |
 | TaxaHabitat | 15                 | 13         | Yes      |
 | TaxaMatch   | 30                 | 23         | Yes      |
-| TaxaLikely  | 33                 | 45         | Yes      |
-| TaxaExpect  | 17                 | 18         | Yes      |
-| TaxaAssign  | 13                 | 26         | Yes      |
-| TaxaFlag    | 17                 | 23         | Yes      |
+| TaxaLikely  | 33                 | 46         | Yes      |
+| TaxaExpect  | 17                 | 19         | Yes      |
+| TaxaAssign  | 13                 | 29         | Yes      |
+| TaxaFlag    | 17                 | 24         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 **Export surface: 231 = 226 functions + 5 data objects.** The per-package counts
