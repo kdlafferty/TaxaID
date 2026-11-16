@@ -893,22 +893,24 @@ parent_at <- function(ids, rank, registry) {
 #' edited after the freeze is \code{registry_digest_mismatch} (error).
 #'
 #' @param registry A \code{taxon_registry}.
-#' @param tables Named list of data frames to check (optional). An entry whose
-#'   name starts with \code{"export:"} is an OUTPUT table and is also held to
-#'   the export rules: no taxon id under two display names
-#'   (\code{id_two_display_names}) and no display name on two taxon ids
-#'   (\code{display_name_two_ids}), both error-class, read from its
-#'   \code{taxon_name} (or \code{consensus_taxon}) column. Input tables are
-#'   not: they legitimately hold one taxon under several verbatim names.
+#' @param tables Named list of data frames to check (optional).
 #' @param mode \code{"report"} (default): return the findings. \code{"error"}:
 #'   stop if any error-class finding exists.
 #' @param verbose Print a summary. Default \code{TRUE}.
+#' @param export Logical, default \code{FALSE}. \code{TRUE} declares every
+#'   table in \code{tables} an OUTPUT table and holds it to the export rules:
+#'   no taxon id under two display names (\code{id_two_display_names}) and no
+#'   display name on two taxon ids (\code{display_name_two_ids}), both
+#'   error-class, read from its \code{taxon_name} (or \code{consensus_taxon})
+#'   column. Leave it \code{FALSE} for input tables, which legitimately hold
+#'   one taxon under several verbatim names.
 #' @return A data frame of findings: \code{severity} (\code{"error"} or
 #'   \code{"info"}), \code{kind}, \code{table}, \code{taxon_id}, \code{names},
 #'   \code{detail}, \code{n}.
 #' @export
-check_taxon_registry <- function(registry, tables = list(), mode = c("report", "error"), verbose = TRUE) {
+check_taxon_registry <- function(registry, tables = list(), mode = c("report", "error"), verbose = TRUE, export = FALSE) {
   mode <- match.arg(mode)
+  if (!is.logical(export) || length(export) != 1L || is.na(export)) stop("`export` must be TRUE or FALSE.")
   if (!inherits(registry, "taxon_registry")) stop("`registry` must be a taxon_registry.")
   out <- list()
   add <- function(sev, kind, table, id, names, detail, n) {
@@ -1004,7 +1006,7 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     s <- attr(x, .REGISTRY_STAMP, exact = TRUE)
     if (is.null(s) || !"taxon_id" %in% names(x)) { add("error", "missing_stamp", tn, NA_character_, NA_character_, "table not passed through attach_taxon_ids()", nrow(x)); next }
     if (!is.null(stamp) && !identical(s, stamp)) add("error", "foreign_stamp", tn, NA_character_, NA_character_, sprintf("stamped by %s/%s", s$run_id, s$digest), nrow(x))
-    if (startsWith(tn, "export:")) {
+    if (export) {
       ncol_disp <- intersect(c("taxon_name", "consensus_taxon"), names(x))[1]
       if (!is.na(ncol_disp)) {
         pr <- unique(data.frame(id = as.character(x$taxon_id), nm = as.character(x[[ncol_disp]]), stringsAsFactors = FALSE))

@@ -847,14 +847,16 @@ test_that("export rules: an output table may not hold one taxon under two names,
                                                     run_id = "ex1", lookup = lk))
   plaus <- suppressMessages(attach_taxon_ids(data.frame(taxon_name = c("Seriola lalandi", "Seriola aureovittata", "Seriola dorsalis"),
                                                         stringsAsFactors = FALSE), reg, "taxon_name", "plausible"))
+  expect_identical(utils::tail(names(formals(check_taxon_registry)), 1L), "export")
+  expect_false(formals(check_taxon_registry)$export)
   as_input <- check_taxon_registry(reg, list(plausible = plaus), verbose = FALSE)
   expect_false(any(as_input$kind %in% c("id_two_display_names", "display_name_two_ids")))
-  as_export <- check_taxon_registry(reg, list(`export:plausible` = plaus), verbose = FALSE)
+  as_export <- check_taxon_registry(reg, list(plausible = plaus), verbose = FALSE, export = TRUE)
   f <- as_export[as_export$kind == "id_two_display_names", ]
   expect_identical(nrow(f), 1L); expect_identical(f$severity, "error"); expect_identical(f$names, "Seriola aureovittata | Seriola lalandi")
-  expect_error(check_taxon_registry(reg, list(`export:plausible` = plaus), mode = "error", verbose = FALSE), "id_two_display_names")
+  expect_error(check_taxon_registry(reg, list(plausible = plaus), mode = "error", verbose = FALSE, export = TRUE), "id_two_display_names")
   # one display name on two taxa
   two <- plaus; two$taxon_name[3] <- "Seriola lalandi"; two <- two[-2, ]; attr(two, "taxon_registry") <- attr(plaus, "taxon_registry")
-  g <- check_taxon_registry(reg, list(`export:plausible` = two), verbose = FALSE)
+  g <- check_taxon_registry(reg, list(plausible = two), verbose = FALSE, export = TRUE)
   expect_true(any(g$kind == "display_name_two_ids" & g$severity == "error"))
 })
