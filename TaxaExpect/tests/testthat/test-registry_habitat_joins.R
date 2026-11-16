@@ -54,3 +54,20 @@ test_that("estimate_kernel_priors_from_counts(taxon_threshold): a counted synony
   fp1 <- run(.rg_stamp(bands, reg, "joined"), .rg_stamp(.hab_lookup(), reg, "priors"), registry = reg)
   expect_true("Embiotoca caryi" %in% fp1$priors$taxon_name)
 })
+
+test_that("generate_undetected_diversity(registry =): a singleton mirror is placed on the registry's tree", {
+  .rg_skip(); reg <- .rg_registry()
+  expect_identical(utils::tail(names(formals(generate_undetected_diversity)), 1L), "registry")
+  occ <- data.frame(taxon_name = c(rep("Embiotoca jacksoni", 6), "Embiotoca caryi"),
+                    decimalLatitude = 34 + (0:6) / 100, decimalLongitude = -119, main_habitat = "Marine", stringsAsFactors = FALSE)
+  fit <- suppressWarnings(suppressMessages(estimate_kernel_priors(occ, 34, -119, "Marine", lambda_km = 25)))
+  tax_text <- data.frame(taxon_name = unique(occ$taxon_name), genus = "Embiotoca", family = "Embiotocidae", stringsAsFactors = FALSE)
+  u0 <- suppressMessages(generate_undetected_diversity(fit, taxonomy = tax_text))
+  m0 <- u0[u0$undetected_type %in% "singleton_mirror" & u0$source_taxon_name %in% "Embiotoca caryi", ]
+  skip_if(nrow(m0) == 0L, "no singleton mirror for the fixture")
+  expect_identical(m0$genus, "Embiotoca")   # the defect: filed by the synonym's text
+  u1 <- suppressMessages(generate_undetected_diversity(fit, taxonomy = tax_text, registry = reg))
+  m1 <- u1[u1$undetected_type %in% "singleton_mirror" & u1$source_taxon_name %in% "Embiotoca caryi", ]
+  expect_identical(m1$genus, "Hypsurus"); expect_identical(m1$family, "Embiotocidae")
+  expect_identical(m1$source_taxon_id, .rg_id(reg, "Hypsurus caryi"))
+})

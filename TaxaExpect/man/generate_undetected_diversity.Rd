@@ -8,7 +8,8 @@ generate_undetected_diversity(
   model_obj,
   jeffreys_threshold = 2L,
   singleton_ess = 2L,
-  taxonomy = NULL
+  taxonomy = NULL,
+  registry = NULL
 )
 }
 \arguments{
@@ -36,6 +37,17 @@ left join on \code{taxon_name}. Typically built from \code{occurrences_std}
 \code{TaxaAssign::join_priors()} for hierarchical dark diversity grouping
 (Issue 3). Global floor rows always receive NA for all taxonomy columns.
 Default \code{NULL} (taxonomy columns added as NA).}
+
+\item{registry}{\code{NULL} (default) or a frozen \code{taxon_registry}
+(\code{TaxaTools::build_taxon_registry()}). \code{NULL} annotates
+singleton mirrors by joining \code{source_taxon_name} to
+\code{taxonomy$taxon_name}. Given a registry, each source name is
+resolved through the registry's name table (a name registered to exactly
+one taxon), the mirror gains \code{source_taxon_id}, and its rank columns
+are the registry's accepted names for that taxon's ancestors, so a source
+filed under a synonym is still placed. The rank columns used are those of
+\code{taxonomy} when supplied, else genus to phylum; \code{taxonomy}'s
+values are not read.}
 }
 \value{
 A tibble with one row per undetected species proxy, containing:

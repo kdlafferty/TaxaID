@@ -60,6 +60,16 @@
 #'   (Issue 3). Global floor rows always receive NA for all taxonomy columns.
 #'   Default \code{NULL} (taxonomy columns added as NA).
 #'
+#' @param registry \code{NULL} (default) or a frozen \code{taxon_registry}
+#'   (\code{TaxaTools::build_taxon_registry()}). \code{NULL} annotates
+#'   singleton mirrors by joining \code{source_taxon_name} to
+#'   \code{taxonomy$taxon_name}. Given a registry, each source name is
+#'   resolved through the registry's name table (a name registered to exactly
+#'   one taxon), the mirror gains \code{source_taxon_id}, and its rank columns
+#'   are the registry's accepted names for that taxon's ancestors, so a source
+#'   filed under a synonym is still placed. The rank columns used are those of
+#'   \code{taxonomy} when supplied, else genus to phylum; \code{taxonomy}'s
+#'   values are not read.
 #' @return A tibble with one row per undetected species proxy, containing:
 #'   \describe{
 #'     \item{taxon_name}{Always NA -- proxies have no taxonomic identity.}
@@ -150,7 +160,8 @@
 generate_undetected_diversity <- function(model_obj,
                                           jeffreys_threshold = 2L,
                                           singleton_ess = 2L,
-                                          taxonomy = NULL) {
+                                          taxonomy = NULL,
+                                          registry = NULL) {
   # --- Input checks -----------------------------------------------------------
   if (!inherits(model_obj, "taxaexpect_kernel_priors")) {
     stop(
@@ -358,7 +369,24 @@ generate_undetected_diversity <- function(model_obj,
   # singletons not found in taxonomy receive NA for all rank columns.
   # Columns are always added (as NA when taxonomy = NULL) so the output schema
   # is consistent for downstream use in join_priors() Issue 3 grouping.
-  if (!is.null(taxonomy)) {
+  if (!is.null(registry)) {
+    if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
+      stop("generate_undetected_diversity: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).", call. = FALSE)
+    }
+    cols <- if (!is.null(taxonomy)) intersect(tax_rank_cols, names(taxonomy)) else tax_rank_cols
+    rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+    rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
+    result$source_taxon_id <- rn$taxon_id[match(as.character(result$source_taxon_name), rn$verbatim_name)]
+    reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
+    u <- unique(stats::na.omit(result$source_taxon_id))
+    for (rc in cols) {
+      a <- stats::setNames(TaxaTools::parent_at(u, rc, registry), u)
+      result[[rc]] <- unname(reg_name[unname(a[result$source_taxon_id])])
+    }
+    is_m <- result$undetected_type %in% "singleton_mirror"
+    message(sprintf("  Registry: %d / %d singleton mirror(s) placed on the registry's tree (%d source name(s) not in it).",
+                    sum(is_m & !is.na(result$source_taxon_id)), sum(is_m), length(unique(result$source_taxon_name[is_m & is.na(result$source_taxon_id)]))))
+  } else if (!is.null(taxonomy)) {
     tax_cols_present <- intersect(tax_rank_cols, names(taxonomy))
     tax_lookup <- unique(taxonomy[, c("taxon_name", tax_cols_present), drop = FALSE])
     tax_lookup <- tax_lookup[!duplicated(tax_lookup$taxon_name), ]
