@@ -69,8 +69,30 @@ if (isTRUE({{use_taxon_registry}}) && is.null(taxon_registry)) {
                            source_table = tab, stringsAsFactors = FALSE))
     d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
   }
+  # each name's own lineage from these tables as its context (kingdom to family; none where the tables disagree): it
+  # refuses a cross-phylum homonym and breaks genus/species ties; at family and above the GBIF backbone decides
+  .reg_ctx <- function(d, tabs) {
+    lr <- c("kingdom", "phylum", "class", "order", "family", "genus")
+    rows <- do.call(rbind, lapply(tabs, function(x) {
+      lc <- intersect(lr, names(x)); if (!length(lc)) return(NULL); x <- as.data.frame(x); out <- list()
+      mk <- function(n, r) data.frame(name = as.character(n), rank = r, value = as.character(x[[r]]), stringsAsFactors = FALSE)
+      if ("taxon_name" %in% names(x)) for (r in setdiff(lc, "genus")) out[[length(out) + 1L]] <- mk(x$taxon_name, r)
+      for (k in seq_along(lc)) for (r in setdiff(lc[seq_len(k - 1L)], "genus")) out[[length(out) + 1L]] <- mk(x[[lc[k]]], r)
+      do.call(rbind, out)
+    }))
+    d$context <- NA_character_
+    if (is.null(rows)) return(d)
+    rows <- unique(rows[!is.na(rows$name) & !is.na(rows$value) & nzchar(trimws(rows$value)), , drop = FALSE])
+    rows$rank <- factor(rows$rank, levels = lr)
+    ctx <- vapply(split(rows, as.character(rows$name)), function(z) {
+      if (any(tapply(z$value, z$rank, function(v) length(unique(v))) > 1L, na.rm = TRUE)) return(NA_character_)
+      z <- z[order(z$rank), , drop = FALSE]; paste(unique(z$value), collapse = "|")
+    }, "")
+    d$context <- unname(ctx[d$verbatim_name])
+    d
+  }
   taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
-    rbind(.reg_tab(top_likelihoods, "likelihoods"), .reg_tab({{priors_var}}, "priors")),
+    .reg_ctx(rbind(.reg_tab(top_likelihoods, "likelihoods"), .reg_tab({{priors_var}}, "priors")), list(top_likelihoods, {{priors_var}})),
     run_id = format(Sys.time(), "run-%Y%m%d-%H%M%S"), key_backbone_id = 11L,
     lookup = function(names, rank, context) TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = {{taxonomy_cache_dir}})
   ))

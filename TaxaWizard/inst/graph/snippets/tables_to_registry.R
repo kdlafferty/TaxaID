@@ -16,6 +16,13 @@
 # one hypothesis, family and order come from the GBIF tree, and outputs carry GBIF
 # accepted names (each row keeps its own name in taxon_name_verbatim).
 #
+# Each name carries its own lineage from these tables as its context (kingdom to
+# family, from the match object's lineage columns and any the other tables carry; none
+# where the tables disagree). The context refuses an answer in another kingdom or
+# phylum (a homonym: "Polyarthra" the rotifer genus vs. an arthropod order) and breaks
+# ties between genus or species candidates; at family and above the GBIF backbone's
+# own tree decides and the context is not read.
+#
 # check_taxon_registry(mode = "error") stops here if a lookup FAILED or two different
 # taxa were merged with no declared synonymy, rather than guessing. Its full report
 # (synonyms merged, names it could only place at genus, run-local names) is kept as
@@ -34,6 +41,25 @@ if (isTRUE({{use_taxon_registry}})) {
     d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
   }
   .lineage_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus")
+  # (name, rank, value) from a table's own lineage: a row's taxon_name takes every column kingdom to family, a lineage
+  # value the columns above its own rank
+  .ctx_rows <- function(x) {
+    lc <- if (is.null(x)) character(0) else intersect(.lineage_ranks, names(x))
+    if (!length(lc)) return(NULL)
+    x <- as.data.frame(x); out <- list()
+    mk <- function(n, r) data.frame(name = as.character(n), rank = r, value = as.character(x[[r]]), stringsAsFactors = FALSE)
+    if ("taxon_name" %in% names(x)) for (r in setdiff(lc, "genus")) out[[length(out) + 1L]] <- mk(x$taxon_name, r)
+    for (k in seq_along(lc)) for (r in setdiff(lc[seq_len(k - 1L)], "genus")) out[[length(out) + 1L]] <- mk(x[[lc[k]]], r)
+    do.call(rbind, out)
+  }
+  .ctx_long <- unique(do.call(rbind, lapply(list({{match_var}}, {{lik_var}}, {{reference_var}}, {{std_var}}, {{priors_var}}), .ctx_rows)))
+  if (is.null(.ctx_long)) .ctx_long <- data.frame(name = character(0), rank = character(0), value = character(0))
+  .ctx_long <- .ctx_long[!is.na(.ctx_long$name) & nzchar(.ctx_long$name) & !is.na(.ctx_long$value) & nzchar(trimws(.ctx_long$value)), , drop = FALSE]
+  .ctx_long$rank <- factor(.ctx_long$rank, levels = .lineage_ranks)
+  .ctx_of <- vapply(split(.ctx_long, as.character(.ctx_long$name)), function(d) {
+    if (any(tapply(d$value, d$rank, function(v) length(unique(v))) > 1L, na.rm = TRUE)) return(NA_character_)   # tables disagree
+    d <- d[order(d$rank), , drop = FALSE]; paste(unique(d$value), collapse = "|")
+  }, "")
   .reg_names <- rbind(
     .reg_rows({{match_var}}, "taxon_name", "match"),
     do.call(rbind, lapply(.lineage_ranks, function(r) .reg_rows({{match_var}}, r, "match", rank = r))),
@@ -45,6 +71,7 @@ if (isTRUE({{use_taxon_registry}})) {
     .reg_rows({{priors_var}}, "source_taxon_name", "priors", rank = "species")
   )
   .reg_names <- unique(.reg_names)
+  .reg_names$context <- unname(.ctx_of[.reg_names$verbatim_name])
   taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
     .reg_names,
     run_id          = format(Sys.time(), "run-%Y%m%d-%H%M%S"),
