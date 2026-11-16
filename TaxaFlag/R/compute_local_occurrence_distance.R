@@ -53,7 +53,8 @@
 #'   registry's stamp; otherwise its name resolves through the registry's
 #'   name table (a name registered to exactly one taxon), as do
 #'   \code{taxon_names}. The output keeps one row per input name and gains
-#'   \code{taxon_id}.
+#'   \code{taxon_id}; input names that resolve to one taxon each report all
+#'   of that taxon's records.
 #' @return A data frame, one row per unique entry in `taxon_names`:
 #'   \describe{
 #'     \item{taxon_name}{As supplied.}
@@ -120,6 +121,8 @@ compute_local_occurrence_distance <- function(taxon_names,
   use_date <- !is.null(date_col) && date_col %in% names(occurrence_data)
 
   taxa_unique <- unique(taxon_names)
+  # the key records are counted under: the name itself, or with a registry the taxon id
+  keys <- taxa_unique
   if (!is.null(registry)) {
     if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
       stop("compute_local_occurrence_distance: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).")
@@ -134,16 +137,18 @@ compute_local_occurrence_distance <- function(taxon_names,
       id_of(occurrence_data[[taxon_col]])
     }
     q_id <- id_of(taxa_unique)
-    # each record is filed under the input name whose id it shares (first such name), else its own name; a record
-    # with no id shares none (NA never matches NA)
-    rec_name <- taxa_unique[match(occ_id, q_id, incomparables = NA)]
+    # records and called names meet by id: a record whose id a called name shares is counted under that id, and every
+    # called name with the id gets the same count and nearest record; anything else keeps its own name. A record with
+    # no id shares none (NA never matches NA).
+    keys <- ifelse(is.na(q_id), taxa_unique, paste0("\rid:", q_id))
+    hit <- !is.na(occ_id) & occ_id %in% q_id
     occurrence_data <- as.data.frame(occurrence_data)
-    occurrence_data[[taxon_col]] <- ifelse(is.na(rec_name), as.character(occurrence_data[[taxon_col]]), rec_name)
+    occurrence_data[[taxon_col]] <- ifelse(hit, paste0("\rid:", occ_id), as.character(occurrence_data[[taxon_col]]))
   }
 
   occ_dist <- occurrence_data |>
     dplyr::filter(
-      .data[[taxon_col]] %in% taxa_unique,
+      .data[[taxon_col]] %in% keys,
       !is.na(.data[[lat_col]]), !is.na(.data[[lon_col]])
     ) |>
     dplyr::transmute(
@@ -170,11 +175,12 @@ compute_local_occurrence_distance <- function(taxon_names,
     )
   if (!use_date) nearest_rows$nearest_date <- NULL
 
-  result <- data.frame(taxon_name = taxa_unique, stringsAsFactors = FALSE) |>
+  result <- data.frame(taxon_name = keys, stringsAsFactors = FALSE) |>
     dplyr::left_join(counts, by = "taxon_name") |>
     dplyr::left_join(nearest_rows, by = "taxon_name") |>
     dplyr::mutate(n_local_records = dplyr::coalesce(.data$n_local_records, 0L))
-  if (!is.null(registry)) result$taxon_id <- q_id[match(result$taxon_name, taxa_unique)]
+  result$taxon_name <- taxa_unique
+  if (!is.null(registry)) result$taxon_id <- q_id
 
   result
 }

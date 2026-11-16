@@ -27,3 +27,21 @@ test_that("compute_local_occurrence_distance(registry =): a record with no id is
   d2 <- compute_local_occurrence_distance("Nonesuch beta", 34, -119, occ, registry = reg)
   expect_identical(d2$n_local_records, 2L)
 })
+
+test_that("compute_local_occurrence_distance(registry =): every called name of one taxon gets that taxon's records", {
+  .rg_skip(); reg <- .rg_registry()
+  occ <- data.frame(taxon_name = c("Embiotoca caryi", "Hypsurus caryi", "Embiotoca jacksoni"),
+                    decimalLatitude = c(34.0, 34.1, 34.2), decimalLongitude = -119, stringsAsFactors = FALSE)
+  d <- compute_local_occurrence_distance(c("Hypsurus caryi", "Embiotoca caryi", "Embiotoca jacksoni"), 34, -119, occ, registry = reg)
+  expect_identical(d$taxon_name, c("Hypsurus caryi", "Embiotoca caryi", "Embiotoca jacksoni"))   # one row per input name, in order
+  expect_identical(d$n_local_records, c(2L, 2L, 1L))
+  expect_equal(d$dist_nearest_km[1:2], c(0, 0), tolerance = 1e-9)
+  expect_identical(d$taxon_id[1], d$taxon_id[2])
+})
+
+test_that("compute_local_occurrence_distance(registry = NULL) is unchanged by the registry path", {
+  occ <- data.frame(taxon_name = c("A a", "A a", "B b", NA), decimalLatitude = c(34.0, 34.5, 35, 34), decimalLongitude = -119,
+                    eventDate = as.Date(c("2020-01-01", "2021-01-01", "2022-01-01", "2023-01-01")), stringsAsFactors = FALSE)
+  d <- compute_local_occurrence_distance(c("B b", "A a", "C c", "A a"), 34, -119, occ, date_col = "eventDate")
+  expect_snapshot_value(d, style = "serialize")
+})

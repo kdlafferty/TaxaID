@@ -52,7 +52,8 @@ own \code{taxon_id} is used when \code{occurrence_data} carries this
 registry's stamp; otherwise its name resolves through the registry's
 name table (a name registered to exactly one taxon), as do
 \code{taxon_names}. The output keeps one row per input name and gains
-\code{taxon_id}.}
+\code{taxon_id}; input names that resolve to one taxon each report all
+of that taxon's records.}
 }
 \value{
 A data frame, one row per unique entry in \code{taxon_names}:
