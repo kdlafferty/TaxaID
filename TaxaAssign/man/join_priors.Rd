@@ -332,9 +332,11 @@ backbone fallback lookup is not made. Rows of one observation holding one
 taxon under two names become one hypothesis. Where the prior table holds
 one taxon under two or more names at a site, the row under the registry's
 accepted name is kept (attribute \code{merged_prior_rows} lists the rest).
-Output rows carry \code{taxon_id}; \code{taxon_name} is the likelihoods' own name,
-or the registry's accepted name where the likelihoods held the taxon
-under several; lineage columns carry the registry's names. Attribute
+Output rows carry \code{taxon_id}; \code{taxon_name} and the lineage columns are
+the registry's accepted names (derived from \code{taxon_id}, never used as a
+key), and \code{taxon_name_verbatim} keeps the likelihoods' own name(s) for
+that taxon in that observation (\code{NA} on rows the likelihoods did not
+hold, such as coarse-rank expansions). Attribute
 \code{registry_join_counts} reports rows and names with no id and the merges.
 }
 

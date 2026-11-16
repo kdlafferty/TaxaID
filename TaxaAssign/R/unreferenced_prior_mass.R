@@ -44,8 +44,8 @@
   kp <- .registry_key_priors(priors, registry)
   pw <- kp$priors
   merged <- kp$merged
-  # the display name of each prior taxon: the verbatim name of the row kept
-  disp <- stats::setNames(pw$.verbatim, pw$taxon_name)
+  # output names are the registry's accepted names, derived from taxon_id (never the key)
+  disp <- reg_name
 
   # The floor rule reads the referenced taxa's lineages from this table and from the candidates in `joined`. "local"
   # (the default) holds the local prior species only, the scope the name path uses (its `taxonomy` is the local
@@ -179,9 +179,10 @@
 #'   and it is counted once. Where the prior table holds one taxon under two
 #'   or more names at one site, the row under the registry's accepted name is
 #'   kept (else the strongest), and the rows set aside are listed in
-#'   `attr(result, "unreferenced_merged_prior_rows")`. Output names are the
-#'   tables' own: `joined` rows keep theirs, and a named species row takes the
-#'   name of the prior row kept. `unreferenced_mass_check` gains
+#'   `attr(result, "unreferenced_merged_prior_rows")`. `joined` rows keep
+#'   their names; a named species row, and the members and withheld tables,
+#'   take the registry's accepted name for the taxon id (a display column,
+#'   never the key). `unreferenced_mass_check` gains
 #'   `n_joined_rows_no_id`, `n_prior_names_no_id`, `n_ring_rows_rank_mismatch`
 #'   (ring rows whose id the registry holds at another rank; they gain no
 #'   mass) and `n_prior_rows_merged`; the members and withheld tables gain a

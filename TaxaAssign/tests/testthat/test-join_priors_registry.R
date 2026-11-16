@@ -25,8 +25,9 @@ test_that("a call under a synonym meets the prior filed under the accepted name 
   by_name <- .jp(lik, pri)
   expect_true(is.na(by_name$alpha[by_name$taxon_name == "Embiotoca caryi"]))   # the defect: floored
   out <- .jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(pri, reg, "priors"), registry = reg)
-  r <- out[out$taxon_name == "Embiotoca caryi", ]
+  r <- out[out$taxon_name == "Hypsurus caryi", ]   # outputs carry the registry's accepted name
   expect_identical(nrow(r), 1L)
+  expect_identical(r$taxon_name_verbatim, "Embiotoca caryi")
   expect_equal(r$alpha, 20)
   expect_identical(r$taxon_id, .rg_id(reg, "Hypsurus caryi"))
   expect_identical(r$genus, "Hypsurus")   # lineage from the tree, not the call's own genus column
@@ -45,6 +46,7 @@ test_that("one observation holding a taxon under two names gives ONE hypothesis,
   hc <- out[out$taxon_id == .rg_id(reg, "Hypsurus caryi"), ]
   expect_identical(nrow(hc), 1L)
   expect_identical(hc$taxon_name, "Hypsurus caryi")
+  expect_identical(hc$taxon_name_verbatim, "Embiotoca caryi | Hypsurus caryi")
   expect_identical(attr(out, "registry_join_counts")$n_likelihood_taxa_under_2plus_names, 1L)
 })
 

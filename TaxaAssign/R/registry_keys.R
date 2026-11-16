@@ -69,8 +69,6 @@
   reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
   kp <- .registry_key_priors(priors, registry)
   pw <- kp$priors
-  prior_disp <- stats::setNames(pw$.verbatim, pw$taxon_name)
-  prior_disp <- prior_disp[!duplicated(names(prior_disp))]
   # source_taxon_name (a singleton mirror's source species) is a name in the same prior table: key it the same way
   name_to_id <- unique(data.frame(n = as.character(priors$taxon_name), id = as.character(priors$taxon_id), stringsAsFactors = FALSE))
   name_to_id <- name_to_id[!is.na(name_to_id$id) & !duplicated(name_to_id$n), , drop = FALSE]
@@ -156,21 +154,22 @@
   pr_ids <- unique(stats::na.omit(pw$taxon_name))
   all_ids <- unique(stats::na.omit(c(lw$taxon_name, pr_ids)))
 
-  # display name per id: the likelihoods' own name where it has exactly one; the registry's accepted name where the
-  # likelihoods hold the taxon under 2+ names (those rows are one hypothesis now); else the prior table's kept name
+  # Output names are the registry's accepted names (GBIF by default), derived from taxon_id: the name is a display
+  # column, never the key. Each likelihood row's own name(s) are kept as taxon_name_verbatim, per observation and id.
   nn <- table(lik_names$id)
-  disp <- stats::setNames(lik_names$n, lik_names$id)[!duplicated(lik_names$id)]
   multi <- names(nn)[nn > 1L]
-  disp[multi] <- reg_name[multi]
-  extra <- setdiff(names(prior_disp), names(disp))
-  disp <- c(disp, prior_disp[extra])
+  disp <- reg_name
+  vb <- unique(data.frame(k = paste(as.character(likelihoods$observation_id), as.character(likelihoods$taxon_id), sep = "\r"),
+                          n = as.character(likelihoods$taxon_name), stringsAsFactors = FALSE))
+  vb <- vb[!is.na(vb$n), , drop = FALSE]
+  verbatim <- vapply(split(vb$n, vb$k), function(v) paste(sort(unique(v)), collapse = " | "), "")
 
   list(
     likelihoods = lw, priors = pw,
     taxonomy_lookup = tax_of(taxonomy_lookup, all_ids),
     expansion_taxonomy = tax_of(expansion_taxonomy, pr_ids),
     singleton_taxonomy = tax_of(singleton_taxonomy, pr_ids),
-    display = disp, reg_name = reg_name, merged_prior_rows = kp$merged, ring_rekeyed = ring_rekeyed,
+    display = disp, reg_name = reg_name, verbatim = verbatim, merged_prior_rows = kp$merged, ring_rekeyed = ring_rekeyed,
     counts = list(n_likelihood_rows_no_id = n_lik_no_id, n_prior_names_no_id = kp$n_no_id, n_prior_rows_merged = kp$n_merged,
                   n_likelihood_taxa_under_2plus_names = length(multi),
                   n_ring_rows_rekeyed = sum(ring_rekeyed$outcome %in% "rekeyed"),
@@ -183,14 +182,15 @@
 .jp_registry_finish <- function(result, rg, stamp) {
   nm <- function(v, pref = rg$reg_name) { v <- as.character(v); o <- unname(pref[v]); keep <- is.na(o); o[keep] <- v[keep]; o }
   result$taxon_id <- as.character(result$taxon_name)
-  result$taxon_name <- nm(result$taxon_id, c(rg$display, rg$reg_name[setdiff(names(rg$reg_name), names(rg$display))]))
+  result$taxon_name <- nm(result$taxon_id, rg$display)
+  result$taxon_name_verbatim <- unname(rg$verbatim[paste(as.character(result$observation_id), result$taxon_id, sep = "\r")])
   for (r in intersect(c("kingdom", "phylum", "class", "order", "family", "genus", "species", "dark_diversity_group", "source_taxon_name"), names(result))) {
     result[[r]] <- nm(result[[r]])
   }
   ft <- attr(result, "prior_floor_fallthrough")
   if (!is.null(ft)) {
     ft$taxon_id <- as.character(ft$taxon_name)
-    ft$taxon_name <- nm(ft$taxon_id, c(rg$display, rg$reg_name[setdiff(names(rg$reg_name), names(rg$display))]))
+    ft$taxon_name <- nm(ft$taxon_id, rg$display)
     attr(result, "prior_floor_fallthrough") <- ft
   }
   attr(result, "registry_join_counts") <- rg$counts

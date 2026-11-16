@@ -158,9 +158,10 @@ references) is therefore one species: it is referenced if either name is,
 and it is counted once. Where the prior table holds one taxon under two
 or more names at one site, the row under the registry's accepted name is
 kept (else the strongest), and the rows set aside are listed in
-\code{attr(result, "unreferenced_merged_prior_rows")}. Output names are the
-tables' own: \code{joined} rows keep theirs, and a named species row takes the
-name of the prior row kept. \code{unreferenced_mass_check} gains
+\code{attr(result, "unreferenced_merged_prior_rows")}. \code{joined} rows keep
+their names; a named species row, and the members and withheld tables,
+take the registry's accepted name for the taxon id (a display column,
+never the key). \code{unreferenced_mass_check} gains
 \code{n_joined_rows_no_id}, \code{n_prior_names_no_id}, \code{n_ring_rows_rank_mismatch}
 (ring rows whose id the registry holds at another rank; they gain no
 mass) and \code{n_prior_rows_merged}; the members and withheld tables gain a

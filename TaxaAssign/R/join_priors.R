@@ -681,9 +681,11 @@ utils::globalVariables(c(
 #'   taxon under two names become one hypothesis. Where the prior table holds
 #'   one taxon under two or more names at a site, the row under the registry's
 #'   accepted name is kept (attribute `merged_prior_rows` lists the rest).
-#'   Output rows carry `taxon_id`; `taxon_name` is the likelihoods' own name,
-#'   or the registry's accepted name where the likelihoods held the taxon
-#'   under several; lineage columns carry the registry's names. Attribute
+#'   Output rows carry `taxon_id`; `taxon_name` and the lineage columns are
+#'   the registry's accepted names (derived from `taxon_id`, never used as a
+#'   key), and `taxon_name_verbatim` keeps the likelihoods' own name(s) for
+#'   that taxon in that observation (`NA` on rows the likelihoods did not
+#'   hold, such as coarse-rank expansions). Attribute
 #'   `registry_join_counts` reports rows and names with no id and the merges.
 #' @return A data frame ready for [compute_posterior()], with columns
 #'   `prior_mean`, `prior_alpha`, and `prior_beta` added. All input columns are

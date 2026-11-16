@@ -75,7 +75,7 @@ test_that("named_rows: the new species row carries its own taxon_id and its disp
   out <- .aupm(js, .rg_stamp(p, reg, "priors"), NULL, referenced_names = .rg_id(reg, "Embiotoca jacksoni"), named_rows = TRUE, registry = reg)
   expect_identical(nrow(out), 3L)
   expect_identical(out$taxon_name[1:2], j$taxon_name); expect_identical(out$genus[1:2], j$genus)
-  expect_identical(out$taxon_name[3], "Embiotoca caryi")             # the pool's own name
+  expect_identical(out$taxon_name[3], "Hypsurus caryi")              # the registry's accepted name, not the pool's
   expect_identical(out$taxon_id[3], .rg_id(reg, "Hypsurus caryi"))   # its own id, not the ring's
   expect_identical(out$genus[3], "Hypsurus"); expect_identical(out$family[3], "Embiotocidae")   # lineage from the tree
   expect_identical(out$taxon_id[1:2], js$taxon_id)
