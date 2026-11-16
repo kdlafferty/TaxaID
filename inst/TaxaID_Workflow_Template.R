@@ -16,7 +16,7 @@
 # real paths. Edit Section 0, supply your own inputs, and run top to bottom.
 #
 # The path it demonstrates (from the graph, sequences -> reviewed):
-#   seq_to_match -> match_to_taxa -> taxa_to_refs -> refs_to_matrix -> matrix_to_model -> model_match_to_lik -> taxa_to_occ -> occ_to_std -> dist_to_priors_by_group -> lik_prior_to_post -> post_to_consensus -> taxa_to_context -> consensus_to_reviewed
+#   seq_to_match -> match_to_taxa -> taxa_to_refs -> refs_to_matrix -> matrix_to_model -> model_match_to_lik -> taxa_to_occ -> occ_to_std -> tables_to_registry -> dist_to_priors_by_group -> lik_prior_to_post -> post_to_consensus -> taxa_to_context -> consensus_to_reviewed
 # =============================================================================
 
 library(TaxaTools);  library(TaxaFetch);  library(TaxaHabitat)
@@ -26,7 +26,7 @@ library(TaxaAssign); library(TaxaFlag)
 # --- Step 0: does this machine have what the path needs? ---------------------
 # Stops here rather than failing deep inside a stage.
 .setup <- TaxaWizard::workflow_check(
-  edges = c("seq_to_match", "match_to_taxa", "taxa_to_refs", "refs_to_matrix", "matrix_to_model", "model_match_to_lik", "taxa_to_occ", "occ_to_std", "dist_to_priors_by_group", "lik_prior_to_post", "post_to_consensus", "taxa_to_context", "consensus_to_reviewed"),
+  edges = c("seq_to_match", "match_to_taxa", "taxa_to_refs", "refs_to_matrix", "matrix_to_model", "model_match_to_lik", "taxa_to_occ", "occ_to_std", "tables_to_registry", "dist_to_priors_by_group", "lik_prior_to_post", "post_to_consensus", "taxa_to_context", "consensus_to_reviewed"),
   verbose = TRUE
 )
 if (any(.setup$status == "missing")) stop("Setup incomplete -- see the fix column above.")
@@ -70,6 +70,7 @@ HABITAT_CACHE_DIR          <- file.path(CACHE_ROOT, "habitat")       # Habitat-c
 REFERENCE_CACHE_DIR        <- file.path(CACHE_ROOT, "reference")     # Reference-sequence cache
 REVIEW_CACHE_DIR           <- file.path(CACHE_ROOT, "review")        # LLM review cache
 TAXONOMY_CACHE_DIR         <- file.path(CACHE_ROOT, "taxonomy")      # Name-lookup cache shared by every name verification, GBIF key and consensus taxonomy lookup: once filled, a rerun makes no name requests
+USE_TAXON_REGISTRY         <- TRUE                                   # Match taxa across tables by GBIF taxon id (one frozen registry per run); outputs carry GBIF accepted names
 INCLUDE_DOMESTIC_PRIORS    <- FALSE                                  # Add domestic/food-species priors
 INCLUDE_GROUP_PRIORS       <- TRUE                                   # Add group-level prior support
 INCLUDE_DOWNRANKING        <- TRUE                                   # Allow posterior downranking
@@ -85,7 +86,7 @@ sequences <- SEQUENCES
 if (is.null(sequences)) stop("Set SEQUENCES in Section 0 before running.", call. = FALSE)
 
 # =============================================================================
-# STEP 1 of 13 -- BLAST sequences against reference database
+# STEP 1 of 14 -- BLAST sequences against reference database
 #   edge: seq_to_match    sequences -> match_df
 # =============================================================================
 # Edge: sequences -> match_df
@@ -189,7 +190,7 @@ match_df
 match_df <- match_df
 
 # =============================================================================
-# STEP 2 of 13 -- Extract unique taxa from match data
+# STEP 2 of 14 -- Extract unique taxa from match data
 #   edge: match_to_taxa    match_df -> taxa
 # =============================================================================
 # Edge: match_df -> taxa
@@ -240,7 +241,7 @@ taxa_df
 taxa <- taxa
 
 # =============================================================================
-# STEP 3 of 13 -- Fetch reference sequences from NCBI
+# STEP 3 of 14 -- Fetch reference sequences from NCBI
 #   edge: taxa_to_refs    taxa -> reference_df
 # =============================================================================
 # Edge: taxa -> reference_df
@@ -315,7 +316,7 @@ reference_df
 reference_df <- reference_df
 
 # =============================================================================
-# STEP 4 of 13 -- Build pairwise distance matrix
+# STEP 4 of 14 -- Build pairwise distance matrix
 #   edge: refs_to_matrix    reference_df -> reference_matrix
 # =============================================================================
 # Edge: reference_df -> reference_matrix
@@ -351,7 +352,7 @@ ref_matrix
 reference_matrix <- reference_matrix
 
 # =============================================================================
-# STEP 5 of 13 -- Train likelihood model
+# STEP 5 of 14 -- Train likelihood model
 #   edge: matrix_to_model    reference_matrix -> model_params
 # =============================================================================
 # Edge: reference_matrix -> model_params
@@ -370,7 +371,7 @@ model_params
 model_params <- model_params
 
 # =============================================================================
-# STEP 6 of 13 -- Evaluate likelihoods from trained model
+# STEP 6 of 14 -- Evaluate likelihoods from trained model
 #   edge: model_match_to_lik    match_df + model_params -> likelihoods
 # =============================================================================
 # Edge: match_df + model_params -> likelihoods
@@ -439,7 +440,7 @@ likelihoods
 likelihoods <- likelihoods
 
 # =============================================================================
-# STEP 7 of 13 -- Fetch occurrence records from GBIF
+# STEP 7 of 14 -- Fetch occurrence records from GBIF
 #   edge: taxa_to_occ    taxa -> occurrences
 # =============================================================================
 # Edge: taxa -> occurrences
@@ -530,7 +531,7 @@ occurrences
 occurrences <- occurrences
 
 # =============================================================================
-# STEP 8 of 13 -- Standardize occurrences and assign habitat
+# STEP 8 of 14 -- Standardize occurrences and assign habitat
 #   edge: occ_to_std    occurrences -> std_occurrences
 # =============================================================================
 # Edge: occurrences -> std_occurrences
@@ -595,7 +596,71 @@ std_occurrences
 std_occurrences <- std_occurrences
 
 # =============================================================================
-# STEP 9 of 13 -- Build priors from standardized occurrences, grouped by sampling/detection process (kernel path)
+# STEP 9 of 14 -- Build the run's taxon registry (one GBIF id per taxon)
+#   edge: tables_to_registry    match_df + likelihoods + reference_df + std_occurrences -> taxon_registry
+# =============================================================================
+# Edge: match_df + likelihoods + reference_df + std_occurrences -> taxon_registry
+# Source: TaxaTools build_taxon_registry() + freeze_taxon_registry() +
+#         check_taxon_registry() + attach_taxon_ids(); TaxaFetch lookup_gbif_taxa()
+#
+# One taxon registry for the run. Every name the later steps join on is resolved
+# ONCE to a GBIF Backbone taxon id: the match object's names and lineage columns,
+# the likelihoods' names (candidates and the clades their placeholder rows name),
+# the reference database's species, and the standardized occurrences (the source of
+# the priors). Answers are cached in TAXONOMY_CACHE_DIR, so a rerun asks nothing.
+# The registry is then FROZEN: a name it does not hold is an error later, never a new
+# row. The prior and posterior steps reuse this one registry, so a call under a
+# synonym meets the prior filed under the accepted name, one taxon under two names is
+# one hypothesis, family and order come from the GBIF tree, and outputs carry GBIF
+# accepted names (each row keeps its own name in taxon_name_verbatim).
+#
+# check_taxon_registry(mode = "error") stops here if a lookup FAILED or two different
+# taxa were merged with no declared synonymy, rather than guessing. Its full report
+# (synonyms merged, names it could only place at genus, run-local names) is kept as
+# taxon_registry_report. Set USE_TAXON_REGISTRY to FALSE to join on names instead.
+#
+# Optional prior rows added later from sources outside these tables (domestic/food
+# priors, watch-list or evidence rows) must be registered here first: add their
+# names to .reg_names before the freeze.
+
+taxon_registry <- NULL
+taxon_registry_report <- NULL
+if (isTRUE(USE_TAXON_REGISTRY)) {
+  .reg_rows <- function(x, col, tab, rank = NULL) {
+    if (is.null(x) || !col %in% names(x)) return(NULL)
+    rk <- if (!is.null(rank)) rank else if (col == "taxon_name" && "taxon_name_rank" %in% names(x)) as.character(x$taxon_name_rank) else NA_character_
+    d <- unique(data.frame(verbatim_name = as.character(x[[col]]), rank_given = rk, source_table = tab, stringsAsFactors = FALSE))
+    d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
+  }
+  .lineage_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus")
+  .reg_names <- rbind(
+    .reg_rows(match_df, "taxon_name", "match"),
+    do.call(rbind, lapply(.lineage_ranks, function(r) .reg_rows(match_df, r, "match", rank = r))),
+    .reg_rows(likelihoods, "taxon_name", "likelihoods"),
+    .reg_rows(reference_df, "species", "reference", rank = "species"),
+    .reg_rows(std_occurrences, "taxon_name", "occurrences"),
+    # the priors are built from the occurrences' own names
+    .reg_rows(std_occurrences, "taxon_name", "priors")
+  )
+  .reg_names <- unique(.reg_names)
+  taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
+    .reg_names,
+    run_id          = format(Sys.time(), "run-%Y%m%d-%H%M%S"),
+    key_backbone_id = 11L,
+    lookup          = function(names, rank, context) {
+      TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = TAXONOMY_CACHE_DIR)
+    }
+  ))
+  taxon_registry_report <- TaxaTools::check_taxon_registry(taxon_registry, mode = "error")
+  std_occurrences <- TaxaTools::attach_taxon_ids(std_occurrences, taxon_registry, "taxon_name", "occurrences")
+  message(sprintf("Taxon registry: %d names -> %d taxa (GBIF Backbone); frozen.",
+                  length(unique(.reg_names$verbatim_name)), nrow(taxon_registry$taxa)))
+}
+taxon_registry
+taxon_registry <- taxon_registry
+
+# =============================================================================
+# STEP 10 of 14 -- Build priors from standardized occurrences, grouped by sampling/detection process (kernel path)
 #   edge: dist_to_priors_by_group    std_occurrences -> priors
 # =============================================================================
 # Edge: std_occurrences -> priors (grouped by sampling/detection process, kernel path)
@@ -717,7 +782,10 @@ print(kernel_priors_fit$budget)
 # handles every group at once -- no per-group loop needed.
 priors_undetected <- TaxaExpect::generate_undetected_diversity(
   model_obj = kernel_priors_fit,
-  taxonomy  = std_occurrences
+  taxonomy  = std_occurrences,
+  # the run's taxon registry, when one was built: each singleton mirror is placed
+  # on the GBIF tree by its source species' id, not by the name's own text
+  registry  = if (exists("taxon_registry")) taxon_registry else NULL
 )
 
 priors <- dplyr::bind_rows(kernel_priors_fit$priors, priors_undetected) |>
@@ -748,7 +816,8 @@ if (isTRUE(INCLUDE_DOMESTIC_PRIORS)) {
     model_obj = kernel_priors_pooled,
     lat       = SITE_LAT,
     lng       = SITE_LON,
-    grid_id   = kernel_priors_fit$params$site_id
+    grid_id   = kernel_priors_fit$params$site_id,
+    registry  = if (exists("taxon_registry")) taxon_registry else NULL
   )
   priors <- dplyr::bind_rows(priors, domestic_priors)
   message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
@@ -809,7 +878,7 @@ priors
 priors <- priors
 
 # =============================================================================
-# STEP 10 of 13 -- Join priors and compute Bayesian posteriors (single site)
+# STEP 11 of 14 -- Join priors and compute Bayesian posteriors (single site)
 #   edge: lik_prior_to_post    likelihoods + priors -> posteriors
 # =============================================================================
 # Edge: likelihoods + priors -> posteriors
@@ -825,6 +894,31 @@ priors <- priors
 # --- Build site specification ---
 site_spec <- list(lat = SITE_LAT, lon = SITE_LON, main_habitat = SITE_HABITAT)
 
+# --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
+# The registry built once for the run (edge tables_to_registry) is reused here; the
+# likelihoods and priors are stamped with it and join_priors() / posterior_consensus()
+# match taxa by id. Used on its own (no earlier registry), this step builds one from
+# the likelihood and prior names. Set USE_TAXON_REGISTRY to FALSE to join on names.
+if (!exists("taxon_registry")) taxon_registry <- NULL
+if (isTRUE(USE_TAXON_REGISTRY) && is.null(taxon_registry)) {
+  .reg_tab <- function(x, tab) {
+    d <- unique(data.frame(verbatim_name = as.character(x$taxon_name),
+                           rank_given = if ("taxon_name_rank" %in% names(x)) as.character(x$taxon_name_rank) else NA_character_,
+                           source_table = tab, stringsAsFactors = FALSE))
+    d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
+  }
+  taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
+    rbind(.reg_tab(likelihoods, "likelihoods"), .reg_tab(priors, "priors")),
+    run_id = format(Sys.time(), "run-%Y%m%d-%H%M%S"), key_backbone_id = 11L,
+    lookup = function(names, rank, context) TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = TAXONOMY_CACHE_DIR)
+  ))
+  invisible(TaxaTools::check_taxon_registry(taxon_registry, mode = "error"))
+}
+if (isTRUE(USE_TAXON_REGISTRY)) {
+  likelihoods <- TaxaTools::attach_taxon_ids(likelihoods, taxon_registry, "taxon_name", "likelihoods")
+  priors <- TaxaTools::attach_taxon_ids(priors, taxon_registry, "taxon_name", "priors")
+}
+
 # --- Join + posterior ---
 detected_ranks <- TaxaTools::detect_ranks(match_df)
 
@@ -835,7 +929,8 @@ likelihoods_ready <- TaxaAssign::join_priors(
   taxonomy_lookup   = match_df,
   rank_system       = detected_ranks,
   backbone_id       = BACKBONE_ID,
-  taxonomy_cache_dir = TAXONOMY_CACHE_DIR
+  taxonomy_cache_dir = TAXONOMY_CACHE_DIR,
+  registry          = taxon_registry
 )
 
 # compute_posterior() pools named unreferenced rows whose point posterior is
@@ -853,7 +948,7 @@ posteriors
 posteriors <- posteriors
 
 # =============================================================================
-# STEP 11 of 13 -- Posterior consensus via LCA
+# STEP 12 of 14 -- Posterior consensus via LCA
 #   edge: post_to_consensus    posteriors -> consensus
 # =============================================================================
 # Edge: posteriors -> consensus
@@ -939,7 +1034,9 @@ consensus <- TaxaAssign::posterior_consensus(
   consensus_method        = "credible_node",
   robust_prior_s          = 0,
   cross_phylum_eps        = 0,
-  taxonomy_cache_dir      = TAXONOMY_CACHE_DIR
+  taxonomy_cache_dir      = TAXONOMY_CACHE_DIR,
+  # the run's taxon registry when the posterior step built one: lineage from its tree, no name lookups
+  registry                = if (exists("taxon_registry")) taxon_registry else NULL
 )
 
 # Optional: empirical Bayes refinement. n_sims defaults to 1000, which
@@ -960,7 +1057,9 @@ consensus_final <- TaxaAssign::posterior_consensus(
   consensus_method        = "credible_node",
   robust_prior_s          = 0,
   cross_phylum_eps        = 0,
-  taxonomy_cache_dir      = TAXONOMY_CACHE_DIR
+  taxonomy_cache_dir      = TAXONOMY_CACHE_DIR,
+  # the run's taxon registry when the posterior step built one: lineage from its tree, no name lookups
+  registry                = if (exists("taxon_registry")) taxon_registry else NULL
 ) |> TaxaAssign::add_slash_taxon()
 # add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
 # consensus_taxon is in consensus_final).
@@ -970,7 +1069,7 @@ consensus_final
 consensus <- consensus
 
 # =============================================================================
-# STEP 12 of 13 -- Infer ecological context via LLM
+# STEP 13 of 14 -- Infer ecological context via LLM
 #   edge: taxa_to_context    taxa -> context_df
 # =============================================================================
 # Edge: taxa -> context_df
@@ -990,7 +1089,7 @@ context_df
 context_df <- context_df
 
 # =============================================================================
-# STEP 13 of 13 -- LLM expert review of assignments
+# STEP 14 of 14 -- LLM expert review of assignments
 #   edge: consensus_to_reviewed    consensus + context_df -> reviewed
 # =============================================================================
 # Edge: consensus + context_df -> reviewed

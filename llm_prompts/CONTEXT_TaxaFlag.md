@@ -219,7 +219,7 @@ decisions_path names a CSV the user edits. Each call reads it and applies the di
 
 Each unit reports n_markers_flagged and n_markers_assessable for its sample, counting identity flags only: a blank flagged in two independent markers is better supported than one flagged in one.
 
-### compute_local_occurrence_distance(taxon_names, query_lat, query_lon, occurrence_data, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", date_col = NULL)
+### compute_local_occurrence_distance(taxon_names, query_lat, query_lon, occurrence_data, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", date_col = NULL, registry = NULL)
 
 Distance from a query point to the nearest already-fetched GBIF occurrence
 
@@ -235,6 +235,7 @@ For each taxon in 'taxon_names', finds the nearest record of that taxon already 
 | lat_col | no | "decimalLatitude" | Character scalars. Column names in occurrence_data. Defaults match TaxaFetch's DarwinCore-aligned convention. |
 | lon_col | no | "decimalLongitude" | Character scalars. Column names in occurrence_data. Defaults match TaxaFetch's DarwinCore-aligned convention. |
 | date_col | no | NULL | Character or NULL. Optional column in occurrence_data giving the nearest record's collection date/year (e.g. GBIF's own "year" standard column). When supplied and present, the matched nearest record's raw value is surfaced as nearest_date -- lets a caller weigh a fresh vs. a decades-old nearest record differently without a second lookup. Default NULL (no age column requested; nearest_date is simply absent from the output). No parsing/normalization is done on the raw value; a "year" column comes back as whatever numeric/character type it already was. |
+| registry | no | NULL | NULL (default) or a frozen taxon_registry (TaxaTools::build_taxon_registry()). NULL matches taxon_names to occurrence_data[[taxon_col]] by name. Given a registry, both resolve to registry taxon ids and records match by id, so a record filed under a synonym of the called name is counted. A record's own taxon_id is used when occurrence_data carries this registry's stamp; otherwise its name resolves through the registry's name table (a name registered to exactly one taxon), as do taxon_names. The output keeps one row per input name and gains taxon_id. |
 
 **Value:** A data frame, one row per unique entry in 'taxon_names': taxon_name As supplied. n_local_records Count of 'occurrence_data' rows for this taxon with non-missing coordinates. '0' for a taxon with no local record at all - for a genuinely unprecedented taxon this IS the answer, not a failure to find one. dist_nearest_km Geodesic (great-circle) distance in km from the query point to the nearest such record. 'NA' when 'n_local_records == 0'. nearest_lat, nearest_lon Coordinates of that nearest record. 'NA' when 'n_local_records == 0'. nearest_date The nearest record's raw 'date_col' value. Only present when 'date_col' is supplied and found in 'occurrence_data'. 'NA' when 'n_local_records == 0' or the nearest record's own 'date_col' value is missing.
 
