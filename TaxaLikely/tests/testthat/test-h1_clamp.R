@@ -14,9 +14,19 @@ test_that("h1_clamp = FALSE reproduces v1.0 exactly (point estimate and Monte Ca
   # The golden was computed on one platform; another platform's floating-point arithmetic can differ in
   # the last bits (~1e-16), so the cross-platform comparison uses a tolerance far below any real change
   # (the clamp moves this query's likelihoods by orders of magnitude; asserted below).
-  expect_equal(.hc_eval(g$query, h1_clamp = FALSE), g$point, tolerance = 1e-12)
+  # ring_member_clades (outer rings named at tied anchors' common rank) postdates v1.0: on this query no ring is
+  # triggered, so the column must be all NA and every v1.0 column must match exactly
+  v1_cols <- function(x) {
+    expect_true(all(is.na(x$likelihoods$ring_member_clades)))
+    at <- attributes(x$likelihoods)
+    l <- x$likelihoods[, setdiff(names(x$likelihoods), "ring_member_clades"), drop = FALSE]
+    for (a in setdiff(names(at), c("names", "row.names", "class"))) attr(l, a) <- at[[a]]
+    x$likelihoods <- l
+    x
+  }
+  expect_equal(v1_cols(.hc_eval(g$query, h1_clamp = FALSE)), g$point, tolerance = 1e-12)
   set.seed(20261114)
-  expect_equal(.hc_eval(g$query, n_sims = 25L, h1_clamp = FALSE), g$mc, tolerance = 1e-12)
+  expect_equal(v1_cols(.hc_eval(g$query, n_sims = 25L, h1_clamp = FALSE)), g$mc, tolerance = 1e-12)
   # the golden query is one the clamp DOES change, by far more than that tolerance, so the check above is not vacuous
   expect_false(isTRUE(all.equal(.hc_eval(g$query), g$point, tolerance = 1e-12)))
 })
