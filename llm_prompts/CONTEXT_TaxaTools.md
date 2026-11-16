@@ -483,7 +483,7 @@ Compares the library this session is using against a manifest written by 'write_
 
 Version and Built differences are shown but never fail on their own: rebuilding identical source moves Built and changes nothing that matters, and every TaxaID package sits at 0.1.0 so the version is silent by construction. The code hash is the signal.
 
-### check_taxon_registry(registry, tables = list(), mode = c("report", "error"), verbose = TRUE, export = FALSE)
+### check_taxon_registry(registry, tables = list(), mode = c("report", "error"), verbose = TRUE)
 
 Check a taxon registry and the tables stamped from it
 
@@ -495,7 +495,6 @@ The guard. It reports, per table: taxa held under two or more verbatim names (ex
 | tables | no | list() | Named list of data frames to check (optional). |
 | mode | no | c("report", "error") | "report" (default): return the findings. "error": stop if any error-class finding exists. |
 | verbose | no | TRUE | Print a summary. Default TRUE. |
-| export | no | FALSE | Logical, default FALSE. TRUE declares every table in tables an OUTPUT table and holds it to the export rules: no taxon id under two display names (id_two_display_names) and no display name on two taxon ids (display_name_two_ids), both error-class, read from its taxon_name (or consensus_taxon) column. Leave it FALSE for input tables, which legitimately hold one taxon under several verbatim names. |
 
 **Value:** A data frame of findings: 'severity' ('"error"' or '"info"'), 'kind', 'table', 'taxon_id', 'names', 'detail', 'n'.
 
