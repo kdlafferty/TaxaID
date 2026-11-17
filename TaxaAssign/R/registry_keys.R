@@ -183,11 +183,14 @@
         for (r in all_ranks) anc[[r]] <- c(anc[[r]], anc_m[[r]])
       }
       reg_rank <- stats::setNames(registry$taxa$rank, registry$taxa$taxon_id)
+      ca <- which(lw$hypothesis_type %in% "specific_candidate")
       lca_rows <- lapply(seq_along(li), function(k) {
         i <- li[k]; mr <- own_rank[k]
         if (is.na(mr) || !mr %in% all_ranks) return(NULL)
         mem <- strsplit(as.character(orig$ring_member_clades[i]), "|", fixed = TRUE)[[1L]]
-        co <- ci[as.character(lw$observation_id[ci]) == as.character(lw$observation_id[i])]
+        # every candidate of the observation, with or without an id: one with no id is unplaced like a run-local id
+        # with no ancestor, so its member clade is never silently dropped (which made the LCA finer than the ring)
+        co <- ca[as.character(lw$observation_id[ca]) == as.character(lw$observation_id[i])]
         own <- own_lin(mr, co)
         sel <- co[own %in% mem]
         own <- own[own %in% mem]

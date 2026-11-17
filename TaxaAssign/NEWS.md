@@ -43,8 +43,9 @@
   `"lca_registry"` (or `"lca_registry_none"` where no ancestor is shared). Both
   apply to a ring that kept its anchor's label (`"anchor_fallback"`) as well.
   A candidate the registry could not place (a run-local id with no ancestor at
-  the ring's rank or above) is missing data in that search, not a lineage of
-  its own; a member clade whose candidates are all unplaced is represented by
+  the ring's rank or above, or no id at all) is missing data in that search,
+  not a lineage of its own, and its member clade is never dropped, so the
+  ring is never named finer than its members; a member clade whose candidates are all unplaced is represented by
   the registry's own taxon of that name (one id, at the ring's own rank), and
   one with neither is not guessed. `attr(, "ring_rows_rekeyed")` lists
   `n_unplaced_candidates` and `member_clades_from_registry` for each such ring.

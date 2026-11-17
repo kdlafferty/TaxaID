@@ -82,3 +82,34 @@ test_that("with every member clade placed, the search is unchanged (no candidate
   expect_identical(rk$n_unplaced_candidates, 0L)
   expect_true(is.na(rk$member_clades_from_registry))
 })
+
+test_that("a member clade whose only candidate has NO registry id is not dropped: the LCA is never finer than the ring", {
+  .rg_skip(); reg <- .lf_registry()
+  # Oxyjulis californica's id is removed from the stamped table (a name the run could not key). Ignoring that
+  # candidate would leave Embiotoca jacksoni alone and name the ring Embiotocidae, a clade that excludes Labridae.
+  lik <- .rg_stamp(.lf_lik(c("Embiotoca jacksoni", "Oxyjulis californica"), c("Embiotocidae", "Labridae"), "Animalia", "kingdom"), reg, "joined")
+  lik$taxon_id[2] <- NA_character_
+  out <- suppressWarnings(suppressMessages(join_priors(lik, .lf_pri(reg), site = .lf_site,
+                                                       rank_system = c("family", "genus", "species"), backbone_id = 11L, registry = reg)))
+  ring <- out[out$hypothesis_type == "unreferenced_genus", ]
+  expect_false(identical(ring$taxon_name, "Embiotocidae"))
+  expect_identical(ring$taxon_name, "Perciformes")              # Labridae's own registry taxon stands in
+  expect_identical(ring$taxon_name_rank, "order")
+  rk <- attr(out, "ring_rows_rekeyed"); rk <- rk[rk$outcome %in% c("lca_registry", "lca_registry_none"), ]
+  expect_identical(rk$n_unplaced_candidates, 1L)
+  expect_identical(rk$member_clades_from_registry, "Labridae")
+})
+
+test_that("a member clade whose only candidate has no id and no registry taxon of its own: the ring keeps its own id", {
+  .rg_skip(); reg <- .lf_registry()
+  lik <- .rg_stamp(.lf_lik(c("Embiotoca jacksoni", "Oxyjulis californica"), c("Embiotocidae", "Ignotidae"), "Animalia", "kingdom",
+                           members = "Embiotocidae|Ignotidae"), reg, "joined")
+  lik$taxon_id[2] <- NA_character_
+  out <- suppressWarnings(suppressMessages(join_priors(lik, .lf_pri(reg), site = .lf_site,
+                                                       rank_system = c("family", "genus", "species"), backbone_id = 11L, registry = reg)))
+  ring <- out[out$hypothesis_type == "unreferenced_genus", ]
+  expect_identical(ring$taxon_name, "Animalia")                 # not Embiotocidae: never finer than the members
+  expect_identical(ring$taxon_name_rank, "kingdom")
+  rk <- attr(out, "ring_rows_rekeyed")
+  expect_identical(rk$outcome[rk$outcome %in% c("lca_registry", "lca_registry_none")], "lca_registry_none")
+})
