@@ -53,7 +53,14 @@ own answer when it is exactly one of them; never used for a
 \code{function(name)} returning that authority's pipe-delimited lineage
 for the name, or \code{NA} (e.g. \code{list(ncbi = ..., worms = ...)}).
 Candidate lineages come from the lookup's classification and from optional
-\code{kingdom} ... \code{genus} columns of \code{pool_keys}.}
+\code{kingdom} ... \code{genus} columns of \code{pool_keys}.
+\code{merge_species_duplicates} (logical, default \code{FALSE}):
+\code{TRUE} merges one accepted species name in one kingdom held under
+two or more ranked ids that the run's names use onto the id the pool-key
+tie-break chose for it, listed in \code{meta$species_merged} (dropped id,
+kept id) and as a \code{declared_merge} finding. Where no tie-break chose
+one of the ids they stay apart, listed in \code{meta$species_not_merged}.
+Genus and higher ranks are never merged.}
 }
 \value{
 An object of class \code{taxon_registry}: a list with \code{taxa},

@@ -363,6 +363,13 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #'   for the name, or \code{NA} (e.g. \code{list(ncbi = ..., worms = ...)}).
 #'   Candidate lineages come from the lookup's classification and from optional
 #'   \code{kingdom} ... \code{genus} columns of \code{pool_keys}.
+#'   \code{merge_species_duplicates} (logical, default \code{FALSE}):
+#'   \code{TRUE} merges one accepted species name in one kingdom held under
+#'   two or more ranked ids that the run's names use onto the id the pool-key
+#'   tie-break chose for it, listed in \code{meta$species_merged} (dropped id,
+#'   kept id) and as a \code{declared_merge} finding. Where no tie-break chose
+#'   one of the ids they stay apart, listed in \code{meta$species_not_merged}.
+#'   Genus and higher ranks are never merged.
 #' @return An object of class \code{taxon_registry}: a list with \code{taxa},
 #'   \code{names} and \code{meta}, unfrozen. Every node of the key authority
 #'   has a rank. An answer whose accepted record is a usage below species (not
@@ -395,6 +402,7 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
       stop("`tiebreak$authorities` must be a named list of functions(name).")
     }
     tiebreak$authorities <- au
+    tiebreak$merge_species_duplicates <- isTRUE(tiebreak$merge_species_duplicates)
   }
 
   nm <- data.frame(verbatim_name = as.character(names$verbatim_name),
@@ -844,6 +852,42 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     taxa <- rbind(taxa, data.frame(taxon_id = miss, name = nm_miss, rank = rk_miss,
                                    parent_id = par_miss, snapshot = NA_character_, local = FALSE, stringsAsFactors = FALSE))
   }
+  # --- species-rank backbone duplicates (tiebreak$merge_species_duplicates, off by default) -------------------
+  # One accepted species name, in one kingdom, under 2+ ranked ids of the key authority that the run's names use, is
+  # the backbone holding one species twice: its names would split between the ids. Merged onto the id the pool-key
+  # tie-break chose for that name, and only then; no other rule picks. With no such choice the ids stay apart (the
+  # accepted_name_multiple_ids warning) and the reason is listed. Genus and above are never merged here.
+  species_merged <- NULL; species_not_merged <- NULL
+  if (isTRUE(tiebreak$merge_species_duplicates)) {
+    sx <- taxa[!taxa$local & taxa$rank %in% "species", c("taxon_id", "name"), drop = FALSE]
+    kingdom_of <- function(id) { pr <- .path_in_taxa(id, taxa); r <- .split_pipe(pr$ranks); p <- .split_pipe(pr$path)
+      if ("kingdom" %in% r) p[match("kingdom", r)] else NA_character_ }
+    chosen_all <- if (!is.null(pool_key_tiebreaks)) unique(stats::na.omit(pool_key_tiebreaks$chosen)) else character(0L)
+    for (v in sort(unique(sx$name[duplicated(sx$name)]))) {
+      ids <- sort(unique(sx$taxon_id[sx$name == v]))
+      kg <- vapply(ids, kingdom_of, "")
+      for (k in unique(stats::na.omit(kg))) {
+        g <- ids[kg %in% k]; used <- g[g %in% nm$taxon_id]
+        if (length(used) < 2L) next
+        ch <- intersect(chosen_all, g)
+        if (length(ch) != 1L) {
+          species_not_merged <- rbind(species_not_merged, data.frame(name = v, kingdom = k, ids = paste(g, collapse = " | "),
+            reason = if (!length(ch)) "no pool-key tie-break chose one of these ids" else "the pool-key tie-break chose 2+ of these ids",
+            stringsAsFactors = FALSE))
+          next
+        }
+        drop <- setdiff(g, ch)
+        mv <- nm$taxon_id %in% drop
+        species_merged <- rbind(species_merged, data.frame(name = v, kingdom = k, dropped_id = drop, kept_id = ch,
+          n_name_rows = vapply(drop, function(d) sum(nm$taxon_id %in% d), 1L), stringsAsFactors = FALSE, row.names = NULL))
+        nm$taxon_id[mv] <- ch
+        nm$fallback_parent[nm$fallback_parent %in% drop] <- ch
+        taxa$parent_id[taxa$parent_id %in% drop] <- ch
+        taxa <- taxa[!taxa$taxon_id %in% drop, , drop = FALSE]
+        if (!is.null(infraspecific_accepted)) infraspecific_accepted$taxon_id[infraspecific_accepted$taxon_id %in% drop] <- ch
+      }
+    }
+  }
   taxa$authority <- dplyr::if_else(taxa$local, "run-local", prefix)
   rownames(taxa) <- NULL; rownames(nm) <- NULL
 
@@ -858,7 +902,8 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
                 genus_homonym_unresolved = if (length(genus_homonym_unresolved)) unique(do.call(rbind, genus_homonym_unresolved)) else NULL,
                 lineage_rule = if (length(lineage_rule)) do.call(rbind, lineage_rule) else NULL,
                 lineage_unresolved = if (length(lineage_unresolved)) do.call(rbind, lineage_unresolved) else NULL,
-                infraspecific_accepted = infraspecific_accepted, pool_key_placed = pool_key_placed)
+                infraspecific_accepted = infraspecific_accepted, pool_key_placed = pool_key_placed,
+                species_merged = species_merged, species_not_merged = species_not_merged)
   ), class = "taxon_registry")
 }
 
@@ -1231,6 +1276,21 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
                     if (is.na(pp$genus_key[i])) "; no pool genus key to verify" else "; matches the pool's genus key"), 1L)
       }
     }
+  }
+  # species-rank backbone duplicates merged onto the tie-break's id (declared), or left apart with the reason
+  sm <- registry$meta$species_merged
+  if (!is.null(sm) && nrow(sm)) {
+    for (id in unique(sm$kept_id)) {
+      w <- sm[sm$kept_id == id, , drop = FALSE]
+      add("info", "declared_merge", NA_character_, id, w$name[1L],
+          sprintf("species duplicate merged: %s (%d name row(s)) onto %s, the id the pool-key tie-break chose; %s",
+                  paste(w$dropped_id, collapse = ", "), sum(w$n_name_rows), id, w$kingdom[1L]), nrow(w))
+    }
+  }
+  snm <- registry$meta$species_not_merged
+  if (!is.null(snm) && nrow(snm)) {
+    for (i in seq_len(nrow(snm))) add("info", "species_duplicate_not_merged", NA_character_, snm$ids[i], snm$name[i],
+                                      sprintf("species under 2+ used ids in %s, not merged: %s", snm$kingdom[i], snm$reason[i]), 1L)
   }
   # one accepted name at one rank under 2+ ranked ids of the key authority, in one kingdom: a backbone duplicate,
   # listed (warning), never merged; the id a pool-key tie-break chose is named. Homonyms in different kingdoms are

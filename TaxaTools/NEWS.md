@@ -43,7 +43,11 @@
   genera or none; a `genus_key` column in `pool_keys` checks that placement
   (`pool_key_parent_mismatch`, error-class). `check_taxon_registry()` lists one
   accepted name at one rank under two or more ids in one kingdom
-  (`accepted_name_multiple_ids`, a warning, never merged).
+  (`accepted_name_multiple_ids`, a warning). With
+  `tiebreak$merge_species_duplicates = TRUE`, such a name at species rank whose
+  ids the run's names both use is merged onto the id the pool-key tie-break
+  chose, as a declared merge; with no such choice the ids stay apart and the
+  reason is listed. Genus and higher ranks are never merged.
 * A genus answered only by a fuzzy or variant match is taken by the registry
   only where the names under it agree with it at kingdom and phylum, since a
   misspelt genus can match a genus in another kingdom.

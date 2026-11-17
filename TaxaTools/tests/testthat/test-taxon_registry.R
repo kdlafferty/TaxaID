@@ -1163,3 +1163,75 @@ test_that("one accepted name at one rank under 2+ ranked ids in one kingdom is l
   expect_identical(m$taxon_id, "gbif:5423338 | gbif:8402529")
   expect_false(any(chk$severity == "error"))
 })
+
+# ---- species-rank backbone duplicates: merged onto the id the pool-key tie-break chose (tiebreak$merge_species_duplicates) ----
+.des_path <- "Chromista|Ochrophyta|Desmarestiales|Desmarestiaceae|Desmarestia"; .des_ids <- "4|98|7700|7724|3200019"
+.des_rows <- function() rbind(
+  .row("Desmarestia ligulata", "Desmarestia ligulata", "5423338", paste0(.des_ids, "|5423338"), paste0(.des_path, "|Desmarestia ligulata")),
+  .row("Desmarestia tabacoides", "Desmarestia ligulata", "8402529", paste0(.des_ids, "|8402529"), paste0(.des_path, "|Desmarestia ligulata"),
+       rec = "5423367", syn = TRUE))
+.des_pool <- data.frame(verbatim_name = c("Desmarestia ligulata", "Desmarestia ligulata"), species_key = c("5423338", "8402529"))
+.des_reg <- function(tiebreak, pool = .des_pool, extra = NULL, nms = c("Desmarestia ligulata", "Desmarestia tabacoides"))
+  build_taxon_registry(.names(nms, "ref"), run_id = "dup", lookup = .fake_lookup(rbind(.des_rows(), extra)), pool_keys = pool, tiebreak = tiebreak)
+
+test_that("species duplicate: two used ids of one accepted species in one kingdom merge onto the id the tie-break chose, declared", {
+  reg <- .des_reg(list(gbif_first = TRUE, merge_species_duplicates = TRUE))
+  expect_identical(reg$names$taxon_id[match(c("Desmarestia ligulata", "Desmarestia tabacoides"), reg$names$verbatim_name)],
+                   c("gbif:5423338", "gbif:5423338"))
+  expect_false("gbif:8402529" %in% reg$taxa$taxon_id)
+  sm <- reg$meta$species_merged
+  expect_identical(c(sm$dropped_id, sm$kept_id, sm$name), c("gbif:8402529", "gbif:5423338", "Desmarestia ligulata"))
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(chk$severity %in% c("error", "warning")))
+  d <- chk[chk$kind == "declared_merge" & chk$taxon_id == "gbif:5423338" & grepl("species duplicate merged", chk$detail), ]
+  expect_identical(nrow(d), 1L); expect_match(d$detail, "gbif:8402529")
+})
+
+test_that("species duplicate: OFF unless tiebreak$merge_species_duplicates is TRUE (no tiebreak, or gbif_first only: two ids, a warning)", {
+  for (tb in list(list(gbif_first = TRUE), list(gbif_first = TRUE, merge_species_duplicates = FALSE))) {
+    reg <- .des_reg(tb)
+    expect_identical(reg$names$taxon_id[reg$names$verbatim_name == "Desmarestia tabacoides"], "gbif:8402529")
+    expect_null(reg$meta$species_merged)
+    expect_true(any(check_taxon_registry(reg, verbose = FALSE)$kind == "accepted_name_multiple_ids"))
+  }
+})
+
+test_that("GUARD: a species duplicate with no tie-break choice is NOT merged: the warning stays and a finding says why", {
+  reg <- .des_reg(list(gbif_first = TRUE, merge_species_duplicates = TRUE), pool = NULL)
+  expect_identical(reg$names$taxon_id[reg$names$verbatim_name == "Desmarestia tabacoides"], "gbif:8402529")
+  expect_null(reg$meta$species_merged)
+  chk <- check_taxon_registry(reg, verbose = FALSE)
+  expect_true(any(chk$kind == "accepted_name_multiple_ids" & chk$severity == "warning"))
+  nm <- chk[chk$kind == "species_duplicate_not_merged", ]
+  expect_identical(nm$taxon_id, "gbif:5423338 | gbif:8402529"); expect_match(nm$detail, "no pool-key tie-break")
+})
+
+test_that("GUARD: only ONE of the ids in use, another kingdom, or GENUS rank: never merged", {
+  tb <- list(gbif_first = TRUE, merge_species_duplicates = TRUE)
+  # one id in use: the name tabacoides is not registered, so 8402529 is not a taxon of the run at all
+  reg1 <- .des_reg(tb, nms = "Desmarestia ligulata")
+  expect_null(reg1$meta$species_merged)
+  # another kingdom: a Plantae "Desmarestia ligulata" reached by another name; the tie-break chose the Chromista id
+  pl <- .row("Fucus ligulatus", "Desmarestia ligulata", "7000002", "6|7707728|7000001|7000002", "Plantae|Tracheophyta|Desmarestia|Desmarestia ligulata",
+             ranks = "kingdom|phylum|genus|species", rec = "7000009", syn = TRUE)
+  reg2 <- build_taxon_registry(.names(c("Desmarestia ligulata", "Fucus ligulatus"), "ref"), run_id = "k2",
+                               lookup = .fake_lookup(rbind(.des_rows(), pl)),
+                               pool_keys = data.frame(verbatim_name = c("Desmarestia ligulata", "Desmarestia ligulata"), species_key = c("5423338", "7000002")),
+                               tiebreak = tb)
+  expect_identical(reg2$names$taxon_id[reg2$names$verbatim_name == "Fucus ligulatus"], "gbif:7000002")
+  expect_null(reg2$meta$species_merged)
+  # genus rank: two used Agassizia genus ids in Animalia, the pool tie-break chose one; genus is never merged
+  # (a synonym genus Agassizites answered as the second Agassizia id, so BOTH genus ids are used by names)
+  ag <- rbind(.row("Agassizia", "Agassizia", "2278994", "1|50|2278994", "Animalia|Echinodermata|Agassizia", ranks = "kingdom|phylum|genus", rank = "genus"),
+              .row("Agassizites", "Agassizia", "8401375", "1|50|8401375", "Animalia|Echinodermata|Agassizia", ranks = "kingdom|phylum|genus",
+                   rank = "genus", rec = "8401399", syn = TRUE))
+  reg3 <- build_taxon_registry(.names(c("Agassizia", "Agassizites"), "ref"), run_id = "g3", lookup = .fake_lookup(ag),
+                               pool_keys = data.frame(verbatim_name = c("Agassizia", "Agassizia"), species_key = c("2278994", "8401375")),
+                               tiebreak = tb)
+  expect_identical(reg3$names$taxon_id[match(c("Agassizia", "Agassizites"), reg3$names$verbatim_name)], c("gbif:2278994", "gbif:8401375"))
+  expect_identical(reg3$meta$pool_key_tiebreaks$chosen, "gbif:2278994")    # a tie-break choice exists: only the rank stops the merge
+  expect_true(all(c("gbif:2278994", "gbif:8401375") %in% reg3$taxa$taxon_id))
+  expect_null(reg3$meta$species_merged)
+  chk3 <- check_taxon_registry(reg3, verbose = FALSE)
+  expect_true(any(chk3$kind == "accepted_name_multiple_ids" & grepl("^genus", chk3$detail)))
+})
