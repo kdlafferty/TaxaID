@@ -34,6 +34,20 @@ test_that("registry path: a tied-anchor family ring over two families is keyed a
   expect_identical(attr(out, "registry_join_counts")$n_lca_rings_registry, 1L)
 })
 
+test_that("registry path: an anchor_fallback ring (the anchor's family kept) is named at the registry LCA, status lca_registry", {
+  .rg_skip(); reg <- .rg_registry()
+  lik <- .lj_lik(c("Embiotoca jacksoni", "Oxyjulis californica", "Embiotocidae"), c("species", "species", "family"),
+                 c("specific_candidate", "specific_candidate", "unreferenced_genus"), c(NA, NA, "Embiotocidae|Labridae"),
+                 genus = c("Embiotoca", "Oxyjulis", NA), family = c("Embiotocidae", "Labridae", "Embiotocidae"))
+  lik$ring_lca_status <- c(NA, NA, "anchor_fallback")
+  out <- .lj_jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(.lj_pri(c("Embiotoca jacksoni", "Oxyjulis californica"), c(20, 5)), reg, "priors"),
+                registry = reg)
+  ring <- out[out$hypothesis_type == "unreferenced_genus", ]
+  expect_identical(ring$taxon_name, "Perciformes"); expect_identical(ring$taxon_name_rank, "order")
+  expect_identical(ring$ring_lca_status, "lca_registry")
+  expect_true(all(is.na(out$ring_lca_status[out$hypothesis_type == "specific_candidate"])))
+})
+
 test_that("registry path: the registry LCA can be FINER than the likelihoods' (Embiotoca caryi is a Hypsurus)", {
   .rg_skip(); reg <- .rg_registry()
   # the likelihoods' own lineage puts the two tied candidates in genera Embiotoca and Hypsurus (LCA: the family); the

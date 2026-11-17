@@ -38,6 +38,7 @@
   `attr(, "ring_member_clades_withheld")`. In `join_priors(registry =)` such a
   ring is keyed at the registry's lowest common ancestor of the observation's
   candidates in its member clades, which can be finer or coarser than the
-  likelihood table's label; it is listed in `attr(, "ring_rows_rekeyed")` with
-  outcome `"lca_registry"` (or `"lca_registry_none"` where no ancestor is
-  shared).
+  likelihood table's label, and its `ring_lca_status` becomes
+  `"lca_registry"`; it is listed in `attr(, "ring_rows_rekeyed")` with outcome
+  `"lca_registry"` (or `"lca_registry_none"` where no ancestor is shared). Both
+  apply to a ring that kept its anchor's label (`"anchor_fallback"`) as well.

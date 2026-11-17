@@ -7,7 +7,7 @@ utils::globalVariables(c(
   "observation_id", "Query_ID",
   ".data", "rank_score", "best_rank_score",
   "coverage",
-  "is_restored", ".genus", ".all_restored", "h2_delta_source", "ring_member_clades",
+  "is_restored", ".genus", ".all_restored", "h2_delta_source", "ring_member_clades", "ring_lca_status",
   "species_confusion_risk", "genus_confusion_risk", "family_confusion_risk",
   "own_rank_confusion_risk"
 ))
@@ -247,6 +247,7 @@ utils::globalVariables(c(
       family_confusion_risk = numeric(0),
       own_rank_confusion_risk = numeric(0),
       ring_member_clades = character(0),
+      ring_lca_status = character(0),
       best_identity = numeric(0),
       stringsAsFactors = FALSE
     ))
@@ -856,8 +857,11 @@ utils::globalVariables(c(
   # clade is not determined by the read: it is named at the tied candidates'
   # lowest common rank instead (lineage at and above it kept, finer ranks NA,
   # coarser lineage columns of candidate_df included in the search), and
-  # ring_member_clades lists the tied values at the ring's own rank. When no
-  # rank is common to them, every lineage column and taxon_name are NA. The
+  # ring_member_clades lists the tied values at the ring's own rank, and
+  # ring_lca_status says what was done: "lca" (named at the common rank) or
+  # "anchor_fallback" (no rank among the available lineage columns is common
+  # to them: the ring keeps the anchor's label, flagged, its members listed,
+  # for a registry or a caller to name at their common ancestor). The
   # ring's VALUE is unchanged: it is still evaluated at the tie-broken anchor,
   # which shares the tied candidates' score.
   unit_row <- .anchor_row(primary$unit_anchor)
@@ -893,6 +897,7 @@ utils::globalVariables(c(
       primary$rings[ri], primary$ring_delta_source
     )
     rw$ring_member_clades <- NA_character_
+    rw$ring_lca_status <- NA_character_
     members <- if (length(tied) > 1L) .tied_values(R$rank) else character(0)
     if (length(members) > 1L) {
       above <- rev(lca_ladder[seq_len(match(R$rank, lca_ladder) - 1L)]) # finest first
@@ -906,13 +911,19 @@ utils::globalVariables(c(
           break
         }
       }
-      for (bc in intersect(rank_cols, names(rw))) {
-        if (is.na(lca_rank) || match(bc, lca_ladder) > match(lca_rank, lca_ladder)) rw[[bc]] <- NA_character_
-      }
-      if (!is.na(lca_rank) && lca_rank %in% names(rw)) rw[[lca_rank]] <- lca_name
       rw$ring_member_clades <- paste(members, collapse = "|")
-      rw$.lca_name <- lca_name
-      rw$.lca_rank <- lca_rank
+      if (is.na(lca_rank)) {
+        # no common rank among the available columns: keep the anchor's label (flagged)
+        rw$ring_lca_status <- "anchor_fallback"
+      } else {
+        for (bc in intersect(rank_cols, names(rw))) {
+          if (match(bc, lca_ladder) > match(lca_rank, lca_ladder)) rw[[bc]] <- NA_character_
+        }
+        if (lca_rank %in% names(rw)) rw[[lca_rank]] <- lca_name
+        rw$ring_lca_status <- "lca"
+        rw$.lca_name <- lca_name
+        rw$.lca_rank <- lca_rank
+      }
     }
     ring_rows[[length(ring_rows) + 1L]] <- rw
   }
@@ -921,10 +932,11 @@ utils::globalVariables(c(
 
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
-  # a tied-anchor ring keeps its lowest-common-rank name, which can lie above
-  # rank_system (candidate_df's coarser lineage) or be NA (no common rank)
+  # a tied-anchor ring named at the common rank keeps that name, which can lie
+  # above rank_system (candidate_df's coarser lineage)
   if (!"ring_member_clades" %in% names(res)) res$ring_member_clades <- NA_character_
-  lca_k <- which(!is.na(res$ring_member_clades))
+  if (!"ring_lca_status" %in% names(res)) res$ring_lca_status <- NA_character_
+  lca_k <- which(res$ring_lca_status %in% "lca")
   if (length(lca_k) > 0L) {
     res$taxon_name[lca_k] <- res$.lca_name[lca_k]
     res$taxon_name_rank[lca_k] <- res$.lca_rank[lca_k]
@@ -1018,6 +1030,7 @@ utils::globalVariables(c(
       # single row, so first() is unambiguous.
       h2_delta_source = dplyr::first(h2_delta_source),
       ring_member_clades = dplyr::first(ring_member_clades),
+      ring_lca_status = dplyr::first(ring_lca_status),
       .groups = "drop"
     )
 
@@ -1237,7 +1250,7 @@ utils::globalVariables(c(
       score_likelihood, score_likelihood_mean, score_likelihood_sd,
       score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
       species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-      own_rank_confusion_risk, ring_member_clades, best_identity
+      own_rank_confusion_risk, ring_member_clades, ring_lca_status, best_identity
     ) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
@@ -2073,6 +2086,7 @@ evaluate_likelihoods <- function(match_df,
       family_confusion_risk = numeric(0L),
       own_rank_confusion_risk = numeric(0L),
       ring_member_clades = character(0L),
+      ring_lca_status = character(0L),
       best_identity = numeric(0L),
       stringsAsFactors = FALSE
     )
@@ -2083,18 +2097,26 @@ evaluate_likelihoods <- function(match_df,
   # columns are NA, e.g. reference identified only at a rank coarser than
   # rank_system specifies).  Rows are always dropped from $likelihoods.
   # observation_ids with NO surviving rows are returned in $unresolved with a warning.
-  # A ring whose tied anchors share no rank at all (ring_member_clades set, taxon_name NA) carries a likelihood: it is
-  # never dropped with the NA-name rows below, which would remove its mass from the observation without a trace.
+  # A tied-anchor ring always carries a name (its common rank, or the anchor's label when it falls back), so one with
+  # ring_member_clades set and no name is an internal inconsistency; it is never dropped with the NA-name rows below,
+  # which would remove its likelihood without a trace.
   lca_na <- is.na(out$taxon_name) & !is.na(out$ring_member_clades)
   if (any(lca_na)) {
     stop(sprintf(
-      paste0(
-        "%d ring row(s) in %d observation(s) have no name: the candidates tied with the ring anchor share no rank ",
-        "in rank_system or in match_df's coarser lineage columns (ring_member_clades, e.g. '%s'). Dropping them would ",
-        "remove their likelihood. Supply the coarser lineage the candidates share (e.g. a kingdom column) in match_df."
-      ),
+      "Internal inconsistency: %d tied-anchor ring row(s) in %d observation(s) have no name (ring_member_clades e.g. '%s'); not dropping them.",
       sum(lca_na), length(unique(out$observation_id[lca_na])), out$ring_member_clades[which(lca_na)[1L]]
     ), call. = FALSE)
+  }
+  n_fb <- sum(out$ring_lca_status %in% "anchor_fallback")
+  if (n_fb > 0L) {
+    message(sprintf(
+      paste0(
+        "evaluate_likelihoods: %d ring row(s) in %d observation(s) keep their anchor's label (ring_lca_status ",
+        "\"anchor_fallback\"): the candidates tied with the ring anchor share no rank in rank_system or in match_df's ",
+        "coarser lineage columns; ring_member_clades lists them."
+      ),
+      n_fb, length(unique(out$observation_id[out$ring_lca_status %in% "anchor_fallback"]))
+    ))
   }
   na_name <- is.na(out$taxon_name)
   all_na_sids <- character(0L)
@@ -2140,7 +2162,7 @@ evaluate_likelihoods <- function(match_df,
     score_likelihood_cov, score_likelihood_evidence,
     h2_delta_source,
     species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-    own_rank_confusion_risk, ring_member_clades, best_identity
+    own_rank_confusion_risk, ring_member_clades, ring_lca_status, best_identity
   )
 
   # ---- ABSOLUTE-FIT COLUMNS ---------------------------------------------------

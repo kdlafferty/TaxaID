@@ -14,12 +14,12 @@ test_that("h1_clamp = FALSE reproduces v1.0 exactly (point estimate and Monte Ca
   # The golden was computed on one platform; another platform's floating-point arithmetic can differ in
   # the last bits (~1e-16), so the cross-platform comparison uses a tolerance far below any real change
   # (the clamp moves this query's likelihoods by orders of magnitude; asserted below).
-  # ring_member_clades (outer rings named at tied anchors' common rank) postdates v1.0: on this query no ring is
-  # triggered, so the column must be all NA and every v1.0 column must match exactly
+  # ring_member_clades and ring_lca_status (outer rings named at tied anchors' common rank) postdate v1.0: on this query
+  # no ring is triggered, so both must be all NA and every v1.0 column must match exactly
   v1_cols <- function(x) {
-    expect_true(all(is.na(x$likelihoods$ring_member_clades)))
+    expect_true(all(is.na(x$likelihoods$ring_member_clades))); expect_true(all(is.na(x$likelihoods$ring_lca_status)))
     at <- attributes(x$likelihoods)
-    l <- x$likelihoods[, setdiff(names(x$likelihoods), "ring_member_clades"), drop = FALSE]
+    l <- x$likelihoods[, setdiff(names(x$likelihoods), c("ring_member_clades", "ring_lca_status")), drop = FALSE]
     for (a in setdiff(names(at), c("names", "row.names", "class"))) attr(l, a) <- at[[a]]
     x$likelihoods <- l
     x

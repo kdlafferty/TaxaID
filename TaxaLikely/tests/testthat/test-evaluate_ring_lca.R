@@ -49,6 +49,7 @@ test_that("18S: a shrimp tied with gastropods names both outer rings at their co
   expect_identical(ord$taxon_name, "Eukaryota"); expect_identical(ord$taxon_name_rank, "kingdom")
   expect_identical(fam$ring_member_clades, "Decapoda|Littorinimorpha|Neogastropoda")
   expect_identical(ord$ring_member_clades, "Gastropoda|Malacostraca")
+  expect_identical(fam$ring_lca_status, "lca"); expect_identical(ord$ring_lca_status, "lca")
   # every other row carries NA
   expect_true(all(is.na(out$ring_member_clades[!out$hypothesis_type %in% c("unreferenced_family", "unreferenced_order")])))
 })
@@ -73,14 +74,32 @@ test_that("a common rank must hold for EVERY tied candidate: one missing phylum 
   expect_identical(ord$taxon_name_rank, "kingdom")
 })
 
-test_that("no common rank at all: every lineage column and taxon_name are NA; the members are still listed", {
+test_that("no common rank among the available columns: the anchor's label is kept, flagged anchor_fallback, members listed", {
   skip_if_not_installed("TaxaTools")
   df <- .lca_18s()[1:2, ]; df$kingdom <- c("Eukaryota", "Metazoa")
   out <- .lca_eval(df, .lca_params("class"))
   ord <- .ring(out, "unreferenced_order")
   expect_equal(nrow(ord), 1L)
-  expect_true(is.na(ord$taxon_name)); expect_true(is.na(ord$taxon_name_rank))
+  # equal score, H1 and identity: the tie-break's last step, candidate order, picks Lebbeus as anchor
+  expect_identical(ord$taxon_name, "Malacostraca"); expect_identical(ord$taxon_name_rank, "class")
   expect_identical(ord$ring_member_clades, "Gastropoda|Malacostraca")
+  expect_identical(ord$ring_lca_status, "anchor_fallback")
+})
+
+test_that("Mugu shape: no lineage above order and a cross-order tie gives the anchor's order, flagged, not an error", {
+  skip_if_not_installed("TaxaTools")
+  df <- data.frame(observation_id = "ASV_1", taxon_name = c("Kathetostoma averruncus", "Paralabrax clathratus"),
+                   score = c(97.0, 97.0), taxon_name_rank = "species",
+                   order = c("Uranoscopiformes", "Perciformes"), family = c("Uranoscopidae", "Serranidae"),
+                   genus = c("Kathetostoma", "Paralabrax"), stringsAsFactors = FALSE) |> transform(species = taxon_name)
+  rs <- c("order", "family", "genus", "species")
+  expect_message(res <- suppressWarnings(TaxaLikely::evaluate_likelihoods(match_df = df, model_params = .lca_params("order"),
+    rank_system = rs, n_sims = 0, ratio_threshold = 0))$likelihoods, "anchor_fallback")
+  fam <- res[res$hypothesis_type == "unreferenced_family", ]
+  expect_equal(nrow(fam), 1L)
+  expect_identical(fam$taxon_name, "Uranoscopiformes")        # the anchor (first in candidate order on a full tie)
+  expect_identical(fam$ring_lca_status, "anchor_fallback")
+  expect_identical(fam$ring_member_clades, "Perciformes|Uranoscopiformes")
 })
 
 test_that("only TIED candidates count: a lower-scoring candidate of another clade does not trigger", {
@@ -140,13 +159,24 @@ test_that("evaluate_likelihoods() carries ring_member_clades to its output, NA w
   expect_true(all(is.finite(a$score_likelihood_mean)))   # the Monte Carlo maps rings by type, not by name
 })
 
-test_that("evaluate_likelihoods() refuses to drop a ring whose tied anchors share no rank (its likelihood would vanish)", {
+test_that("a tied-anchor ring with no name is an internal-consistency error, never a silent drop", {
   skip_if_not_installed("TaxaTools")
-  df <- .lca_18s()[1:2, ]; df$kingdom <- c("Eukaryota", "Metazoa")
+  df <- .lca_18s()[1:2, ]
+  local_mocked_bindings(.evaluate_one_query = function(candidate_df, ...) data.frame(
+    hypothesis_type = c("specific_candidate", "unreferenced_order"), taxon_name = c("Lebbeus polaris", NA),
+    taxon_name_rank = c("species", NA), raw_likelihood = 1, raw_likelihood_cov = 1, raw_likelihood_evidence = 1,
+    score_likelihood = 1, score_likelihood_mean = 1, score_likelihood_sd = 0, score_likelihood_cov = 1, score_likelihood_evidence = 1,
+    h2_delta_source = NA_character_, species_confusion_risk = NA_real_, genus_confusion_risk = NA_real_, family_confusion_risk = NA_real_,
+    own_rank_confusion_risk = NA_real_, ring_member_clades = c(NA, "Gastropoda|Malacostraca"), ring_lca_status = c(NA, "lca"),
+    best_identity = 97.8, stringsAsFactors = FALSE), .package = "TaxaLikely")
   expect_error(suppressWarnings(suppressMessages(TaxaLikely::evaluate_likelihoods(
     match_df = df, model_params = .lca_params("class"), rank_system = c("class", "order", "family", "genus", "species"),
-    n_sims = 0, ratio_threshold = 0))), "have no name")
-  # with the shared kingdom present the same tie is named, and nothing is dropped
+    n_sims = 0, ratio_threshold = 0))), "Internal inconsistency")
+})
+
+test_that("with the shared kingdom present the tie is named at it, status lca, nothing dropped", {
+  skip_if_not_installed("TaxaTools")
+  df <- .lca_18s()[1:2, ]
   df$kingdom <- "Eukaryota"
   res <- suppressWarnings(suppressMessages(TaxaLikely::evaluate_likelihoods(
     match_df = df, model_params = .lca_params("class"), rank_system = c("class", "order", "family", "genus", "species"),

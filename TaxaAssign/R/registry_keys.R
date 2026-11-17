@@ -143,7 +143,8 @@
       to_id = vapply(got[spl], paste, "", collapse = "|"), outcome = "candidates_split_kept", stringsAsFactors = FALSE)
     lw$taxon_name[ri[chg]] <- to1[chg]
     # A tied-anchor ring: TaxaLikely named it at the lowest common rank of its tied candidates in the likelihoods' own
-    # lineage and listed their clades at the ring's own rank. Here it takes the registry's (GBIF's) lowest common
+    # lineage (ring_lca_status "lca"), or kept the anchor's label where none was common ("anchor_fallback"), and listed
+    # their clades at the ring's own rank. Here it takes the registry's (GBIF's) lowest common
     # ancestor of the observation's candidates in those clades: the finest rank, from the ring's own rank upwards, at
     # which they share ONE registry ancestor. Its id and taxon_name_rank follow the registry, finer or coarser than the
     # likelihoods' label; with no common ancestor the row keeps the id of its own name. Listed, outcome "lca_registry".
@@ -173,6 +174,8 @@
         ok <- !is.na(lr$to_id)
         lw$taxon_name[lr$row[ok]] <- lr$to_id[ok]
         lw$taxon_name_rank[lr$row[ok]] <- lr$to_rank[ok]
+        # an "lca" or "anchor_fallback" ring the registry names at its common ancestor: recorded in the status
+        if ("ring_lca_status" %in% names(lw)) lw$ring_lca_status[lr$row[ok]] <- "lca_registry"
         rk_rows[[3L]] <- lr[, setdiff(names(lr), "row")]
       }
     }

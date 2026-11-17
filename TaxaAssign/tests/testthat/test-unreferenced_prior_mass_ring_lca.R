@@ -67,6 +67,13 @@ test_that("the floor rule still applies per member clade: a referenced Littorina
   expect_setequal(w$taxon_name, c("Littorina keenae", "Lacuna vincta"))
 })
 
+test_that("an anchor_fallback ring (the anchor's order kept) also collects the union of its member clades", {
+  j <- .lca_joined(); j$taxon_name[2] <- "Littorinimorpha"; j$taxon_name_rank[2] <- "order"; j$ring_lca_status <- c(NA, "anchor_fallback")
+  r <- .lca_run(j)[2, ]
+  expect_equal(r$unreferenced_mass, 1e-5 + 4e-3 + 1e-3 + 2e-2)   # Tegula (Trochida) included, not only the anchor's order
+  expect_identical(r$unreferenced_scope, "Littorinimorpha|Trochida")
+})
+
 test_that("a single member clade gives that clade's mass alone", {
   r <- .lca_run(.lca_joined("Trochida"))
   expect_equal(r$unreferenced_mass[2], 2e-2)
