@@ -24,6 +24,21 @@
   lapply(stats::setNames(ranks, ranks), function(r) stats::setNames(TaxaTools::parent_at(ids, r, registry), ids))
 }
 
+# Member clades of tied-anchor rings, listed by NAME, to one registry id each: through the registry's names table, else
+# its accepted names. A name with no id, or with two, maps to NA (never guessed). Named by the input names.
+.registry_member_ids <- function(member_names, registry) {
+  mn <- unique(stats::na.omit(as.character(member_names)))
+  out <- stats::setNames(rep(NA_character_, length(mn)), mn)
+  if (!length(mn)) return(out)
+  nt <- registry$names[!is.na(registry$names$verbatim_name) & !is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")]
+  nt <- unique(rbind(nt, data.frame(verbatim_name = registry$taxa$name, taxon_id = registry$taxa$taxon_id, stringsAsFactors = FALSE)))
+  nt <- nt[nt$verbatim_name %in% mn, , drop = FALSE]
+  n_ids <- tapply(nt$taxon_id, nt$verbatim_name, function(x) length(unique(x)))
+  one <- names(n_ids)[n_ids == 1L]
+  out[one] <- nt$taxon_id[match(one, nt$verbatim_name)]
+  out
+}
+
 # A prior table keyed by id: `taxon_name` holds the taxon_id, `.verbatim` the table's own name. A row whose name has no
 # id (a placeholder or floor row the registry does not hold) keeps its own name, which can never equal an id, so it
 # joins nothing by taxon and its other roles (dark-diversity rows, floors) are unchanged. Rows of one taxon at one
@@ -148,25 +163,54 @@
     # ancestor of the observation's candidates in those clades: the finest rank, from the ring's own rank upwards, at
     # which they share ONE registry ancestor. Its id and taxon_name_rank follow the registry, finer or coarser than the
     # likelihoods' label; with no common ancestor the row keeps the id of its own name. Listed, outcome "lca_registry".
+    # The registry's lineage stands in where a candidate's is missing. A candidate with no registry id, or with a
+    # run-local id the registry could not place (no ancestor at the ring's rank or above), says nothing about where its
+    # clade sits: it is missing data, not a second lineage, and is left out of the search. A member clade whose
+    # candidates are all left out is then represented by the registry's own taxon of that name, under the rule
+    # add_unreferenced_prior_mass() uses for member clades (exactly one id, at the ring's own rank). A member clade
+    # that has neither is not guessed: the ring keeps its own id ("lca_registry_none"). A member clade with no
+    # candidate in the observation at all is not read, as before. The rows rekeyed list how many
+    # candidates were left out (n_unplaced_candidates) and which member clades took the registry's own taxon
+    # (member_clades_from_registry).
     li <- which(is_lca)
     if (length(li)) {
       own_rank <- .unreferenced_ring_rank(lw$hypothesis_type[li])
+      member_id <- .registry_member_ids(unlist(strsplit(stats::na.omit(as.character(orig$ring_member_clades[li])), "|", fixed = TRUE)),
+                                        registry)
+      new_m <- setdiff(stats::na.omit(unname(member_id)), names(anc[[1L]]))
+      if (length(new_m)) {
+        anc_m <- .registry_ancestors(new_m, all_ranks, registry)
+        for (r in all_ranks) anc[[r]] <- c(anc[[r]], anc_m[[r]])
+      }
+      reg_rank <- stats::setNames(registry$taxa$rank, registry$taxa$taxon_id)
       lca_rows <- lapply(seq_along(li), function(k) {
         i <- li[k]; mr <- own_rank[k]
         if (is.na(mr) || !mr %in% all_ranks) return(NULL)
         mem <- strsplit(as.character(orig$ring_member_clades[i]), "|", fixed = TRUE)[[1L]]
         co <- ci[as.character(lw$observation_id[ci]) == as.character(lw$observation_id[i])]
-        sel <- co[own_lin(mr, co) %in% mem]
-        cid <- unique(stats::na.omit(lw$taxon_name[sel]))
+        own <- own_lin(mr, co)
+        sel <- co[own %in% mem]
+        own <- own[own %in% mem]
         up <- rev(all_ranks[seq_len(match(mr, all_ranks))])   # the ring's own rank, then coarser
+        cid_sel <- lw$taxon_name[sel]
+        placed <- !is.na(cid_sel) & vapply(cid_sel, function(x) !is.na(x) && any(!is.na(vapply(up, function(r) unname(anc[[r]][x]), ""))), TRUE)
+        cid <- unique(cid_sel[placed])
+        n_unplaced <- length(unique(stats::na.omit(cid_sel[!placed]))) + sum(is.na(cid_sel))
+        bare <- setdiff(intersect(mem, own), own[placed])   # member clades whose candidates are all unplaced
+        bare_id <- unname(member_id[bare])
+        bare_ok <- vapply(bare_id, function(x) !is.na(x) && identical(unname(reg_rank[x]), mr), TRUE)
         to <- NA_character_; to_rank <- NA_character_
-        if (length(cid)) for (r in up) {
-          a <- unique(unname(anc[[r]][cid]))
-          if (length(a) == 1L && !is.na(a)) { to <- a; to_rank <- r; break }
+        if (all(bare_ok)) {
+          ids <- unique(c(cid, bare_id))
+          if (length(ids)) for (r in up) {
+            a <- unique(unname(anc[[r]][ids]))
+            if (length(a) == 1L && !is.na(a)) { to <- a; to_rank <- r; break }
+          }
         }
         data.frame(row = i, observation_id = lw$observation_id[i], ring = as.character(orig$taxon_name[i]),
                    rank = as.character(lw$taxon_name_rank[i]), from_id = lw$taxon_name[i], to_id = to, to_rank = to_rank,
-                   n_member_candidates = length(cid),
+                   n_member_candidates = length(cid), n_unplaced_candidates = as.integer(n_unplaced),
+                   member_clades_from_registry = if (length(bare)) paste(bare, collapse = "|") else NA_character_,
                    outcome = if (is.na(to)) "lca_registry_none" else "lca_registry", stringsAsFactors = FALSE)
       })
       lr <- do.call(rbind, lca_rows[!vapply(lca_rows, is.null, TRUE)])
@@ -180,7 +224,7 @@
       }
     }
     if (length(rk_rows)) ring_rekeyed <- do.call(rbind, lapply(rk_rows[!vapply(rk_rows, is.null, TRUE)], function(d) {
-      for (cc in setdiff(c("to_rank", "n_member_candidates"), names(d))) d[[cc]] <- NA
+      for (cc in setdiff(c("to_rank", "n_member_candidates", "n_unplaced_candidates", "member_clades_from_registry"), names(d))) d[[cc]] <- NA
       d
     }))
     new_ids <- setdiff(unique(stats::na.omit(lw$taxon_name)), names(anc[[1L]]))

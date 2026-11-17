@@ -57,15 +57,7 @@
   member_id <- character(0)
   if ("ring_member_clades" %in% names(jw)) {
     mn <- unique(unlist(strsplit(stats::na.omit(as.character(jw$ring_member_clades)), "|", fixed = TRUE)))
-    if (length(mn)) {
-      nt <- registry$names[!is.na(registry$names$verbatim_name) & !is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")]
-      nt <- unique(rbind(nt, data.frame(verbatim_name = registry$taxa$name, taxon_id = registry$taxa$taxon_id, stringsAsFactors = FALSE)))
-      nt <- nt[nt$verbatim_name %in% mn, , drop = FALSE]
-      n_ids <- tapply(nt$taxon_id, nt$verbatim_name, function(x) length(unique(x)))
-      member_id <- stats::setNames(rep(NA_character_, length(mn)), mn)
-      one <- names(n_ids)[n_ids == 1L]
-      member_id[one] <- nt$taxon_id[match(one, nt$verbatim_name)]
-    }
+    if (length(mn)) member_id <- .registry_member_ids(mn, registry)
   }
   tx_ids <- if (ref_lineage_scope == "local") unique(pw$taxon_name) else unique(c(pw$taxon_name, ref))
   tax <- data.frame(taxon_name = tx_ids, stringsAsFactors = FALSE)
