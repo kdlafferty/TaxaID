@@ -82,3 +82,22 @@ test_that("name path: ring_member_clades arrives in join_priors' output unchange
   expect_true("ring_member_clades" %in% names(out))
   expect_identical(out$ring_member_clades[out$hypothesis_type == "unreferenced_family"], "Embiotocidae|Labridae")
 })
+
+test_that("registry path: two tied-anchor rings of different types keyed to ONE registry taxon stay two rows", {
+  .rg_skip(); reg <- .rg_registry()
+  # the family ring (members: two families) and the order ring (members: two orders) both land on Perciformes. They are different
+  # hypotheses (an unsampled genus vs an unsampled family) and must not be merged into one row
+  lik <- .lj_lik(c("Embiotoca jacksoni", "Oxyjulis californica", "Embiotocidae", "Labridae"), c("species", "species", "family", "family"),
+                 c("specific_candidate", "specific_candidate", "unreferenced_genus", "unreferenced_family"),
+                 c(NA, NA, "Embiotocidae|Labridae", "Gadiformes|Perciformes"),
+                 genus = c("Embiotoca", "Oxyjulis", NA, NA), family = c("Embiotocidae", "Labridae", NA, NA))
+  lik$order <- c("Perciformes", "Perciformes", NA, NA)   # the candidates' own order (the order ring's members are orders)
+  lik$score_likelihood <- c(0.5, 0.5, 0.3, 0.1)
+  out <- .lj_jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(.lj_pri(c("Embiotoca jacksoni", "Oxyjulis californica"), c(20, 5)), reg, "priors"),
+                registry = reg)
+  rings <- out[out$hypothesis_type %in% c("unreferenced_genus", "unreferenced_family"), ]
+  expect_equal(nrow(rings), 2L)
+  expect_setequal(rings$hypothesis_type, c("unreferenced_genus", "unreferenced_family"))
+  expect_true(all(rings$taxon_name == "Perciformes"))
+  expect_setequal(rings$score_likelihood, c(0.3, 0.1))   # each keeps its own likelihood
+})
