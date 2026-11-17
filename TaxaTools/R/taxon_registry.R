@@ -366,9 +366,12 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #'   \code{merge_species_duplicates} (logical, default \code{FALSE}):
 #'   \code{TRUE} merges one accepted species name in one kingdom held under
 #'   two or more ranked ids that the run's names use onto the id the pool-key
-#'   tie-break chose for it, listed in \code{meta$species_merged} (dropped id,
-#'   kept id) and as a \code{declared_merge} finding. Where no tie-break chose
-#'   one of the ids they stay apart, listed in \code{meta$species_not_merged}.
+#'   tie-break chose for it or, where it chose none, onto the id the
+#'   \code{lookup} gives the bare accepted name at species rank with no context,
+#'   when that answer is one of the ids. Listed in \code{meta$species_merged}
+#'   (dropped id, kept id, \code{rule}) and as a \code{declared_merge} finding;
+#'   otherwise the ids stay apart, listed in \code{meta$species_not_merged}
+#'   with the reason.
 #'   Genus and higher ranks are never merged.
 #' @return An object of class \code{taxon_registry}: a list with \code{taxa},
 #'   \code{names} and \code{meta}, unfrozen. Every node of the key authority
@@ -863,29 +866,57 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     kingdom_of <- function(id) { pr <- .path_in_taxa(id, taxa); r <- .split_pipe(pr$ranks); p <- .split_pipe(pr$path)
       if ("kingdom" %in% r) p[match("kingdom", r)] else NA_character_ }
     chosen_all <- if (!is.null(pool_key_tiebreaks)) unique(stats::na.omit(pool_key_tiebreaks$chosen)) else character(0L)
+    grp <- list()
     for (v in sort(unique(sx$name[duplicated(sx$name)]))) {
       ids <- sort(unique(sx$taxon_id[sx$name == v]))
       kg <- vapply(ids, kingdom_of, "")
       for (k in unique(stats::na.omit(kg))) {
-        g <- ids[kg %in% k]; used <- g[g %in% nm$taxon_id]
-        if (length(used) < 2L) next
-        ch <- intersect(chosen_all, g)
-        if (length(ch) != 1L) {
-          species_not_merged <- rbind(species_not_merged, data.frame(name = v, kingdom = k, ids = paste(g, collapse = " | "),
-            reason = if (!length(ch)) "no pool-key tie-break chose one of these ids" else "the pool-key tie-break chose 2+ of these ids",
-            stringsAsFactors = FALSE))
-          next
-        }
-        drop <- setdiff(g, ch)
-        mv <- nm$taxon_id %in% drop
-        species_merged <- rbind(species_merged, data.frame(name = v, kingdom = k, dropped_id = drop, kept_id = ch,
-          n_name_rows = vapply(drop, function(d) sum(nm$taxon_id %in% d), 1L), stringsAsFactors = FALSE, row.names = NULL))
-        nm$taxon_id[mv] <- ch
-        nm$fallback_parent[nm$fallback_parent %in% drop] <- ch
-        taxa$parent_id[taxa$parent_id %in% drop] <- ch
-        taxa <- taxa[!taxa$taxon_id %in% drop, , drop = FALSE]
-        if (!is.null(infraspecific_accepted)) infraspecific_accepted$taxon_id[infraspecific_accepted$taxon_id %in% drop] <- ch
+        g <- ids[kg %in% k]
+        if (sum(g %in% nm$taxon_id) >= 2L) grp[[length(grp) + 1L]] <- list(name = v, kingdom = k, ids = g)
       }
+    }
+    # 1. the pool-key tie-break's choice; 2. where it chose none, the key authority's own lookup of the bare accepted
+    # name at species rank, no context (the run's lookup, so cache first). Only an answer that IS one of the ids keeps.
+    ch1 <- lapply(grp, function(x) intersect(chosen_all, x$ids))
+    ask <- which(lengths(ch1) == 0L)
+    ans <- stats::setNames(rep(NA_character_, length(grp)), NULL)
+    if (length(ask)) {
+      an <- unique(vapply(grp[ask], function(x) x$name, ""))
+      la <- tryCatch(lookup(an, rep("species", length(an)), rep(NA_character_, length(an))), error = function(e) NULL)
+      if (!is.null(la) && is.data.frame(la) && nrow(la) == length(an)) {
+        cur <- as.character(la$current_record_id)
+        # an infraspecific accepted usage resolves to its species, as for the run's names
+        for (r in which(la$matched %in% TRUE & !is.na(cur) & !is.na(la$classification_ids) & !is.na(la$classification_ranks))) {
+          ii <- .split_pipe(la$classification_ids[r]); rr <- tolower(.split_pipe(la$classification_ranks[r])); n <- min(length(ii), length(rr))
+          if (n > 0L && rr[n] == "species" && !cur[r] %in% ii[seq_len(n)]) cur[r] <- ii[n]
+        }
+        a_id <- dplyr::if_else(la$matched %in% TRUE & !is.na(cur) & nzchar(cur), paste0(prefix, ":", cur), NA_character_)
+        ans[ask] <- a_id[match(vapply(grp[ask], function(x) x$name, ""), an)]
+      }
+    }
+    for (q in seq_along(grp)) {
+      x <- grp[[q]]; g <- x$ids
+      if (length(ch1[[q]]) == 1L) { ch <- ch1[[q]]; rule <- "pool_key_tiebreak"
+      } else if (length(ch1[[q]]) > 1L) { ch <- character(0L); why <- "the pool-key tie-break chose 2+ of these ids"
+      } else if (!is.na(ans[q]) && ans[q] %in% g) { ch <- ans[q]; rule <- "authority_name_lookup"
+      } else {
+        ch <- character(0L)
+        why <- sprintf("no pool-key tie-break chose one of these ids, and the key authority's lookup of the name gave %s",
+                       if (is.na(ans[q])) "no answer" else sprintf("another id (%s)", ans[q]))
+      }
+      if (!length(ch)) {
+        species_not_merged <- rbind(species_not_merged, data.frame(name = x$name, kingdom = x$kingdom, ids = paste(g, collapse = " | "),
+                                                                   reason = why, stringsAsFactors = FALSE))
+        next
+      }
+      drop <- setdiff(g, ch)
+      species_merged <- rbind(species_merged, data.frame(name = x$name, kingdom = x$kingdom, dropped_id = drop, kept_id = ch, rule = rule,
+        n_name_rows = vapply(drop, function(d) sum(nm$taxon_id %in% d), 1L), stringsAsFactors = FALSE, row.names = NULL))
+      nm$taxon_id[nm$taxon_id %in% drop] <- ch
+      nm$fallback_parent[nm$fallback_parent %in% drop] <- ch
+      taxa$parent_id[taxa$parent_id %in% drop] <- ch
+      taxa <- taxa[!taxa$taxon_id %in% drop, , drop = FALSE]
+      if (!is.null(infraspecific_accepted)) infraspecific_accepted$taxon_id[infraspecific_accepted$taxon_id %in% drop] <- ch
     }
   }
   taxa$authority <- dplyr::if_else(taxa$local, "run-local", prefix)
@@ -1283,8 +1314,8 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     for (id in unique(sm$kept_id)) {
       w <- sm[sm$kept_id == id, , drop = FALSE]
       add("info", "declared_merge", NA_character_, id, w$name[1L],
-          sprintf("species duplicate merged: %s (%d name row(s)) onto %s, the id the pool-key tie-break chose; %s",
-                  paste(w$dropped_id, collapse = ", "), sum(w$n_name_rows), id, w$kingdom[1L]), nrow(w))
+          sprintf("species duplicate merged: %s (%d name row(s)) onto %s, chosen by %s; %s",
+                  paste(w$dropped_id, collapse = ", "), sum(w$n_name_rows), id, w$rule[1L], w$kingdom[1L]), nrow(w))
     }
   }
   snm <- registry$meta$species_not_merged

@@ -1196,14 +1196,46 @@ test_that("species duplicate: OFF unless tiebreak$merge_species_duplicates is TR
   }
 })
 
-test_that("GUARD: a species duplicate with no tie-break choice is NOT merged: the warning stays and a finding says why", {
+test_that("species duplicate with no tie-break choice: the key authority's own lookup of the bare accepted name decides, when it names one of the ids", {
   reg <- .des_reg(list(gbif_first = TRUE, merge_species_duplicates = TRUE), pool = NULL)
-  expect_identical(reg$names$taxon_id[reg$names$verbatim_name == "Desmarestia tabacoides"], "gbif:8402529")
-  expect_null(reg$meta$species_merged)
+  expect_identical(reg$names$taxon_id[match(c("Desmarestia ligulata", "Desmarestia tabacoides"), reg$names$verbatim_name)],
+                   c("gbif:5423338", "gbif:5423338"))
+  sm <- reg$meta$species_merged
+  expect_identical(c(sm$dropped_id, sm$kept_id, sm$rule), c("gbif:8402529", "gbif:5423338", "authority_name_lookup"))
+  expect_null(reg$meta$species_not_merged)
   chk <- check_taxon_registry(reg, verbose = FALSE)
-  expect_true(any(chk$kind == "accepted_name_multiple_ids" & chk$severity == "warning"))
-  nm <- chk[chk$kind == "species_duplicate_not_merged", ]
-  expect_identical(nm$taxon_id, "gbif:5423338 | gbif:8402529"); expect_match(nm$detail, "no pool-key tie-break")
+  expect_false(any(chk$severity %in% c("error", "warning")))
+  expect_true(any(chk$kind == "declared_merge" & grepl("authority_name_lookup", chk$detail)))
+  # the pool-key tie-break, where it exists, still decides and is named as the rule
+  expect_identical(.des_reg(list(gbif_first = TRUE, merge_species_duplicates = TRUE))$meta$species_merged$rule, "pool_key_tiebreak")
+})
+
+# the accepted name itself is not a run name: two synonyms on the two ids, and a bare-name answer for the lookup
+.des_syn_reg <- function(bare) {
+  rows <- rbind(.des_rows()[2, ],
+                .row("Desmarestia firma", "Desmarestia ligulata", "5423338", paste0(.des_ids, "|5423338"), paste0(.des_path, "|Desmarestia ligulata"),
+                     rec = "5423399", syn = TRUE), bare)
+  build_taxon_registry(.names(c("Desmarestia firma", "Desmarestia tabacoides"), "ref"), run_id = "dl", lookup = .fake_lookup(rows),
+                       tiebreak = list(gbif_first = TRUE, merge_species_duplicates = TRUE))
+}
+
+test_that("GUARD CAN FAIL: a bare-name answer that is another id, or no answer, does NOT merge; the warning stays and the reason is listed", {
+  other <- .row("Desmarestia ligulata", "Desmarestia ligulata", "9999999", paste0(.des_ids, "|9999999"), paste0(.des_path, "|Desmarestia ligulata"))
+  for (case in list(list(bare = other, why = "another id \\(gbif:9999999\\)"), list(bare = NULL, why = "no answer"))) {
+    reg <- .des_syn_reg(case$bare)
+    expect_identical(reg$names$taxon_id[match(c("Desmarestia firma", "Desmarestia tabacoides"), reg$names$verbatim_name)],
+                     c("gbif:5423338", "gbif:8402529"))
+    expect_null(reg$meta$species_merged)
+    chk <- check_taxon_registry(reg, verbose = FALSE)
+    expect_true(any(chk$kind == "accepted_name_multiple_ids" & chk$severity == "warning"))
+    nm <- chk[chk$kind == "species_duplicate_not_merged", ]
+    expect_identical(nm$taxon_id, "gbif:5423338 | gbif:8402529"); expect_match(nm$detail, "no pool-key tie-break")
+    expect_match(nm$detail, case$why)
+  }
+  # the same registry with a bare-name answer naming one of the ids merges onto it
+  ok <- .row("Desmarestia ligulata", "Desmarestia ligulata", "8402529", paste0(.des_ids, "|8402529"), paste0(.des_path, "|Desmarestia ligulata"))
+  sm <- .des_syn_reg(ok)$meta$species_merged
+  expect_identical(c(sm$kept_id, sm$dropped_id, sm$rule), c("gbif:8402529", "gbif:5423338", "authority_name_lookup"))
 })
 
 test_that("GUARD: only ONE of the ids in use, another kingdom, or GENUS rank: never merged", {
