@@ -658,5 +658,11 @@
     "code": "fin <- if (\"taxon_name\" %in% names(sr)) \"taxon_name\" else if (\"species\" %in% names(sr)) \"species\" else return(sr)",
     "verdict": "fp",
     "reason": "chooses which column of species_reference holds the species name; no join on a name"
+  },
+  {
+    "file": "TaxaLikely/R/evaluate.R",
+    "code": "cand_extra[[col]][match(cand$taxon_name[tied], cand_extra$taxon_name)]",
+    "verdict": "within",
+    "reason": "one query's own candidates matched to the same query's per-candidate summary of match_df's coarser lineage columns (both built from candidate_df by taxon_name in .evaluate_one_query); used only to name a tied-anchor outer ring, no cross-table join"
   }
 ]
