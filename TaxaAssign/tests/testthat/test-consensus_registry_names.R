@@ -68,3 +68,16 @@ test_that("no roxygen, Rd or code comment in TaxaAssign carries history text 'as
   }
   expect_identical(hits, character(0))
 })
+
+test_that("consensus_settings holds the frozen registry, and the roxygen says so", {
+  .rg_skip(); reg <- .rg_registry()
+  cons <- .cr_cons(.cr_post(reg), reg)
+  st <- attr(cons, "consensus_settings")
+  expect_true("registry" %in% names(st))
+  expect_identical(st$registry, reg)
+  root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  rd <- file.path(root, "man", "posterior_consensus.Rd")
+  skip_if_not(file.exists(rd), "package sources not available")
+  txt <- gsub("\\s+", " ", paste(readLines(rd, warn = FALSE), collapse = " "))
+  expect_true(grepl("holds the whole frozen registry", txt, fixed = TRUE))
+})

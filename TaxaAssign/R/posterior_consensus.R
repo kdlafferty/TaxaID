@@ -825,9 +825,11 @@
 #'
 #'   Attribute `consensus_settings`: a named list of the arguments this call
 #'   used (everything except `posterior_df`). [update_prior_from_consensus()]
-#'   reads it so that Round 2's species guard uses the same settings. Row
-#'   subsetting keeps it; [merge()], [dplyr::summarise()] or rebuilding the data
-#'   frame drop it.
+#'   reads it so that Round 2's species guard uses the same settings. Given a
+#'   registry, `consensus_settings$registry` holds the whole frozen registry
+#'   (`NULL` without one), so Round 2 replays it; a saved consensus therefore
+#'   carries the registry too. Row subsetting keeps it; [merge()],
+#'   [dplyr::summarise()] or rebuilding the data frame drop it.
 #'
 #'   When `reference_snapshot` is set: attribute `reference_snapshot` and a
 #'   `reference_snapshot` column, both holding that string. Absent otherwise.
