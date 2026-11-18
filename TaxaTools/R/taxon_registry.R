@@ -384,8 +384,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' @param tiebreak \code{NULL} (default: no tie-break; 2+ candidate ids stay
 #'   error-class findings) or a list: \code{gbif_first} (logical, default
 #'   \code{TRUE}: for a name the pool holds under 2+ keys, take the lookup's
-#'   own answer when it is exactly one of them; never used for a
-#'   \code{pool_key_conflict}) and \code{authorities}, a named, ordered list of functions
+#'   own answer when it is exactly one of them; for a \code{pool_key_conflict},
+#'   where the lookup's key is one of the two candidates, that key always
+#'   wins over the pool's, and the overruled pool key is listed as
+#'   \code{pool_key_tiebroken}; pass \code{gbif_first = FALSE} to leave the
+#'   decision to \code{authorities}) and \code{authorities}, a named, ordered list of functions
 #'   \code{function(name)} returning that authority's pipe-delimited lineage
 #'   for the name, or \code{NA} (e.g. \code{list(ncbi = ..., worms = ...)}).
 #'   Candidate lineages come from the lookup's classification and from optional
