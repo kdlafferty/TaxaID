@@ -12,9 +12,9 @@
 .rg_tax_text <- function(names, family) data.frame(taxon_name = names, genus = sub(" .*$", "", names), family = family, stringsAsFactors = FALSE)
 .aupm <- function(...) suppressMessages(add_unreferenced_prior_mass(...))
 
-test_that("registry is the LAST formal and defaults to NULL", {
+test_that("registry follows withhold (then rank_system) and defaults to NULL", {
   f <- formals(add_unreferenced_prior_mass)
-  expect_identical(utils::tail(names(f), 1L), "registry")
+  expect_identical(utils::tail(names(f), 2L), c("registry", "rank_system"))
   expect_null(f$registry)
 })
 

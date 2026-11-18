@@ -69,3 +69,9 @@
   columns (`family`, and `genus` without a registry) and `taxonomy_lookup`
   does not supply them; fill them with `TaxaTools::fill_higher_ranks()`, or
   from the registry with `TaxaTools::parent_at()`.
+* `add_unreferenced_prior_mass(rank_system = )` (`NULL` by default: the
+  standard ranks) reads the run's rank system: a ring at an intermediate rank
+  (an `unreferenced_family` ring at infraorder, an `unreferenced_order` ring at
+  subclass) gets its scope and the unreferenced mass of its local relatives.
+  A ring row whose type the ranks in use cannot place keeps the floor prior,
+  and a message counts such rows.

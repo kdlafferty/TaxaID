@@ -664,5 +664,17 @@
     "code": "cand_extra[[col]][match(cand$taxon_name[tied], cand_extra$taxon_name)]",
     "verdict": "within",
     "reason": "one query's own candidates matched to the same query's per-candidate summary of match_df's coarser lineage columns (both built from candidate_df by taxon_name in .evaluate_one_query); used only to name a tied-anchor outer ring, no cross-table join"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "lin <- lin[lin %in% c(\"genus\", \"family\", \"order\", \"class\", \"phylum\") | lin %in% registry$taxa$rank]",
+    "verdict": "fp",
+    "reason": "rank words against rank words (the rank system's ranks against the ranks the registry's tree holds); no taxon name is compared"
+  },
+  {
+    "file": "TaxaAssign/R/unreferenced_prior_mass.R",
+    "code": "!is.na(out$taxon_name) & !out$taxon_name_rank %in% \"species\" &",
+    "verdict": "fp",
+    "reason": "a ring row's own rank tested against a rank word; taxon_name is only tested for NA, no name is compared"
   }
 ]

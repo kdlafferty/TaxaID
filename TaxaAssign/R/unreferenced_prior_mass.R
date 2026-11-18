@@ -18,7 +18,8 @@
 # the function compares identifiers, never names. Prior rows of one taxon at one site (synonyms in the pool) are
 # reduced to one: the row under the registry's accepted name, else the strongest. Returns the working copies plus the
 # maps needed to put names back on the output.
-.unref_registry_inputs <- function(joined, priors, referenced, registry, ref_lineage_scope = c("local", "all")) {
+.unref_registry_inputs <- function(joined, priors, referenced, registry, ref_lineage_scope = c("local", "all"),
+                                   rank_system = NULL) {
   ref_lineage_scope <- match.arg(ref_lineage_scope)
   .registry_check_tables(registry, list(joined = joined, taxaexpect_priors = priors))
   if (!is.character(referenced)) cli::cli_abort("With {.arg registry}, {.arg referenced_names} must be a character vector of taxon ids.")
@@ -28,6 +29,12 @@
     cli::cli_abort("With {.arg registry}, {.arg referenced_names} must hold taxon ids of that registry; {length(unk)} are not (e.g. {.val {utils::head(unk, 3)}}).")
   }
   lin <- c("genus", "family", "order", "class", "phylum")
+  # with a rank system, its ranks above species that the registry's tree holds (an intermediate rank only where the key
+  # authority's paths carry it); without one, the standard ranks
+  if (!is.null(rank_system)) {
+    lin <- setdiff(rev(.rank_order(rank_system)), c("species", "kingdom"))
+    lin <- lin[lin %in% c("genus", "family", "order", "class", "phylum") | lin %in% registry$taxa$rank]
+  }
   ids <- unique(stats::na.omit(c(as.character(joined$taxon_id), as.character(priors$taxon_id), ref)))
   anc <- .registry_ancestors(ids, lin, registry)
   reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
@@ -65,7 +72,7 @@
   list(
     joined = jw, priors = pw, taxonomy = tax, referenced = ref, display = disp, reg_name = reg_name,
     reg_rank = reg_rank, member_id = member_id,
-    ref_genera = unique(stats::na.omit(unname(anc$genus[ref]))), genus_of = anc$genus,
+    ref_genera = unique(stats::na.omit(unname(anc$genus[ref]))), genus_of = anc$genus, lin = lin,
     merged_prior_rows = merged,
     counts = list(
       n_joined_rows_no_id = sum(is.na(joined$taxon_id) & !is.na(joined$taxon_name)),
@@ -176,6 +183,17 @@
 #'   carry a `taxon_id` column stamped by this registry
 #'   (`TaxaTools::attach_taxon_ids()`), `referenced_names` holds taxon ids of
 #'   the referenced species, and `taxonomy` is not used (it may be `NULL`).
+#' @param rank_system `NULL` (default) or the run's ranks, coarse to fine, as
+#'   given to [join_priors()] (e.g. `c("phylum", "class", "subclass", "order",
+#'   "infraorder", "family", "genus", "species")`). `NULL` uses the standard
+#'   ranks (kingdom, phylum, class, order, family, genus, species). Given a rank
+#'   system, a ring's own rank is the rank above its type in it (an
+#'   `unreferenced_family` ring sits at infraorder when infraorder is there),
+#'   the default `unreferenced_types` extend to a ring at each of its ranks, and
+#'   scopes and the floor rule read its ranks; `taxonomy` then carries those
+#'   rank columns. With `registry`, an intermediate rank is read only where the
+#'   registry's tree holds it. A ring row whose type the ranks in use cannot
+#'   place keeps the floor prior, and a message counts such rows.
 #'
 #' @section Matching by taxon identifier:
 #'   With `registry`, every test of "is this species referenced?", "is it
@@ -261,13 +279,22 @@ add_unreferenced_prior_mass <- function(joined,
                                         mismatch_message_fraction = 0.05,
                                         named_rows = FALSE,
                                         withhold = c("finest", "genus"),
-                                        registry = NULL) {
+                                        registry = NULL,
+                                        rank_system = NULL) {
   # --- Validation --------------------------------------------------------------
   withhold <- match.arg(withhold)
+  if (!is.null(rank_system) && (!is.character(rank_system) || !length(rank_system) || anyNA(rank_system))) {
+    cli::cli_abort("{.arg rank_system} must be NULL or a character vector of ranks, coarse to fine.")
+  }
+  # With a rank system, the default types extend to a ring at each of its ranks (unreferenced_<the rank one finer>).
+  if (!is.null(rank_system) && missing(unreferenced_types)) {
+    unreferenced_types <- unique(c(unreferenced_types, paste0("unreferenced_", setdiff(.rank_order(rank_system), "kingdom"))))
+    unreferenced_types <- unreferenced_types[.is_unreferenced_type(unreferenced_types)]
+  }
   joined_in <- joined
   rg <- NULL
   if (!is.null(registry)) {
-    rg <- .unref_registry_inputs(joined, taxaexpect_priors, referenced_names, registry)
+    rg <- .unref_registry_inputs(joined, taxaexpect_priors, referenced_names, registry, rank_system = rank_system)
     joined <- rg$joined
     taxaexpect_priors <- rg$priors
     taxonomy <- rg$taxonomy
@@ -278,7 +305,7 @@ add_unreferenced_prior_mass <- function(joined,
   .finish <- function(out) {
     if (is.null(rg)) return(out)
     n0 <- nrow(joined_in)
-    lin_cols <- intersect(c("genus", "family", "order", "class", "phylum"), names(joined_in))
+    lin_cols <- intersect(rg$lin, names(joined_in))
     scope_name <- stats::setNames(as.character(joined_in$taxon_name), rg$joined$taxon_name)
     scope_name <- scope_name[!is.na(names(scope_name)) & !duplicated(names(scope_name))]
     nm_of <- function(id, pref) { v <- unname(pref[id]); w <- is.na(v) & !is.na(id); v[w] <- unname(rg$reg_name[id[w]]); v }
@@ -379,12 +406,23 @@ add_unreferenced_prior_mass <- function(joined,
   }
 
   # --- Generic rows and their scopes -------------------------------------------
-  rank_order <- c("species", "genus", "family", "order", "class", "phylum", "kingdom")
+  rank_order <- if (is.null(rank_system)) c("species", "genus", "family", "order", "class", "phylum", "kingdom") else rev(.rank_order(rank_system))
   # A generic row gains mass only at its own ring's rank: an unsequenced
   # congener at genus, an unsequenced genus at family. A row renamed to a
   # coarser real ancestor because its family was a placeholder ("unk_family"
   # -> its order) keeps its floor: its true scope is unknown.
-  expected_rank <- .unreferenced_ring_rank(out$hypothesis_type)
+  expected_rank <- .unreferenced_ring_rank(out$hypothesis_type, rank_system)
+  # A ring row the ranks in use cannot place keeps its floor: one of an intermediate-rank type, or one named at an
+  # intermediate rank (an unreferenced_family ring at infraorder), with no rank_system. Counted and said, never silent.
+  unplaced_ring <- out$hypothesis_type %in% unreferenced_types & .is_unreferenced_type(out$hypothesis_type) &
+    !is.na(out$taxon_name) & !out$taxon_name_rank %in% "species" &
+    (is.na(expected_rank) | !out$taxon_name_rank %in% rank_order)
+  if (any(unplaced_ring)) {
+    cli::cli_inform(c(
+      "{sum(unplaced_ring)} ring row(s) at rank{?s} {.val {sort(unique(out$taxon_name_rank[unplaced_ring]))}} cannot be placed in the ranks in use, so they keep the floor prior.",
+      "i" = "Pass the run's {.arg rank_system} to place them."
+    ))
+  }
   gen <- which(out$hypothesis_type %in% unreferenced_types &
     !is.na(out$taxon_name) & out$taxon_name_rank %in% setdiff(names(taxonomy), "taxon_name") &
     out$taxon_name_rank != "species" &

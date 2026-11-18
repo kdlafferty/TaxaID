@@ -53,12 +53,12 @@
 .fr_has_withhold <- function() "withhold" %in% names(formals(add_unreferenced_prior_mass))
 .fr_add <- function(...) suppressMessages(add_unreferenced_prior_mass(...))
 
-test_that("REVIEW FR: withhold follows the released formals (then registry), default \"finest\", released formals an exact prefix", {
+test_that("REVIEW FR: withhold follows the released formals (then registry, rank_system), default \"finest\", released formals an exact prefix", {
   f <- names(formals(add_unreferenced_prior_mass))
   released <- c("joined", "taxaexpect_priors", "taxonomy", "referenced_names", "grid_id",
                 "unreferenced_types", "mismatch_message_fraction", "named_rows")
   expect_identical(f[seq_along(released)], released)
-  expect_identical(f[-seq_along(released)], c("withhold", "registry"))
+  expect_identical(f[-seq_along(released)], c("withhold", "registry", "rank_system"))
   expect_identical(eval(formals(add_unreferenced_prior_mass)$withhold)[1], "finest")
 })
 

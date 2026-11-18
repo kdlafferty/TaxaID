@@ -293,3 +293,57 @@ test_that("a ring at any rank takes its own scope: the phylum ring takes another
   expect_equal(cl$unreferenced_mass, 5e-3 + 2e-2)
   expect_equal(cl$unreferenced_n_species, 2L)
 })
+
+# ---- rank_system: rings at intermediate ranks ---------------------------------
+# A rank system with subclass and infraorder, as TaxaLikely types its rings: a ring at infraorder is
+# unreferenced_family, at subclass unreferenced_order. Without the rank system the standard ranks place
+# unreferenced_family at order, so the infraorder ring keeps the floor with no scope.
+.rs8 <- c("phylum", "class", "subclass", "order", "infraorder", "family", "genus", "species")
+.rs8_joined <- function() data.frame(observation_id = "E1",
+  taxon_name = c("Embiotoca jacksoni", "Embiotocidae", "Ovalentaria", "Neopterygii"),
+  taxon_name_rank = c("species", "family", "infraorder", "subclass"),
+  hypothesis_type = c("specific_candidate", "unreferenced_genus", "unreferenced_family", "unreferenced_order"),
+  score_likelihood = c(1, 0.05, 0.01, 0.001), prior_mean = 1e-5, prior_alpha = 0.01, prior_beta = 999.99,
+  grid_id = "site1", main_habitat = "Marine", stringsAsFactors = FALSE)
+.rs8_tax <- function() data.frame(
+  taxon_name = c("Embiotoca jacksoni", "Rhacochilus toxotes", "Pomacentrus moluccensis", "Salmo salar"),
+  genus = c("Embiotoca", "Rhacochilus", "Pomacentrus", "Salmo"),
+  family = c("Embiotocidae", "Embiotocidae", "Pomacentridae", "Salmonidae"),
+  infraorder = c("Ovalentaria", "Ovalentaria", "Ovalentaria", "Protacanthopterygii"),
+  order = c("Perciformes", "Perciformes", "Perciformes", "Salmoniformes"),
+  subclass = "Neopterygii", class = "Actinopteri", phylum = "Chordata", stringsAsFactors = FALSE)
+.rs8_priors <- function() data.frame(taxon_name = .rs8_tax()$taxon_name, taxon_name_rank = "species", grid_id = "site1",
+  main_habitat = "Marine", theta_mean = c(0.1, 0.02, 0.03, 0.04), alpha = c(100, 20, 30, 40), beta = c(900, 980, 970, 960),
+  stringsAsFactors = FALSE)
+.rs8_types <- c("unreferenced_species", "unreferenced_genus", "unreferenced_family", "unreferenced_infraorder",
+                "unreferenced_order", "unreferenced_subclass", "unreferenced_class")
+
+test_that("rank_system is the LAST formal and defaults to NULL", {
+  f <- formals(add_unreferenced_prior_mass)
+  expect_identical(utils::tail(names(f), 1L), "rank_system")
+  expect_null(f$rank_system)
+})
+
+test_that("with rank_system, rings at infraorder and subclass get their scope and unreferenced mass", {
+  out <- suppressMessages(add_unreferenced_prior_mass(.rs8_joined(), .rs8_priors(), .rs8_tax(), referenced_names = "Embiotoca jacksoni",
+                                                      rank_system = .rs8))
+  expect_identical(out$unreferenced_scope, c(NA, "Embiotocidae", "Ovalentaria", "Neopterygii"))
+  expect_identical(out$unreferenced_scope_rank, c(NA, "family", "infraorder", "subclass"))
+  expect_equal(out$unreferenced_mass[2:4], c(0.02, 0.03, 0.04))
+  expect_identical(out$unreferenced_n_species[2:4], c(1L, 1L, 1L))
+  mem <- attr(out, "unreferenced_scope_members")
+  expect_identical(mem$taxon_name[match(c("Embiotocidae", "Ovalentaria", "Neopterygii"), mem$scope)],
+                   c("Rhacochilus toxotes", "Pomacentrus moluccensis", "Salmo salar"))
+})
+
+test_that("rank_system = NULL is the call without it; such rings then keep the floor, and a message counts them", {
+  a <- suppressMessages(add_unreferenced_prior_mass(.rs8_joined(), .rs8_priors(), .rs8_tax(), referenced_names = "Embiotoca jacksoni",
+                                                    unreferenced_types = .rs8_types))
+  b <- suppressMessages(add_unreferenced_prior_mass(.rs8_joined(), .rs8_priors(), .rs8_tax(), referenced_names = "Embiotoca jacksoni",
+                                                    unreferenced_types = .rs8_types, rank_system = NULL))
+  expect_identical(a, b)
+  expect_true(all(is.na(a$unreferenced_scope[3:4])))
+  expect_identical(a$prior_mean[3:4], .rs8_joined()$prior_mean[3:4])
+  expect_message(add_unreferenced_prior_mass(.rs8_joined(), .rs8_priors(), .rs8_tax(), referenced_names = "Embiotoca jacksoni",
+                                             unreferenced_types = .rs8_types), "rank_system")
+})

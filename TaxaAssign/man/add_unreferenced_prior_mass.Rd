@@ -15,7 +15,8 @@ add_unreferenced_prior_mass(
   mismatch_message_fraction = 0.05,
   named_rows = FALSE,
   withhold = c("finest", "genus"),
-  registry = NULL
+  registry = NULL,
+  rank_system = NULL
 )
 }
 \arguments{
@@ -76,6 +77,17 @@ described above. Given a registry, taxa are matched by identifier only
 carry a \code{taxon_id} column stamped by this registry
 (\code{TaxaTools::attach_taxon_ids()}), \code{referenced_names} holds taxon ids of
 the referenced species, and \code{taxonomy} is not used (it may be \code{NULL}).}
+
+\item{rank_system}{\code{NULL} (default) or the run's ranks, coarse to fine, as
+given to \code{\link[=join_priors]{join_priors()}} (e.g. \code{c("phylum", "class", "subclass", "order", "infraorder", "family", "genus", "species")}). \code{NULL} uses the standard
+ranks (kingdom, phylum, class, order, family, genus, species). Given a rank
+system, a ring's own rank is the rank above its type in it (an
+\code{unreferenced_family} ring sits at infraorder when infraorder is there),
+the default \code{unreferenced_types} extend to a ring at each of its ranks, and
+scopes and the floor rule read its ranks; \code{taxonomy} then carries those
+rank columns. With \code{registry}, an intermediate rank is read only where the
+registry's tree holds it. A ring row whose type the ranks in use cannot
+place keeps the floor prior, and a message counts such rows.}
 }
 \value{
 \code{joined} with \code{prior_mean}, \code{prior_alpha} and \code{prior_beta} updated
