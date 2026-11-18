@@ -16,7 +16,21 @@
   priors are built, registering the finished prior table's names, stamp the
   likelihoods and priors, and pass it to `join_priors()` and
   `posterior_consensus()`, so taxa are matched by identifier and outputs carry
-  GBIF accepted names.
+  GBIF accepted names. This applies whatever `backbone_id` the match data
+  use: with `USE_TAXON_REGISTRY = TRUE` the template makes GBIF Backbone
+  lookups and reports GBIF accepted names for NCBI-based (`backbone_id = 4`)
+  data too. `FALSE` keeps the names as given and matches tables by name.
+* The single-site posterior step names the site by the kernel fit's own site
+  id (`kernel_priors_fit$params$site_id`) or, without a kernel fit, by the one
+  site id in the prior table's `grid_id`, and stops when that table holds
+  several (use the multi-site step for several sites).
+* The consensus step stops, before computing any consensus, when the session
+  holds no `lik_unresolved` (the likelihood step's `$unresolved`). A script
+  with its own likelihood step sets
+  `lik_unresolved <- <its evaluate_likelihoods() result>$unresolved`.
+* Each template step's output is the object its snippet produces, so the
+  review step reads the final consensus: the one after the empirical-Bayes
+  update, with `add_slash_taxon()`'s columns and the no-call rows.
 * Every observation gets a consensus row. One whose matches all name a
   reference only above the rank system (only "Eukaryota", say), which
   `TaxaLikely::evaluate_likelihoods()` returns in `$unresolved`, gets a no-call
