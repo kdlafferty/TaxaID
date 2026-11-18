@@ -1641,7 +1641,9 @@ posterior_consensus <- function(posterior_df,
 #
 # Distinguishing a NAMED row from a GENERIC ring row: a generic row carries its
 # own name as its scope (`unreferenced_scope == taxon_name`), because the ring
-# IS the scope; a named row's scope is the parent clade. Both are typed
+# IS the scope; a named row's scope is the parent clade. A tied-anchor ring
+# carries its member clades as its scope (`unreferenced_scope ==
+# ring_member_clades`), and is a ring row in the same way. Both kinds are typed
 # `unreferenced_species`, so `hypothesis_type` alone cannot separate them.
 .add_consensus_row_provenance <- function(result, posterior_df) {
   n <- nrow(result)
@@ -1693,14 +1695,28 @@ posterior_consensus <- function(posterior_df,
     # name was the only candidate the records offered, so the call is an
     # elimination from the record; more than 1 means the occurrence prior broke
     # a tie between candidates the sequence scores identically.
-    named <- !is.na(sc) & !is.na(tax_p) & sc != tax_p
+    # A ring row is the row whose scope IS the ring: a generic ring's scope is
+    # its own name, and a tied-anchor ring's scope is its own member list
+    # (add_unreferenced_prior_mass() sets it from ring_member_clades). The
+    # named rows under a tied-anchor ring are copies of the ring row and carry
+    # its ring_member_clades too, so that column alone does not mark the ring;
+    # their scope is one member clade, which never equals the list of two or
+    # more.
+    rmc <- if ("ring_member_clades" %in% names(posterior_df)) {
+      as.character(posterior_df$ring_member_clades)
+    } else {
+      rep(NA_character_, nrow(posterior_df))
+    }
+    is_ring <- !is.na(sc) & ((!is.na(tax_p) & sc == tax_p) | (!is.na(rmc) & sc == rmc))
+    named <- !is.na(sc) & !is.na(tax_p) & !is_ring
     nk <- paste(oid_p, sc, sep = "\r")
     tab <- table(nk[named])
     own <- result$consensus_unreferenced_scope
     cnt <- as.integer(tab[paste(oid_r, own, sep = "\r")])
     cnt[is.na(cnt)] <- 0L
+    on_ring <- !is.na(idx) & is_ring[idx]
     result$consensus_scope_n_named <- ifelse(
-      is.na(own) | is.na(tax_r) | own == tax_r, NA_integer_, cnt
+      is.na(own) | is.na(tax_r) | on_ring, NA_integer_, cnt
     )
   }
   result
