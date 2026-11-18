@@ -177,3 +177,38 @@ test_that("a session with no lik_unresolved stops BEFORE any consensus is comput
   expect_error(suppressMessages(eval(parse(text = code), envir = run)), class = "taxaid_lik_unresolved_missing")
   expect_identical(calls, 0L)
 })
+
+test_that("the likelihood snippets evaluate on the model's own rank system, not the match table's columns", {
+  # A match table carrying kingdom/phylum columns and a model fitted on class..species: detecting ranks from the table
+  # would evaluate on kingdom..species, naming a kingdom-only reference "Eukaryota" instead of returning it in $unresolved.
+  root <- .nu_skip()
+  rs_model <- c("class", "order", "family", "genus", "species")
+  seen <- list()
+  testthat::local_mocked_bindings(
+    evaluate_likelihoods = function(match_df, model_params, rank_system = NULL, ...) {
+      seen$eval <<- rank_system
+      list(likelihoods = data.frame(observation_id = "esv_ok", taxon_name = "Embiotoca jacksoni"), unresolved = .nu_unresolved())
+    },
+    filter_top_hypotheses = function(x, rank_system = NULL) { seen$filter <<- rank_system; x },
+    .package = "TaxaLikely")
+  testthat::local_mocked_bindings(
+    join_priors = function(likelihoods, ...) likelihoods, compute_posterior = function(x, ...) x,
+    posterior_consensus = .nu_consensus_mock, update_prior_from_consensus = function(posterior_df, ...) posterior_df,
+    .package = "TaxaAssign")
+  md <- data.frame(observation_id = c("esv_ok", "esv_euk"), score_original = c(99, 91), kingdom = "Eukaryota",
+                   phylum = c("Chordata", NA), class = c("Actinopteri", NA), order = c("Perciformes", NA),
+                   family = c("Embiotocidae", NA), genus = c("Embiotoca", NA), species = c("Embiotoca jacksoni", NA),
+                   taxon_name = c("Embiotoca jacksoni", "Eukaryota"), taxon_name_rank = c("species", "kingdom"))
+  for (snip in c("model_match_to_lik", "match_to_consensus_bayes")) {
+    seen <- list()
+    over <- list(match_var = "match_df", model_var = "model_params", priors_var = "priors", site = "NULL",
+                 backbone_id = "11", taxonomy_cache_dir = "NULL", use_taxon_registry = "FALSE")
+    run <- new.env(parent = globalenv())
+    run$match_df <- md; run$priors <- data.frame(taxon_name = "Embiotoca jacksoni")
+    run$model_params <- list(Rank_System = rs_model)
+    suppressMessages(eval(parse(text = .nu_snippet(root, snip, over[intersect(names(over), c("match_var", "model_var",
+      if (snip == "match_to_consensus_bayes") c("priors_var", "site", "backbone_id", "taxonomy_cache_dir", "use_taxon_registry")))])), envir = run))
+    expect_identical(seen$eval, rs_model, info = snip)
+    expect_identical(seen$filter, rs_model, info = snip)
+  }
+})

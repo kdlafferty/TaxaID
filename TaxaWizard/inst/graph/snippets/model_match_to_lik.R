@@ -38,9 +38,15 @@ if (!"taxon_name" %in% names({{match_var}})) {
   message("Added taxon_name from ranks: ", paste(detected_ranks, collapse = ", "))
 }
 
+# Likelihoods are evaluated on the ranks the model was fitted on (model_params$Rank_System). Detecting them from the
+# match table's columns instead would add any coarser column it carries (kingdom, phylum), on which the model holds no
+# ring, and would name a reference identified only at such a rank there instead of returning its observation in
+# $unresolved. A model that records no rank system falls back to detection from the match table.
+lik_rank_system <- {{model_var}}$Rank_System
 lik_result <- TaxaLikely::evaluate_likelihoods(
   match_df     = {{match_var}},
   model_params = {{model_var}},
+  rank_system  = lik_rank_system,
   n_sims       = 200L
 )
 
@@ -54,7 +60,8 @@ lik_result <- TaxaLikely::evaluate_likelihoods(
 # likelihood or which hypothesis wins. They travel through the posterior and
 # consensus tables to review_assignments() (see consensus_to_reviewed).
 likelihoods <- TaxaLikely::filter_top_hypotheses(
-  lik_result$likelihoods
+  lik_result$likelihoods,
+  rank_system = lik_rank_system
 )
 message("Evaluated likelihoods for ", length(unique(likelihoods$observation_id)), " samples")
 # An observation whose matches all name a reference only above the rank system

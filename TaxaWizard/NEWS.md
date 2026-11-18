@@ -22,3 +22,9 @@
   `TaxaLikely::evaluate_likelihoods()` returns in `$unresolved`, gets a no-call
   row with `consensus_reason = "no_usable_likelihood"` and
   `coarsest_reference_lineage`, the lineage its matched references share.
+* The likelihood step evaluates likelihoods, and keeps top hypotheses, on the
+  ranks the model was fitted on (`model_params$Rank_System`), not on every
+  rank column the match table carries. A reference identified only above
+  those ranks (only "Eukaryota", say) then returns its observation in
+  `$unresolved`, which gets the no-call row. A model that records no rank
+  system falls back to the match table's columns.

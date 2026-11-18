@@ -46,10 +46,14 @@ if (!"taxon_name" %in% names({{match_var}})) {
 
 # 1. Scores -> likelihoods under the trained model, then keep the finest-rank
 #    candidate set per observation
+#    on the ranks the model was fitted on (model_params$Rank_System; the match
+#    table's own ranks only for a model that records none), so that a reference
+#    identified only above them returns its observation in $unresolved
+lik_rank_system <- if (is.null({{model_var}}$Rank_System)) detected_ranks else {{model_var}}$Rank_System
 lik_result <- TaxaLikely::evaluate_likelihoods(
   match_df     = {{match_var}},
   model_params = {{model_var}},
-  rank_system  = detected_ranks
+  rank_system  = lik_rank_system
 )
 likelihoods <- lik_result$likelihoods
 # observations with no usable likelihood (see $unresolved): each gets a no-call
@@ -57,7 +61,7 @@ likelihoods <- lik_result$likelihoods
 lik_unresolved <- lik_result$unresolved
 top_likelihoods <- TaxaLikely::filter_top_hypotheses(
   likelihoods,
-  rank_system = detected_ranks
+  rank_system = lik_rank_system
 )
 
 # --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
