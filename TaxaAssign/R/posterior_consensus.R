@@ -678,8 +678,10 @@
 #'       and silently about the name. A GENERIC ring row carries its own name
 #'       as its scope (`consensus_unreferenced_scope == consensus_taxon`),
 #'       because the ring is the scope; a NAMED row's scope is the parent
-#'       clade. Both are typed `unreferenced_species`, so `hypothesis_type`
-#'       alone cannot separate them. Present when `posterior_df` carries the
+#'       clade. A tied-anchor ring row carries its member clades, joined with
+#'       `|`, as its scope, and is a ring row in the same way. Both are typed
+#'       `unreferenced_species`, so `hypothesis_type` alone cannot separate
+#'       them. Present when `posterior_df` carries the
 #'       scope columns.}
 #'     \item{`consensus_scope_n_named`}{Integer. How many NAMED rows share
 #'       that scope in the same observation. `1` means the records offered one
