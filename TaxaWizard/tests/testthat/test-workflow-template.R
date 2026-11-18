@@ -44,7 +44,13 @@ test_that("every Pkg::fn in the template is a real export", {
   txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
   calls <- unique(unlist(regmatches(txt, gregexpr("Taxa[A-Za-z]+::[A-Za-z_.0-9]+", txt))))
   calls <- calls[!grepl("^TaxaWizard::", calls)]
-  bad <- calls[!sub(".*::", "", calls) %in% exports]
+  # workflow_registry() lists functions; an exported data object (TaxaTools::standard_ranks) is a real export too,
+  # so a name passes if the registry lists it or the package it names exports it
+  is_export <- function(call) {
+    pkg <- sub("::.*", "", call); nm <- sub(".*::", "", call)
+    nm %in% exports || (requireNamespace(pkg, quietly = TRUE) && nm %in% getNamespaceExports(pkg))
+  }
+  bad <- calls[!vapply(calls, is_export, logical(1))]
 
   expect_equal(bad, character(0),
                info = paste("not exports of the package they name:", paste(bad, collapse = ", ")))
