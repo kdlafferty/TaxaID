@@ -121,3 +121,18 @@ test_that("a raw_df without coverage gets an empty table that says why, and trai
   expect_match(attr(rc, "status"), "coverage")
   expect_identical(.rc_strip(.rc_train(df, exclude_reference_suspects = TRUE)), .rc_strip(m))
 })
+
+test_that("the exclusion default's held-out claim is non-inferiority on a named score", {
+  # The held-out evidence has cells above fitting on everything by more than
+  # 0.01, so "within 0.01 in every cell" is false; what it supports is that no
+  # cell of the mean log score is more than 0.01 below.
+  root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  files <- file.path(root, c("NEWS.md", "R/train.R", "man/train_likelihood_model.Rd"))
+  skip_if_not(all(file.exists(files)), "package sources not available")
+  for (f in files) {
+    txt <- gsub("\\s+", " ", gsub("#'", " ", paste(readLines(f, warn = FALSE), collapse = " ")))
+    expect_false(grepl("within 0.01 of fitting", txt, fixed = TRUE), info = f)
+    expect_true(grepl("log score", txt, fixed = TRUE), info = f)
+    expect_true(grepl("more than 0.01 below fitting on everything", txt, fixed = TRUE), info = f)
+  }
+})

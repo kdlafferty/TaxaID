@@ -25,8 +25,9 @@
   candidates at evaluation. `exclude_reference_suspects = FALSE` makes the
   table a report only and fits on every reference. Exclusion is the default
   because most users will not screen references separately, and on held-out
-  tests with two fish 12S libraries it scores within 0.01 of fitting on
-  everything in every cell. TaxaLikely imports TaxaMatch.
+  leave-species-out and leave-genus-out folds on two fish 12S libraries no
+  cell's mean log score (the log posterior of the true identity) is more than
+  0.01 below fitting on everything. TaxaLikely imports TaxaMatch.
 * `restore_suppressed_candidates(registry = )` (off by default): with a frozen
   taxon registry, a reference congener whose identifier equals a candidate's is
   not restored as a second candidate, and `candidate_species_filter` matches a
