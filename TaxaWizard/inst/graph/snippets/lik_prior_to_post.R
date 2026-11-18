@@ -1,7 +1,6 @@
 # Edge: likelihoods + priors -> posteriors
 # Source: TaxaAssign join_priors() + compute_posterior()
-# NOTE: {{lat}} and {{lon}} are numeric coordinates of the sampling site.
-#   {{main_habitat}} is the habitat type (e.g. "Freshwater", "Marine",
+# NOTE: {{main_habitat}} is the habitat type (e.g. "Freshwater", "Marine",
 #   "Estuarine"). This is required — the pipeline does not guess which
 #   habitat your samples came from.
 # NOTE: {{backbone_id}} is required — no default. Must match whichever
@@ -9,7 +8,20 @@
 #   for GBIF, 4 for NCBI).
 
 # --- Build site specification ---
-site_spec <- list(lat = {{lat}}, lon = {{lon}}, main_habitat = {{main_habitat}})
+# The kernel prior is centred on the site: its rows carry the fit's own site id
+# (kernel_priors_fit$params$site_id) in their grid_id column, and the site is
+# named by that id. Without a kernel fit in the session, the prior table's one
+# site id is used.
+.site_key <- if (exists("kernel_priors_fit")) kernel_priors_fit$params$site_id else NULL
+if (is.null(.site_key)) {
+  .site_key <- unique(stats::na.omit(as.character({{priors_var}}$grid_id)))
+  if (length(.site_key) != 1L) {
+    stop("lik_prior_to_post: no kernel_priors_fit in the session, and the prior table holds ",
+         length(.site_key), " site ids in grid_id (need exactly one); ",
+         "use the multi-site step for several sites.")
+  }
+}
+site_spec <- list(grid_id = .site_key, main_habitat = {{main_habitat}})
 
 # --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
 # The registry built once for the run (edge tables_to_registry) is reused here; the

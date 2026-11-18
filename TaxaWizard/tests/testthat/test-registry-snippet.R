@@ -134,3 +134,74 @@ test_that("the posterior snippets' own registry (built when none exists) gives n
     expect_true(all(reg$names$status[reg$names$verbatim_name == "Polyarthra"] %in% "homonym_rejected"), info = f)
   }
 })
+
+# The posterior snippets, replayed with the priors the kernel prior step leaves: every row keyed by the fit's own site id
+# (estimate_kernel_priors(site_id = ) as the prior snippet calls it). join_priors() must find those priors: each
+# candidate takes its kernel prior, not the global floor.
+.rs_kernel_run <- function(root, env, sid, n_obs = 2L) {
+  run <- new.env(parent = globalenv())
+  sp <- c("Embiotoca jacksoni", "Hypsurus caryi")
+  run$match_df <- data.frame(observation_id = rep(paste0("E", seq_len(n_obs)), each = 2), taxon_name = sp, species = sp,
+                             genus = sub(" .*$", "", sp), family = "Embiotocidae", order = "Perciformes", stringsAsFactors = FALSE)
+  run$likelihoods <- data.frame(observation_id = run$match_df$observation_id, taxon_name = sp, taxon_name_rank = "species",
+                                hypothesis_type = "specific_candidate", score_likelihood = c(0.6, 0.4), score_likelihood_mean = c(0.6, 0.4),
+                                score_likelihood_sd = 0.02, species = sp, genus = sub(" .*$", "", sp), family = "Embiotocidae",
+                                order = "Perciformes", stringsAsFactors = FALSE)
+  run$priors <- data.frame(taxon_name = c(sp, NA), taxon_name_rank = "species", grid_id = sid, main_habitat = "Rocky",
+                           alpha = c(20, 10, 1), beta = c(80, 90, 999), undetected_type = c(NA, NA, "global_floor"),
+                           stringsAsFactors = FALSE)
+  run$priors$theta_mean <- run$priors$alpha / (run$priors$alpha + run$priors$beta)
+  run$kernel_priors_fit <- list(priors = run$priors, params = list(site_id = sid))
+  run
+}
+.rs_kernel_site_id <- function(root, env, over) {
+  # the site id exactly as the canonical prior step stamps it
+  src <- readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "dist_to_priors_by_group.R"), warn = FALSE)
+  ln <- grep("^\\s*site_id\\s*=\\s*sprintf\\(", src, value = TRUE)
+  expect_length(ln, 1L)
+  eval(parse(text = .rs_fill(sub(",\\s*$", "", sub("^\\s*site_id\\s*=\\s*", "", ln)), env, over)))
+}
+
+test_that("lik_prior_to_post joins the kernel priors under the fit's own site id (single site)", {
+  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE), "TaxaAssign not available")
+  env <- .rs_gen_env(root)
+  over <- list(lat = "34.4", lon = "-119.8", main_habitat = '"Rocky"', backbone_id = "11", taxonomy_cache_dir = "NULL",
+               use_taxon_registry = "FALSE")
+  sid <- .rs_kernel_site_id(root, env, over)
+  snip <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "lik_prior_to_post.R"), warn = FALSE), collapse = "\n")
+  run <- .rs_kernel_run(root, env, sid)
+  expect_no_error(suppressWarnings(suppressMessages(eval(parse(text = .rs_fill(snip, env, over)), envir = run))))
+  jr <- run$likelihoods_ready
+  expect_s3_class(jr, "data.frame")
+  expect_equal(jr$prior_mean[match(c("Embiotoca jacksoni", "Hypsurus caryi"), jr$taxon_name)], c(0.2, 0.1))
+  expect_true(all(jr$grid_id %in% sid))
+})
+
+test_that("lik_prior_to_post_multisite joins the kernel priors under the fit's own site id, or the site table's grid_id", {
+  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE), "TaxaAssign not available")
+  env <- .rs_gen_env(root)
+  over <- list(lat = "34.4", lon = "-119.8", main_habitat = '"Rocky"', backbone_id = "11", taxonomy_cache_dir = "NULL",
+               use_taxon_registry = "FALSE", site_habitat_lookup = "NULL")
+  sid <- .rs_kernel_site_id(root, env, over)
+  snip <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "lik_prior_to_post_multisite.R"), warn = FALSE), collapse = "\n")
+  code <- .rs_fill(snip, env, over)
+  # the site table as match_to_site_table leaves it: coordinates and a spatial group per observation
+  run <- .rs_kernel_run(root, env, sid)
+  run$site_table <- data.frame(observation_id = c("E1", "E2"), lat = c(34.4, 34.41), lon = -119.8, spatial_group_id = "g1")
+  expect_no_error(suppressWarnings(suppressMessages(eval(parse(text = code), envir = run))))
+  jr <- run$likelihoods_ready
+  expect_s3_class(jr, "data.frame")
+  expect_equal(jr$prior_mean[jr$taxon_name == "Embiotoca jacksoni"], c(0.2, 0.2))
+  # two sites, each with its own prior key in the site table: each observation takes its own site's prior
+  run <- .rs_kernel_run(root, env, sid)
+  p2 <- run$priors; p2$grid_id <- "site_B"; p2$alpha[1] <- 5; p2$beta[1] <- 95; p2$theta_mean <- p2$alpha / (p2$alpha + p2$beta)
+  run$priors <- rbind(run$priors, p2)
+  run$site_table <- data.frame(observation_id = c("E1", "E2"), lat = c(34.4, 36.1), lon = -119.8, spatial_group_id = c("g1", "g2"),
+                               grid_id = c(sid, "site_B"))
+  expect_no_error(suppressWarnings(suppressMessages(eval(parse(text = code), envir = run))))
+  jr <- run$likelihoods_ready
+  ej <- jr[jr$taxon_name == "Embiotoca jacksoni", ]
+  expect_equal(ej$prior_mean[match(c("E1", "E2"), ej$observation_id)], c(0.2, 0.05))
+})

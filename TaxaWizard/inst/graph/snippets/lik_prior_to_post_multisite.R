@@ -21,12 +21,22 @@ if (is.null(site_habitat_lookup)) {
     main_habitat      = {{main_habitat}}
   )
 }
+# Each site is named by its prior's own site id (the grid_id column of the
+# prior rows): the site table's grid_id column when it has one (one id per
+# site), otherwise the kernel fit's site id (kernel_priors_fit$params$site_id).
 site_spec <- merge(
-  {{site_table_var}}[, c("observation_id", "lat", "lon", "spatial_group_id")],
+  {{site_table_var}}[, intersect(c("observation_id", "spatial_group_id", "grid_id"), names({{site_table_var}}))],
   site_habitat_lookup,
   by = "spatial_group_id"
 )
 site_spec$spatial_group_id <- NULL
+if (!"grid_id" %in% names(site_spec)) {
+  if (!exists("kernel_priors_fit") || is.null(kernel_priors_fit$params$site_id)) {
+    stop("lik_prior_to_post_multisite: the site table has no grid_id column ",
+         "(each site's prior id) and no kernel_priors_fit is in the session.")
+  }
+  site_spec$grid_id <- kernel_priors_fit$params$site_id
+}
 
 # --- Join priors per site, then combine multi-site candidates ---
 # --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
