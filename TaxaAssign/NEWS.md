@@ -80,3 +80,7 @@
 * `posterior_consensus()` documents the `consensus_reason`
   `"no_usable_likelihood"`, which the workflow template writes on its no-call
   row for an observation with no usable likelihood.
+* `posterior_consensus()`'s `consensus_scope_n_named` is `NA` when the call
+  lands on a tied-anchor ring row, whose `unreferenced_scope` is its member
+  clades; it counts only the named rows in the call's own scope, never a ring
+  row.
