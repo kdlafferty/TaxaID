@@ -119,3 +119,36 @@ test_that("the registry path refuses unstamped tables, another registry's stamp,
   expect_error(.aupm(.rg_stamp(j, reg, "joined"), .rg_stamp(p, reg, "priors"), NULL, ref, registry = TaxaTools::build_taxon_registry(
     data.frame(verbatim_name = "Hypsurus", source_table = "joined"), run_id = "x", lookup = .rg_lookup)), "frozen")
 })
+
+test_that("withhold = \"genus\" by id: a pool species in a referenced TREE genus is withheld, whatever its binomial's text", {
+  .rg_skip()
+  # one more answer: "Embiotoca nova", a synonym whose accepted species Hypsurus nova sits in genus Hypsurus by the tree
+  .n3_answers <- function() {
+    t <- .rg_answers(); x <- t[t$q == "Embiotoca caryi", ]
+    x$q <- "Embiotoca nova"; x$matched <- "Hypsurus nova"
+    x$path <- sub("Hypsurus caryi$", "Hypsurus nova", x$path); x$ids <- sub("411$", "413", x$ids); x$cur <- "413"; x$rec <- "414"
+    rbind(t, x)
+  }
+  lk <- .rg_lookup; environment(lk) <- list2env(list(.rg_answers = .n3_answers), parent = environment(.rg_lookup))
+  a <- .n3_answers(); tabs <- c("joined", "priors", "reference")
+  reg <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
+    data.frame(verbatim_name = rep(a$q, length(tabs)), source_table = rep(tabs, each = nrow(a)), rank_given = rep(a$rank, length(tabs)),
+               stringsAsFactors = FALSE), run_id = "n3", lookup = lk))
+  # the read: Hypsurus caryi (referenced) and a family ring; the pool holds Hypsurus nova (filed as "Embiotoca nova") and
+  # Embiotoca jacksoni, neither referenced
+  j <- .rg_joined(data.frame(taxon_name = c("Hypsurus caryi", "Embiotocidae"), taxon_name_rank = c("species", "family"),
+                             hypothesis_type = c("specific_candidate", "unreferenced_genus"), stringsAsFactors = FALSE))
+  p <- .rg_priors(c("Embiotoca nova", "Embiotoca jacksoni"), c(0.04, 0.02))
+  by_name <- .aupm(j, p, .rg_tax_text(p$taxon_name, "Embiotocidae"), referenced_names = "Hypsurus caryi", withhold = "genus")
+  expect_equal(by_name$unreferenced_mass[2], 0.06)   # the defect: by its text "Embiotoca nova" is no Hypsurus, so the ring claims it
+  by_id <- .aupm(.rg_stamp(j, reg, "joined"), .rg_stamp(p, reg, "priors"), NULL, referenced_names = .rg_id(reg, "Hypsurus caryi"),
+                 withhold = "genus", registry = reg)
+  expect_equal(by_id$unreferenced_mass[2], 0.02)     # Embiotoca jacksoni only
+  wh <- attr(by_id, "unreferenced_withheld")
+  expect_identical(wh$taxon_id, .rg_id(reg, "Embiotoca nova"))
+  expect_identical(wh$taxon_name, "Hypsurus nova")
+  expect_identical(wh$reason, "genus_referenced_unmatched")
+  expect_identical(wh$scope, "Embiotocidae")
+  mem <- attr(by_id, "unreferenced_scope_members")
+  expect_identical(mem$taxon_id, .rg_id(reg, "Embiotoca jacksoni"))
+})
