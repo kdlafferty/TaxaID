@@ -26,7 +26,8 @@ built package.
 
 ## On deleting test files
 
-The nine packages carry 174 test files (roughly 8,000 tests), run with
+The nine packages carry 245 test files with about 4,800 tests
+(`test_that()` blocks) and about 12,800 `expect_*()` calls, run with
 `devtools::test()` and by `R CMD check`. They are how several real defects were
 caught during pre-publication review, and a standard R package ships its
 `tests/` directory so that `R CMD check` can exercise it on any machine. We
@@ -53,9 +54,10 @@ additions were subject to USGS code-review standards.
   review. Nine of the additions are the taxon registry (below); the removals
   were the larger part of the earlier work, several being functions no caller
   reached.
-- Test files: this response stated **174** when it was written. The tree now
-  holds **245**. That figure was accurate at submission and is left as
-  written above.
+- Test files: when this response was written it gave 174 test files and
+  roughly 8,000 tests; the tree it described held 173 test files with 3,386
+  tests and about 7,400 `expect_*()` calls. The figures in "On deleting test
+  files" are the current ones.
 
 ### Functions added
 

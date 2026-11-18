@@ -46,8 +46,8 @@ taxon's relative share of the detections", which the supplied copy predates).
 ### On deleting test files
 
 Not done, and the recommendation is to push back rather than comply. The nine
-packages carry 4,796 tests (`test_that()` blocks, in 245 files) with
-12,781 `expect_*()` calls; they are how several real defects were
+packages carry about 4,800 tests (`test_that()` blocks, in 245 files)
+with about 12,800 `expect_*()` calls; they are how several real defects were
 caught during September 2026 alone, and a standard R package ships its
 `tests/` directory. The request most likely meant scratch and development
 scripts rather than the test suite, and that reading should be confirmed with
