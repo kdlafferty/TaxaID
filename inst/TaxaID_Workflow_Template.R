@@ -85,6 +85,13 @@ REMOVE_INCONGRUENT_REFERENCES <- TRUE                                   # Drop r
 sequences <- SEQUENCES
 if (is.null(sequences)) stop("Set SEQUENCES in Section 0 before running.", call. = FALSE)
 
+# Objects that a later step looks up with exists() are cleared first, so a run uses only what it built itself,
+# never one left in the session by an earlier run (another site's kernel fit, another marker's unresolved set).
+# An object of yours under one of these names is removed too, and named in the message: rename it to keep it.
+.cleared <- intersect(c("kernel_priors_fit", "lik_unresolved", "taxon_registry"), ls())
+if (length(.cleared)) message("Cleared from the session before step 1: ", paste(.cleared, collapse = ", "))
+rm(list = .cleared)
+
 # =============================================================================
 # STEP 1 of 14 -- BLAST sequences against reference database
 #   edge: seq_to_match    sequences -> match_df
@@ -238,7 +245,7 @@ taxa_df <- TaxaTools::create_taxon_names(
 )
 message("Unique taxa: ", length(unique(taxa_df$taxon_name)))
 taxa_df
-taxa <- taxa
+taxa <- taxa_df
 
 # =============================================================================
 # STEP 3 of 14 -- Fetch reference sequences from NCBI
@@ -349,7 +356,7 @@ ref_matrix <- TaxaLikely::build_sequence_matrix(
 )
 message("Built reference matrix: ", nrow(ref_matrix), " pairwise comparisons")
 ref_matrix
-reference_matrix <- reference_matrix
+reference_matrix <- ref_matrix
 
 # =============================================================================
 # STEP 5 of 14 -- Train likelihood model
@@ -414,9 +421,15 @@ if (!"taxon_name" %in% names(match_df)) {
   message("Added taxon_name from ranks: ", paste(detected_ranks, collapse = ", "))
 }
 
+# Likelihoods are evaluated on the ranks the model was fitted on (model_params$Rank_System). Detecting them from the
+# match table's columns instead would add any coarser column it carries (kingdom, phylum), on which the model holds no
+# ring, and would name a reference identified only at such a rank there instead of returning its observation in
+# $unresolved. A model that records no rank system falls back to detection from the match table.
+lik_rank_system <- model_params$Rank_System
 lik_result <- TaxaLikely::evaluate_likelihoods(
   match_df     = match_df,
   model_params = model_params,
+  rank_system  = lik_rank_system,
   n_sims       = 200L
 )
 
@@ -430,7 +443,8 @@ lik_result <- TaxaLikely::evaluate_likelihoods(
 # likelihood or which hypothesis wins. They travel through the posterior and
 # consensus tables to review_assignments() (see consensus_to_reviewed).
 likelihoods <- TaxaLikely::filter_top_hypotheses(
-  lik_result$likelihoods
+  lik_result$likelihoods,
+  rank_system = lik_rank_system
 )
 message("Evaluated likelihoods for ", length(unique(likelihoods$observation_id)), " samples")
 # An observation whose matches all name a reference only above the rank system
@@ -723,12 +737,12 @@ print(kernel_priors_fit$budget)
 # stamped with this site's own id). Each singleton mirror is scaled by its
 # OWN group's n_eff (not the pooled total), so this single call correctly
 # handles every group at once -- no per-group loop needed.
+# No registry is passed here: the run's taxon registry is built AFTER this step
+# (tables_to_registry registers this step's finished prior table), so lineage
+# comes from std_occurrences.
 priors_undetected <- TaxaExpect::generate_undetected_diversity(
   model_obj = kernel_priors_fit,
-  taxonomy  = std_occurrences,
-  # the run's taxon registry, when one was built: each singleton mirror is placed
-  # on the GBIF tree by its source species' id, not by the name's own text
-  registry  = if (exists("taxon_registry")) taxon_registry else NULL
+  taxonomy  = std_occurrences
 )
 
 priors <- dplyr::bind_rows(kernel_priors_fit$priors, priors_undetected) |>
@@ -759,8 +773,7 @@ if (isTRUE(INCLUDE_DOMESTIC_PRIORS)) {
     model_obj = kernel_priors_pooled,
     lat       = SITE_LAT,
     lng       = SITE_LON,
-    grid_id   = kernel_priors_fit$params$site_id,
-    registry  = if (exists("taxon_registry")) taxon_registry else NULL
+    grid_id   = kernel_priors_fit$params$site_id
   )
   priors <- dplyr::bind_rows(priors, domestic_priors)
   message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
@@ -1025,6 +1038,18 @@ posteriors <- posteriors
 # Edge: posteriors -> consensus
 # Source: TaxaAssign/inst/TaxaAssign_bayesian_workflow.R
 
+# Checked first, before any consensus is computed: the end of this step gives every observation in
+# lik_unresolved (from the likelihood step) a no-call row, so a session without it stops here rather than after
+# both consensus rounds.
+if (!exists("lik_unresolved") || !is.data.frame(lik_unresolved)) {
+  stop(errorCondition(paste0(
+    "post_to_consensus: no lik_unresolved data frame in the session. The likelihood step (model_match_to_lik) ",
+    "keeps evaluate_likelihoods()'s $unresolved as lik_unresolved so that every observation gets a consensus row; ",
+    "without it an observation with no usable likelihood would leave the consensus table unreported. Run that ",
+    "step, or after your own evaluate_likelihoods() call set lik_unresolved <- <its result>$unresolved."),
+    class = "taxaid_lik_unresolved_missing", call = NULL))
+}
+
 # Optional: group-level occurrence priors. consensus_prior
 # becomes a real group-level SUM over every locally modelled member sharing
 # a rank, instead of a candidate-scoped max -- a materially stronger
@@ -1161,14 +1186,6 @@ consensus_final <- TaxaAssign::posterior_consensus(
 # references share (e.g. "Eukaryota"), which shows how coarsely the references
 # were named for this marker. coarsest_reference_lineage is NA on every other row.
 consensus_final$coarsest_reference_lineage <- rep(NA_character_, nrow(consensus_final))
-if (!exists("lik_unresolved") || !is.data.frame(lik_unresolved)) {
-  stop(errorCondition(paste0(
-    "post_to_consensus: no lik_unresolved data frame in the session. The likelihood step (model_match_to_lik) ",
-    "keeps evaluate_likelihoods()'s $unresolved as lik_unresolved so that every observation gets a consensus row; ",
-    "without it an observation with no usable likelihood would leave the consensus table unreported. Run that ",
-    "step, or after your own evaluate_likelihoods() call set lik_unresolved <- <its result>$unresolved."),
-    class = "taxaid_lik_unresolved_missing", call = NULL))
-}
 if (nrow(lik_unresolved) > 0L) {
   .nu_lin_cols <- intersect(TaxaTools::standard_ranks, names(lik_unresolved))
   .nu_sid <- as.character(lik_unresolved$observation_id)
@@ -1184,7 +1201,10 @@ if (nrow(lik_unresolved) > 0L) {
     }
     if (length(.path) > 0L) paste(.path, collapse = "|") else NA_character_
   }, character(1), USE.NAMES = FALSE)
-  .nu_rows <- data.frame(observation_id = lik_unresolved$observation_id[match(.nu_ids, .nu_sid)],
+  # the ids take the consensus table's own type: bind_rows() will not join character ids with integer ones
+  if (is.factor(consensus_final$observation_id)) consensus_final$observation_id <- as.character(consensus_final$observation_id)
+  .nu_oid <- if (is.integer(consensus_final$observation_id)) as.integer(.nu_ids) else if (is.numeric(consensus_final$observation_id)) as.numeric(.nu_ids) else .nu_ids
+  .nu_rows <- data.frame(observation_id = .nu_oid,
                          consensus_taxon = rep(NA_character_, length(.nu_ids)),
                          consensus_rank = rep(NA_character_, length(.nu_ids)),
                          consensus_reason = rep("no_usable_likelihood", length(.nu_ids)),
@@ -1200,7 +1220,7 @@ if (nrow(lik_unresolved) > 0L) {
 message("Consensus: ", sum(consensus_final$is_resolved), " of ",
         nrow(consensus_final), " samples resolved")
 consensus_final
-consensus <- consensus
+consensus <- consensus_final
 
 # =============================================================================
 # STEP 13 of 14 -- Infer ecological context via LLM
