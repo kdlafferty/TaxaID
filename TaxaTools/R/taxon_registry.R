@@ -1134,19 +1134,36 @@ taxon_in <- function(ids, set) {
 #' stamp of this registry. Any failure is an error of class
 #' \code{taxon_registry_invalid}.
 #'
-#' \code{resolve} chooses how a name finds its id; each caller keeps the rule
-#' it documents:
+#' \code{resolve} names the rule a caller uses to turn a name into an id. The
+#' three rules are the ones the ecosystem's \code{registry =} arguments use;
+#' each is fixed by what the caller's names are, so it is a property of the
+#' caller, not a setting to vary:
 #' \describe{
-#'   \item{\code{"names"}}{The registry's name table: a name registered to
-#'     exactly one id takes it; a name held under two or more ids, or not
-#'     held, is \code{NA}.}
+#'   \item{\code{"names"} (default)}{The registry's name table only: a name
+#'     registered to exactly one id takes it; a name held under two or more
+#'     ids, or not registered, is \code{NA}. Used where the names come from a
+#'     table whose names were registered before the freeze, so a name outside
+#'     the table is not one of the run's names:
+#'     TaxaExpect \code{apply_undetected_evidence()},
+#'     \code{generate_domestic_food_priors()} and
+#'     \code{generate_undetected_diversity()} (singleton mirrors' source
+#'     species); TaxaFlag \code{compute_local_occurrence_distance()};
+#'     TaxaLikely \code{restore_suppressed_candidates()}
+#'     (\code{candidate_species_filter}); and TaxaAssign \code{join_priors()}
+#'     (a singleton mirror's source species not itself a prior row).}
 #'   \item{\code{"names_then_accepted"}}{The name table, else the registry's
 #'     accepted names; where two or more ids remain, \code{ranks} (one per
 #'     name, the rank of the taxon in the registry) narrows them; one id, or
-#'     \code{NA}.}
+#'     \code{NA}. Used by TaxaAssign \code{posterior_consensus()} for
+#'     \code{group_priors} and \code{species_reference}: those tables are
+#'     built from the run's taxa and may carry the registry's accepted names
+#'     as well as registered ones, and a group name can be held at two ranks.}
 #'   \item{\code{"names_or_accepted"}}{The name table and the accepted names
 #'     together: a name with exactly one id across both takes it, else
-#'     \code{NA}.}
+#'     \code{NA}. Used by TaxaAssign \code{join_priors()} and
+#'     \code{add_unreferenced_prior_mass()} for a tied-anchor ring's member
+#'     clades, which are lineage values (family, order) the
+#'     registry holds as accepted ancestors rather than as registered names.}
 #' }
 #' No rule guesses: a name with no single id is \code{NA} and is listed in
 #' the result's \code{"unresolved"} attribute, and the caller decides whether
@@ -1162,8 +1179,8 @@ taxon_in <- function(ids, set) {
 #'   \code{resolve = "names_then_accepted"}.
 #' @param tables A named list of data frames that must carry this registry's
 #'   stamp (\code{\link{attach_taxon_ids}}); the names are used in messages.
-#' @param caller \code{NULL} or the calling function's name, prefixed to
-#'   messages.
+#' @param caller \code{NULL} or the calling function's name. Used only as a
+#'   prefix to error messages; it changes no check and no result.
 #' @return Character vector of taxon identifiers, one per \code{names}
 #'   (\code{NA} where unresolved), with attribute \code{"unresolved"}: the
 #'   distinct names with no single id. With \code{names = NULL}, an empty
