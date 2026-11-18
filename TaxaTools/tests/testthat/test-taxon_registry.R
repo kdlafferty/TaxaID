@@ -1267,3 +1267,16 @@ test_that("GUARD: only ONE of the ids in use, another kingdom, or GENUS rank: ne
   chk3 <- check_taxon_registry(reg3, verbose = FALSE)
   expect_true(any(chk3$kind == "accepted_name_multiple_ids" & grepl("^genus", chk3$detail)))
 })
+
+test_that("pool_keys under a non-GBIF key authority stop: a GBIF species key is not an id of that authority", {
+  .mock_gnv_reg()
+  pk <- data.frame(verbatim_name = "Hypsurus caryi", species_key = 9999001L)
+  for (kb in c(9L, 1L)) {
+    expect_error(build_taxon_registry(.names("Hypsurus caryi", "pool"), run_id = "g2", key_backbone_id = kb, lookup = .real_lookup,
+                                      pool_keys = pk), "pool_keys.*key_backbone_id")
+  }
+  # GBIF, and no pool keys under any authority: unchanged
+  expect_s3_class(build_taxon_registry(.names("Hypsurus caryi", "pool"), run_id = "g2", lookup = .real_lookup, pool_keys = pk), "taxon_registry")
+  expect_s3_class(build_taxon_registry(.names("Hypsurus caryi", "pool"), run_id = "g2", key_backbone_id = 9L, lookup = .real_lookup),
+                  "taxon_registry")
+})

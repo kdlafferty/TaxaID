@@ -341,7 +341,9 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #'   \code{11L}.
 #' @param pool_keys \code{NULL} or a data frame with \code{verbatim_name} and
 #'   \code{species_key}: the occurrence pool's accepted key per name, used as the
-#'   identifier ahead of any lookup. Optional \code{kingdom} ... \code{genus}
+#'   identifier ahead of any lookup. The keys are GBIF Backbone keys, so
+#'   \code{pool_keys} is accepted only with \code{key_backbone_id = 11}; under
+#'   another key authority it is an error. Optional \code{kingdom} ... \code{genus}
 #'   columns give each key's lineage for the tie-break. An optional
 #'   \code{genus_key} column gives each key's own genus key, which checks where
 #'   a key no lookup described is placed (see Value).
@@ -394,6 +396,10 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
     stop("`run_id` must be a non-empty character scalar.")
   }
   key_backbone_id <- as.integer(key_backbone_id)
+  if (!is.null(pool_keys) && !identical(key_backbone_id, 11L)) {
+    stop(sprintf(paste0("`pool_keys` holds GBIF Backbone keys, and `key_backbone_id` is %d: they would become ids in ",
+                        "another authority's key space. Use pool_keys only with key_backbone_id = 11."), key_backbone_id))
+  }
   prefix <- .registry_prefix(key_backbone_id)
   if (is.null(lookup)) lookup <- .registry_default_lookup(key_backbone_id, cache_dir)
   if (!is.function(lookup)) stop("`lookup` must be NULL or a function(names, rank, context).")
