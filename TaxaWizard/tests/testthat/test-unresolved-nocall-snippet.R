@@ -4,8 +4,16 @@
 # the consensus table without a row. Run as the template runs them (placeholders filled), with the TaxaLikely and
 # TaxaAssign steps mocked.
 
+# The directory that holds graph/snippets and tools/: TaxaWizard/inst in a source checkout, or the installed package
+# (R CMD check, where inst/ is flattened into the package directory). "" when neither is found.
+.nu_inst <- function() {
+  root <- TaxaWizard:::.pack_find_repo_root()
+  d <- if (!is.null(root)) file.path(root, "TaxaWizard", "inst") else ""
+  if (!dir.exists(file.path(d, "graph", "snippets"))) d <- dirname(dirname(system.file("graph", "snippets", package = "TaxaWizard")))
+  if (dir.exists(file.path(d, "graph", "snippets"))) d else ""
+}
 .nu_snippet <- function(root, name, over) {
-  txt <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", paste0(name, ".R")), warn = FALSE),
+  txt <- paste(readLines(file.path(root, "graph", "snippets", paste0(name, ".R")), warn = FALSE),
                collapse = "\n")
   for (k in names(over)) txt <- gsub(paste0("{{", k, "}}"), over[[k]], txt, fixed = TRUE)
   left <- regmatches(txt, gregexpr("\\{\\{[a-zA-Z_0-9]+\\}\\}", txt))[[1]]
@@ -13,8 +21,8 @@
   txt
 }
 .nu_skip <- function() {
-  root <- TaxaWizard:::.pack_find_repo_root()
-  testthat::skip_if(is.null(root), "repo root not found")
+  root <- .nu_inst()
+  testthat::skip_if(!nzchar(root), "TaxaWizard snippets not found")
   for (p in c("TaxaTools", "TaxaLikely", "TaxaAssign")) testthat::skip_if_not_installed(p)
   root
 }

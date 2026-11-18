@@ -531,3 +531,21 @@ test_that("no package defines one top-level name in two R/ files", {
     )
   }
 })
+
+test_that(".pack_find_repo_root() does not take a directory holding an INSTALLED TaxaWizard for the repository", {
+  # Under R CMD check the walk up from <pkg>.Rcheck/tests/testthat reaches <pkg>.Rcheck/, which holds the installed
+  # package (TaxaWizard/DESCRIPTION, no inst/). Taking it for the repository sent every caller to paths that do not
+  # exist there.
+  d <- tempfile("rcheck_like_"); dir.create(file.path(d, "TaxaWizard"), recursive = TRUE)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines("Package: TaxaWizard", file.path(d, "TaxaWizard", "DESCRIPTION"))
+  dir.create(file.path(d, "tests", "testthat"), recursive = TRUE)
+  old_root <- Sys.getenv("TAXAID_ROOT", unset = NA)
+  Sys.unsetenv("TAXAID_ROOT")
+  on.exit(if (is.na(old_root)) Sys.unsetenv("TAXAID_ROOT") else Sys.setenv(TAXAID_ROOT = old_root), add = TRUE)
+  old_wd <- setwd(file.path(d, "tests", "testthat")); on.exit(setwd(old_wd), add = TRUE)
+  expect_null(TaxaWizard:::.pack_find_repo_root())
+  # the same directory with TaxaWizard's source layout IS a repository root
+  dir.create(file.path(d, "TaxaWizard", "inst", "graph", "snippets"), recursive = TRUE)
+  expect_identical(normalizePath(TaxaWizard:::.pack_find_repo_root()), normalizePath(d))
+})

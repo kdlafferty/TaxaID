@@ -2,8 +2,16 @@
 # CONFIG/DATAFLOW), with GBIF answers mocked. The registry must hold every name the posterior step stamps: the FINAL
 # prior table's names, which convert_taxonomy_backbone() may have renamed and domestic/food rows may have added.
 
+# The directory that holds graph/snippets and tools/: TaxaWizard/inst in a source checkout, or the installed package
+# (R CMD check, where inst/ is flattened into the package directory). "" when neither is found.
+.rs_inst <- function() {
+  root <- TaxaWizard:::.pack_find_repo_root()
+  d <- if (!is.null(root)) file.path(root, "TaxaWizard", "inst") else ""
+  if (!dir.exists(file.path(d, "graph", "snippets"))) d <- dirname(dirname(system.file("graph", "snippets", package = "TaxaWizard")))
+  if (dir.exists(file.path(d, "graph", "snippets"))) d else ""
+}
 .rs_gen_env <- function(root) {
-  gen <- file.path(root, "TaxaWizard", "inst", "tools", "build_workflow_template.R")
+  gen <- file.path(root, "tools", "build_workflow_template.R")
   env <- new.env()
   for (e in as.list(parse(gen, keep.source = FALSE))) {
     if (is.call(e) && identical(e[[1]], as.name("<-")) && is.name(e[[2]]) &&
@@ -34,18 +42,18 @@
 }
 
 test_that("the canonical path builds the registry AFTER the priors", {
-  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  root <- .rs_inst(); skip_if(!nzchar(root), "TaxaWizard snippets not found")
   cp <- .rs_gen_env(root)$CANONICAL_PATH
   expect_gt(match("tables_to_registry", cp), match("dist_to_priors_by_group", cp))
   expect_lt(match("tables_to_registry", cp), match("lik_prior_to_post", cp))
 })
 
 test_that("tables_to_registry registers the final prior table's names, so the posterior step can stamp it", {
-  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  root <- .rs_inst(); skip_if(!nzchar(root), "TaxaWizard snippets not found")
   skip_if_not(requireNamespace("TaxaTools", quietly = TRUE) && "attach_taxon_ids" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the registry")
   skip_if_not(requireNamespace("TaxaFetch", quietly = TRUE) && "lookup_gbif_taxa" %in% getNamespaceExports("TaxaFetch"), "TaxaFetch without lookup_gbif_taxa")
   env <- .rs_gen_env(root)
-  snip <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "tables_to_registry.R"), warn = FALSE), collapse = "\n")
+  snip <- paste(readLines(file.path(root, "graph", "snippets", "tables_to_registry.R"), warn = FALSE), collapse = "\n")
   code <- .rs_fill(snip, env, list(taxonomy_cache_dir = "NULL", use_taxon_registry = "TRUE"))
   run <- new.env(parent = globalenv())
   run$match_df <- data.frame(taxon_name = c("Embiotoca caryi", "Embiotoca jacksoni"), family = "Embiotocidae", genus = "Embiotoca")
@@ -89,11 +97,11 @@ test_that("tables_to_registry registers the final prior table's names, so the po
 }
 
 test_that("tables_to_registry gives names their own lineage as context: a cross-phylum homonym asked at another rank is refused", {
-  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  root <- .rs_inst(); skip_if(!nzchar(root), "TaxaWizard snippets not found")
   skip_if_not(requireNamespace("TaxaTools", quietly = TRUE) && "attach_taxon_ids" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the registry")
   skip_if_not(requireNamespace("TaxaFetch", quietly = TRUE) && "lookup_gbif_taxa" %in% getNamespaceExports("TaxaFetch"), "TaxaFetch without lookup_gbif_taxa")
   env <- .rs_gen_env(root)
-  snip <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "tables_to_registry.R"), warn = FALSE), collapse = "\n")
+  snip <- paste(readLines(file.path(root, "graph", "snippets", "tables_to_registry.R"), warn = FALSE), collapse = "\n")
   code <- .rs_fill(snip, env, list(taxonomy_cache_dir = "NULL", use_taxon_registry = "TRUE"))
   run <- new.env(parent = globalenv())
   run$match_df <- data.frame(taxon_name = "Polyarthra vulgaris", kingdom = "Animalia", phylum = "Rotifera", family = "Synchaetidae",
@@ -113,12 +121,12 @@ test_that("tables_to_registry gives names their own lineage as context: a cross-
 })
 
 test_that("the posterior snippets' own registry (built when none exists) gives names the same lineage context", {
-  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  root <- .rs_inst(); skip_if(!nzchar(root), "TaxaWizard snippets not found")
   skip_if_not(requireNamespace("TaxaTools", quietly = TRUE) && "attach_taxon_ids" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the registry")
   skip_if_not(requireNamespace("TaxaFetch", quietly = TRUE) && "lookup_gbif_taxa" %in% getNamespaceExports("TaxaFetch"), "TaxaFetch without lookup_gbif_taxa")
   env <- .rs_gen_env(root)
   for (f in c("lik_prior_to_post.R", "lik_prior_to_post_multisite.R")) {
-    src <- readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", f), warn = FALSE)
+    src <- readLines(file.path(root, "graph", "snippets", f), warn = FALSE)
     i <- grep('^if \\(!exists\\("taxon_registry"\\)\\) taxon_registry <- NULL', src); j <- grep("^if \\(isTRUE\\(\\{\\{use_taxon_registry\\}\\}\\)\\) \\{", src)
     expect_length(i, 1L); expect_length(j, 1L)
     code <- .rs_fill(paste(src[i:(j - 1L)], collapse = "\n"), env, list(taxonomy_cache_dir = "NULL", use_taxon_registry = "TRUE"))
@@ -156,20 +164,20 @@ test_that("the posterior snippets' own registry (built when none exists) gives n
 }
 .rs_kernel_site_id <- function(root, env, over) {
   # the site id exactly as the canonical prior step stamps it
-  src <- readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "dist_to_priors_by_group.R"), warn = FALSE)
+  src <- readLines(file.path(root, "graph", "snippets", "dist_to_priors_by_group.R"), warn = FALSE)
   ln <- grep("^\\s*site_id\\s*=\\s*sprintf\\(", src, value = TRUE)
   expect_length(ln, 1L)
   eval(parse(text = .rs_fill(sub(",\\s*$", "", sub("^\\s*site_id\\s*=\\s*", "", ln)), env, over)))
 }
 
 test_that("lik_prior_to_post joins the kernel priors under the fit's own site id (single site)", {
-  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  root <- .rs_inst(); skip_if(!nzchar(root), "TaxaWizard snippets not found")
   skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE), "TaxaAssign not available")
   env <- .rs_gen_env(root)
   over <- list(lat = "34.4", lon = "-119.8", main_habitat = '"Rocky"', backbone_id = "11", taxonomy_cache_dir = "NULL",
                use_taxon_registry = "FALSE")
   sid <- .rs_kernel_site_id(root, env, over)
-  snip <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "lik_prior_to_post.R"), warn = FALSE), collapse = "\n")
+  snip <- paste(readLines(file.path(root, "graph", "snippets", "lik_prior_to_post.R"), warn = FALSE), collapse = "\n")
   run <- .rs_kernel_run(root, env, sid)
   expect_no_error(suppressWarnings(suppressMessages(eval(parse(text = .rs_fill(snip, env, over)), envir = run))))
   jr <- run$likelihoods_ready
@@ -179,13 +187,13 @@ test_that("lik_prior_to_post joins the kernel priors under the fit's own site id
 })
 
 test_that("lik_prior_to_post_multisite joins the kernel priors under the fit's own site id, or the site table's grid_id", {
-  root <- TaxaWizard:::.pack_find_repo_root(); skip_if(is.null(root), "repo root not found")
+  root <- .rs_inst(); skip_if(!nzchar(root), "TaxaWizard snippets not found")
   skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE), "TaxaAssign not available")
   env <- .rs_gen_env(root)
   over <- list(lat = "34.4", lon = "-119.8", main_habitat = '"Rocky"', backbone_id = "11", taxonomy_cache_dir = "NULL",
                use_taxon_registry = "FALSE", site_habitat_lookup = "NULL")
   sid <- .rs_kernel_site_id(root, env, over)
-  snip <- paste(readLines(file.path(root, "TaxaWizard", "inst", "graph", "snippets", "lik_prior_to_post_multisite.R"), warn = FALSE), collapse = "\n")
+  snip <- paste(readLines(file.path(root, "graph", "snippets", "lik_prior_to_post_multisite.R"), warn = FALSE), collapse = "\n")
   code <- .rs_fill(snip, env, over)
   # the site table as match_to_site_table leaves it: coordinates and a spatial group per observation
   run <- .rs_kernel_run(root, env, sid)

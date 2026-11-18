@@ -49,7 +49,7 @@
   paste(readLines(template_path, warn = FALSE), collapse = "\n")
 }
 
-#' Locate the TaxaID repo root (the directory containing TaxaWizard/DESCRIPTION)
+#' Locate the TaxaID repo root (the directory containing the TaxaWizard source tree)
 #'
 #' Used for two things that live OUTSIDE this installed package: (1) the
 #' sibling packages' README.md files, to pull each CONTEXT_<Package>.md's
@@ -58,10 +58,17 @@
 #' env var, then by walking up from \code{getwd()}. Returns \code{NULL} (never
 #' errors) when not found -- expected whenever TaxaWizard is used from an
 #' ordinary install with no access to the source repo, e.g. under
-#' \code{R CMD check}.
+#' \code{R CMD check}. The marker is TaxaWizard's SOURCE tree, its
+#' \code{DESCRIPTION} together with \code{inst/graph/snippets}: a directory
+#' holding an installed TaxaWizard also has \code{TaxaWizard/DESCRIPTION}
+#' (\code{TaxaWizard.Rcheck/} under \code{R CMD check} is one), but an
+#' installed package has no \code{inst/}.
 #' @noRd
 .pack_find_repo_root <- function() {
-  has_marker <- function(dir) file.exists(file.path(dir, "TaxaWizard", "DESCRIPTION"))
+  has_marker <- function(dir) {
+    file.exists(file.path(dir, "TaxaWizard", "DESCRIPTION")) &&
+      dir.exists(file.path(dir, "TaxaWizard", "inst", "graph", "snippets"))
+  }
 
   env_root <- Sys.getenv("TAXAID_ROOT", unset = "")
   if (nzchar(env_root) && has_marker(env_root)) {

@@ -221,7 +221,9 @@ jobs:
           # vector whenever a new generated artefact gets a guard.
           files <- c(
             "TaxaWizard/tests/testthat/test-pack.R",             # llm_prompts/ + README inventory
-            "TaxaWizard/tests/testthat/test-workflow-template.R" # inst/TaxaID_Workflow_Template.R
+            "TaxaWizard/tests/testthat/test-workflow-template.R", # inst/TaxaID_Workflow_Template.R
+            "TaxaWizard/tests/testthat/test-registry-snippet.R",  # snippets run as the template runs them
+            "TaxaWizard/tests/testthat/test-unresolved-nocall-snippet.R" # the no-call consensus rows
           )
           bad <- character(0)
           for (f in files) {
