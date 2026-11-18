@@ -143,6 +143,17 @@ for (i in seq_along(CANONICAL_PATH)) {
     txt <- gsub(ph, repl, txt, fixed = TRUE)
   }
 
+  # The step's output node is bound to the object the snippet ends with (its last line names it). Binding the node to
+  # itself bound nothing whenever a snippet names its result otherwise: match_to_taxa ends with taxa_df,
+  # refs_to_matrix with ref_matrix, and post_to_consensus with consensus_final, so `taxa` and `reference_matrix` were
+  # never set and the review step read the round-1 consensus.
+  code_lines <- trimws(grep("^\\s*(#|$)", strsplit(txt, "\n", fixed = TRUE)[[1]], value = TRUE, invert = TRUE))
+  out_name <- if (length(code_lines)) code_lines[length(code_lines)] else ""
+  if (!grepl("^[A-Za-z.][A-Za-z0-9._]*$", out_name)) {
+    stop("snippet for edge ", eid, " must end with the name of the object it produces; it ends with: ", out_name,
+         call. = FALSE)
+  }
+
   body_lines <- c(
     body_lines, "",
     "# =============================================================================",
@@ -152,7 +163,7 @@ for (i in seq_along(CANONICAL_PATH)) {
     if (!is.null(edge$duration)) sprintf("#   typical cost: %s", edge$duration) else NULL,
     "# =============================================================================",
     strsplit(txt, "\n", fixed = TRUE)[[1]],
-    sprintf("%s <- %s", unlist(edge$to)[1], unlist(edge$to)[1])
+    sprintf("%s <- %s", unlist(edge$to)[1], out_name)
   )
 }
 

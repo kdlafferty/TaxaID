@@ -365,3 +365,35 @@ test_that("the template refuses a GBIF key that did not resolve exactly, before 
   expect_true(is.finite(guard_ln))
   expect_lt(guard_ln, call_ln)
 })
+
+test_that("every step binds its output node to the object its snippet produces", {
+  # A step's output node (taxa, reference_matrix, consensus, ...) must be bound to the object its snippet ends with.
+  # Binding a node to itself left `taxa` and `reference_matrix` unset when a snippet ended with taxa_df or ref_matrix,
+  # and gave the review step the round-1 `consensus` when post_to_consensus ended with consensus_final.
+  root <- TaxaWizard:::.pack_find_repo_root()
+  skip_if(is.null(root), "repo root not found")
+  gen <- file.path(root, "TaxaWizard", "inst", "tools", "build_workflow_template.R")
+  skip_if(!file.exists(gen), "generator not found")
+  out <- tempfile("tmpl_bind_", fileext = ".R")
+  on.exit(unlink(out), add = TRUE)
+  old_env <- Sys.getenv(c("TAXAID_ROOT", "TAXAID_TEMPLATE_OUT"), unset = NA)
+  Sys.setenv(TAXAID_ROOT = root, TAXAID_TEMPLATE_OUT = out)
+  on.exit({
+    for (nm in names(old_env)) {
+      if (is.na(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, stats::setNames(list(old_env[[nm]]), nm))
+    }
+  }, add = TRUE)
+  res <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), shQuote(gen), stdout = TRUE, stderr = TRUE))
+  if (!file.exists(out)) fail(paste("generator could not run:", paste(utils::tail(res, 3), collapse = " | ")))
+  tl <- readLines(out, warn = FALSE)
+  starts <- grep("^# STEP [0-9]+ of [0-9]+ -- ", tl)
+  expect_gt(length(starts), 0L)
+  ends <- c(starts[-1] - 1L, length(tl))
+  for (k in seq_along(starts)) {
+    blk <- tl[starts[k]:ends[k]]
+    to <- trimws(strsplit(sub(".*->", "", grep("^#   edge: ", blk, value = TRUE)[1]), "+", fixed = TRUE)[[1]][1])
+    code <- trimws(grep("^\\s*(#|$)", blk, value = TRUE, invert = TRUE))
+    j <- max(grep(sprintf("^%s <- [A-Za-z.][A-Za-z0-9._]*$", to), code))
+    expect_identical(code[j], paste(to, "<-", code[j - 1L]), info = blk[1])
+  }
+})
