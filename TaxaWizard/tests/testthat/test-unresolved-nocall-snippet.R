@@ -28,7 +28,7 @@
              score_original = c(91, 88, 85, 80), stringsAsFactors = FALSE)
 }
 .nu_consensus_mock <- function(posterior_df, ...) {
-  out <- data.frame(observation_id = unique(as.character(posterior_df$observation_id)),
+  out <- data.frame(observation_id = unique(posterior_df$observation_id),   # the id type the posteriors carry
                     consensus_taxon = "Embiotoca jacksoni", consensus_rank = "species",
                     consensus_reason = "credible_node", is_resolved = TRUE, stringsAsFactors = FALSE)
   attr(out, "consensus_settings") <- list(consensus_method = "credible_node")
@@ -135,4 +135,45 @@ test_that("post_to_consensus stops, with a named condition, when the likelihood 
   suppressMessages(eval(parse(text = code), envir = run))
   expect_identical(nrow(run$consensus_final), 1L)
   expect_true(is.na(run$consensus_final$coarsest_reference_lineage))
+})
+
+.nu_post_code <- function(root) .nu_snippet(root, "post_to_consensus", list(
+  input_var = "posteriors", taxaexpect_priors_var = "priors", taxonomy_map_var = "taxonomy_map",
+  cumulative_threshold = "0.95", rank_system = 'c("kingdom", "phylum", "class", "order", "family", "genus", "species")',
+  taxonomy_cache_dir = "NULL", include_group_priors = "FALSE", include_downranking = "FALSE"))
+
+test_that("no-call rows take the consensus table's id type: integer ids in match_df, character or integer consensus ids", {
+  root <- .nu_skip(); code <- .nu_post_code(root)
+  testthat::local_mocked_bindings(
+    posterior_consensus = .nu_consensus_mock,
+    update_prior_from_consensus = function(posterior_df, ...) posterior_df,
+    add_slash_taxon = function(consensus_df, ...) consensus_df,
+    .package = "TaxaAssign")
+  unres <- .nu_unresolved(); unres$observation_id <- rep(c(2L, 3L), each = 2)
+  for (cid in list("1", 1L)) {                       # consensus ids character, then integer
+    run <- new.env(parent = globalenv())
+    run$posteriors <- data.frame(observation_id = cid, taxon_name = "Embiotoca jacksoni", posterior_point_est = 1)
+    run$priors <- data.frame(taxon_name = "Embiotoca jacksoni"); run$taxonomy_map <- NULL
+    run$lik_unresolved <- unres
+    suppressMessages(eval(parse(text = code), envir = run))
+    cf <- run$consensus_final
+    expect_identical(class(cf$observation_id), class(cid))
+    expect_setequal(as.character(cf$observation_id), c("1", "2", "3"))
+    expect_identical(cf$coarsest_reference_lineage[as.character(cf$observation_id) == "2"], "Eukaryota")
+  }
+})
+
+test_that("a session with no lik_unresolved stops BEFORE any consensus is computed", {
+  root <- .nu_skip(); code <- .nu_post_code(root)
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    posterior_consensus = function(...) { calls <<- calls + 1L; .nu_consensus_mock(...) },
+    update_prior_from_consensus = function(posterior_df, ...) posterior_df,
+    add_slash_taxon = function(consensus_df, ...) consensus_df,
+    .package = "TaxaAssign")
+  run <- new.env(parent = globalenv())
+  run$posteriors <- data.frame(observation_id = "esv_ok", taxon_name = "Embiotoca jacksoni", posterior_point_est = 1)
+  run$priors <- data.frame(taxon_name = "Embiotoca jacksoni"); run$taxonomy_map <- NULL
+  expect_error(suppressMessages(eval(parse(text = code), envir = run)), class = "taxaid_lik_unresolved_missing")
+  expect_identical(calls, 0L)
 })

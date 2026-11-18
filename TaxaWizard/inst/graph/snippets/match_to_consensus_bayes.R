@@ -177,7 +177,10 @@ if (nrow(lik_unresolved) > 0L) {
     }
     if (length(.path) > 0L) paste(.path, collapse = "|") else NA_character_
   }, character(1), USE.NAMES = FALSE)
-  .nu_rows <- data.frame(observation_id = lik_unresolved$observation_id[match(.nu_ids, .nu_sid)],
+  # the ids take the consensus table's own type: bind_rows() will not join character ids with integer ones
+  if (is.factor(consensus$observation_id)) consensus$observation_id <- as.character(consensus$observation_id)
+  .nu_oid <- if (is.integer(consensus$observation_id)) as.integer(.nu_ids) else if (is.numeric(consensus$observation_id)) as.numeric(.nu_ids) else .nu_ids
+  .nu_rows <- data.frame(observation_id = .nu_oid,
                          consensus_taxon = rep(NA_character_, length(.nu_ids)),
                          consensus_rank = rep(NA_character_, length(.nu_ids)),
                          consensus_reason = rep("no_usable_likelihood", length(.nu_ids)),
