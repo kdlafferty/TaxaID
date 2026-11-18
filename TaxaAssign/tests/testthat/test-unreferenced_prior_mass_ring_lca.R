@@ -111,3 +111,16 @@ test_that("registry path: member clades are mapped to ids; a clade with no id is
   w <- attr(by2, "ring_member_clades_withheld")
   expect_identical(w$member_clade, "Notaclade"); expect_identical(w$reason, "member_clade_no_registry_id")
 })
+
+test_that("a tied-anchor ring whose own rank is not a column of taxonomy keeps the floor, listed, not an error", {
+  # the order ring (named at the class LCA) with no `order` column in taxonomy: its members cannot be read at its rank
+  tax <- .lca_tax(); tax$order <- NULL
+  expect_message(out <- add_unreferenced_prior_mass(.lca_joined(), .lca_priors(), tax, referenced_names = "Lottia gigantea"),
+                 "keep the floor prior")
+  r <- out[out$hypothesis_type == "unreferenced_family", ]
+  expect_equal(r$prior_mean, 3e-6)                               # the floor, unchanged
+  w <- attr(out, "ring_member_clades_withheld")
+  expect_setequal(w$member_clade, c("Littorinimorpha", "Trochida"))
+  expect_true(all(w$reason == "scope_rank_not_in_taxonomy"))
+  expect_true(all(w$scope_rank == "order"))
+})

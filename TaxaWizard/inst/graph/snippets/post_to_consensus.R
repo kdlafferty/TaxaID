@@ -1,6 +1,18 @@
 # Edge: posteriors -> consensus
 # Source: TaxaAssign/inst/TaxaAssign_bayesian_workflow.R
 
+# Checked first, before any consensus is computed: the end of this step gives every observation in
+# lik_unresolved (from the likelihood step) a no-call row, so a session without it stops here rather than after
+# both consensus rounds.
+if (!exists("lik_unresolved") || !is.data.frame(lik_unresolved)) {
+  stop(errorCondition(paste0(
+    "post_to_consensus: no lik_unresolved data frame in the session. The likelihood step (model_match_to_lik) ",
+    "keeps evaluate_likelihoods()'s $unresolved as lik_unresolved so that every observation gets a consensus row; ",
+    "without it an observation with no usable likelihood would leave the consensus table unreported. Run that ",
+    "step, or after your own evaluate_likelihoods() call set lik_unresolved <- <its result>$unresolved."),
+    class = "taxaid_lik_unresolved_missing", call = NULL))
+}
+
 # Optional: group-level occurrence priors. consensus_prior
 # becomes a real group-level SUM over every locally modelled member sharing
 # a rank, instead of a candidate-scoped max -- a materially stronger
@@ -137,14 +149,6 @@ consensus_final <- TaxaAssign::posterior_consensus(
 # references share (e.g. "Eukaryota"), which shows how coarsely the references
 # were named for this marker. coarsest_reference_lineage is NA on every other row.
 consensus_final$coarsest_reference_lineage <- rep(NA_character_, nrow(consensus_final))
-if (!exists("lik_unresolved") || !is.data.frame(lik_unresolved)) {
-  stop(errorCondition(paste0(
-    "post_to_consensus: no lik_unresolved data frame in the session. The likelihood step (model_match_to_lik) ",
-    "keeps evaluate_likelihoods()'s $unresolved as lik_unresolved so that every observation gets a consensus row; ",
-    "without it an observation with no usable likelihood would leave the consensus table unreported. Run that ",
-    "step, or after your own evaluate_likelihoods() call set lik_unresolved <- <its result>$unresolved."),
-    class = "taxaid_lik_unresolved_missing", call = NULL))
-}
 if (nrow(lik_unresolved) > 0L) {
   .nu_lin_cols <- intersect(TaxaTools::standard_ranks, names(lik_unresolved))
   .nu_sid <- as.character(lik_unresolved$observation_id)
@@ -160,7 +164,10 @@ if (nrow(lik_unresolved) > 0L) {
     }
     if (length(.path) > 0L) paste(.path, collapse = "|") else NA_character_
   }, character(1), USE.NAMES = FALSE)
-  .nu_rows <- data.frame(observation_id = lik_unresolved$observation_id[match(.nu_ids, .nu_sid)],
+  # the ids take the consensus table's own type: bind_rows() will not join character ids with integer ones
+  if (is.factor(consensus_final$observation_id)) consensus_final$observation_id <- as.character(consensus_final$observation_id)
+  .nu_oid <- if (is.integer(consensus_final$observation_id)) as.integer(.nu_ids) else if (is.numeric(consensus_final$observation_id)) as.numeric(.nu_ids) else .nu_ids
+  .nu_rows <- data.frame(observation_id = .nu_oid,
                          consensus_taxon = rep(NA_character_, length(.nu_ids)),
                          consensus_rank = rep(NA_character_, length(.nu_ids)),
                          consensus_reason = rep("no_usable_likelihood", length(.nu_ids)),

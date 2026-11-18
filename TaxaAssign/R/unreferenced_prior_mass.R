@@ -437,15 +437,30 @@ add_unreferenced_prior_mass <- function(joined,
   # the UNION of its member clades at that rank -- not everything under the common rank. The clades are disjoint at
   # that rank, and members are deduplicated per (row, species) below as for any ring, so nothing is counted twice.
   # A row whose ring_member_clades is NA stays in `gen`, the ordinary ring path.
-  lca_rows <- if ("ring_member_clades" %in% names(out)) {
+  lca_all <- if ("ring_member_clades" %in% names(out)) {
     which(out$hypothesis_type %in% unreferenced_types & !is.na(out$ring_member_clades) & !is.na(expected_rank))
   } else {
     integer(0)
   }
-  gen <- setdiff(gen, lca_rows)
+  # As for an ordinary ring, the members are read at the ring's own rank, so that rank must be a column of `taxonomy`.
+  # A tied-anchor ring whose own rank is not one keeps its floor prior, and its member clades are listed as withheld.
+  lca_rows <- lca_all[expected_rank[lca_all] %in% names(taxonomy)]
+  lca_unplaced <- setdiff(lca_all, lca_rows)
+  gen <- setdiff(gen, lca_all)
   lca_sc <- data.frame(row = integer(0), member = character(0), rank = character(0), scope = character(0), stringsAsFactors = FALSE)
   lca_withheld <- data.frame(observation_id = character(0), row = integer(0), member_clade = character(0),
                              scope_rank = character(0), reason = character(0), stringsAsFactors = FALSE)
+  if (length(lca_unplaced)) {
+    mu <- strsplit(as.character(out$ring_member_clades[lca_unplaced]), "|", fixed = TRUE)
+    lca_withheld <- data.frame(observation_id = rep(as.character(out$observation_id[lca_unplaced]), lengths(mu)),
+                               row = rep(lca_unplaced, lengths(mu)), member_clade = unlist(mu),
+                               scope_rank = rep(expected_rank[lca_unplaced], lengths(mu)),
+                               reason = rep("scope_rank_not_in_taxonomy", sum(lengths(mu))), stringsAsFactors = FALSE)
+    cli::cli_inform(c(
+      "{length(lca_unplaced)} tied-anchor ring row(s) keep the floor prior: their own rank{?s} {.val {sort(unique(expected_rank[lca_unplaced]))}} {?is/are} not a column of {.arg taxonomy}.",
+      "i" = "Their member clades are listed in {.code attr(, \"ring_member_clades_withheld\")} with reason {.val scope_rank_not_in_taxonomy}."
+    ))
+  }
   if (length(lca_rows)) {
     mm <- strsplit(as.character(out$ring_member_clades[lca_rows]), "|", fixed = TRUE)
     lca_sc <- data.frame(row = rep(lca_rows, lengths(mm)), member = unlist(mm),
@@ -458,9 +473,9 @@ add_unreferenced_prior_mass <- function(joined,
                             dplyr::if_else(bad_rank, "member_clade_rank_mismatch", NA_character_))
       if (any(!is.na(why))) {
         w <- !is.na(why)
-        lca_withheld <- data.frame(observation_id = as.character(out$observation_id[lca_sc$row[w]]), row = lca_sc$row[w],
+        lca_withheld <- rbind(lca_withheld, data.frame(observation_id = as.character(out$observation_id[lca_sc$row[w]]), row = lca_sc$row[w],
                                    member_clade = lca_sc$member[w], scope_rank = lca_sc$rank[w], reason = why[w],
-                                   stringsAsFactors = FALSE)
+                                   stringsAsFactors = FALSE))
         lca_sc <- lca_sc[!w, , drop = FALSE]
       }
     }

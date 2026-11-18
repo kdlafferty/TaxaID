@@ -55,7 +55,9 @@
   `n_unplaced_candidates` and `member_clades_from_registry` for each such ring.
 * `add_unreferenced_prior_mass()` always attaches
   `attr(, "ring_member_clades_withheld")`; without a registry it is an empty
-  table.
+  table, except that a tied-anchor ring whose own rank is not a column of
+  `taxonomy` keeps the floor prior, with a message, and its member clades are
+  listed there with reason `"scope_rank_not_in_taxonomy"`.
 * Without a registry (`registry = NULL`), `join_priors()` matches likelihoods
   and priors by name, so both must use one naming: a call under a name the
   priors file under another (an NCBI name against the GBIF accepted name, say)

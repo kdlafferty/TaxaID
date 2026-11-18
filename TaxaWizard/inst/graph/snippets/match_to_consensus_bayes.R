@@ -46,10 +46,14 @@ if (!"taxon_name" %in% names({{match_var}})) {
 
 # 1. Scores -> likelihoods under the trained model, then keep the finest-rank
 #    candidate set per observation
+#    on the ranks the model was fitted on (model_params$Rank_System; the match
+#    table's own ranks only for a model that records none), so that a reference
+#    identified only above them returns its observation in $unresolved
+lik_rank_system <- if (is.null({{model_var}}$Rank_System)) detected_ranks else {{model_var}}$Rank_System
 lik_result <- TaxaLikely::evaluate_likelihoods(
   match_df     = {{match_var}},
   model_params = {{model_var}},
-  rank_system  = detected_ranks
+  rank_system  = lik_rank_system
 )
 likelihoods <- lik_result$likelihoods
 # observations with no usable likelihood (see $unresolved): each gets a no-call
@@ -57,7 +61,7 @@ likelihoods <- lik_result$likelihoods
 lik_unresolved <- lik_result$unresolved
 top_likelihoods <- TaxaLikely::filter_top_hypotheses(
   likelihoods,
-  rank_system = detected_ranks
+  rank_system = lik_rank_system
 )
 
 # --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
@@ -177,7 +181,10 @@ if (nrow(lik_unresolved) > 0L) {
     }
     if (length(.path) > 0L) paste(.path, collapse = "|") else NA_character_
   }, character(1), USE.NAMES = FALSE)
-  .nu_rows <- data.frame(observation_id = lik_unresolved$observation_id[match(.nu_ids, .nu_sid)],
+  # the ids take the consensus table's own type: bind_rows() will not join character ids with integer ones
+  if (is.factor(consensus$observation_id)) consensus$observation_id <- as.character(consensus$observation_id)
+  .nu_oid <- if (is.integer(consensus$observation_id)) as.integer(.nu_ids) else if (is.numeric(consensus$observation_id)) as.numeric(.nu_ids) else .nu_ids
+  .nu_rows <- data.frame(observation_id = .nu_oid,
                          consensus_taxon = rep(NA_character_, length(.nu_ids)),
                          consensus_rank = rep(NA_character_, length(.nu_ids)),
                          consensus_reason = rep("no_usable_likelihood", length(.nu_ids)),

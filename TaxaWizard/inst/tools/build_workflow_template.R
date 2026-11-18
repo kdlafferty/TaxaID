@@ -119,6 +119,7 @@ edge_by_id <- stats::setNames(graph$edges, vapply(graph$edges, function(e) e$id,
 used_config <- character(0)
 missing_ph  <- character(0)
 body_lines  <- character(0)
+session_reads <- character(0)
 
 for (i in seq_along(CANONICAL_PATH)) {
   eid <- CANONICAL_PATH[i]
@@ -143,6 +144,21 @@ for (i in seq_along(CANONICAL_PATH)) {
     txt <- gsub(ph, repl, txt, fixed = TRUE)
   }
 
+  # every object a step looks up in the session with exists(), cleared at the top of the template (see below)
+  session_reads <- c(session_reads, sub('^exists\\("(.*)"\\)$', "\\1",
+                                        regmatches(txt, gregexpr('exists\\("[A-Za-z.][A-Za-z0-9._]*"\\)', txt))[[1]]))
+
+  # The step's output node is bound to the object the snippet ends with (its last line names it). Binding the node to
+  # itself bound nothing whenever a snippet names its result otherwise: match_to_taxa ends with taxa_df,
+  # refs_to_matrix with ref_matrix, and post_to_consensus with consensus_final, so `taxa` and `reference_matrix` were
+  # never set and the review step read the round-1 consensus.
+  code_lines <- trimws(grep("^\\s*(#|$)", strsplit(txt, "\n", fixed = TRUE)[[1]], value = TRUE, invert = TRUE))
+  out_name <- if (length(code_lines)) code_lines[length(code_lines)] else ""
+  if (!grepl("^[A-Za-z.][A-Za-z0-9._]*$", out_name)) {
+    stop("snippet for edge ", eid, " must end with the name of the object it produces; it ends with: ", out_name,
+         call. = FALSE)
+  }
+
   body_lines <- c(
     body_lines, "",
     "# =============================================================================",
@@ -152,7 +168,7 @@ for (i in seq_along(CANONICAL_PATH)) {
     if (!is.null(edge$duration)) sprintf("#   typical cost: %s", edge$duration) else NULL,
     "# =============================================================================",
     strsplit(txt, "\n", fixed = TRUE)[[1]],
-    sprintf("%s <- %s", unlist(edge$to)[1], unlist(edge$to)[1])
+    sprintf("%s <- %s", unlist(edge$to)[1], out_name)
   )
 }
 
@@ -229,7 +245,16 @@ header <- c(
   "# so pooling unlike processes biases every group toward the largest one.",
   "",
   "sequences <- SEQUENCES",
-  'if (is.null(sequences)) stop("Set SEQUENCES in Section 0 before running.", call. = FALSE)'
+  'if (is.null(sequences)) stop("Set SEQUENCES in Section 0 before running.", call. = FALSE)',
+  if (length(session_reads)) c(
+    "",
+    "# Objects that a later step looks up with exists() are cleared first, so a run uses only what it built itself,",
+    "# never one left in the session by an earlier run (another site's kernel fit, another marker's unresolved set).",
+    "# An object of yours under one of these names is removed too, and named in the message: rename it to keep it.",
+    sprintf(".cleared <- intersect(c(%s), ls())", paste(sprintf('"%s"', sort(unique(session_reads))), collapse = ", ")),
+    'if (length(.cleared)) message("Cleared from the session before step 1: ", paste(.cleared, collapse = ", "))',
+    "rm(list = .cleared)"
+  )
 )
 
 writeLines(c(header, body_lines, "",

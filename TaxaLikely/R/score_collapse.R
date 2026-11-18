@@ -1377,10 +1377,12 @@ restore_suppressed_candidates <- function(match_obj,
   dm <- dm[!duplicated(gkey), , drop = FALSE]
   key <- function(df) paste(df[[observation_id_col]], df[[species_col]], sep = "\r")
   held <- c(key(match_obj), if (!is.null(restored_df) && nrow(restored_df)) key(restored_df))
+  # (observation, taxon id) keys; a row or species with no id gives no key, so two missing ids never match
+  id_key <- function(obs, id) { ok <- !is.na(id); paste(rep_len(obs, length(id))[ok], id[ok], sep = "\r") }
   held_id <- if (!is.null(ref_sp_id)) {
     rid <- if (!is.null(restored_df) && nrow(restored_df)) unname(ref_sp_id[as.character(restored_df[[species_col]])]) else character(0)
-    c(paste(match_obj[[observation_id_col]], match_obj$taxon_id, sep = "\r"),
-      if (length(rid)) paste(restored_df[[observation_id_col]], rid, sep = "\r"))
+    c(id_key(match_obj[[observation_id_col]], match_obj$taxon_id),
+      if (length(rid)) id_key(restored_df[[observation_id_col]], rid))
   } else character(0)
 
   ref <- reference_df[!is.na(reference_df[[species_col]]) & !is.na(reference_df[[genus_col]]), , drop = FALSE]
@@ -1398,7 +1400,8 @@ restore_suppressed_candidates <- function(match_obj,
     sps <- sps[!paste(obs, sps, sep = "\r") %in% held]
     if (!is.null(ref_sp_id) && length(sps)) {
       # a species held under a synonym in this observation is already held
-      sps <- sps[!paste(obs, unname(ref_sp_id[sps]), sep = "\r") %in% held_id]
+      sid <- unname(ref_sp_id[sps])
+      sps <- sps[is.na(sid) | !paste(obs, sid, sep = "\r") %in% held_id]
     }
     if (!length(sps)) next
     todo <- sps[!vapply(paste0("measure::", sps, "::", q), exists, logical(1),
@@ -1437,7 +1440,7 @@ restore_suppressed_candidates <- function(match_obj,
       new_row[["restored_offset_out_of_range"]] <- am$out_of_range
       rows[[length(rows) + 1L]] <- new_row
       held <- c(held, paste(obs, sp, sep = "\r"))
-      if (!is.null(ref_sp_id)) held_id <- c(held_id, paste(obs, unname(ref_sp_id[sp]), sep = "\r"))
+      if (!is.null(ref_sp_id)) held_id <- c(held_id, id_key(obs, unname(ref_sp_id[sp])))
     }
   }
   if (length(rows) == 0L) return(NULL)

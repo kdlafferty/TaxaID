@@ -353,6 +353,7 @@
 }
 
 .is_unreferenced_type <- function(x) {
+  x <- as.character(x) # a factor column, or an all-NA logical one, arrives from read.csv() and friends
   r <- sub("^unreferenced_", "", x)
   !is.na(x) & startsWith(x, "unreferenced_") & .is_rank_word(r) & !r %in% c("kingdom", "domain")
 }
