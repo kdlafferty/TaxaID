@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 1.0.0. 60 exported function(s).
+Version 1.0.0. 61 exported function(s).
 
 ## Functions
 
@@ -138,23 +138,29 @@ Resolves every verbatim name the run will use, from every table, ONCE, to a reco
 |---|---|---|---|
 | names | yes |  | A data frame of the names to register, one row per name per source: verbatim_name and source_table (required); source_naming (e.g. "ncbi", "gbif", "user"), rank_given and context (a pipe-delimited higher-taxon string, the homonym gate) optional. |
 | run_id | yes |  | Character scalar identifying the run; part of every stamp. |
-| key_backbone_id | no | 11L | Integer: the key authority's Global Names Verifier data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default 11L. |
-| pool_keys | no | NULL | NULL or a data frame with verbatim_name and species_key: the occurrence pool's accepted key per name, used as the identifier ahead of any lookup. Optional kingdom ... genus columns give each key's lineage for the tie-break. |
+| key_backbone_id | no | 11L | Integer: the key authority's Global Names Verifier data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default 11L. The registry tree holds the ranks on the key authority's own classification paths: under the GBIF Backbone (the default) its seven major ranks (kingdom to species); under an authority whose paths carry intermediate ranks (WoRMS, for example) those too. A rank the authority's path does not carry gives NA from parent_at(); such ranks come only from the caller's own lineage columns, which pass through unchanged. |
+| pool_keys | no | NULL | NULL or a data frame with verbatim_name and species_key: the occurrence pool's accepted key per name, used as the identifier ahead of any lookup. The keys are GBIF Backbone keys, so pool_keys is accepted only with key_backbone_id = 11; under another key authority it is an error. Optional kingdom ... genus columns give each key's lineage for the tie-break. An optional genus_key column gives each key's own genus key, which checks where a key no lookup described is placed (see Value). |
 | lookup | no | NULL | NULL (default: verify_taxon_names() against key_backbone_id with cache_dir) or a function function(names, rank, context) returning a table shaped like verify_taxon_names(return_ids = TRUE), one row per name, with at least matched_name, matched_rank, is_synonym, classification_path, classification_ranks, verified, matched, current_record_id, classification_ids and match_type; supply one to resolve from recorded answers offline. |
 | cache_dir | no | NULL | Passed to verify_taxon_names() by the default lookup. |
-| tiebreak | no | NULL | NULL (default: no tie-break; 2+ candidate ids stay error-class findings) or a list: gbif_first (logical, default TRUE: for a name the pool holds under 2+ keys, take the lookup's own answer when it is exactly one of them; never used for a pool_key_conflict) and authorities, a named, ordered list of functions function(name) returning that authority's pipe-delimited lineage for the name, or NA (e.g. list(ncbi = ..., worms = ...)). Candidate lineages come from the lookup's classification and from optional kingdom ... genus columns of pool_keys. |
+| tiebreak | no | NULL | NULL (default: no tie-break; 2+ candidate ids stay error-class findings) or a list: gbif_first (logical, default TRUE: for a name the pool holds under 2+ keys, take the lookup's own answer when it is exactly one of them; never used for a pool_key_conflict) and authorities, a named, ordered list of functions function(name) returning that authority's pipe-delimited lineage for the name, or NA (e.g. list(ncbi = ..., worms = ...)). Candidate lineages come from the lookup's classification and from optional kingdom ... genus columns of pool_keys. merge_species_duplicates (logical, default FALSE): TRUE merges one accepted species name in one kingdom held under two or more ranked ids that the run's names use onto the id the pool-key tie-break chose for it or, where it chose none, onto the id the lookup gives the bare accepted name at species rank with no context, when that answer is one of the ids. Listed in meta$species_merged (dropped id, kept id, rule) and as a declared_merge finding; otherwise the ids stay apart, listed in meta$species_not_merged with the reason. Genus and higher ranks are never merged. |
 
-**Value:** An object of class 'taxon_registry': a list with 'taxa', 'names' and 'meta', unfrozen.
+**Value:** An object of class 'taxon_registry': a list with 'taxa', 'names' and 'meta', unfrozen. Every node of the key authority has a rank. An answer whose accepted record is a usage below species (not in its own classification path, which ends at a species) takes that species, and 'meta$infraspecific_accepted' lists the lookup's own accepted id. A pool key no lookup described is a species placed under the one genus node its genus word names, or under none when that word names two or more genus nodes or none; 'meta$pool_key_placed' lists each, with its 'genus_key' when 'pool_keys' gives one.
 
 #### Details
 
 Pool keys first. Where pool_keys gives an accepted key for a name (the occurrence pool's own GBIF speciesKey), that key IS the taxon identifier; the lookup still supplies the ancestor chain, and a lookup whose accepted record differs from the pool's key is recorded as status = "pool_key_conflict" for the guard, never silently resolved. A name the pool holds under two or more different keys is not keyed from the pool at all (its identifier comes from the lookup alone); it is listed in meta$pool_key_ambiguous and reported by check_taxon_registry as an error-class pool_key_ambiguous finding.
 
-Tie-break (off by default, tiebreak). Where a name has two or more candidate ids (pool_key_ambiguous, or a pool_key_conflict between the pool's key and the lookup's), the candidates are decided by, in order: for pool_key_ambiguous only, the lookup's own answer when it is exactly one of the pool's keys (gbif_first); then each of authorities in turn. The candidates' lineages are compared rank by rank: a rank distinguishes only where every candidate has a value there and the values differ (a rank one candidate lacks is missing data, not evidence). Per distinguishing rank, a candidate scores 1 if the authority's lineage holds its term; strictly the highest score wins. A decided name gets status = "pool_key_tiebreak"; an undecided one keeps its error-class finding. Candidates with identical lineages are never decided. Step 0 never applies to a pool_key_conflict: there the lookup's key is one of the two candidates by construction, so it would always win and undo pool-keys-first; a conflict is decided by the authorities or not at all.
+Tie-break (off by default, tiebreak). Where a name has two or more candidate ids (pool_key_ambiguous, or a pool_key_conflict between the pool's key and the lookup's), the candidates are decided by, in order: the lookup's own answer (the key backbone's match) when it is exactly one of the candidates (gbif_first); then each of authorities in turn. The candidates' lineages are compared rank by rank: a rank distinguishes only where every candidate has a value there and the values differ (a rank one candidate lacks is missing data, not evidence). Per distinguishing rank, a candidate scores 1 if the authority's lineage holds its term; strictly the highest score wins. A decided name gets status = "pool_key_tiebreak"; an undecided one keeps its error-class finding. Candidates with identical lineages are never decided. Step 0 applies to a pool_key_conflict as well: there the lookup's key is one of the two candidates by construction, so with gbif_first the key backbone's match always wins over the pool's key (the maintainer's rule: the key backbone decides). Every pool key it overrules is listed by check_taxon_registry() (pool_key_tiebroken). Pool keys first still holds where no tie-break is requested.
 
 Homonyms. An exact answer that contradicts the name's own context (the two name different kingdoms, or the context names a phylum, one the run's answers use, other than the answer's) is refused, whichever lookup gave it: the name gets status = "homonym_rejected" and takes the unresolved path below. A context that differs only at class, order or family is another classification of the same taxon, not a homonym. A name with no context is not checked.
 
-Coarser answers. Every name is checked for an answer at a coarser rank than it was asked at (rank_given, else genus for one word, species for two, infraspecific for three or more): such a name gets status = "rank_fallback" and a run-local identifier under the answered ancestor, never that ancestor's identifier.
+Coarser answers. Every name is checked for an answer at a coarser rank than it was asked at (rank_given, else genus for one word, species for two, infraspecific for three or more): such a name gets status = "rank_fallback" and a run-local identifier under the answered ancestor, never that ancestor's identifier. Where the answered taxon is not a node of its own classification path (an answer at a rank the path does not carry), the run-local identifier sits under the path's last node.
+
+Finer answers without context. A name asked above genus (rank_given kingdom to family, or an intermediate rank such as infraclass or suborder) and answered only at genus or below is taken when it has a context, under the homonym check above. With no context nothing can tell a genus homonym in another kingdom from the taxon asked for (an insect infraclass answered as a plant genus), so the name gets status = "rank_mismatch_no_context" and a run-local identifier, listed by check_taxon_registry(): supply context for names above genus.
+
+One name, one lineage, one taxon. Tables can ask one name at different ranks and so get different answers. Within one (name, context), rank_given is a hint and the lineage decides: the candidates are the identifiers the lookup accepted for that name and context. One candidate is taken by every row of the name (rows refused as a homonym, answered at a coarser rank, or not answered), with status = "lineage_rule". Of two or more candidates all at genus or species, the name's context breaks the tie: the one whose parent is the taxon just above the name in its context is taken, else the one whose path holds that taxon. When any candidate is at family or above, the key backbone alone decides and the context is not read: of candidates nested in the backbone's own classification, the one that is an ancestor of all the others is taken (a backbone genus named like its own family is filed under that family). When neither decides, or a genus or species tie has no context, every row of the name is unresolved (status = "lineage_unresolved", listed in meta$lineage_unresolved), never a guess. Choices are listed in meta$lineage_rule.
+
+Run-local descriptions. A run-local identifier described once with a rank or parent and once without is one description, the given one; two different given ranks or parents remain a conflict.
 
 Unresolved names get a run-local identifier under their resolved genus (local:<genus id>:<epithet>), or local:<name> when even the genus is unknown. The genus is resolved per genus word AND context: genus rows already in the registry are used only where they do not contradict the context, and a word naming two or more such genera is refused (meta$genus_homonym_unresolved); otherwise the genus is looked up with the names' context. A genus answered only by a fuzzy or variant match is taken only where the context names the answer's kingdom and phylum; an exact answer is refused where it contradicts the context. Refusals are listed in meta$genus_variant_rejected (a genus word can name a genus in another kingdom). One narrow exception: a binomial whose epithet differs from a resolved congener's only in its Latin gender ending (Platybelone argala / argalus) takes that congener's identifier with status = "gender_variant", only from a congener with the same context (or, with a context, the same kingdom), and never for a name the lineage gate rejected. A second: a binomial the lookup answers as a GBIF VARIANT of its genus, with the epithet unchanged (Pyrogophorus platyrachis / Pyrgophorus platyrachis), takes that species' identifier with status = "genus_variant", under the same gate: the name's own context must name the answer's kingdom and phylum, or it is refused and listed in meta$genus_variant_rejected. This needs the lookup's gbif_matchType column. Every use is listed by check_taxon_registry. No other fuzzy matching is accepted: any other fuzzy answer gets status = "fuzzy_rejected" and no identifier from the answer; the name takes the unresolved path above. A lookup must return every column the registry reads (see lookup); a missing one is refused with an error of class taxon_registry_bad_lookup, never defaulted.
 
@@ -483,11 +489,11 @@ Compares the library this session is using against a manifest written by 'write_
 
 Version and Built differences are shown but never fail on their own: rebuilding identical source moves Built and changes nothing that matters, and every TaxaID package sits at 0.1.0 so the version is silent by construction. The code hash is the signal.
 
-### check_taxon_registry(registry, tables = list(), mode = c("report", "error"), verbose = TRUE)
+### check_taxon_registry(registry, tables = list(), mode = c("report", "error"), verbose = TRUE, export = FALSE)
 
 Check a taxon registry and the tables stamped from it
 
-The guard. It reports, per table: taxa held under two or more verbatim names (expected for input tables, and the baseline a run is compared against); names that map to two or more taxa; unresolved and run-local names; the *merge audit*: every taxon identifier reached by two or more different names, each with the relationship its backend declared, and an error-class finding where none was declared (a fuzzy match onto another name's taxon, a pool key that disagrees with the lookup); conflicting descriptions of one identifier; and, for stamped tables, a missing stamp, the same taxon twice in ...
+The guard. It reports, per table: taxa held under two or more verbatim names (expected for input tables, and the baseline a run is compared against); names that map to two or more taxa; unresolved and run-local names; the *merge audit*: every taxon identifier reached by two or more different names, each with the relationship its backend declared, and an error-class finding where none was declared (a fuzzy match onto another name's taxon, a pool key that disagrees with the lookup); conflicting descriptions of one identifier; names whose lineage chose among their candidates ('lineage_rule', ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -495,8 +501,9 @@ The guard. It reports, per table: taxa held under two or more verbatim names (ex
 | tables | no | list() | Named list of data frames to check (optional). |
 | mode | no | c("report", "error") | "report" (default): return the findings. "error": stop if any error-class finding exists. |
 | verbose | no | TRUE | Print a summary. Default TRUE. |
+| export | no | FALSE | Logical, default FALSE. TRUE declares every table in tables an OUTPUT table and holds it to the export rules: no taxon id under two display names (id_two_display_names) and no display name on two taxon ids (display_name_two_ids), both error-class, read from its taxon_name (or consensus_taxon) column. Leave it FALSE for input tables, which legitimately hold one taxon under several verbatim names. |
 
-**Value:** A data frame of findings: 'severity' ('"error"' or '"info"'), 'kind', 'table', 'taxon_id', 'names', 'detail', 'n'.
+**Value:** A data frame of findings: 'severity' ('"error"', '"warning"' or '"info"'), 'kind', 'table', 'taxon_id', 'names', 'detail', 'n'. Warnings do not stop 'mode = "error"': 'accepted_name_multiple_ids' (one accepted name at one rank under two or more ranked ids in one kingdom, with the id a pool-key tie-break chose) and 'pool_key_unplaced' (a pool key placed under no genus). A pool key placed under a genus other than its pool 'genus_key' is 'pool_key_parent_mismatch' (error). A node whose 'parent_id' is not a node of the tree is 'parent_not_in_tree' (error): the walk up from it, and 'parent_at()', would stop there.
 
 ### clean_taxon_names(name_vec, remove_abbr = NULL, strip_modifiers = NULL)
 
@@ -967,7 +974,7 @@ Walks 'parent_id' up the registry's own tree, so ring scope and genus fallback r
 | rank | yes |  | Rank to return, e.g. "genus" or "family". |
 | registry | yes |  | A taxon_registry. |
 
-**Value:** Character vector of taxon identifiers ('NA' where the walk does not reach that rank). A taxon AT 'rank' returns itself.
+**Value:** Character vector of taxon identifiers ('NA' where the walk does not reach that rank). A taxon AT 'rank' returns itself. The registry tree holds the ranks on the key authority's own classification paths: under the GBIF Backbone (the default) its seven major ranks (kingdom to species); under an authority whose paths carry intermediate ranks (WoRMS, for example) those too. A rank the authority's path does not carry gives 'NA' from 'parent_at()'; such ranks come only from the caller's own lineage columns, which pass through unchanged.
 
 ### parse_classification_path(path, ranks, target_rank)
 
@@ -1106,6 +1113,35 @@ Adds a custom provider to the session registry so that 'list_models', 'refresh_m
 #### Details
 
 Registered providers are session-only and do not persist to disk. Add the call to ~/.Rprofile or the top of your analysis script for automatic re-registration.
+
+### registry_ids_for_names(names, registry, resolve = c("names", "names_then_accepted", "names_or_accepted"), ranks = NULL, tables = list(), caller = NULL)
+
+Check a registry before use and resolve names to its taxon identifiers
+
+The one check every 'registry =' argument runs before it reads a registry, with an optional name-to-id lookup. The registry must be a 'taxon_registry', frozen, and unedited since the freeze (its content still matches its digest, the check 'attach_taxon_ids' makes); each table in 'tables' must carry a 'taxon_id' column and the stamp of this registry. Any failure is an error of class 'taxon_registry_invalid'.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| names | yes |  | Character vector of names to resolve, or NULL to run the checks only. |
+| registry | yes |  | A frozen taxon_registry. |
+| resolve | no | c("names", "names_then_accepted", "names_or_accepted") | One of "names" (default), "names_then_accepted", "names_or_accepted". |
+| ranks | no | NULL | NULL or a character vector recycled to names: the rank each name is meant at, read only by resolve = "names_then_accepted". |
+| tables | no | list() | A named list of data frames that must carry this registry's stamp (attach_taxon_ids); the names are used in messages. |
+| caller | no | NULL | NULL or the calling function's name. Used only as a prefix to error messages; it changes no check and no result. |
+
+**Value:** Character vector of taxon identifiers, one per 'names' ('NA' where unresolved), with attribute '"unresolved"': the distinct names with no single id. With 'names = NULL', an empty character vector, invisibly.
+
+#### Details
+
+resolve names the rule a caller uses to turn a name into an id. The three rules are the ones the ecosystem's registry = arguments use; each is fixed by what the caller's names are, so it is a property of the caller, not a setting to vary:
+
+- "names" (default): The registry's name table only: a name registered to exactly one id takes it; a name held under two or more ids, or not registered, is NA. Used where the names come from a table whose names were registered before the freeze, so a name outside the table is not one of the run's names: TaxaExpect apply_undetected_evidence(), generate_domestic_food_priors() and generate_undetected_diversity() (singleton mirrors' source species); TaxaFlag compute_local_occurrence_distance(); TaxaLikely restore_suppressed_candidates() (candidate_species_filter); and TaxaAssign join_priors() (a singleton mirror's source species not itself a prior row).
+
+- "names_then_accepted": The name table, else the registry's accepted names; where two or more ids remain, ranks (one per name, the rank of the taxon in the registry) narrows them; one id, or NA. Used by TaxaAssign posterior_consensus() for group_priors and species_reference: those tables are built from the run's taxa and may carry the registry's accepted names as well as registered ones, and a group name can be held at two ranks.
+
+- "names_or_accepted": The name table and the accepted names together: a name with exactly one id across both takes it, else NA. Used by TaxaAssign join_priors() and add_unreferenced_prior_mass() for a tied-anchor ring's member clades, which are lineage values (family, order) the registry holds as accepted ancestors rather than as registered names.
+
+No rule guesses: a name with no single id is NA and is listed in the result's "unresolved" attribute, and the caller decides whether that is an error.
 
 ### rename_cols(input_df, col_map = NULL, strict = FALSE)
 

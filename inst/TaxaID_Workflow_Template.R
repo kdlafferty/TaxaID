@@ -16,7 +16,7 @@
 # real paths. Edit Section 0, supply your own inputs, and run top to bottom.
 #
 # The path it demonstrates (from the graph, sequences -> reviewed):
-#   seq_to_match -> match_to_taxa -> taxa_to_refs -> refs_to_matrix -> matrix_to_model -> model_match_to_lik -> taxa_to_occ -> occ_to_std -> tables_to_registry -> dist_to_priors_by_group -> lik_prior_to_post -> post_to_consensus -> taxa_to_context -> consensus_to_reviewed
+#   seq_to_match -> match_to_taxa -> taxa_to_refs -> refs_to_matrix -> matrix_to_model -> model_match_to_lik -> taxa_to_occ -> occ_to_std -> dist_to_priors_by_group -> tables_to_registry -> lik_prior_to_post -> post_to_consensus -> taxa_to_context -> consensus_to_reviewed
 # =============================================================================
 
 library(TaxaTools);  library(TaxaFetch);  library(TaxaHabitat)
@@ -26,7 +26,7 @@ library(TaxaAssign); library(TaxaFlag)
 # --- Step 0: does this machine have what the path needs? ---------------------
 # Stops here rather than failing deep inside a stage.
 .setup <- TaxaWizard::workflow_check(
-  edges = c("seq_to_match", "match_to_taxa", "taxa_to_refs", "refs_to_matrix", "matrix_to_model", "model_match_to_lik", "taxa_to_occ", "occ_to_std", "tables_to_registry", "dist_to_priors_by_group", "lik_prior_to_post", "post_to_consensus", "taxa_to_context", "consensus_to_reviewed"),
+  edges = c("seq_to_match", "match_to_taxa", "taxa_to_refs", "refs_to_matrix", "matrix_to_model", "model_match_to_lik", "taxa_to_occ", "occ_to_std", "dist_to_priors_by_group", "tables_to_registry", "lik_prior_to_post", "post_to_consensus", "taxa_to_context", "consensus_to_reviewed"),
   verbose = TRUE
 )
 if (any(.setup$status == "missing")) stop("Setup incomplete -- see the fix column above.")
@@ -433,8 +433,15 @@ likelihoods <- TaxaLikely::filter_top_hypotheses(
   lik_result$likelihoods
 )
 message("Evaluated likelihoods for ", length(unique(likelihoods$observation_id)), " samples")
-if (nrow(lik_result$unresolved) > 0L) {
-  message("  ", nrow(lik_result$unresolved), " unresolved rows (no usable likelihoods)")
+# An observation whose matches all name a reference only above the rank system
+# (only "Eukaryota", say), or whose matches the coverage check removed, has no
+# likelihood row; evaluate_likelihoods() returns its match rows in $unresolved.
+# They are kept as lik_unresolved, and the consensus step gives each such
+# observation a no-call row (consensus_reason "no_usable_likelihood").
+lik_unresolved <- lik_result$unresolved
+if (nrow(lik_unresolved) > 0L) {
+  message("  ", length(unique(lik_unresolved$observation_id)), " observation(s) with no usable likelihood ",
+          "(", nrow(lik_unresolved), " match rows); each gets a no-call consensus row")
 }
 likelihoods
 likelihoods <- likelihoods
@@ -596,71 +603,7 @@ std_occurrences
 std_occurrences <- std_occurrences
 
 # =============================================================================
-# STEP 9 of 14 -- Build the run's taxon registry (one GBIF id per taxon)
-#   edge: tables_to_registry    match_df + likelihoods + reference_df + std_occurrences -> taxon_registry
-# =============================================================================
-# Edge: match_df + likelihoods + reference_df + std_occurrences -> taxon_registry
-# Source: TaxaTools build_taxon_registry() + freeze_taxon_registry() +
-#         check_taxon_registry() + attach_taxon_ids(); TaxaFetch lookup_gbif_taxa()
-#
-# One taxon registry for the run. Every name the later steps join on is resolved
-# ONCE to a GBIF Backbone taxon id: the match object's names and lineage columns,
-# the likelihoods' names (candidates and the clades their placeholder rows name),
-# the reference database's species, and the standardized occurrences (the source of
-# the priors). Answers are cached in TAXONOMY_CACHE_DIR, so a rerun asks nothing.
-# The registry is then FROZEN: a name it does not hold is an error later, never a new
-# row. The prior and posterior steps reuse this one registry, so a call under a
-# synonym meets the prior filed under the accepted name, one taxon under two names is
-# one hypothesis, family and order come from the GBIF tree, and outputs carry GBIF
-# accepted names (each row keeps its own name in taxon_name_verbatim).
-#
-# check_taxon_registry(mode = "error") stops here if a lookup FAILED or two different
-# taxa were merged with no declared synonymy, rather than guessing. Its full report
-# (synonyms merged, names it could only place at genus, run-local names) is kept as
-# taxon_registry_report. Set USE_TAXON_REGISTRY to FALSE to join on names instead.
-#
-# Optional prior rows added later from sources outside these tables (domestic/food
-# priors, watch-list or evidence rows) must be registered here first: add their
-# names to .reg_names before the freeze.
-
-taxon_registry <- NULL
-taxon_registry_report <- NULL
-if (isTRUE(USE_TAXON_REGISTRY)) {
-  .reg_rows <- function(x, col, tab, rank = NULL) {
-    if (is.null(x) || !col %in% names(x)) return(NULL)
-    rk <- if (!is.null(rank)) rank else if (col == "taxon_name" && "taxon_name_rank" %in% names(x)) as.character(x$taxon_name_rank) else NA_character_
-    d <- unique(data.frame(verbatim_name = as.character(x[[col]]), rank_given = rk, source_table = tab, stringsAsFactors = FALSE))
-    d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
-  }
-  .lineage_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus")
-  .reg_names <- rbind(
-    .reg_rows(match_df, "taxon_name", "match"),
-    do.call(rbind, lapply(.lineage_ranks, function(r) .reg_rows(match_df, r, "match", rank = r))),
-    .reg_rows(likelihoods, "taxon_name", "likelihoods"),
-    .reg_rows(reference_df, "species", "reference", rank = "species"),
-    .reg_rows(std_occurrences, "taxon_name", "occurrences"),
-    # the priors are built from the occurrences' own names
-    .reg_rows(std_occurrences, "taxon_name", "priors")
-  )
-  .reg_names <- unique(.reg_names)
-  taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
-    .reg_names,
-    run_id          = format(Sys.time(), "run-%Y%m%d-%H%M%S"),
-    key_backbone_id = 11L,
-    lookup          = function(names, rank, context) {
-      TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = TAXONOMY_CACHE_DIR)
-    }
-  ))
-  taxon_registry_report <- TaxaTools::check_taxon_registry(taxon_registry, mode = "error")
-  std_occurrences <- TaxaTools::attach_taxon_ids(std_occurrences, taxon_registry, "taxon_name", "occurrences")
-  message(sprintf("Taxon registry: %d names -> %d taxa (GBIF Backbone); frozen.",
-                  length(unique(.reg_names$verbatim_name)), nrow(taxon_registry$taxa)))
-}
-taxon_registry
-taxon_registry <- taxon_registry
-
-# =============================================================================
-# STEP 10 of 14 -- Build priors from standardized occurrences, grouped by sampling/detection process (kernel path)
+# STEP 9 of 14 -- Build priors from standardized occurrences, grouped by sampling/detection process (kernel path)
 #   edge: dist_to_priors_by_group    std_occurrences -> priors
 # =============================================================================
 # Edge: std_occurrences -> priors (grouped by sampling/detection process, kernel path)
@@ -878,13 +821,106 @@ priors
 priors <- priors
 
 # =============================================================================
+# STEP 10 of 14 -- Build the run's taxon registry (one GBIF id per taxon)
+#   edge: tables_to_registry    match_df + likelihoods + reference_df + std_occurrences + priors -> taxon_registry
+# =============================================================================
+# Edge: match_df + likelihoods + reference_df + std_occurrences + priors -> taxon_registry
+# Source: TaxaTools build_taxon_registry() + freeze_taxon_registry() +
+#         check_taxon_registry() + attach_taxon_ids(); TaxaFetch lookup_gbif_taxa()
+#
+# One taxon registry for the run. Every name the later steps join on is resolved
+# ONCE to a GBIF Backbone taxon id: the match object's names and lineage columns,
+# the likelihoods' names (candidates and the clades their placeholder rows name),
+# the reference database's species, the standardized occurrences, and the FINISHED
+# prior table. This step runs after the priors are built, so the names it registers
+# for them are the names the posterior step stamps: the names
+# convert_taxonomy_backbone() left, plus any domestic/food or evidence rows the prior
+# step added, plus each singleton mirror's source species. Answers are cached in TAXONOMY_CACHE_DIR, so a rerun asks nothing.
+# The registry is then FROZEN: a name it does not hold is an error later, never a new
+# row. The prior and posterior steps reuse this one registry, so a call under a
+# synonym meets the prior filed under the accepted name, one taxon under two names is
+# one hypothesis, family and order come from the GBIF tree, and outputs carry GBIF
+# accepted names (each row keeps its own name in taxon_name_verbatim).
+#
+# Each name carries its own lineage from these tables as its context (kingdom to
+# family, from the match object's lineage columns and any the other tables carry; none
+# where the tables disagree). The context refuses an answer in another kingdom or
+# phylum (a homonym: "Polyarthra" the rotifer genus vs. an arthropod order) and breaks
+# ties between genus or species candidates; at family and above the GBIF backbone's
+# own tree decides and the context is not read.
+#
+# check_taxon_registry(mode = "error") stops here if a lookup FAILED or two different
+# taxa were merged with no declared synonymy, rather than guessing. Its full report
+# (synonyms merged, names it could only place at genus, run-local names) is kept as
+# taxon_registry_report. Set USE_TAXON_REGISTRY to FALSE to join on names instead.
+#
+# A table that reaches the posterior step without passing through here (prior rows
+# added after this step) must have its names added to .reg_names before the freeze.
+
+taxon_registry <- NULL
+taxon_registry_report <- NULL
+if (isTRUE(USE_TAXON_REGISTRY)) {
+  .reg_rows <- function(x, col, tab, rank = NULL) {
+    if (is.null(x) || !col %in% names(x)) return(NULL)
+    rk <- if (!is.null(rank)) rank else if (col == "taxon_name" && "taxon_name_rank" %in% names(x)) as.character(x$taxon_name_rank) else NA_character_
+    d <- unique(data.frame(verbatim_name = as.character(x[[col]]), rank_given = rk, source_table = tab, stringsAsFactors = FALSE))
+    d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
+  }
+  .lineage_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus")
+  # (name, rank, value) from a table's own lineage: a row's taxon_name takes every column kingdom to family, a lineage
+  # value the columns above its own rank
+  .ctx_rows <- function(x) {
+    lc <- if (is.null(x)) character(0) else intersect(.lineage_ranks, names(x))
+    if (!length(lc)) return(NULL)
+    x <- as.data.frame(x); out <- list()
+    mk <- function(n, r) data.frame(name = as.character(n), rank = r, value = as.character(x[[r]]), stringsAsFactors = FALSE)
+    if ("taxon_name" %in% names(x)) for (r in setdiff(lc, "genus")) out[[length(out) + 1L]] <- mk(x$taxon_name, r)
+    for (k in seq_along(lc)) for (r in setdiff(lc[seq_len(k - 1L)], "genus")) out[[length(out) + 1L]] <- mk(x[[lc[k]]], r)
+    do.call(rbind, out)
+  }
+  .ctx_long <- unique(do.call(rbind, lapply(list(match_df, likelihoods, reference_df, std_occurrences, priors), .ctx_rows)))
+  if (is.null(.ctx_long)) .ctx_long <- data.frame(name = character(0), rank = character(0), value = character(0))
+  .ctx_long <- .ctx_long[!is.na(.ctx_long$name) & nzchar(.ctx_long$name) & !is.na(.ctx_long$value) & nzchar(trimws(.ctx_long$value)), , drop = FALSE]
+  .ctx_long$rank <- factor(.ctx_long$rank, levels = .lineage_ranks)
+  .ctx_of <- vapply(split(.ctx_long, as.character(.ctx_long$name)), function(d) {
+    if (any(tapply(d$value, d$rank, function(v) length(unique(v))) > 1L, na.rm = TRUE)) return(NA_character_)   # tables disagree
+    d <- d[order(d$rank), , drop = FALSE]; paste(unique(d$value), collapse = "|")
+  }, "")
+  .reg_names <- rbind(
+    .reg_rows(match_df, "taxon_name", "match"),
+    do.call(rbind, lapply(.lineage_ranks, function(r) .reg_rows(match_df, r, "match", rank = r))),
+    .reg_rows(likelihoods, "taxon_name", "likelihoods"),
+    .reg_rows(reference_df, "species", "reference", rank = "species"),
+    .reg_rows(std_occurrences, "taxon_name", "occurrences"),
+    # the finished prior table, under the table name the posterior step stamps it with
+    .reg_rows(priors, "taxon_name", "priors"),
+    .reg_rows(priors, "source_taxon_name", "priors", rank = "species")
+  )
+  .reg_names <- unique(.reg_names)
+  .reg_names$context <- unname(.ctx_of[.reg_names$verbatim_name])
+  taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
+    .reg_names,
+    run_id          = format(Sys.time(), "run-%Y%m%d-%H%M%S"),
+    key_backbone_id = 11L,
+    lookup          = function(names, rank, context) {
+      TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = TAXONOMY_CACHE_DIR)
+    }
+  ))
+  taxon_registry_report <- TaxaTools::check_taxon_registry(taxon_registry, mode = "error")
+  std_occurrences <- TaxaTools::attach_taxon_ids(std_occurrences, taxon_registry, "taxon_name", "occurrences")
+  message(sprintf("Taxon registry: %d names -> %d taxa (GBIF Backbone); frozen.",
+                  length(unique(.reg_names$verbatim_name)), nrow(taxon_registry$taxa)))
+}
+taxon_registry
+taxon_registry <- taxon_registry
+
+# =============================================================================
 # STEP 11 of 14 -- Join priors and compute Bayesian posteriors (single site)
 #   edge: lik_prior_to_post    likelihoods + priors -> posteriors
 # =============================================================================
 # Edge: likelihoods + priors -> posteriors
 # Source: TaxaAssign join_priors() + compute_posterior()
-# NOTE: SITE_LAT and SITE_LON are numeric coordinates of the sampling site.
-#   SITE_HABITAT is the habitat type (e.g. "Freshwater", "Marine",
+# NOTE: SITE_HABITAT is the habitat type (e.g. "Freshwater", "Marine",
 #   "Estuarine"). This is required — the pipeline does not guess which
 #   habitat your samples came from.
 # NOTE: BACKBONE_ID is required — no default. Must match whichever
@@ -892,7 +928,20 @@ priors <- priors
 #   for GBIF, 4 for NCBI).
 
 # --- Build site specification ---
-site_spec <- list(lat = SITE_LAT, lon = SITE_LON, main_habitat = SITE_HABITAT)
+# The kernel prior is centred on the site: its rows carry the fit's own site id
+# (kernel_priors_fit$params$site_id) in their grid_id column, and the site is
+# named by that id. Without a kernel fit in the session, the prior table's one
+# site id is used.
+.site_key <- if (exists("kernel_priors_fit")) kernel_priors_fit$params$site_id else NULL
+if (is.null(.site_key)) {
+  .site_key <- unique(stats::na.omit(as.character(priors$grid_id)))
+  if (length(.site_key) != 1L) {
+    stop("lik_prior_to_post: no kernel_priors_fit in the session, and the prior table holds ",
+         length(.site_key), " site ids in grid_id (need exactly one); ",
+         "use the multi-site step for several sites.")
+  }
+}
+site_spec <- list(grid_id = .site_key, main_habitat = SITE_HABITAT)
 
 # --- The run's taxon registry (taxa matched by GBIF id, not by name) ---
 # The registry built once for the run (edge tables_to_registry) is reused here; the
@@ -907,8 +956,30 @@ if (isTRUE(USE_TAXON_REGISTRY) && is.null(taxon_registry)) {
                            source_table = tab, stringsAsFactors = FALSE))
     d[!is.na(d$verbatim_name) & nzchar(d$verbatim_name), , drop = FALSE]
   }
+  # each name's own lineage from these tables as its context (kingdom to family; none where the tables disagree): it
+  # refuses a cross-phylum homonym and breaks genus/species ties; at family and above the GBIF backbone decides
+  .reg_ctx <- function(d, tabs) {
+    lr <- c("kingdom", "phylum", "class", "order", "family", "genus")
+    rows <- do.call(rbind, lapply(tabs, function(x) {
+      lc <- intersect(lr, names(x)); if (!length(lc)) return(NULL); x <- as.data.frame(x); out <- list()
+      mk <- function(n, r) data.frame(name = as.character(n), rank = r, value = as.character(x[[r]]), stringsAsFactors = FALSE)
+      if ("taxon_name" %in% names(x)) for (r in setdiff(lc, "genus")) out[[length(out) + 1L]] <- mk(x$taxon_name, r)
+      for (k in seq_along(lc)) for (r in setdiff(lc[seq_len(k - 1L)], "genus")) out[[length(out) + 1L]] <- mk(x[[lc[k]]], r)
+      do.call(rbind, out)
+    }))
+    d$context <- NA_character_
+    if (is.null(rows)) return(d)
+    rows <- unique(rows[!is.na(rows$name) & !is.na(rows$value) & nzchar(trimws(rows$value)), , drop = FALSE])
+    rows$rank <- factor(rows$rank, levels = lr)
+    ctx <- vapply(split(rows, as.character(rows$name)), function(z) {
+      if (any(tapply(z$value, z$rank, function(v) length(unique(v))) > 1L, na.rm = TRUE)) return(NA_character_)
+      z <- z[order(z$rank), , drop = FALSE]; paste(unique(z$value), collapse = "|")
+    }, "")
+    d$context <- unname(ctx[d$verbatim_name])
+    d
+  }
   taxon_registry <- TaxaTools::freeze_taxon_registry(TaxaTools::build_taxon_registry(
-    rbind(.reg_tab(likelihoods, "likelihoods"), .reg_tab(priors, "priors")),
+    .reg_ctx(rbind(.reg_tab(likelihoods, "likelihoods"), .reg_tab(priors, "priors")), list(likelihoods, priors)),
     run_id = format(Sys.time(), "run-%Y%m%d-%H%M%S"), key_backbone_id = 11L,
     lookup = function(names, rank, context) TaxaFetch::lookup_gbif_taxa(names, rank, context, cache_dir = TAXONOMY_CACHE_DIR)
   ))
@@ -963,10 +1034,27 @@ posteriors <- posteriors
 # data frame with real genus/family columns (taxa, e.g. the
 # occurrences_clean object from earlier in this pipeline). Set
 # INCLUDE_GROUP_PRIORS to FALSE to skip entirely.
+# With the run's taxon registry, the map is the registry's own tree over the
+# priors' taxon ids, so groups are the clades the consensus is formed on (a
+# genus the registry places in another family sums into THAT family) and every
+# group name is one the registry holds; posterior_consensus(registry =) refuses
+# a group or reference name it cannot resolve.
+.consensus_taxonomy_map <- if (exists("taxon_registry") && !is.null(taxon_registry) &&
+                               "taxon_id" %in% names(priors)) {
+  .tm <- unique(data.frame(taxon_name = as.character(priors$taxon_name),
+                           taxon_id = as.character(priors$taxon_id), stringsAsFactors = FALSE))
+  .tm <- .tm[!is.na(.tm$taxon_name) & !is.na(.tm$taxon_id) & !duplicated(.tm$taxon_name), , drop = FALSE]
+  .reg_nm <- stats::setNames(taxon_registry$taxa$name, taxon_registry$taxa$taxon_id)
+  for (.r in c("class", "order", "family", "genus")) .tm[[.r]] <- unname(.reg_nm[TaxaTools::parent_at(.tm$taxon_id, .r, taxon_registry)])
+  .tm$taxon_id <- NULL
+  .tm
+} else {
+  taxa
+}
 group_priors_obj <- if (isTRUE(INCLUDE_GROUP_PRIORS)) {
   TaxaAssign::compute_group_priors(
     taxaexpect_priors = priors,
-    taxonomy_map      = taxa
+    taxonomy_map      = .consensus_taxonomy_map
   )
 } else {
   NULL
@@ -995,7 +1083,7 @@ species_reference_df <- if (isTRUE(INCLUDE_DOWNRANKING)) {
   priors[.not_clamp, , drop = FALSE] |>
     dplyr::filter(!is.na(taxon_name)) |>
     dplyr::distinct(taxon_name) |>
-    dplyr::left_join(taxa, by = "taxon_name") |>
+    dplyr::left_join(.consensus_taxonomy_map, by = "taxon_name") |>
     unique()
 } else {
   NULL
@@ -1063,6 +1151,52 @@ consensus_final <- TaxaAssign::posterior_consensus(
 ) |> TaxaAssign::add_slash_taxon()
 # add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
 # consensus_taxon is in consensus_final).
+
+# Every observation gets a consensus row. One that evaluate_likelihoods()
+# returned in $unresolved (lik_unresolved, from the likelihood step: every match
+# names a reference only above the rank system, such as "Eukaryota", or the
+# coverage check removed them all) has no likelihood and never reaches
+# posterior_consensus(). It gets a no-call row here: consensus_reason
+# "no_usable_likelihood", and coarsest_reference_lineage, the lineage its matched
+# references share (e.g. "Eukaryota"), which shows how coarsely the references
+# were named for this marker. coarsest_reference_lineage is NA on every other row.
+consensus_final$coarsest_reference_lineage <- rep(NA_character_, nrow(consensus_final))
+if (!exists("lik_unresolved") || !is.data.frame(lik_unresolved)) {
+  stop(errorCondition(paste0(
+    "post_to_consensus: no lik_unresolved data frame in the session. The likelihood step (model_match_to_lik) ",
+    "keeps evaluate_likelihoods()'s $unresolved as lik_unresolved so that every observation gets a consensus row; ",
+    "without it an observation with no usable likelihood would leave the consensus table unreported. Run that ",
+    "step, or after your own evaluate_likelihoods() call set lik_unresolved <- <its result>$unresolved."),
+    class = "taxaid_lik_unresolved_missing", call = NULL))
+}
+if (nrow(lik_unresolved) > 0L) {
+  .nu_lin_cols <- intersect(TaxaTools::standard_ranks, names(lik_unresolved))
+  .nu_sid <- as.character(lik_unresolved$observation_id)
+  .nu_ids <- setdiff(unique(.nu_sid), as.character(consensus_final$observation_id))
+  .nu_lineage <- vapply(.nu_ids, function(id) {
+    .m <- lik_unresolved[.nu_sid == id, .nu_lin_cols, drop = FALSE]
+    .path <- character(0)
+    for (.r in .nu_lin_cols) {
+      .v <- as.character(.m[[.r]])
+      if (all(is.na(.v) | !nzchar(.v))) next
+      if (anyNA(.v) || length(unique(.v)) != 1L) break
+      .path <- c(.path, .v[1L])
+    }
+    if (length(.path) > 0L) paste(.path, collapse = "|") else NA_character_
+  }, character(1), USE.NAMES = FALSE)
+  .nu_rows <- data.frame(observation_id = lik_unresolved$observation_id[match(.nu_ids, .nu_sid)],
+                         consensus_taxon = rep(NA_character_, length(.nu_ids)),
+                         consensus_rank = rep(NA_character_, length(.nu_ids)),
+                         consensus_reason = rep("no_usable_likelihood", length(.nu_ids)),
+                         is_resolved = rep(FALSE, length(.nu_ids)),
+                         coarsest_reference_lineage = .nu_lineage, stringsAsFactors = FALSE)
+  .nu_attr <- attributes(consensus_final)
+  .nu_attr <- .nu_attr[setdiff(names(.nu_attr), c("names", "row.names", "class"))]
+  consensus_final <- dplyr::bind_rows(consensus_final, .nu_rows)
+  for (.a in names(.nu_attr)) attr(consensus_final, .a) <- .nu_attr[[.a]]
+  message("Consensus: ", length(.nu_ids), " observation(s) with no usable likelihood get a no-call row ",
+          "(consensus_reason \"no_usable_likelihood\")")
+}
 message("Consensus: ", sum(consensus_final$is_resolved), " of ",
         nrow(consensus_final), " samples resolved")
 consensus_final
