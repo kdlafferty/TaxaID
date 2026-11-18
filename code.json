@@ -44,7 +44,7 @@
       },
       {
         "name": "TaxaFetch",
-        "description": "Occurrence data acquisition from GBIF, DataONE, BioTIME, literature"
+        "description": "Occurrence data acquisition from GBIF, DataONE, BioTIME study files and literature PDFs, with iNaturalist counts and range checks"
       },
       {
         "name": "TaxaMatch",
