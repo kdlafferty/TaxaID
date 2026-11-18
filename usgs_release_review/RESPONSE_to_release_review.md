@@ -344,6 +344,17 @@ Two consequences a user will see:
   explicit no-call row, `consensus_reason = "no_usable_likelihood"`, with
   the lineage its references share; previously it left the table without a
   row. On the CalIntertidal run this affected 248 ESVs.
+- `TaxaAssign::posterior_consensus()` reported `consensus_scope_n_named = 1`
+  on a call that landed on a ring hypothesis for tied candidates (the
+  `ring_member_clades` case above), whose scope is its member clades rather
+  than its own name; the documented
+  value there is `NA`, because a ring row is not a named row. The
+  CalIntertidal export's own consistency check caught it: 513 calls carried
+  the wrong count. The calls themselves were unaffected. A ring row is now
+  recognised by its own member clades as well as its own name, and the
+  documentation of `consensus_unreferenced_scope` says so (pull request
+  #102). Tests cover a call on the ring, the named rows under it, and the
+  shape that occurred in the export.
 
 ### Found by an independent review before release
 
@@ -413,9 +424,11 @@ what should have changed, and corrected before release.
   any of them would have looked for a function that is not there. The identity
   rule table in TaxaFlag's README stated two configurable arguments as if they
   were fixed, and now names them.
-- The repository URL is marked provisional throughout, with every file holding
-  it listed in `usgs_release_review/REPO_URL_SWAP.md`, so the USGS-issued URL
-  can be substituted in one verifiable pass.
+- The official repository is `DOI-USGS/TaxaID`; until it is public,
+  `https://github.com/kdlafferty/TaxaID`, its mirror, is the address in the
+  packages, and every file holding it is listed in
+  `usgs_release_review/REPO_URL_SWAP.md`, so the official URL can be
+  substituted in one verifiable pass.
 - TaxaFetch's 28 test files had never run under `R CMD check`: the package had
   no `tests/testthat.R`, so its check reported no errors because nothing was
   tested. A driver was added. On its first CI run it immediately surfaced a
