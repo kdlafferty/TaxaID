@@ -46,15 +46,16 @@ additions were subject to USGS code-review standards.
 
 ### Scope of the change
 
-- Export surface: **223** exported objects (218 functions and 5 data objects)
+- Export surface: **232** exported objects (227 functions and 5 data objects)
   across the nine packages, checked against the packages themselves by the
   test suite.
-- **16 exported functions were added** and **10 were removed**, a net
-  reduction in surface rather than growth. The removals were the larger part
-  of the work: several were functions no caller reached.
+- **25 exported functions were added** and **10 were removed** since the
+  review. Nine of the additions are the taxon registry (below); the removals
+  were the larger part of the earlier work, several being functions no caller
+  reached.
 - Test files: this response stated **174** when it was written. The tree now
-  holds **217**, 43 more. That figure was accurate at submission and is left
-  as written above.
+  holds **245**. That figure was accurate at submission and is left as
+  written above.
 
 ### Functions added
 
@@ -65,6 +66,11 @@ additions were subject to USGS code-review standards.
 `flag_backbone_conflicts`, `flag_failed_libraries`, `flag_hopped_detections`,
 `match_reference_region`, `plan_gbif_fetch`, `resolve_ncbi_taxid`,
 `review_sample_identity`, `screen_assignments`.
+
+`attach_taxon_ids`, `build_taxon_registry`, `check_taxon_registry`,
+`freeze_taxon_registry`, `join_by_taxon`, `parent_at`,
+`registry_ids_for_names`, `taxon_in` (TaxaTools) and `lookup_gbif_taxa`
+(TaxaFetch).
 
 ### Functions removed, and why
 
@@ -271,6 +277,121 @@ packages.
   half old rows and half recomputed rows with nothing to say which is which.
   It defaults to off and changes nothing for callers that do not set it.
 
+### Taxon identifiers instead of names (added after 2026-11-10)
+
+Testing on the CalIntertidal data showed that matching tables by taxon
+*name* loses or merges records whenever two tables spell one taxon
+differently: a synonym in the reference library, a GBIF accepted name in the
+occurrence priors, an NCBI name in the match table. A record filed under one
+name then misses its prior or its occurrence count, and two names for one
+taxon split its posterior between two hypotheses.
+
+The packages now offer a **taxon registry**: every name a run uses is
+resolved once, under one key authority (by default the GBIF Backbone), to an
+identifier, and tables are joined on that identifier. `build_taxon_registry()`
+records how each name got its identifier; `freeze_taxon_registry()` fixes it
+for the run; `attach_taxon_ids()` stamps a table, and `join_by_taxon()`,
+`taxon_in()` and `parent_at()` join, test membership and read lineage on the
+stamped identifiers. `check_taxon_registry()` is the guard: it lists every
+identifier reached by two or more names, with the relationship the backend
+declared, and reports an undeclared merge, a homonym, a name held under two
+keys, the same taxon twice in one observation, or a table lineage that
+contradicts the registry.
+
+It is **off by default** in the functions (`registry = NULL`, added as each
+function's last argument, so existing calls are unchanged) and **on by
+default** in the TaxaWizard workflow template (`USE_TAXON_REGISTRY = TRUE`).
+Every `registry =` argument runs one shared check,
+`registry_ids_for_names()`, which refuses a registry that is not frozen or
+was edited after freezing, and a table stamped by another registry.
+
+Two consequences a user will see:
+- With the registry on, outputs carry the GBIF accepted name, with the
+  input's own name kept in `taxon_name_verbatim`. This applies whatever
+  backbone the match data use.
+- A one-word name asked above genus that GBIF answers only at genus or below
+  is not taken without lineage context (it could be a homonym in another
+  kingdom); it is kept run-local and listed.
+
+### Other behaviour changes after 2026-11-10
+
+- `TaxaLikely::evaluate_likelihoods()` scores the species density at
+  `min(score, mean)` by default (`h1_clamp = TRUE`), so a match better than a
+  species' trained mean is never scored below one at the mean.
+  `h1_clamp = FALSE` reproduces the earlier density exactly (tested against
+  stored outputs).
+- `TaxaLikely::train_likelihood_model()` attaches a reference-consistency
+  table and by default fits without the references it marks suspect
+  (`exclude_reference_suspects = TRUE`); they remain candidates at
+  evaluation. On held-out leave-species-out and leave-genus-out folds of two
+  fish 12S libraries (CalIntertidal and Mugu), the change in the mean log
+  score of the true identity ranged from -0.008 to +0.024 across the eight
+  cells, so no cell fell more than 0.01 below fitting on everything. The
+  one cell whose 95% interval lies wholly below zero is Mugu
+  leave-species-out with the species absent from the library (-0.0076,
+  genus-bootstrap interval -0.0137 to -0.0025).
+- When the candidates tied with an observation's best match span two clades
+  at an outer rank, `evaluate_likelihoods()` names that outer hypothesis at
+  their lowest common rank and lists the clades (`ring_member_clades`,
+  `ring_lca_status`); TaxaAssign gives such a hypothesis the prior of the
+  union of those clades, not of everything under the common rank.
+- Ring hypotheses may be typed by any rank of the caller's rank system
+  (infraorder, subclass, ...), and `add_unreferenced_prior_mass(rank_system = )`
+  places them.
+- In the workflow template, every observation now gets a consensus row. One
+  whose matches all name a reference identified only above the model's
+  ranks (only "Eukaryota", which arises when a marker is coarse) receives an
+  explicit no-call row, `consensus_reason = "no_usable_likelihood"`, with
+  the lineage its references share; previously it left the table without a
+  row. On the CalIntertidal run this affected 248 ESVs.
+
+### Found by an independent review before release
+
+Before the release tag was re-cut, the nine packages had a second, independent
+code review, and the TaxaWizard workflow template was run end to end on a
+subset of the CalIntertidal 18S data (264 ESVs, one site). The following were
+found and fixed. Each fix has a test that fails on the code before it.
+
+- **Workflow template dataflow.** Three steps of the generated template
+  assigned their output to itself (`taxa <- taxa`), so in a fresh R session the
+  template stopped at step 2. The review step read the first-round
+  consensus rather than the final one. The generator now binds each step's
+  output to the object its code produces and refuses a step whose last line
+  names no object. (The defect is present in the `v1.0.0` tag, `e439e791`,
+  which was not released.)
+- **Rank system in the template's likelihood step.** The template took its
+  ranks from the columns of the match table, not from the ranks the
+  likelihood model was fitted on. On the 18S test, 14 ESVs whose references
+  are named only "Eukaryota" were called "Eukaryota" at kingdom, where the
+  model offers no evidence. The template now evaluates on the model's own
+  rank system (`model_params$Rank_System`), so those ESVs get an explicit
+  no-call row (`consensus_reason = "no_usable_likelihood"`). A model without a
+  stored rank system falls back to detection, with a message.
+- **Repeated runs in one session.** A second template run in the same R
+  session could reuse the first run's taxon registry, kernel fit and
+  unresolved set. The template now removes those objects before step 1 and
+  names them in a message.
+- **Crashes on inputs no test had used:**
+  - a factor or all-`NA` column in the unreferenced-type check;
+  - a ring hypothesis at a rank the taxonomy table does not have, which now
+    keeps its floor prior and is listed;
+  - missing observation ids matched to each other when dropped hits were
+    restored;
+  - integer observation ids in the template's no-call rows.
+- **Documentation.** The `tiebreak` argument of `build_taxon_registry()` is
+  now described as the code behaves, and the TaxaWizard NEWS lists three
+  template behaviour changes it had omitted.
+- **Test infrastructure.** Under `R CMD check`, a test helper took the check
+  directory, which holds the installed package, for the source repository,
+  and two test files then failed (CI run 44241465534). The helper now
+  requires the source tree, and those tests read the installed snippets, so
+  they run, rather than skip, on every platform. CI run 44324612078 on `5fa7df57`
+  confirmed it.
+
+The workflow template and the LLM prompt pack were regenerated from the
+fixed packages (test-workflow-template 14 tests and test-pack 21 tests,
+0 failures).
+
 ### Documentation structure
 
 One correction is worth recording because it affected what the documentation
@@ -376,6 +497,37 @@ The "Release form" section below states that the nine packages sit at
 tree's state when this response was written. The bump has since been made: all
 nine packages, and the `TaxaID` meta-package, now read `Version: 1.0.0`. The
 sentence is left as submitted rather than edited.
+
+### Use of AI in this work
+
+The changes recorded in this response, like the rest of the TaxaID source
+code, were made with the assistance of Anthropic Claude models used through
+Claude Code (Anthropic PBC, San Francisco, California), from 20 May 2026 to
+18 November 2026. The models, with the dates each was used, were:
+
+- Claude Opus 4.6, 20-21 May 2026;
+- Claude Sonnet 4.6, 22 May-30 June 2026;
+- Claude Sonnet 5 (`claude-sonnet-5`), 1 July-27 September 2026;
+- Claude Fable 5, 26 August-2 September 2026;
+- Claude Opus 5 (`claude-opus-5`), 2 September-16 November 2026;
+- Claude Fable 5.1 (`claude-fable-5-1`), 3 September-10 November 2026;
+- Claude Opus 5.5 (`claude-opus-5-5`), 24 September-18 November 2026;
+- Claude Sonnet 5.5 (`claude-sonnet-5-5`), 2 October-18 November 2026, for
+  review sub-sessions;
+- Claude Fable 5.2 (`claude-fable-5-2`), 13-18 November 2026, for review.
+
+They were used to write and revise code and tests, to review code, and to
+draft documentation, including this response. The assistance was continuous
+rather than confined to particular functions: 1,981 of the 2,043 non-merge
+commits at `5fa7df57` name a contributing model in a `Co-Authored-By`
+trailer, and four of those name "Claude Sonnet" without a version. Sonnet 5.5
+and Fable 5.2 appear in no trailer; their use is taken from the Claude Code
+session records. No AI tool is an author. The maintainer directed the work,
+reviewed and tested its output, and takes responsibility for the code and for
+this response.
+
+Any use of trade, firm, or product names is for descriptive purposes only and
+does not imply endorsement by the U.S. Government.
 
 ## Release form
 

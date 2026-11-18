@@ -364,23 +364,36 @@ that in its own products.
 In writing the code: the TaxaID source code was written with the
 assistance of Anthropic Claude models, used through Claude Code
 (Anthropic PBC, San Francisco, California), from 20 May 2026 to
-14 November 2026. The models were Claude Opus 4.6, 5 and 5.5; Claude
-Sonnet 4.6, 5 and 5.5, with Sonnet 5.5 used for review sub-sessions;
-and Claude Fable 5 and 5.1. Nearly every non-merge commit names the
-model that contributed to it in a `Co-Authored-By` trailer -- 1,868 of
-1,930 at `2be885aa`, counted with `git log --no-merges --grep`
+18 November 2026. The models, with the dates each was used, were:
+
+- Claude Opus 4.6, 20-21 May 2026;
+- Claude Sonnet 4.6, 22 May-30 June 2026;
+- Claude Sonnet 5 (`claude-sonnet-5`), 1 July-27 September 2026;
+- Claude Fable 5, 26 August-2 September 2026;
+- Claude Opus 5 (`claude-opus-5`), 2 September-16 November 2026;
+- Claude Fable 5.1 (`claude-fable-5-1`), 3 September-10 November 2026;
+- Claude Opus 5.5 (`claude-opus-5-5`), 24 September-18 November 2026;
+- Claude Sonnet 5.5 (`claude-sonnet-5-5`), 2 October-18 November 2026,
+  for review sub-sessions;
+- Claude Fable 5.2 (`claude-fable-5-2`), 13-18 November 2026, for review.
+
+They were used to write and revise code and tests, to review code, and
+to draft documentation. Nearly every non-merge commit names the
+model that contributed to it in a `Co-Authored-By` trailer -- 1,981 of
+2,043 at `5fa7df57`, counted with `git log --no-merges --grep`
 `='Co-Authored-By: Claude'`; a count of trailer lines rather than
 commits returns one more, because one commit names two models. No trailer
-names Sonnet 5.5, so its use is stated here rather than checkable there.
+names Sonnet 5.5 or Fable 5.2, so their use is taken from the Claude Code
+session records rather than checkable there.
 Four commits name "Claude Sonnet" without a version. Opus accounts for
-the largest share, about half. Because this assistance was
+the largest share, more than half of the trailer lines. Because this assistance was
 continuous rather than confined to particular functions, per-function
 annotation would imply a precision that does not exist, so this
 repository-level statement is the annotation. All of it was reviewed and tested before release: every
 package carries a `testthat` suite, and each was checked with
-`R CMD check` before release. The author reviewed the code and takes
-responsibility for it and the code was subject to a human code review as
-well.
+`R CMD check` before release. No AI tool is an author. The author
+reviewed the code and takes responsibility for it and the code was
+subject to a human code review as well.
 
 In assisting the user: TaxaWizard has three ways for users to interface
 with LLMs to help write code and generate products.
@@ -1038,7 +1051,7 @@ the U.S. Fish and Wildlife Service improve taxonomic assignment for
 metabarcoding studies of Great Lakes fish communities. Throughout, Joe
 Craine and Nick Schulte helped me understand how Jonah Ventures computes
 taxonomic assignment. Anthropic Claude models, used through Claude
-Code, were used from 20 May 2026 to 14 November 2026 to increase
+Code, were used from 20 May 2026 to 18 November 2026 to increase
 robustness, reduce redundancies, strengthen tests, and write and edit
 the documentation required to make TaxaID useful to others as an R
 package; the models and versions are listed under "Use of Large

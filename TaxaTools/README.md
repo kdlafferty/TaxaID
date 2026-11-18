@@ -77,6 +77,7 @@ downstream package needs solved consistently:
 | `taxon_in()` | Membership of identifiers in a set of identifiers, never of names. |
 | `parent_at()` | The ancestor identifier of each taxon at a given rank, from the registry's tree. The registry tree holds the ranks on the key authority's own classification paths: under the GBIF Backbone (the default) its seven major ranks (kingdom to species); under an authority whose paths carry intermediate ranks (WoRMS, for example) those too. A rank the authority's path does not carry gives `NA` from `parent_at()`; such ranks come only from the caller's own lineage columns, which pass through unchanged. |
 | `check_taxon_registry()` | The guard: lists every identifier reached by two or more names with the declared relationship, and reports undeclared merges, ambiguous pool keys, a taxon twice in one observation, and table lineages that contradict the registry (a family or order difference is listed, a genus difference is an error). |
+| `registry_ids_for_names()` | The one check every `registry =` argument runs before it reads a registry: the registry must be frozen and unedited since the freeze, and each table passed must carry this registry's stamp; any failure is an error of class `taxon_registry_invalid`. Optionally resolves names to identifiers under one of three rules (`"names"`, `"names_then_accepted"`, `"names_or_accepted"`), each fixed by what the caller's names are. No rule guesses: a name with no single id is `NA` and is listed in the result's `"unresolved"` attribute. |
 
 ### LLM provider interface
 
