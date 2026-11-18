@@ -269,3 +269,40 @@ test_that("join_priors keeps every ring row of a rank system with subclass and i
   expect_identical(sort(paste(ro$observation_id, ro$hypothesis_type, vb[grepl("^unreferenced_", out$hypothesis_type)])),
                    sort(paste(.rk_rings(lik)$observation_id, .rk_rings(lik)$hypothesis_type, .rk_rings(lik)$taxon_name)))
 })
+
+test_that("join_priors keeps every ring row of a rank system with subclass and infraorder (registry; a lookup that answers an intermediate rank on its own path)", {
+  .rg_skip()
+  # The answer shape that dropped rows before: the lookup names an intermediate-rank taxon AT its rank, on a path that
+  # holds it (a run-local node under the answer, since the registry's tree keeps the major ranks). Before the ring
+  # types followed the rank system, join_priors dropped both observations' unreferenced_subclass rings here (15 of 17).
+  inter <- data.frame(q = c("Chordata", "Actinopteri", "Neopterygii", "Perciformes", "Ovalentaria", "Eupercaria"),
+                      rank = c("phylum", "class", "subclass", "order", "infraorder", "infraorder"),
+                      path = c("Animalia|Chordata", "Animalia|Chordata|Actinopteri", "Animalia|Chordata|Actinopteri|Neopterygii",
+                               "Animalia|Chordata|Perciformes", "Animalia|Chordata|Actinopteri|Ovalentaria", "Animalia|Chordata|Actinopteri|Eupercaria"),
+                      ranks = c("kingdom|phylum", "kingdom|phylum|class", "kingdom|phylum|class|subclass", "kingdom|phylum|order",
+                                "kingdom|phylum|class|infraorder", "kingdom|phylum|class|infraorder"),
+                      ids = c("1|44", "1|44|204", "1|44|204|9003", "1|44|587", "1|44|204|9001", "1|44|204|9002"),
+                      id = c("44", "204", "9003", "587", "9001", "9002"), stringsAsFactors = FALSE)
+  lk <- function(names, rank, context) {
+    out <- .rg_lookup(names, rank, context)
+    for (k in which(names %in% inter$q)) {
+      e <- inter[match(names[k], inter$q), ]
+      out$matched_name[k] <- e$q; out$matched_rank[k] <- e$rank; out$is_synonym[k] <- FALSE; out$matched[k] <- TRUE
+      out$classification_path[k] <- e$path; out$classification_ranks[k] <- e$ranks; out$classification_ids[k] <- e$ids
+      out$record_id[k] <- out$current_record_id[k] <- e$id; out$match_type[k] <- "Exact"
+    }
+    out
+  }
+  lik <- .rk_lik(); pri <- .rk_priors(); lin <- .rk_lin()
+  nt <- unique(rbind(data.frame(verbatim_name = lik$taxon_name, rank_given = lik$taxon_name_rank, source_table = "joined"),
+                     data.frame(verbatim_name = lin$species, rank_given = "species", source_table = "priors"),
+                     do.call(rbind, lapply(setdiff(.rk_RS, "species"), function(r) data.frame(verbatim_name = unique(lin[[r]]), rank_given = r,
+                                                                                             source_table = "joined")))))
+  reg <- TaxaTools::freeze_taxon_registry(suppressWarnings(TaxaTools::build_taxon_registry(nt, run_id = "rk2", lookup = lk)))
+  out <- .rk_jp(.rg_stamp(lik, reg, "joined"), .rg_stamp(pri, reg, "priors"), registry = reg)
+  vb <- if ("taxon_name_verbatim" %in% names(out)) out$taxon_name_verbatim else out$taxon_name
+  ro <- .rk_rings(out)
+  expect_identical(nrow(ro), 17L)
+  expect_identical(sort(paste(ro$observation_id, ro$hypothesis_type, vb[grepl("^unreferenced_", out$hypothesis_type)])),
+                   sort(paste(.rk_rings(lik)$observation_id, .rk_rings(lik)$hypothesis_type, .rk_rings(lik)$taxon_name)))
+})
