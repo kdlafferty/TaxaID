@@ -444,7 +444,7 @@ add_unreferenced_prior_mass <- function(joined,
   }
   # As for an ordinary ring, the members are read at the ring's own rank, so that rank must be a column of `taxonomy`.
   # A tied-anchor ring whose own rank is not one keeps its floor prior, and its member clades are listed as withheld.
-  lca_rows <- lca_all[expected_rank[lca_all] %in% setdiff(names(taxonomy), "taxon_name")]
+  lca_rows <- lca_all[expected_rank[lca_all] %in% names(taxonomy)]
   lca_unplaced <- setdiff(lca_all, lca_rows)
   gen <- setdiff(gen, lca_all)
   lca_sc <- data.frame(row = integer(0), member = character(0), rank = character(0), scope = character(0), stringsAsFactors = FALSE)
