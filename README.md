@@ -332,13 +332,10 @@ Lafferty, K.D., TaxaID: A modular R ecosystem for Bayesian taxonomic
 assignment: U.S. Geological Survey software, provisional release, not
 yet citable. <https://github.com/kdlafferty/TaxaID>
 
-**The repository URL above is provisional.** TaxaID is expected to be
-released through a USGS-operated GitHub organization; until that URL is
-issued, `https://github.com/kdlafferty/TaxaID` stands in for it. Every
-file carrying the URL is listed in `usgs_release_review/REPO_URL_SWAP.md`
-so it can be replaced in one pass, and the `URL` and `BugReports` fields
-of each `DESCRIPTION`, together with `code.json`, are the ones that must
-be correct at release.
+**Repository.** The official repository is `DOI-USGS/TaxaID` (U.S.
+Geological Survey); `https://github.com/kdlafferty/TaxaID` mirrors it and
+is the address to install from and to report issues at until the official
+repository is public.
 
 A citable version with a DOI will be released through the USGS software
 release process.
