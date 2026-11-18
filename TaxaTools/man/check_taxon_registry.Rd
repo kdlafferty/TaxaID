@@ -38,7 +38,9 @@ stop \code{mode = "error"}: \code{accepted_name_multiple_ids} (one accepted
 name at one rank under two or more ranked ids in one kingdom, with the id a
 pool-key tie-break chose) and \code{pool_key_unplaced} (a pool key placed
 under no genus). A pool key placed under a genus other than its pool
-\code{genus_key} is \code{pool_key_parent_mismatch} (error).
+\code{genus_key} is \code{pool_key_parent_mismatch} (error). A node whose
+\code{parent_id} is not a node of the tree is \code{parent_not_in_tree}
+(error): the walk up from it, and \code{parent_at()}, would stop there.
 }
 \description{
 The guard. It reports, per table: taxa held under two or more verbatim names

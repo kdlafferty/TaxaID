@@ -276,7 +276,9 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' rank than it was asked at (\code{rank_given}, else genus for one word,
 #' species for two, infraspecific for three or more): such a name gets
 #' \code{status = "rank_fallback"} and a run-local identifier under the
-#' answered ancestor, never that ancestor's identifier.
+#' answered ancestor, never that ancestor's identifier. Where the answered taxon
+#' is not a node of its own classification path (an answer at a rank the path
+#' does not carry), the run-local identifier sits under the path's last node.
 #'
 #' \strong{One name, one lineage, one taxon.} Tables can ask one name at
 #' different ranks and so get different answers. Within one (name,
@@ -544,7 +546,15 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$status[failed] <- "lookup_failed"; nm$taxon_id[failed] <- NA_character_
   ans_lvl <- unname(.RANK_LADDER[nm$matched_rank])
   above <- ok & (is.na(ans_lvl) | ans_lvl < .asked_rank_level(nm$name_clean, nm$rank_given))
-  nm$fallback_parent <- dplyr::if_else(above, nm$taxon_id, NA_character_)   # the answered ancestor: parent of the local id
+  # The parent of the local id: the answered taxon when it is a node of its own classification path, else that path's
+  # last node. An answer at a rank its path does not carry (GBIF answering an infraorder with its own key on a path of
+  # major ranks) is not a node of the tree, and a parent outside the tree would cut the walk up from the local id.
+  .path_last <- vapply(as.character(r$classification_ids), function(x) {
+    v <- .split_pipe(x); if (length(v)) paste0(prefix, ":", v[length(v)]) else NA_character_
+  }, "", USE.NAMES = FALSE)
+  .on_path <- mapply(function(id, x) !is.na(id) && id %in% paste0(prefix, ":", .split_pipe(x)),
+                     nm$taxon_id, as.character(r$classification_ids), USE.NAMES = FALSE)
+  nm$fallback_parent <- dplyr::if_else(above, dplyr::if_else(.on_path, nm$taxon_id, .path_last), NA_character_)
   nm$status[above] <- "rank_fallback"; nm$taxon_id[above] <- NA_character_
   fzr <- nm$status %in% "fuzzy"
   nm$status[fzr] <- "fuzzy_rejected"; nm$taxon_id[fzr] <- NA_character_
@@ -1311,7 +1321,9 @@ parent_at <- function(ids, rank, registry) {
 #'   name at one rank under two or more ranked ids in one kingdom, with the id a
 #'   pool-key tie-break chose) and \code{pool_key_unplaced} (a pool key placed
 #'   under no genus). A pool key placed under a genus other than its pool
-#'   \code{genus_key} is \code{pool_key_parent_mismatch} (error).
+#'   \code{genus_key} is \code{pool_key_parent_mismatch} (error). A node whose
+#'   \code{parent_id} is not a node of the tree is \code{parent_not_in_tree}
+#'   (error): the walk up from it, and \code{parent_at()}, would stop there.
 #' @export
 check_taxon_registry <- function(registry, tables = list(), mode = c("report", "error"), verbose = TRUE, export = FALSE) {
   mode <- match.arg(mode)
@@ -1323,6 +1335,12 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
                                            detail = detail, n = as.integer(n), stringsAsFactors = FALSE)
   }
   nm <- registry$names
+  # every parent is a node of the tree
+  dang <- which(!is.na(registry$taxa$parent_id) & !registry$taxa$parent_id %in% registry$taxa$taxon_id)
+  for (i in dang) {
+    add("error", "parent_not_in_tree", NA_character_, registry$taxa$taxon_id[i], registry$taxa$name[i],
+        sprintf("parent %s is not a node of the tree", registry$taxa$parent_id[i]), 1L)
+  }
   if (isTRUE(registry$meta$frozen) && !.registry_digest_ok(registry)) {
     add("error", "registry_digest_mismatch", NA_character_, NA_character_, NA_character_,
         "registry edited after freeze_taxon_registry(): its content no longer matches the digest its stamps carry", 1L)

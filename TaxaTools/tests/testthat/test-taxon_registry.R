@@ -1305,3 +1305,43 @@ test_that("build_taxon_registry and parent_at docs, the README and NEWS state th
     expect_false(grepl("Whatever the authority, the registry tree holds only", txt, fixed = TRUE), info = f)
   }
 })
+
+# A GBIF-shaped answer at an intermediate rank: matched_rank "infraorder", its own usage key 9001, on a path of major
+# ranks only (kingdom..order), so the answered id is not on its own path.
+.w2_lookup <- function(names, rank, context) {
+  t <- data.frame(q = c("Ovalentaria", "Embiotoca jacksoni"), r = c("infraorder", "species"), key = c("9001", "421"),
+    path = c("Animalia|Chordata|Actinopteri|Perciformes", "Animalia|Chordata|Actinopteri|Perciformes|Embiotocidae|Embiotoca|Embiotoca jacksoni"),
+    ranks = c("kingdom|phylum|class|order", "kingdom|phylum|class|order|family|genus|species"),
+    ids = c("1|44|204|587", "1|44|204|587|400|420|421"), stringsAsFactors = FALSE)
+  i <- match(names, t$q); hit <- !is.na(i)
+  data.frame(user_supplied_name = names, matched_name = ifelse(hit, t$q[i], NA), matched_rank = ifelse(hit, t$r[i], NA), is_synonym = ifelse(hit, FALSE, NA),
+    classification_path = ifelse(hit, t$path[i], NA), classification_ranks = ifelse(hit, t$ranks[i], NA), classification_ids = ifelse(hit, t$ids[i], NA),
+    score = NA_real_, verified = TRUE, matched = hit, record_id = ifelse(hit, t$key[i], NA), current_record_id = ifelse(hit, t$key[i], NA),
+    data_source_id = 11L, entry_date = NA, match_type = ifelse(hit, "Exact", NA), stringsAsFactors = FALSE)
+}
+
+test_that("a rank_fallback node whose answer is not on its own path hangs from the path's last node, never a dangling key", {
+  reg <- freeze_taxon_registry(suppressWarnings(build_taxon_registry(
+    data.frame(verbatim_name = c("Ovalentaria", "Embiotoca jacksoni"), source_table = "x", rank_given = c("infraorder", "species")),
+    run_id = "w2", lookup = .w2_lookup)))
+  z <- reg$names[reg$names$verbatim_name == "Ovalentaria", ]
+  expect_identical(z$status, "rank_fallback")
+  node <- reg$taxa[reg$taxa$taxon_id == z$taxon_id, ]
+  expect_identical(node$rank, "infraorder")
+  expect_identical(node$parent_id, "gbif:587")                 # the path's last node (Perciformes), not gbif:9001
+  expect_true(all(stats::na.omit(reg$taxa$parent_id) %in% reg$taxa$taxon_id))
+  expect_identical(parent_at(z$taxon_id, "order", reg), "gbif:587")
+  ck <- check_taxon_registry(reg, verbose = FALSE)
+  expect_false(any(ck$kind == "parent_not_in_tree"))
+})
+
+test_that("check_taxon_registry reports a node whose parent is not in the tree (error-class)", {
+  reg <- build_taxon_registry(data.frame(verbatim_name = "Embiotoca jacksoni", source_table = "x", rank_given = "species"),
+                              run_id = "w2b", lookup = .w2_lookup)
+  reg$taxa$parent_id[reg$taxa$taxon_id == "gbif:421"] <- "gbif:999999"
+  ck <- check_taxon_registry(reg, verbose = FALSE)
+  f <- ck[ck$kind == "parent_not_in_tree", ]
+  expect_identical(nrow(f), 1L)
+  expect_identical(f$severity, "error"); expect_identical(f$taxon_id, "gbif:421")
+  expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE))
+})

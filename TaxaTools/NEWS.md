@@ -82,3 +82,7 @@
   example) those too. A rank the authority's path does not carry gives `NA`
   from `parent_at()`; such ranks come only from the caller's own lineage
   columns, which pass through unchanged.
+* `check_taxon_registry()` reports a node whose parent is not a node of the
+  tree (`parent_not_in_tree`, error-class). A run-local node for a name
+  answered at a rank its own classification path does not carry sits under
+  that path's last node.

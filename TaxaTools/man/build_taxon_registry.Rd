@@ -138,7 +138,9 @@ not checked.
 rank than it was asked at (\code{rank_given}, else genus for one word,
 species for two, infraspecific for three or more): such a name gets
 \code{status = "rank_fallback"} and a run-local identifier under the
-answered ancestor, never that ancestor's identifier.
+answered ancestor, never that ancestor's identifier. Where the answered taxon
+is not a node of its own classification path (an answer at a rank the path
+does not carry), the run-local identifier sits under the path's last node.
 
 \strong{One name, one lineage, one taxon.} Tables can ask one name at
 different ranks and so get different answers. Within one (name,
