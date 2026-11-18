@@ -7,16 +7,7 @@
 # `x` carry the same frozen registry's stamp. Of several names of one taxon, the row under the registry's accepted
 # name is kept, else the first. Rows with no id are dropped (they can match nothing by id).
 .registry_lookup_by_id <- function(lookup, registry, lookup_arg, x, x_arg) {
-  if (!inherits(registry, "taxon_registry")) stop("`registry` must be a taxon_registry (TaxaTools::build_taxon_registry()).", call. = FALSE)
-  if (!isTRUE(registry$meta$frozen)) stop("`registry` must be frozen (TaxaTools::freeze_taxon_registry()).", call. = FALSE)
-  for (a in c(lookup_arg, x_arg)) {
-    t <- if (a == lookup_arg) lookup else x
-    s <- attr(t, "taxon_registry", exact = TRUE)
-    if (!"taxon_id" %in% names(t) || is.null(s)) {
-      stop(sprintf("`%s` has no taxon_id column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.", a), call. = FALSE)
-    }
-    if (!identical(s$digest, registry$meta$digest)) stop(sprintf("`%s` was stamped by a different registry than `registry`.", a), call. = FALSE)
-  }
+  TaxaTools::registry_ids_for_names(NULL, registry, tables = stats::setNames(list(lookup, x), c(lookup_arg, x_arg)))
   lk <- as.data.frame(lookup)
   lk <- lk[!is.na(lk$taxon_id), , drop = FALSE]
   acc <- as.character(lk$taxon_name) == registry$taxa$name[match(lk$taxon_id, registry$taxa$taxon_id)]
@@ -31,12 +22,8 @@
 # column is not `taxon_id`: that name is reserved for a table attach_taxon_ids() stamped, and these rows are bound
 # into a prior table that is stamped later, which would refuse an unstamped taxon_id as another source's ids.
 .registry_lineage_cols <- function(x, registry, cols, name_col = "taxon_name", id_col = "registry_taxon_id", caller = "") {
-  if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
-    stop(sprintf("%s: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).", caller), call. = FALSE)
-  }
-  rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
-  rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
-  x[[id_col]] <- rn$taxon_id[match(as.character(x[[name_col]]), rn$verbatim_name)]
+  x[[id_col]] <- as.vector(TaxaTools::registry_ids_for_names(as.character(x[[name_col]]), registry, resolve = "names",
+                                                               caller = if (nzchar(caller)) caller else NULL))
   reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
   u <- unique(stats::na.omit(x[[id_col]]))
   for (rc in cols) {

@@ -12,7 +12,7 @@ reasoning behind them -- lives in the TaxaID_dev repository at
 `ecosystem_docs/session_notes/TaxaTools_CLAUDE_2026-10.md`. This file carries current
 state only.
 
-## Exported functions (64)
+## Exported functions (65)
 
 | Function | Purpose |
 |---|---|
@@ -62,6 +62,7 @@ state only.
 | `read_llm_response` | Read Saved LLM Response File(s) |
 | `refresh_models` | Refresh LLM Model Discovery from Provider APIs |
 | `register_provider` | Register a Custom OpenAI-Compatible LLM Provider |
+| `registry_ids_for_names` | Check a registry before use and resolve names to its taxon identifiers |
 | `rename_cols` | Rename Data Frame Columns to a Target Convention |
 | `report_and_clear_cache` | Report and optionally delete a set of cache files |
 | `reset_token_usage` | Reset the LLM Token Usage Ledger |

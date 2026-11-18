@@ -124,12 +124,9 @@ compute_local_occurrence_distance <- function(taxon_names,
   # the key records are counted under: the name itself, or with a registry the taxon id
   keys <- taxa_unique
   if (!is.null(registry)) {
-    if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
-      stop("compute_local_occurrence_distance: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).")
-    }
-    rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
-    rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
-    id_of <- function(v) rn$taxon_id[match(as.character(v), rn$verbatim_name)]
+    id_of <- function(v) as.vector(TaxaTools::registry_ids_for_names(as.character(v), registry, resolve = "names",
+                                                                     caller = "compute_local_occurrence_distance"))
+    id_of(NULL)   # the registry checks, before any table is read
     st <- attr(occurrence_data, "taxon_registry", exact = TRUE)
     occ_id <- if ("taxon_id" %in% names(occurrence_data) && !is.null(st) && identical(st$digest, registry$meta$digest)) {
       as.character(occurrence_data$taxon_id)

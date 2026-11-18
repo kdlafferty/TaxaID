@@ -5,16 +5,7 @@
 
 # Refuse a registry that is not frozen, and a table that carries no taxon_id or another registry's stamp.
 .registry_check_tables <- function(registry, tables) {
-  if (!inherits(registry, "taxon_registry")) cli::cli_abort("{.arg registry} must be a {.cls taxon_registry} (TaxaTools::build_taxon_registry()).")
-  if (!isTRUE(registry$meta$frozen)) cli::cli_abort("{.arg registry} must be frozen (TaxaTools::freeze_taxon_registry()).")
-  for (a in names(tables)) {
-    x <- tables[[a]]
-    s <- attr(x, "taxon_registry", exact = TRUE)
-    if (!"taxon_id" %in% names(x) || is.null(s)) {
-      cli::cli_abort("{.arg {a}} has no {.field taxon_id} column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.")
-    }
-    if (!identical(s$digest, registry$meta$digest)) cli::cli_abort("{.arg {a}} was stamped by a different registry than {.arg registry}.")
-  }
+  TaxaTools::registry_ids_for_names(NULL, registry, tables = tables)
   invisible(TRUE)
 }
 
@@ -30,12 +21,7 @@
   mn <- unique(stats::na.omit(as.character(member_names)))
   out <- stats::setNames(rep(NA_character_, length(mn)), mn)
   if (!length(mn)) return(out)
-  nt <- registry$names[!is.na(registry$names$verbatim_name) & !is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")]
-  nt <- unique(rbind(nt, data.frame(verbatim_name = registry$taxa$name, taxon_id = registry$taxa$taxon_id, stringsAsFactors = FALSE)))
-  nt <- nt[nt$verbatim_name %in% mn, , drop = FALSE]
-  n_ids <- tapply(nt$taxon_id, nt$verbatim_name, function(x) length(unique(x)))
-  one <- names(n_ids)[n_ids == 1L]
-  out[one] <- nt$taxon_id[match(one, nt$verbatim_name)]
+  out[] <- as.vector(TaxaTools::registry_ids_for_names(mn, registry, resolve = "names_or_accepted"))
   out
 }
 
@@ -89,12 +75,12 @@
   name_to_id <- unique(data.frame(n = as.character(priors$taxon_name), id = as.character(priors$taxon_id), stringsAsFactors = FALSE))
   name_to_id <- name_to_id[!is.na(name_to_id$id) & !duplicated(name_to_id$n), , drop = FALSE]
   # a source species that is not itself a prior row: the registry's own name table (names registered to one id only)
-  rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
-  rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
-  rn <- rn[!rn$verbatim_name %in% name_to_id$n, , drop = FALSE]
-  name_to_id <- rbind(name_to_id, data.frame(n = rn$verbatim_name, id = rn$taxon_id, stringsAsFactors = FALSE))
   if ("source_taxon_name" %in% names(pw)) {
-    pw$source_taxon_name <- name_to_id$id[match(as.character(pw$source_taxon_name), name_to_id$n)]
+    src <- as.character(pw$source_taxon_name)
+    sid <- name_to_id$id[match(src, name_to_id$n)]
+    reg <- !src %in% name_to_id$n
+    sid[reg] <- as.vector(TaxaTools::registry_ids_for_names(src[reg], registry, resolve = "names"))
+    pw$source_taxon_name <- sid
   }
   pw$.verbatim <- NULL
   pw$taxon_id <- NULL
@@ -306,8 +292,7 @@
 # A table that has passed through functions outside the registry's reach (compute_posterior()) may have lost its stamp;
 # what it must still hold is a taxon_id column whose ids all belong to `registry`.
 .registry_check_ids <- function(x, registry, arg) {
-  if (!inherits(registry, "taxon_registry")) cli::cli_abort("{.arg registry} must be a {.cls taxon_registry} (TaxaTools::build_taxon_registry()).")
-  if (!isTRUE(registry$meta$frozen)) cli::cli_abort("{.arg registry} must be frozen (TaxaTools::freeze_taxon_registry()).")
+  TaxaTools::registry_ids_for_names(NULL, registry)
   if (!"taxon_id" %in% names(x)) cli::cli_abort("{.arg {arg}} has no {.field taxon_id} column: run join_priors() with the same {.arg registry}.")
   s <- attr(x, "taxon_registry", exact = TRUE)
   if (!is.null(s) && !identical(s$digest, registry$meta$digest)) cli::cli_abort("{.arg {arg}} was stamped by a different registry than {.arg registry}.")
@@ -336,22 +321,7 @@
 # its taxa by accepted name. A name held under 2+ ids is narrowed by `ranks` (the taxon's rank in the registry) where
 # that leaves one. Returns the ids (NA where unresolved) with attribute "unresolved": the names with no single id.
 .registry_resolve_names <- function(nm, ranks, registry) {
-  nm <- as.character(nm); ranks <- if (is.null(ranks)) rep(NA_character_, length(nm)) else rep_len(as.character(ranks), length(nm))
-  rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
-  by_name <- split(as.character(rn$taxon_id), rn$verbatim_name)
-  by_acc <- split(as.character(registry$taxa$taxon_id), registry$taxa$name)
-  rk_of <- stats::setNames(as.character(registry$taxa$rank), registry$taxa$taxon_id)
-  key <- paste(nm, ranks, sep = "\r")
-  u <- !duplicated(key) & !is.na(nm)
-  one <- vapply(which(u), function(i) {
-    ids <- by_name[[nm[i]]] %||% by_acc[[nm[i]]] %||% character(0)
-    if (length(ids) > 1L && !is.na(ranks[i])) { r <- ids[rk_of[ids] %in% ranks[i]]; if (length(r)) ids <- r }
-    if (length(ids) == 1L) ids else NA_character_
-  }, "")
-  out <- unname(stats::setNames(one, key[u])[key])
-  out[is.na(nm)] <- NA_character_
-  attr(out, "unresolved") <- unique(nm[!is.na(nm) & is.na(out)])
-  out
+  TaxaTools::registry_ids_for_names(as.character(nm), registry, resolve = "names_then_accepted", ranks = ranks)
 }
 
 .registry_abort_unresolved <- function(bad, arg) {

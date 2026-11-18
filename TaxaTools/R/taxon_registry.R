@@ -1124,6 +1124,103 @@ taxon_in <- function(ids, set) {
   !is.na(ids) & ids %in% set[!is.na(set)]
 }
 
+#' Check a registry before use and resolve names to its taxon identifiers
+#'
+#' The one check every \code{registry =} argument runs before it reads a
+#' registry, with an optional name-to-id lookup. The registry must be a
+#' \code{taxon_registry}, frozen, and unedited since the freeze (its content
+#' still matches its digest, the check \code{\link{attach_taxon_ids}} makes);
+#' each table in \code{tables} must carry a \code{taxon_id} column and the
+#' stamp of this registry. Any failure is an error of class
+#' \code{taxon_registry_invalid}.
+#'
+#' \code{resolve} chooses how a name finds its id; each caller keeps the rule
+#' it documents:
+#' \describe{
+#'   \item{\code{"names"}}{The registry's name table: a name registered to
+#'     exactly one id takes it; a name held under two or more ids, or not
+#'     held, is \code{NA}.}
+#'   \item{\code{"names_then_accepted"}}{The name table, else the registry's
+#'     accepted names; where two or more ids remain, \code{ranks} (one per
+#'     name, the rank of the taxon in the registry) narrows them; one id, or
+#'     \code{NA}.}
+#'   \item{\code{"names_or_accepted"}}{The name table and the accepted names
+#'     together: a name with exactly one id across both takes it, else
+#'     \code{NA}.}
+#' }
+#' No rule guesses: a name with no single id is \code{NA} and is listed in
+#' the result's \code{"unresolved"} attribute, and the caller decides whether
+#' that is an error.
+#'
+#' @param names Character vector of names to resolve, or \code{NULL} to run
+#'   the checks only.
+#' @param registry A frozen \code{taxon_registry}.
+#' @param resolve One of \code{"names"} (default), \code{"names_then_accepted"},
+#'   \code{"names_or_accepted"}.
+#' @param ranks \code{NULL} or a character vector recycled to \code{names}:
+#'   the rank each name is meant at, read only by
+#'   \code{resolve = "names_then_accepted"}.
+#' @param tables A named list of data frames that must carry this registry's
+#'   stamp (\code{\link{attach_taxon_ids}}); the names are used in messages.
+#' @param caller \code{NULL} or the calling function's name, prefixed to
+#'   messages.
+#' @return Character vector of taxon identifiers, one per \code{names}
+#'   (\code{NA} where unresolved), with attribute \code{"unresolved"}: the
+#'   distinct names with no single id. With \code{names = NULL}, an empty
+#'   character vector, invisibly.
+#' @export
+registry_ids_for_names <- function(names, registry, resolve = c("names", "names_then_accepted", "names_or_accepted"),
+                                   ranks = NULL, tables = list(), caller = NULL) {
+  resolve <- match.arg(resolve)
+  pre <- if (is.null(caller)) "" else paste0(caller, ": ")
+  bad <- function(msg) stop(structure(class = c("taxon_registry_invalid", "error", "condition"),
+                                      list(message = paste0(pre, msg), call = NULL)))
+  if (!inherits(registry, "taxon_registry")) bad("`registry` must be a taxon_registry (TaxaTools::build_taxon_registry()).")
+  if (!isTRUE(registry$meta$frozen)) bad("`registry` must be frozen (TaxaTools::freeze_taxon_registry()).")
+  if (!.registry_digest_ok(registry)) {
+    bad("`registry` was edited after freeze_taxon_registry(): its content no longer matches its digest. Rebuild and freeze it again.")
+  }
+  if (length(tables) && (is.null(names(tables)) || any(!nzchar(names(tables))))) stop("`tables` must be a named list.")
+  for (a in names(tables)) {
+    x <- tables[[a]]
+    s <- attr(x, .REGISTRY_STAMP, exact = TRUE)
+    if (!"taxon_id" %in% names(x) || is.null(s)) {
+      bad(sprintf("`%s` has no taxon_id column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.", a))
+    }
+    if (!identical(s$digest, registry$meta$digest)) bad(sprintf("`%s` was stamped by a different registry than `registry`.", a))
+  }
+  if (is.null(names)) return(invisible(character(0L)))
+  nm <- as.character(names)
+  rn <- unique(registry$names[!is.na(registry$names$verbatim_name) & !is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
+  if (resolve == "names") {
+    rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
+    out <- as.character(rn$taxon_id)[match(nm, rn$verbatim_name)]
+  } else if (resolve == "names_or_accepted") {
+    nt <- unique(rbind(rn, data.frame(verbatim_name = registry$taxa$name, taxon_id = registry$taxa$taxon_id, stringsAsFactors = FALSE)))
+    nt <- nt[!is.na(nt$verbatim_name) & nt$verbatim_name %in% nm, , drop = FALSE]
+    n_ids <- tapply(nt$taxon_id, nt$verbatim_name, function(x) length(unique(x)))
+    one <- names(n_ids)[n_ids == 1L]
+    out <- as.character(nt$taxon_id)[match(nm, nt$verbatim_name)]
+    out[!nm %in% one] <- NA_character_
+  } else {
+    rk <- if (is.null(ranks)) rep(NA_character_, length(nm)) else rep_len(as.character(ranks), length(nm))
+    by_name <- split(as.character(rn$taxon_id), rn$verbatim_name)
+    by_acc <- split(as.character(registry$taxa$taxon_id), registry$taxa$name)
+    rk_of <- stats::setNames(as.character(registry$taxa$rank), registry$taxa$taxon_id)
+    key <- paste(nm, rk, sep = "\r")
+    u <- !duplicated(key) & !is.na(nm)
+    one <- vapply(which(u), function(i) {
+      ids <- by_name[[nm[i]]] %||% by_acc[[nm[i]]] %||% character(0)
+      if (length(ids) > 1L && !is.na(rk[i])) { r <- ids[rk_of[ids] %in% rk[i]]; if (length(r)) ids <- r }
+      if (length(ids) == 1L) ids else NA_character_
+    }, "")
+    out <- unname(stats::setNames(one, key[u])[key])
+  }
+  out[is.na(nm)] <- NA_character_
+  attr(out, "unresolved") <- unique(nm[!is.na(nm) & is.na(out)])
+  out
+}
+
 #' The ancestor of each taxon at a given rank
 #'
 #' Walks \code{parent_id} up the registry's own tree, so ring scope and genus

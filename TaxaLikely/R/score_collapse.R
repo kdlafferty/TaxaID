@@ -28,17 +28,7 @@
 # restore_suppressed_candidates(registry =): the registry must be frozen and each table must carry a taxon_id column
 # stamped by it.
 .rsc_check_registry <- function(registry, tables) {
-  if (!inherits(registry, "taxon_registry")) {
-    stop("restore_suppressed_candidates: 'registry' must be a taxon_registry (TaxaTools::build_taxon_registry()).", call. = FALSE)
-  }
-  if (!isTRUE(registry$meta$frozen)) stop("restore_suppressed_candidates: 'registry' must be frozen (TaxaTools::freeze_taxon_registry()).", call. = FALSE)
-  for (a in names(tables)) {
-    s <- attr(tables[[a]], "taxon_registry", exact = TRUE)
-    if (!"taxon_id" %in% names(tables[[a]]) || is.null(s)) {
-      stop(sprintf("restore_suppressed_candidates: '%s' has no taxon_id column or no registry stamp: attach ids with TaxaTools::attach_taxon_ids() before the call.", a), call. = FALSE)
-    }
-    if (!identical(s$digest, registry$meta$digest)) stop(sprintf("restore_suppressed_candidates: '%s' was stamped by a different registry than 'registry'.", a), call. = FALSE)
-  }
+  TaxaTools::registry_ids_for_names(NULL, registry, tables = tables, caller = "restore_suppressed_candidates")
   invisible(TRUE)
 }
 
@@ -778,10 +768,8 @@ restore_suppressed_candidates <- function(match_obj,
     rs <- rs[!duplicated(rs[[species_col]]), , drop = FALSE]
     ref_sp_id <- stats::setNames(as.character(rs$taxon_id), rs[[species_col]])
     if (!is.null(candidate_species_filter)) {
-      nm <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
-      one <- !nm$verbatim_name %in% nm$verbatim_name[duplicated(nm$verbatim_name)]
-      nm <- nm[one, , drop = FALSE]
-      filt_ids <- unique(stats::na.omit(nm$taxon_id[match(candidate_species_filter, nm$verbatim_name)]))
+      filt_ids <- unique(stats::na.omit(as.vector(TaxaTools::registry_ids_for_names(as.character(candidate_species_filter), registry,
+                                                                                   resolve = "names"))))
     }
   }
   # Is a reference species in candidate_species_filter? By name, or (with a registry) by id.

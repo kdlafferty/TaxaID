@@ -13,3 +13,7 @@
 * `compute_local_occurrence_distance(registry = )` (off by default): with a
   frozen taxon registry, occurrence records match the called taxa by registry
   identifier, so records filed under a synonym are counted.
+* Every `registry =` argument refuses a registry edited after
+  `freeze_taxon_registry()`, as `attach_taxon_ids()` does, through the shared
+  check `TaxaTools::registry_ids_for_names()` (error class
+  `taxon_registry_invalid`).

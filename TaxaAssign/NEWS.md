@@ -30,6 +30,10 @@
   in `taxon_name_verbatim`. `posterior_consensus()` keys `group_priors` and
   `species_reference` by registry identifier as well, and refuses a name in
   either that the registry does not hold.
+* Every `registry =` argument refuses a registry edited after
+  `freeze_taxon_registry()`, as `attach_taxon_ids()` does, through the shared
+  check `TaxaTools::registry_ids_for_names()` (error class
+  `taxon_registry_invalid`).
 * A ring row with `ring_member_clades` set gets, in
   `add_unreferenced_prior_mass()`, the prior mass of the union of its member
   clades at the ring's own rank, not of everything under the rank it is named

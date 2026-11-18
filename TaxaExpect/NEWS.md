@@ -15,3 +15,7 @@
   `generate_domestic_food_priors()` (`registry =`, off by default) match a
   taxon to its habitat verdict and place rows on the taxonomic tree by registry
   identifier, so a name filed under a synonym is still matched and placed.
+* Every `registry =` argument refuses a registry edited after
+  `freeze_taxon_registry()`, as `attach_taxon_ids()` does, through the shared
+  check `TaxaTools::registry_ids_for_names()` (error class
+  `taxon_registry_invalid`).

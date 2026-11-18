@@ -370,13 +370,9 @@ generate_undetected_diversity <- function(model_obj,
   # Columns are always added (as NA when taxonomy = NULL) so the output schema
   # is consistent for downstream use in join_priors() Issue 3 grouping.
   if (!is.null(registry)) {
-    if (!inherits(registry, "taxon_registry") || !isTRUE(registry$meta$frozen)) {
-      stop("generate_undetected_diversity: `registry` must be a frozen taxon_registry (TaxaTools::freeze_taxon_registry()).", call. = FALSE)
-    }
+    result$source_taxon_id <- as.vector(TaxaTools::registry_ids_for_names(as.character(result$source_taxon_name), registry,
+                                                                          resolve = "names", caller = "generate_undetected_diversity"))
     cols <- if (!is.null(taxonomy)) intersect(tax_rank_cols, names(taxonomy)) else tax_rank_cols
-    rn <- unique(registry$names[!is.na(registry$names$taxon_id), c("verbatim_name", "taxon_id")])
-    rn <- rn[!rn$verbatim_name %in% rn$verbatim_name[duplicated(rn$verbatim_name)], , drop = FALSE]
-    result$source_taxon_id <- rn$taxon_id[match(as.character(result$source_taxon_name), rn$verbatim_name)]
     reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
     u <- unique(stats::na.omit(result$source_taxon_id))
     for (rc in cols) {

@@ -20,6 +20,14 @@
   relationship its backend declared, and reporting an undeclared merge, a
   name with two or more pool keys, the same taxon twice in one observation, or
   a table lineage that contradicts the registry.
+* `registry_ids_for_names()` is the one check every `registry =` argument in
+  the ecosystem runs before reading a registry: it must be a frozen
+  `taxon_registry` whose content still matches its digest (the check
+  `attach_taxon_ids()` makes), and each table passed must carry its stamp. A
+  failure is an error of class `taxon_registry_invalid`. It also resolves names
+  to the registry's ids under one of three stated rules (the name table only;
+  the name table, then accepted names, narrowed by rank; or one id across
+  both), returning `NA` for a name with no single id and listing those names.
 * `build_taxon_registry(tiebreak = )` decides between two or more GBIF
   candidate identifiers for one name: the lookup's own answer (the key
   backbone's match) when it is one of the candidates, then the lineage of each

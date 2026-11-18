@@ -32,6 +32,10 @@
   taxon registry, a reference congener whose identifier equals a candidate's is
   not restored as a second candidate, and `candidate_species_filter` matches a
   reference species under any registered name.
+* Every `registry =` argument refuses a registry edited after
+  `freeze_taxon_registry()`, as `attach_taxon_ids()` does, through the shared
+  check `TaxaTools::registry_ids_for_names()` (error class
+  `taxon_registry_invalid`).
 * `evaluate_likelihoods()` returns `ring_member_clades`. When the candidates
   tied with an observation's ring anchor (the top transformed score, within
   1e-9, with a real hit preferred over a restored row) hold two or more values at an outer
