@@ -472,3 +472,21 @@ test_that("restored rows carry restored_offset_out_of_range (NA when no banded c
   expect_equal(cal$range, c(98, 98))
   expect_true(all(res2$restored_offset_out_of_range[res2$is_restored]))
 })
+
+test_that("dropped-hit replacement by registry id never takes two missing ids for one taxon", {
+  # obs1 holds a candidate with no registry id; the dropped hit's congener nigricans has no id either. Missing ids are
+  # not a taxon: nigricans is not "already held" and is offered back. A congener whose id IS held is not.
+  m <- .rm_match(obs_id = "obs1", score = 99, species = "vaigiensis")
+  m$genus <- "Kyphosus"; m$taxon_id <- NA_character_
+  rdh <- function(m, ids) TaxaLikely:::.replace_dropped_hits(
+    dropped_matches = .rm_dropped(obs_id = "obs1"), match_obj = m, restored_df = NULL,
+    reference_df = .rm_ref(c(nigricans = .q_seq)), observation_id_col = "observation_id", genus_col = "genus",
+    species_col = "species", rank_system = c("family", "genus", "species"), score_col = "score_original",
+    sequence_col = "sequence", scale_100 = TRUE, max_dist = 0.2, min_query_coverage = 0.8, region_matched = FALSE,
+    align_cache = new.env(), ref_sp_id = ids)
+  r <- rdh(m, c(nigricans = NA_character_))
+  expect_false(is.null(r))
+  expect_identical(r$species, "nigricans")
+  m$taxon_id <- "id9"                                  # the observation already holds nigricans's taxon, by id
+  expect_null(rdh(m, c(nigricans = "id9")))
+})
