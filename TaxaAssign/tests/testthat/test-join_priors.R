@@ -1007,3 +1007,24 @@ test_that("taxonomy_cache_dir must be NULL or one path", {
   expect_error(.jp_fallback_args(taxonomy_cache_dir = c("a", "b")), "taxonomy_cache_dir")
   expect_error(.jp_fallback_args(taxonomy_cache_dir = NA_character_), "taxonomy_cache_dir")
 })
+
+test_that("likelihoods with no lineage columns stop with a readable error, with and without a registry", {
+  lab <- data.frame(observation_id = "o1", taxon_name = c("Embiotoca jacksoni", "Embiotocidae"), taxon_name_rank = c("species", "family"),
+                    hypothesis_type = c("specific_candidate", "unreferenced_genus"), score_likelihood = c(0.5, 0.1), stringsAsFactors = FALSE)
+  lab$score_likelihood_mean <- lab$score_likelihood; lab$score_likelihood_sd <- 0.02
+  pri <- data.frame(taxon_name = c("Embiotoca jacksoni", NA), taxon_name_rank = "species", grid_id = "s1", main_habitat = "Rocky",
+                    alpha = c(20, 1), beta = c(80, 999), undetected_type = c(NA, "global_floor"), stringsAsFactors = FALSE)
+  pri$theta_mean <- pri$alpha / (pri$alpha + pri$beta)
+  jp <- function(l, p, ...) suppressWarnings(suppressMessages(join_priors(l, p, site = list(grid_id = "s1", main_habitat = "Rocky"),
+                                                                          taxonomy_lookup = lab, rank_system = c("family", "genus", "species"),
+                                                                          backbone_id = 11, ...)))
+  expect_error(jp(lab, pri), "lineage column.*family.*fill_higher_ranks")
+  skip_if_not("parent_at" %in% getNamespaceExports("TaxaTools"), "TaxaTools without the taxon registry")
+  reg <- .rg_registry()
+  expect_error(jp(.rg_stamp(lab, reg, "joined"), .rg_stamp(pri, reg, "priors"), registry = reg),
+               "lineage column.*family.*parent_at")
+  # the lineage given by taxonomy_lookup is enough
+  tl <- data.frame(taxon_name = c("Embiotoca jacksoni", "Embiotocidae"), genus = c("Embiotoca", NA), family = "Embiotocidae")
+  expect_s3_class(suppressWarnings(suppressMessages(join_priors(lab, pri, site = list(grid_id = "s1", main_habitat = "Rocky"),
+    taxonomy_lookup = tl, rank_system = c("family", "genus", "species"), backbone_id = 11))), "data.frame")
+})

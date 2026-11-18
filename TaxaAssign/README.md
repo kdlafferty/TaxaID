@@ -178,6 +178,13 @@ describes, and each argument is written as
     discovery. See `join_priors()`'s own documentation for the full
     mechanism.
 
+-   `join_priors()` reads each likelihood row's lineage (`family`, and
+    `genus` without a registry) from the likelihoods or `taxonomy_lookup`.
+    A label-only table (a `taxon_name` with no lineage columns, as a sound
+    or image classifier may give) is refused with a message: fill its
+    lineage first with `TaxaTools::fill_higher_ranks()`, or from the
+    registry with `TaxaTools::parent_at()`.
+
 -   `add_unreferenced_prior_mass()` gives each placeholder row (an
     unreferenced local relative of a candidate) the prior of the local
     species that actually lack references, instead of the generic

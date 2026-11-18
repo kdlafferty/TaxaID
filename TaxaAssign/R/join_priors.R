@@ -1690,6 +1690,17 @@ join_priors <- function(likelihoods,
     }
   }
 
+  # The lineage the rest of the join reads (family always; genus unless the registry gives it) must be on the
+  # rows by now, from the likelihoods or taxonomy_lookup. A label-only table (taxon_name alone) is refused here,
+  # in words, rather than by a dplyr error further down.
+  .lin_missing <- setdiff(c(if (is.null(registry)) "genus", "family"), names(result))
+  if (length(.lin_missing)) {
+    cli::cli_abort(c(
+      "{.fn join_priors} needs lineage column{?s} {.field {(.lin_missing)}} on the likelihoods; neither {.arg likelihoods} nor {.arg taxonomy_lookup} carries {?it/them}.",
+      "i" = "Fill the lineage with {.fn TaxaTools::fill_higher_ranks}, or from the registry with {.fn TaxaTools::parent_at}."
+    ))
+  }
+
   # Derive genus from species binomials when genus column is NA. With a registry the genus is the registry's
   # ancestor of the row's taxon (an id has no genus word, and the text of a binomial is not its genus).
   if (!is.null(registry)) {
