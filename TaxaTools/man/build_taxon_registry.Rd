@@ -25,11 +25,13 @@ the homonym gate) optional.}
 
 \item{key_backbone_id}{Integer: the key authority's Global Names Verifier
 data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default
-\code{11L}. Whatever the authority, the registry tree holds only its seven
-major ranks (kingdom to species): a name answered at an intermediate rank
-(WoRMS's subclass, infraorder, ...) is a run-local node under its answer's
-nearest major-rank node, and intermediate ranks come only from the caller's
-own lineage columns, which pass through unchanged.}
+\code{11L}. The registry tree holds the ranks on the key authority's own
+classification paths: under the GBIF Backbone (the default) its seven major
+ranks (kingdom to species); under an authority whose paths carry
+intermediate ranks (WoRMS, for example) those too. A rank the authority's
+path does not carry gives \code{NA} from \code{parent_at()}; such ranks
+come only from the caller's own lineage columns, which pass through
+unchanged.}
 
 \item{pool_keys}{\code{NULL} or a data frame with \code{verbatim_name} and
 \code{species_key}: the occurrence pool's accepted key per name, used as the

@@ -76,7 +76,9 @@
 * `attach_taxon_ids()` refuses a table whose `taxon_id` column it did not
   stamp; a table that carries another source's ids there (OBIS AphiaIDs, say)
   must rename that column before stamping.
-* The registry tree holds the key authority's seven major ranks (kingdom to
-  species) under any `key_backbone_id`. A name answered at an intermediate rank
-  (subclass, infraorder, ...) is a run-local node, and intermediate ranks come
-  only from the caller's own lineage columns, which pass through unchanged.
+* The registry tree holds the ranks on the key authority's own classification
+  paths: under the GBIF Backbone (the default) its seven major ranks (kingdom to
+  species); under an authority whose paths carry intermediate ranks (WoRMS, for
+  example) those too. A rank the authority's path does not carry gives `NA`
+  from `parent_at()`; such ranks come only from the caller's own lineage
+  columns, which pass through unchanged.

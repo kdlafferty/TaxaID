@@ -75,7 +75,7 @@ downstream package needs solved consistently:
 | `attach_taxon_ids()` | Add a `taxon_id` column and the registry's stamp to a table, from its verbatim name column. |
 | `join_by_taxon()` | Join two stamped tables on `taxon_id` only, refusing an unstamped table, two different registries, or a name column in the key, and reporting the rows on each side with no partner. |
 | `taxon_in()` | Membership of identifiers in a set of identifiers, never of names. |
-| `parent_at()` | The ancestor identifier of each taxon at a given rank, from the registry's tree. The tree holds the key authority's seven major ranks (kingdom to species) under any `key_backbone_id`; a name answered at an intermediate rank (subclass, infraorder, ...) becomes a run-local node, and intermediate ranks come only from the caller's own lineage columns, which pass through unchanged. |
+| `parent_at()` | The ancestor identifier of each taxon at a given rank, from the registry's tree. The registry tree holds the ranks on the key authority's own classification paths: under the GBIF Backbone (the default) its seven major ranks (kingdom to species); under an authority whose paths carry intermediate ranks (WoRMS, for example) those too. A rank the authority's path does not carry gives `NA` from `parent_at()`; such ranks come only from the caller's own lineage columns, which pass through unchanged. |
 | `check_taxon_registry()` | The guard: lists every identifier reached by two or more names with the declared relationship, and reports undeclared merges, ambiguous pool keys, a taxon twice in one observation, and table lineages that contradict the registry (a family or order difference is listed, a genus difference is an error). |
 
 ### LLM provider interface

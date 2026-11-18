@@ -1288,17 +1288,20 @@ test_that("NEWS states gbif_first, the pool_keys authority, foreign taxon_id col
   expect_true(grepl("`gbif_first` names the key authority's own match, whatever `key_backbone_id` is", txt, fixed = TRUE))
   expect_true(grepl("only with `key_backbone_id = 11`", txt, fixed = TRUE))
   expect_true(grepl("rename that column before stamping", txt, fixed = TRUE))
-  expect_true(grepl("intermediate ranks come only from the caller's own lineage columns", txt, fixed = TRUE))
+  expect_true(grepl("such ranks come only from the caller's own lineage columns", txt, fixed = TRUE))
 })
 
-test_that("build_taxon_registry and parent_at docs and the README state the registry's fixed ranks", {
+test_that("build_taxon_registry and parent_at docs, the README and NEWS state the ranks the registry tree holds", {
   root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
-  fs <- file.path(root, c("man/build_taxon_registry.Rd", "man/parent_at.Rd", "README.md"))
+  fs <- file.path(root, c("man/build_taxon_registry.Rd", "man/parent_at.Rd", "README.md", "NEWS.md"))
   skip_if_not(all(file.exists(fs)), "package sources not available")
   for (f in fs) {
     txt <- gsub("\\s+", " ", paste(readLines(f, warn = FALSE), collapse = " "))
-    expect_true(grepl("seven major ranks (kingdom to species)", txt, fixed = TRUE), info = f)
-    expect_true(grepl("run-local node", txt, fixed = TRUE), info = f)
+    # true under any authority: the tree holds the ranks on the authority's own paths (intermediate ones under WoRMS)
+    expect_true(grepl("The registry tree holds the ranks on the key authority's own classification paths", txt, fixed = TRUE), info = f)
+    expect_true(grepl("under the GBIF Backbone (the default) its seven major ranks (kingdom to species)", txt, fixed = TRUE), info = f)
+    expect_true(grepl("under an authority whose paths carry intermediate ranks (WoRMS, for example) those too", txt, fixed = TRUE), info = f)
     expect_true(grepl("caller's own lineage columns, which pass through unchanged", txt, fixed = TRUE), info = f)
+    expect_false(grepl("Whatever the authority, the registry tree holds only", txt, fixed = TRUE), info = f)
   }
 })

@@ -15,11 +15,13 @@ parent_at(ids, rank, registry)
 }
 \value{
 Character vector of taxon identifiers (\code{NA} where the walk does
-not reach that rank). A taxon AT \code{rank} returns itself. The tree holds
-the key authority's seven major ranks (kingdom to species), so an
-intermediate rank (subclass, infraorder, ...) gives \code{NA}, except where
-a name answered at that rank made a run-local node; intermediate ranks come
-only from the caller's own lineage columns, which pass through unchanged.
+not reach that rank). A taxon AT \code{rank} returns itself. The registry tree holds the ranks on the key authority's own
+classification paths: under the GBIF Backbone (the default) its seven major
+ranks (kingdom to species); under an authority whose paths carry
+intermediate ranks (WoRMS, for example) those too. A rank the authority's
+path does not carry gives \code{NA} from \code{parent_at()}; such ranks
+come only from the caller's own lineage columns, which pass through
+unchanged.
 }
 \description{
 Walks \code{parent_id} up the registry's own tree, so ring scope and genus
