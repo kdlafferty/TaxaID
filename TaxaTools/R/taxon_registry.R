@@ -1195,7 +1195,7 @@ registry_ids_for_names <- function(names, registry, resolve = c("names", "names_
   if (!inherits(registry, "taxon_registry")) bad("`registry` must be a taxon_registry (TaxaTools::build_taxon_registry()).")
   if (!isTRUE(registry$meta$frozen)) bad("`registry` must be frozen (TaxaTools::freeze_taxon_registry()).")
   if (!.registry_digest_ok(registry)) {
-    bad("`registry` was edited after freeze_taxon_registry(): its content no longer matches its digest. Rebuild and freeze it again.")
+    bad("`registry` was edited after freeze_taxon_registry(): its content does not match its digest. Rebuild and freeze it again.")
   }
   if (length(tables) && (is.null(names(tables)) || any(!nzchar(names(tables))))) stop("`tables` must be a named list.")
   for (a in names(tables)) {
