@@ -306,3 +306,19 @@ test_that("join_priors keeps every ring row of a rank system with subclass and i
   expect_identical(sort(paste(ro$observation_id, ro$hypothesis_type, vb[grepl("^unreferenced_", out$hypothesis_type)])),
                    sort(paste(.rk_rings(lik)$observation_id, .rk_rings(lik)$hypothesis_type, .rk_rings(lik)$taxon_name)))
 })
+
+# .is_unreferenced_type() is reached with a table's raw hypothesis_type column on the registry = NULL path
+# (join_priors(), posterior_consensus(), update_prior_from_consensus()). A column read with stringsAsFactors = TRUE is a
+# factor, and a column that is all NA is logical; both must classify, not stop.
+
+test_that(".is_unreferenced_type() classifies a factor column as it does the character one", {
+  v <- c("unreferenced_genus", "specific_candidate", "unreferenced_infraorder", "unreferenced_kingdom", NA)
+  want <- c(TRUE, FALSE, TRUE, FALSE, FALSE)
+  expect_identical(TaxaAssign:::.is_unreferenced_type(v), want)
+  expect_identical(TaxaAssign:::.is_unreferenced_type(factor(v)), want)
+})
+
+test_that(".is_unreferenced_type() answers FALSE for an all-NA logical column", {
+  expect_identical(TaxaAssign:::.is_unreferenced_type(c(NA, NA)), c(FALSE, FALSE))
+  expect_identical(TaxaAssign:::.is_unreferenced_type(logical(0)), logical(0))
+})
