@@ -411,9 +411,12 @@ test_that("objects a step looks up with exists() are cleared before step 1, and 
   body <- paste(tl[s1:length(tl)], collapse = "\n")
   looked_up <- unique(sub('^exists\\("(.*)"\\)$', "\\1", regmatches(body, gregexpr('exists\\("[A-Za-z.][A-Za-z0-9._]*"\\)', body))[[1]]))
   expect_gt(length(looked_up), 0L)
-  rm_line <- grep("^rm\\(list = intersect\\(c\\(", tl[seq_len(s1 - 1L)], value = TRUE)
+  pre <- tl[seq_len(s1 - 1L)]
+  rm_line <- grep("^\\.cleared <- intersect\\(c\\(", pre, value = TRUE)
   expect_length(rm_line, 1L)
-  cleared <- eval(parse(text = sub("^rm\\(list = intersect\\((c\\(.*\\)), ls\\(\\)\\)\\)$", "\\1", rm_line[1])))
+  cleared <- eval(parse(text = sub("^\\.cleared <- intersect\\((c\\(.*\\)), ls\\(\\)\\)$", "\\1", rm_line[1])))
+  expect_true(any(grepl("^rm\\(list = \\.cleared\\)$", pre)))
+  expect_true(any(grepl("message(\"Cleared from the session before step 1", pre, fixed = TRUE)))   # never silent
   expect_true(all(looked_up %in% cleared), info = paste("not cleared:", paste(setdiff(looked_up, cleared), collapse = ", ")))
   pr <- grep("^# STEP [0-9]+ of [0-9]+ -- ", tl); k <- grep("edge: dist_to_priors_by_group", tl)
   blk <- tl[k:(min(pr[pr > k], length(tl) + 1L) - 1L)]

@@ -250,7 +250,10 @@ header <- c(
     "",
     "# Objects that a later step looks up with exists() are cleared first, so a run uses only what it built itself,",
     "# never one left in the session by an earlier run (another site's kernel fit, another marker's unresolved set).",
-    sprintf("rm(list = intersect(c(%s), ls()))", paste(sprintf('"%s"', sort(unique(session_reads))), collapse = ", "))
+    "# An object of yours under one of these names is removed too, and named in the message: rename it to keep it.",
+    sprintf(".cleared <- intersect(c(%s), ls())", paste(sprintf('"%s"', sort(unique(session_reads))), collapse = ", ")),
+    'if (length(.cleared)) message("Cleared from the session before step 1: ", paste(.cleared, collapse = ", "))',
+    "rm(list = .cleared)"
   )
 )
 
