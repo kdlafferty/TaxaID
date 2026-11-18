@@ -137,7 +137,15 @@ consensus_final <- TaxaAssign::posterior_consensus(
 # references share (e.g. "Eukaryota"), which shows how coarsely the references
 # were named for this marker. coarsest_reference_lineage is NA on every other row.
 consensus_final$coarsest_reference_lineage <- rep(NA_character_, nrow(consensus_final))
-if (exists("lik_unresolved") && is.data.frame(lik_unresolved) && nrow(lik_unresolved) > 0L) {
+if (!exists("lik_unresolved") || !is.data.frame(lik_unresolved)) {
+  stop(errorCondition(paste0(
+    "post_to_consensus: no lik_unresolved data frame in the session. The likelihood step (model_match_to_lik) ",
+    "keeps evaluate_likelihoods()'s $unresolved as lik_unresolved so that every observation gets a consensus row; ",
+    "without it an observation with no usable likelihood would leave the consensus table unreported. Run that ",
+    "step, or after your own evaluate_likelihoods() call set lik_unresolved <- <its result>$unresolved."),
+    class = "taxaid_lik_unresolved_missing", call = NULL))
+}
+if (nrow(lik_unresolved) > 0L) {
   .nu_lin_cols <- intersect(TaxaTools::standard_ranks, names(lik_unresolved))
   .nu_sid <- as.character(lik_unresolved$observation_id)
   .nu_ids <- setdiff(unique(.nu_sid), as.character(consensus_final$observation_id))

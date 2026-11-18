@@ -112,3 +112,27 @@ test_that("match_to_consensus_bayes gives an observation with no usable likeliho
   suppressMessages(eval(parse(text = code), envir = run))
   .nu_check(run$consensus)
 })
+
+test_that("post_to_consensus stops, with a named condition, when the likelihood step left no lik_unresolved", {
+  root <- .nu_skip()
+  code <- .nu_snippet(root, "post_to_consensus", list(
+    input_var = "posteriors", taxaexpect_priors_var = "priors", taxonomy_map_var = "taxonomy_map",
+    cumulative_threshold = "0.95", rank_system = 'c("kingdom", "phylum", "class", "order", "family", "genus", "species")',
+    taxonomy_cache_dir = "NULL", include_group_priors = "FALSE", include_downranking = "FALSE"))
+  run <- new.env(parent = globalenv())
+  run$posteriors <- data.frame(observation_id = "esv_ok", taxon_name = "Embiotoca jacksoni", posterior_point_est = 1)
+  run$priors <- data.frame(taxon_name = "Embiotoca jacksoni")
+  run$taxonomy_map <- NULL
+  testthat::local_mocked_bindings(
+    posterior_consensus = .nu_consensus_mock,
+    update_prior_from_consensus = function(posterior_df, ...) posterior_df,
+    add_slash_taxon = function(consensus_df, ...) consensus_df,
+    .package = "TaxaAssign")
+  expect_false(exists("lik_unresolved", envir = globalenv()))
+  expect_error(suppressMessages(eval(parse(text = code), envir = run)), "model_match_to_lik",
+               class = "taxaid_lik_unresolved_missing")
+  run$lik_unresolved <- .nu_unresolved()[0, ]           # present and empty: no no-call rows, and no error
+  suppressMessages(eval(parse(text = code), envir = run))
+  expect_identical(nrow(run$consensus_final), 1L)
+  expect_true(is.na(run$consensus_final$coarsest_reference_lineage))
+})
