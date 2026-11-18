@@ -86,3 +86,8 @@
   tree (`parent_not_in_tree`, error-class). A run-local node for a name
   answered at a rank its own classification path does not carry sits under
   that path's last node.
+* A name asked above genus that the lookup answers only at genus or below is
+  taken only with lineage `context`: without it the name is run-local, status
+  `rank_mismatch_no_context`, listed by `check_taxon_registry()`, since a
+  one-word name can match a genus homonym in another kingdom. Supply `context`
+  for names above genus.

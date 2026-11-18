@@ -1345,3 +1345,43 @@ test_that("check_taxon_registry reports a node whose parent is not in the tree (
   expect_identical(f$severity, "error"); expect_identical(f$taxon_id, "gbif:421")
   expect_error(check_taxon_registry(reg, mode = "error", verbose = FALSE))
 })
+
+# W3: a one-word name asked ABOVE genus (here at infraclass) that the lookup answers only as a genus homonym in another
+# kingdom (GBIF's "Neoptera", a plant genus). Without lineage context nothing can refuse it, so it is not taken: run-local.
+.w3_neoptera <- function(names, rank, context) data.frame(user_supplied_name = names, matched_name = "Neoptera", matched_rank = "genus",
+  is_synonym = FALSE, classification_path = "Plantae|Tracheophyta|Magnoliopsida|Fabales|Fabaceae|Neoptera",
+  classification_ranks = "kingdom|phylum|class|order|family|genus", classification_ids = "6|7707728|220|1370|5386|7777777",
+  score = NA_real_, verified = TRUE, matched = TRUE, record_id = "7777777", current_record_id = "7777777", data_source_id = 11L,
+  entry_date = NA, match_type = "Exact", stringsAsFactors = FALSE)
+
+test_that("a name asked above genus, answered only at genus, with no context is run-local (rank_mismatch_no_context)", {
+  for (rk in c("infraclass", "subclass", "order")) {
+    reg <- suppressWarnings(build_taxon_registry(.names("Neoptera", "x", rank_given = rk), run_id = "w3", lookup = .w3_neoptera))
+    expect_identical(reg$names$status, "rank_mismatch_no_context", info = rk)
+    expect_identical(reg$names$taxon_id, "local:Neoptera", info = rk)
+    expect_false("gbif:7777777" %in% reg$taxa$taxon_id, info = rk)
+    ck <- check_taxon_registry(reg, verbose = FALSE)
+    expect_true(any(ck$kind == "rank_mismatch_no_context" & ck$severity == "info"), info = rk)
+  }
+  # asked at genus, or at no rank: the genus answer is the answer, unchanged
+  for (rk in c("genus", NA)) {
+    reg <- suppressWarnings(build_taxon_registry(.names("Neoptera", "x", rank_given = rk), run_id = "w3", lookup = .w3_neoptera))
+    expect_identical(reg$names$taxon_id, "gbif:7777777", info = rk)
+  }
+})
+
+test_that("with context the guard does not apply: the lineage gate decides (Neoptera refused, Polyarthra accepted)", {
+  reg <- suppressWarnings(build_taxon_registry(.names("Neoptera", "x", rank_given = "infraclass", context = "Animalia|Arthropoda|Insecta"),
+                                               run_id = "w3c", lookup = .w3_neoptera))
+  expect_identical(reg$names$status, "homonym_rejected")
+  # a Polyarthra-shaped name asked at order with its own lineage, answered only as the rotifer genus: accepted, as before
+  ctx <- "Animalia|Rotifera|Eurotatoria|Ploima|Synchaetidae"
+  lk <- function(names, rank, context) data.frame(user_supplied_name = names, matched_name = "Polyarthra", matched_rank = "genus",
+    is_synonym = FALSE, classification_path = "Animalia|Rotifera|Eurotatoria|Ploima|Synchaetidae|Polyarthra",
+    classification_ranks = "kingdom|phylum|class|order|family|genus", classification_ids = "1|91|92|93|94|1003101",
+    score = NA_real_, verified = TRUE, matched = TRUE, record_id = "1003101", current_record_id = "1003101", data_source_id = 11L,
+    entry_date = NA, match_type = "Exact", stringsAsFactors = FALSE)
+  reg <- suppressWarnings(build_taxon_registry(.names("Polyarthra", "x", rank_given = "order", context = ctx), run_id = "w3p", lookup = lk))
+  expect_identical(reg$names$taxon_id, "gbif:1003101")
+  expect_false(reg$names$status %in% "rank_mismatch_no_context")
+})

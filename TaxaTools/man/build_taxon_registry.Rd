@@ -142,6 +142,15 @@ answered ancestor, never that ancestor's identifier. Where the answered taxon
 is not a node of its own classification path (an answer at a rank the path
 does not carry), the run-local identifier sits under the path's last node.
 
+\strong{Finer answers without context.} A name asked above genus
+(\code{rank_given} kingdom to family, or an intermediate rank such as
+infraclass or suborder) and answered only at genus or below is taken when it
+has a \code{context}, under the homonym check above. With no context nothing
+can tell a genus homonym in another kingdom from the taxon asked for (an
+insect infraclass answered as a plant genus), so the name gets
+\code{status = "rank_mismatch_no_context"} and a run-local identifier, listed
+by \code{check_taxon_registry()}: supply \code{context} for names above genus.
+
 \strong{One name, one lineage, one taxon.} Tables can ask one name at
 different ranks and so get different answers. Within one (name,
 \code{context}), \code{rank_given} is a hint and the lineage decides: the

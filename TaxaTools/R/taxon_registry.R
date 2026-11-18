@@ -48,6 +48,14 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 
 #' The rank a name was asked at: the rank given, else genus (one word), species (two), infraspecific (three or more)
 #' @noRd
+# Is a rank_given above genus? A rank of the standard ladder coarser than genus, or an intermediate rank word above
+# genus (superfamily, infraclass, suborder, tribe, ...).
+.rank_above_genus <- function(rank_given) {
+  r <- tolower(as.character(rank_given)); lv <- unname(.RANK_LADDER[r])
+  !is.na(r) & ((!is.na(lv) & lv < .RANK_LADDER[["genus"]]) |
+    (is.na(lv) & grepl("^((super|sub|infra|parv)?(kingdom|phylum|division|class|cohort|order|family|tribe)|domain)$", r)))
+}
+
 .asked_rank_level <- function(name_clean, rank_given) {
   given <- unname(.RANK_LADDER[tolower(rank_given)])
   nw <- lengths(strsplit(trimws(name_clean), "\\s+"))
@@ -279,6 +287,15 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' answered ancestor, never that ancestor's identifier. Where the answered taxon
 #' is not a node of its own classification path (an answer at a rank the path
 #' does not carry), the run-local identifier sits under the path's last node.
+#'
+#' \strong{Finer answers without context.} A name asked above genus
+#' (\code{rank_given} kingdom to family, or an intermediate rank such as
+#' infraclass or suborder) and answered only at genus or below is taken when it
+#' has a \code{context}, under the homonym check above. With no context nothing
+#' can tell a genus homonym in another kingdom from the taxon asked for (an
+#' insect infraclass answered as a plant genus), so the name gets
+#' \code{status = "rank_mismatch_no_context"} and a run-local identifier, listed
+#' by \code{check_taxon_registry()}: supply \code{context} for names above genus.
 #'
 #' \strong{One name, one lineage, one taxon.} Tables can ask one name at
 #' different ranks and so get different answers. Within one (name,
@@ -558,7 +575,13 @@ build_taxon_registry <- function(names, run_id, key_backbone_id = 11L, pool_keys
   nm$status[above] <- "rank_fallback"; nm$taxon_id[above] <- NA_character_
   fzr <- nm$status %in% "fuzzy"
   nm$status[fzr] <- "fuzzy_rejected"; nm$taxon_id[fzr] <- NA_character_
-  nm$accepted_lookup[failed | above | fzr] <- NA_character_
+  # A name asked ABOVE genus answered only at genus or below, with no lineage context: a one-word name answered as a genus
+  # may be a homonym in another kingdom (an insect infraclass answered as a plant genus) and, without context, nothing
+  # can refuse it. Not taken: run-local, status rank_mismatch_no_context. With context the homonym gate decides.
+  rmc <- ok & !above & nm$status %in% c("accepted", "synonym") & .rank_above_genus(nm$rank_given) &
+    !is.na(ans_lvl) & ans_lvl >= .RANK_LADDER[["genus"]] & (is.na(nm$context) | !nzchar(nm$context))
+  nm$status[rmc] <- "rank_mismatch_no_context"; nm$taxon_id[rmc] <- NA_character_
+  nm$accepted_lookup[failed | above | fzr | rmc] <- NA_character_
   nm$backend <- dplyr::if_else(!is.na(nm$taxon_id), paste0("gnverifier:", key_backbone_id), NA_character_)
   nm$backend_record_id <- dplyr::if_else(ok, as.character(r$record_id), NA_character_)
   nm$match_type <- r$match_type
@@ -1361,7 +1384,8 @@ check_taxon_registry <- function(registry, tables = list(), mode = c("report", "
     }
   }
   # unresolved and gender variants
-  for (s in c("unresolved_local", "gender_variant", "genus_variant", "cluster_label", "rank_fallback", "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
+  for (s in c("unresolved_local", "gender_variant", "genus_variant", "cluster_label", "rank_fallback", "rank_mismatch_no_context",
+              "fuzzy_rejected", "homonym_rejected", "lookup_failed")) {
     z <- nm[nm$status %in% s, , drop = FALSE]
     if (nrow(z)) add(if (s == "lookup_failed") "error" else "info", s, NA_character_, NA_character_, paste(utils::head(sort(unique(z$verbatim_name)), 200), collapse = " | "),
                      sprintf("%d name(s)", length(unique(z$verbatim_name))), length(unique(z$verbatim_name)))
