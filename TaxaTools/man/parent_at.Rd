@@ -15,7 +15,11 @@ parent_at(ids, rank, registry)
 }
 \value{
 Character vector of taxon identifiers (\code{NA} where the walk does
-not reach that rank). A taxon AT \code{rank} returns itself.
+not reach that rank). A taxon AT \code{rank} returns itself. The tree holds
+the key authority's seven major ranks (kingdom to species), so an
+intermediate rank (subclass, infraorder, ...) gives \code{NA}, except where
+a name answered at that rank made a run-local node; intermediate ranks come
+only from the caller's own lineage columns, which pass through unchanged.
 }
 \description{
 Walks \code{parent_id} up the registry's own tree, so ring scope and genus

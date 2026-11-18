@@ -338,7 +338,11 @@ utils::globalVariables(c("taxon_id", "verbatim_name", "source_table", "name_clea
 #' @param run_id Character scalar identifying the run; part of every stamp.
 #' @param key_backbone_id Integer: the key authority's Global Names Verifier
 #'   data source (11 = GBIF Backbone, 1 = Catalogue of Life, 9 = WoRMS). Default
-#'   \code{11L}.
+#'   \code{11L}. Whatever the authority, the registry tree holds only its seven
+#'   major ranks (kingdom to species): a name answered at an intermediate rank
+#'   (WoRMS's subclass, infraorder, ...) is a run-local node under its answer's
+#'   nearest major-rank node, and intermediate ranks come only from the caller's
+#'   own lineage columns, which pass through unchanged.
 #' @param pool_keys \code{NULL} or a data frame with \code{verbatim_name} and
 #'   \code{species_key}: the occurrence pool's accepted key per name, used as the
 #'   identifier ahead of any lookup. The keys are GBIF Backbone keys, so
@@ -1129,7 +1133,11 @@ taxon_in <- function(ids, set) {
 #' @param rank Rank to return, e.g. \code{"genus"} or \code{"family"}.
 #' @param registry A \code{taxon_registry}.
 #' @return Character vector of taxon identifiers (\code{NA} where the walk does
-#'   not reach that rank). A taxon AT \code{rank} returns itself.
+#'   not reach that rank). A taxon AT \code{rank} returns itself. The tree holds
+#'   the key authority's seven major ranks (kingdom to species), so an
+#'   intermediate rank (subclass, infraorder, ...) gives \code{NA}, except where
+#'   a name answered at that rank made a run-local node; intermediate ranks come
+#'   only from the caller's own lineage columns, which pass through unchanged.
 #' @export
 parent_at <- function(ids, rank, registry) {
   if (!inherits(registry, "taxon_registry")) stop("`registry` must be a taxon_registry.")

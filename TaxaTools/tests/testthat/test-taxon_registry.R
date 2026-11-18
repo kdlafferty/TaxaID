@@ -1290,3 +1290,15 @@ test_that("NEWS states gbif_first, the pool_keys authority, foreign taxon_id col
   expect_true(grepl("rename that column before stamping", txt, fixed = TRUE))
   expect_true(grepl("intermediate ranks come only from the caller's own lineage columns", txt, fixed = TRUE))
 })
+
+test_that("build_taxon_registry and parent_at docs and the README state the registry's fixed ranks", {
+  root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  fs <- file.path(root, c("man/build_taxon_registry.Rd", "man/parent_at.Rd", "README.md"))
+  skip_if_not(all(file.exists(fs)), "package sources not available")
+  for (f in fs) {
+    txt <- gsub("\\s+", " ", paste(readLines(f, warn = FALSE), collapse = " "))
+    expect_true(grepl("seven major ranks (kingdom to species)", txt, fixed = TRUE), info = f)
+    expect_true(grepl("run-local node", txt, fixed = TRUE), info = f)
+    expect_true(grepl("caller's own lineage columns, which pass through unchanged", txt, fixed = TRUE), info = f)
+  }
+})
