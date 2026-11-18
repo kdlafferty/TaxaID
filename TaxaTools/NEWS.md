@@ -28,6 +28,7 @@
   keys: with `gbif_first`, the key backbone decides (the maintainer's rule), and
   every pool key it overrules is listed by `check_taxon_registry()`. Off by
   default; candidates with identical lineages are never decided.
+  `gbif_first` names the key authority's own match, whatever `key_backbone_id` is.
 * `build_taxon_registry()` treats the rank a table asked a name at as a hint:
   one name in one lineage is one taxon. Above genus the key backbone's own
   classification decides between candidates; at genus and species the name's
@@ -62,3 +63,12 @@
 * `check_taxon_registry(export = TRUE)` holds output tables to the export
   rules: no taxon under two display names and no display name on two taxa,
   both error-class.
+* `pool_keys` are GBIF Backbone keys: `build_taxon_registry()` accepts them
+  only with `key_backbone_id = 11` and stops otherwise.
+* `attach_taxon_ids()` refuses a table whose `taxon_id` column it did not
+  stamp; a table that carries another source's ids there (OBIS AphiaIDs, say)
+  must rename that column before stamping.
+* The registry tree holds the key authority's seven major ranks (kingdom to
+  species) under any `key_backbone_id`. A name answered at an intermediate rank
+  (subclass, infraorder, ...) is a run-local node, and intermediate ranks come
+  only from the caller's own lineage columns, which pass through unchanged.

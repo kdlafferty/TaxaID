@@ -1280,3 +1280,13 @@ test_that("pool_keys under a non-GBIF key authority stop: a GBIF species key is 
   expect_s3_class(build_taxon_registry(.names("Hypsurus caryi", "pool"), run_id = "g2", key_backbone_id = 9L, lookup = .real_lookup),
                   "taxon_registry")
 })
+
+test_that("NEWS states gbif_first, the pool_keys authority, foreign taxon_id columns, and the registry's ranks", {
+  root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  skip_if_not(file.exists(file.path(root, "NEWS.md")), "package sources not available")
+  txt <- gsub("\\s+", " ", paste(readLines(file.path(root, "NEWS.md"), warn = FALSE), collapse = " "))
+  expect_true(grepl("`gbif_first` names the key authority's own match, whatever `key_backbone_id` is", txt, fixed = TRUE))
+  expect_true(grepl("only with `key_backbone_id = 11`", txt, fixed = TRUE))
+  expect_true(grepl("rename that column before stamping", txt, fixed = TRUE))
+  expect_true(grepl("intermediate ranks come only from the caller's own lineage columns", txt, fixed = TRUE))
+})

@@ -152,3 +152,21 @@ test_that("withhold = \"genus\" by id: a pool species in a referenced TREE genus
   mem <- attr(by_id, "unreferenced_scope_members")
   expect_identical(mem$taxon_id, .rg_id(reg, "Embiotoca jacksoni"))
 })
+
+test_that("ring_member_clades_withheld is always attached, empty without a registry, and NEWS says so", {
+  j <- .rg_joined(data.frame(taxon_name = c("Embiotoca jacksoni", "Embiotocidae"), taxon_name_rank = c("species", "family"),
+                             hypothesis_type = c("specific_candidate", "unreferenced_genus"), stringsAsFactors = FALSE))
+  p <- .rg_priors("Embiotoca lateralis", 0.02)
+  out <- .aupm(j, p, .rg_tax_text(p$taxon_name, "Embiotocidae"), referenced_names = "Embiotoca jacksoni")
+  w <- attr(out, "ring_member_clades_withheld")
+  expect_s3_class(w, "data.frame"); expect_identical(nrow(w), 0L)
+  root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  skip_if_not(file.exists(file.path(root, "NEWS.md")), "package sources not available")
+  txt <- gsub("\\s+", " ", paste(readLines(file.path(root, "NEWS.md"), warn = FALSE), collapse = " "))
+  expect_true(grepl("always attaches `attr(, \"ring_member_clades_withheld\")`", txt, fixed = TRUE))
+  expect_true(grepl("without a registry it is an empty table", txt, fixed = TRUE))
+  # registry = NULL needs one naming in likelihoods and priors (G6); ring types at any rank (R1); label-only tables (G3)
+  expect_true(grepl("both must use one naming", txt, fixed = TRUE))
+  expect_true(grepl("`unreferenced_infraorder`", txt, fixed = TRUE))
+  expect_true(grepl("no lineage columns", txt, fixed = TRUE))
+})

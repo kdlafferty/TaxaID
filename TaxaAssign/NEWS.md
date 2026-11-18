@@ -49,3 +49,19 @@
   the registry's own taxon of that name (one id, at the ring's own rank), and
   one with neither is not guessed. `attr(, "ring_rows_rekeyed")` lists
   `n_unplaced_candidates` and `member_clades_from_registry` for each such ring.
+* `add_unreferenced_prior_mass()` always attaches
+  `attr(, "ring_member_clades_withheld")`; without a registry it is an empty
+  table.
+* Without a registry (`registry = NULL`), `join_priors()` matches likelihoods
+  and priors by name, so both must use one naming: a call under a name the
+  priors file under another (an NCBI name against the GBIF accepted name, say)
+  takes the global floor, and only `join_priors()`'s message reports it. With
+  `registry =` such names meet by identifier.
+* Ring hypotheses are typed by any rank of the caller's rank system
+  (`unreferenced_infraorder`, `unreferenced_subclass`, ...): `join_priors()`
+  keeps them, and a ring's own rank is the rank above its type in that rank
+  system.
+* `join_priors()` stops with a message when the likelihoods have no lineage
+  columns (`family`, and `genus` without a registry) and `taxonomy_lookup`
+  does not supply them; fill them with `TaxaTools::fill_higher_ranks()`, or
+  from the registry with `TaxaTools::parent_at()`.
