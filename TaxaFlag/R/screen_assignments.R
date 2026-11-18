@@ -242,8 +242,10 @@
 #'   name exists, so the caller names the column.
 #' @param resolve Logical. `TRUE` (default) appends `flag_resolution`,
 #'   `flag_resolution_basis` and `flag_consistency_score`; see
-#'   \strong{Resolution across all the evidence}. `FALSE` returns exactly the
-#'   columns and attributes the screen returned before this argument existed.
+#'   \strong{Resolution across all the evidence}. `FALSE` skips the
+#'   resolution: the result carries the identity and presence columns and the
+#'   `rule_counts` attribute, without those three columns or the
+#'   `resolution_counts` attribute.
 #'
 #' @return `reviewed_df` with these columns appended, in the same row order:
 #' \describe{

@@ -1,8 +1,8 @@
 # Repository URL swap list
 
-TaxaID is expected to be released through a USGS-operated GitHub
-organization. Until that URL is issued, `https://github.com/kdlafferty/TaxaID`
-stands in for it. This file lists every place the placeholder appears, so the
+The official repository is `DOI-USGS/TaxaID`; until it is public,
+`https://github.com/kdlafferty/TaxaID`, its mirror, is the address in these
+files. This file lists every place the placeholder appears, so the
 final URL can be substituted in one pass and the result verified rather than
 hoped for.
 

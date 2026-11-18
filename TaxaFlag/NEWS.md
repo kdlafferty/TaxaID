@@ -10,6 +10,11 @@
   for habitat and scope, the bounds the model gave with it.
 * Appends categorical flag columns to consensus data frames, leaving the
   assignment itself unchanged.
+* `screen_assignments(resolve = TRUE)` (the default) reads three axes -- the
+  sequence match, occurrence and habitat -- and appends `flag_resolution`,
+  `flag_resolution_basis` and `flag_consistency_score`. A row whose evidence
+  cannot vote independently of the reviewer's own verdicts reads
+  `not_assessed`. `resolve = FALSE` returns the screen's columns alone.
 * `compute_local_occurrence_distance(registry = )` (off by default): with a
   frozen taxon registry, occurrence records match the called taxa by registry
   identifier, so records filed under a synonym are counted.

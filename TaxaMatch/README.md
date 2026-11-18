@@ -674,11 +674,12 @@ automatically.
 ## AI use and disclaimers
 
 AI-assisted coding tools were used to develop this package: Anthropic
-Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5 and
-5.1) through Claude Code (Anthropic PBC, San Francisco, California),
-from 20 May 2026 to 9 November 2026, for code, tests, documentation and
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5, 5.1
+and 5.2) through Claude Code (Anthropic PBC, San Francisco, California),
+from 20 May 2026 to 18 November 2026, for code, tests, documentation and
 review. Nearly every non-merge commit names the model that contributed
-to it in a `Co-Authored-By` trailer; the root README gives the count. All code was reviewed, tested and validated by
+to it in a `Co-Authored-By` trailer; the root README gives each model's
+dates and the count. All code was reviewed, tested and validated by
 the author to ensure correctness and reproducibility, and was also
 subject to a human code review.
 

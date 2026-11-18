@@ -93,8 +93,10 @@ name exists, so the caller names the column.}
 
 \item{resolve}{Logical. \code{TRUE} (default) appends \code{flag_resolution},
 \code{flag_resolution_basis} and \code{flag_consistency_score}; see
-\strong{Resolution across all the evidence}. \code{FALSE} returns exactly the
-columns and attributes the screen returned before this argument existed.}
+\strong{Resolution across all the evidence}. \code{FALSE} skips the
+resolution: the result carries the identity and presence columns and the
+\code{rule_counts} attribute, without those three columns or the
+\code{resolution_counts} attribute.}
 }
 \value{
 \code{reviewed_df} with these columns appended, in the same row order:
