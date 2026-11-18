@@ -320,7 +320,7 @@
 #' genus, multiplying generic rows) and it is reported as a unanimous
 #' species named "". Called on each table as it enters the package.
 #' @noRd
-# Unreferenced-relative hypothesis types, for rings at any standard rank:
+# Unreferenced-relative hypothesis types, for rings at any rank:
 # "unreferenced_<r>" is an unsequenced <r> of the clade one rank coarser
 # (unreferenced_species: an unsequenced species of the genus; ...;
 # unreferenced_class: an unsequenced class of the phylum). One rule instead
@@ -342,8 +342,19 @@
   ord
 }
 
+# A ring type names its own rank: "unreferenced_<r>" for any taxonomic rank r -- a
+# rank of TaxaTools::extended_ranks, or a super-/sub-/infra-/parv- form of a
+# principal rank (infraorder, parvorder, ...) -- so a rank system with
+# intermediate ranks needs no list here. Kingdom and domain are not ring types (no
+# ring sits above them), and other "unreferenced_*" strings are not types.
+.is_rank_word <- function(r) {
+  r %in% TaxaTools::extended_ranks |
+    grepl("^(super|sub|infra|parv)?(kingdom|phylum|division|class|cohort|order|family|tribe|genus|section|species)$", r)
+}
+
 .is_unreferenced_type <- function(x) {
-  !is.na(x) & grepl("^unreferenced_(phylum|class|order|family|genus|species)$", x)
+  r <- sub("^unreferenced_", "", x)
+  !is.na(x) & startsWith(x, "unreferenced_") & .is_rank_word(r) & !r %in% c("kingdom", "domain")
 }
 
 # The COMPLEMENT rows: the hypotheses that stand for something the reference
@@ -364,12 +375,15 @@
   .is_unreferenced_type(x) | (!is.na(x) & x == "unresolved_species")
 }
 
-# The rank a ring row is named at: one coarser than the rank in its type.
-.unreferenced_ring_rank <- function(type) {
-  i <- match(sub("^unreferenced_", "", type), .RANK_LADDER)
+# A ring's own rank: one coarser than the rank in its type, in the caller's rank
+# system (.rank_order(), so an intermediate rank such as infraorder sits between its
+# neighbours); without one, in the standard ranks.
+.unreferenced_ring_rank <- function(type, rank_system = NULL) {
+  ladder <- .rank_order(rank_system)
+  i <- match(sub("^unreferenced_", "", type), ladder)
   out <- rep(NA_character_, length(type))
   ok <- .is_unreferenced_type(type) & !is.na(i) & i > 1L
-  out[ok] <- .RANK_LADDER[i[ok] - 1L]
+  out[ok] <- ladder[i[ok] - 1L]
   out
 }
 

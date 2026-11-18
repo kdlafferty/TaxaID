@@ -836,7 +836,8 @@ join_priors <- function(likelihoods,
   .jp_rg <- NULL
   if (!is.null(registry)) {
     .jp_stamp <- attr(likelihoods, "taxon_registry", exact = TRUE)
-    .jp_rg <- .jp_registry_inputs(likelihoods, taxaexpect_priors, taxonomy_lookup, expansion_taxonomy, singleton_taxonomy, registry)
+    .jp_rg <- .jp_registry_inputs(likelihoods, taxaexpect_priors, taxonomy_lookup, expansion_taxonomy, singleton_taxonomy, registry,
+                                  rank_system)
     .jp_sc <- attr(taxaexpect_priors, "search_center", exact = TRUE)
     likelihoods <- .jp_rg$likelihoods
     taxaexpect_priors <- .jp_rg$priors

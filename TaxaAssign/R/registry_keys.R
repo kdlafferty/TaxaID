@@ -78,7 +78,8 @@
 # lineage column a table already carries holds the ancestor id from the registry's tree (so families come from the
 # registry, never from a table's own column); the taxonomy tables keep the rank columns the caller supplied, rebuilt
 # from the registry over the same taxa. Returns the copies and what .jp_registry_finish() needs to restore names.
-.jp_registry_inputs <- function(likelihoods, priors, taxonomy_lookup, expansion_taxonomy, singleton_taxonomy, registry) {
+.jp_registry_inputs <- function(likelihoods, priors, taxonomy_lookup, expansion_taxonomy, singleton_taxonomy, registry,
+                                rank_system = NULL) {
   .registry_check_tables(registry, list(likelihoods = likelihoods, taxaexpect_priors = priors))
   all_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
   reg_name <- stats::setNames(registry$taxa$name, registry$taxa$taxon_id)
@@ -174,7 +175,7 @@
     # (member_clades_from_registry).
     li <- which(is_lca)
     if (length(li)) {
-      own_rank <- .unreferenced_ring_rank(lw$hypothesis_type[li])
+      own_rank <- .unreferenced_ring_rank(lw$hypothesis_type[li], rank_system)
       member_id <- .registry_member_ids(unlist(strsplit(stats::na.omit(as.character(orig$ring_member_clades[li])), "|", fixed = TRUE)),
                                         registry)
       new_m <- setdiff(stats::na.omit(unname(member_id)), names(anc[[1L]]))
