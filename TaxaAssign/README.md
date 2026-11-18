@@ -337,6 +337,12 @@ help a user interpret an unexpected finding.
 -   `winner_has_occurrence_record`, `consensus_has_occurrence_record`,
     `consensus_prior`: whether the called taxon has a local occurrence
     record, read by `TaxaFlag::add_posthoc_assessment()`.
+-   `consensus_reason` `"no_usable_likelihood"`: never set by
+    `posterior_consensus()` itself. The workflow template adds a no-call
+    row with this reason for each observation that
+    `TaxaLikely::evaluate_likelihoods()` returned in `$unresolved`, with
+    `coarsest_reference_lineage` giving the lineage its matched
+    references share, so every observation has a row.
 
 Note that a consensus is proposed per observation. This means the
 identical information (image, sound, sequence) can point to a different
@@ -397,11 +403,12 @@ automatically.
 ## AI use and disclaimers
 
 AI-assisted coding tools were used to develop this package: Anthropic
-Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5 and
-5.1) through Claude Code (Anthropic PBC, San Francisco, California),
-from 20 May 2026 to 9 November 2026, for code, tests, documentation and
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5, 5.1
+and 5.2) through Claude Code (Anthropic PBC, San Francisco, California),
+from 20 May 2026 to 18 November 2026, for code, tests, documentation and
 review. Nearly every non-merge commit names the model that contributed
-to it in a `Co-Authored-By` trailer; the root README gives the count. All code was reviewed, tested and validated by
+to it in a `Co-Authored-By` trailer; the root README gives each model's
+dates and the count. All code was reviewed, tested and validated by
 the author to ensure correctness and reproducibility, and was also
 subject to a human code review.
 

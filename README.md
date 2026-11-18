@@ -217,6 +217,20 @@ comparisons.
     about their data and goals, then generates a complete R script,
     methods section, or Shiny application.
 
+Optionally, TaxaID can join its tables on taxon identifiers rather than
+names. `TaxaTools::build_taxon_registry()` resolves every
+name a run uses, once, to an identifier under one key authority (by
+default the GBIF Backbone), recording how each name got there (accepted,
+synonym, gender variant, run-local). `freeze_taxon_registry()` then fixes
+its contents, and `attach_taxon_ids()` stamps each table with the
+registry's identifiers. The 13 functions across the packages that take a
+`registry =` argument (default `NULL`, joining on names) each run the
+same check, `registry_ids_for_names()`: the registry must be frozen and
+unedited, and every table must carry its stamp. `check_taxon_registry()`
+lists the names that share an identifier and any lineage that
+contradicts the registry. The TaxaTools README describes the registry
+in full.
+
 See each package's README.md file for more details.
 
 ### Data-flow order

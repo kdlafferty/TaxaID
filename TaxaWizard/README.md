@@ -165,6 +165,28 @@ sniff_input("my_data.csv")
 | `workflow_engine()` | Stateless LLM engine (advanced / programmatic use) |
 | `workflow_registry()` | Introspect the installed TaxaID packages' functions (advanced) |
 
+## The canonical workflow template
+
+The repository's `inst/TaxaID_Workflow_Template.R` is a single-site
+script from raw sequences to reviewed assignments. It is built from the
+same code snippets TaxaWizard uses to write workflow scripts, by
+`inst/tools/build_workflow_template.R`, so the template and generated
+scripts stay in step. A test rebuilds it and fails if the committed copy
+differs. Three of its behaviours are worth knowing:
+
+-   Each step binds its output to the object its snippet produces, and
+    the builder refuses a step whose last line names no object.
+-   Before step 1 it clears the objects a later step looks up with
+    `exists()` (`kernel_priors_fit`, `lik_unresolved`,
+    `taxon_registry`) and names them in a message, so a second run in
+    one session never reuses the first run's fit or unresolved set.
+-   An observation that `TaxaLikely::evaluate_likelihoods()` returns in
+    `$unresolved` gets a no-call consensus row (`consensus_reason`
+    `"no_usable_likelihood"`), so every observation has a row.
+
+The root README's "The workflow template" section describes how to
+rebuild it.
+
 ## What the interview knows about your machine
 
 `workflow_create()` runs `workflow_check()` before the conversation
@@ -271,11 +293,12 @@ automatically.
 ## AI use and disclaimers
 
 AI-assisted coding tools were used to develop this package: Anthropic
-Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5 and
-5.1) through Claude Code (Anthropic PBC, San Francisco, California),
-from 20 May 2026 to 9 November 2026, for code, tests, documentation and
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5, 5.1
+and 5.2) through Claude Code (Anthropic PBC, San Francisco, California),
+from 20 May 2026 to 18 November 2026, for code, tests, documentation and
 review. Nearly every non-merge commit names the model that contributed
-to it in a `Co-Authored-By` trailer; the root README gives the count. All code was reviewed, tested and validated by
+to it in a `Co-Authored-By` trailer; the root README gives each model's
+dates and the count. All code was reviewed, tested and validated by
 the author to ensure correctness and reproducibility, and was also
 subject to a human code review.
 

@@ -262,6 +262,15 @@ Prior estimation:
 -   `generate_domestic_food_priors()`: `transport`-branch priors for
     domestic, food, and cultivar species
 
+Taxon registry: `estimate_kernel_priors()`,
+`estimate_kernel_priors_from_counts()`, `generate_undetected_diversity()`,
+`apply_undetected_evidence()`, `condition_evidence_on_habitat()` and
+`generate_domestic_food_priors()` take `registry =` (default `NULL`, joining
+on names). With a frozen `TaxaTools::build_taxon_registry()` registry they
+match a taxon to its habitat verdict and place rows on the taxonomic tree
+by identifier, so a name filed under a synonym is still matched and placed;
+the TaxaTools README describes the registry.
+
 ### External environmental layers and SDMs (not built in)
 
 The Boettiger lab's GLEN server (`hexsdm`,
@@ -379,11 +388,12 @@ automatically.
 ## AI use and disclaimers
 
 AI-assisted coding tools were used to develop this package: Anthropic
-Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5 and
-5.1) through Claude Code (Anthropic PBC, San Francisco, California),
-from 20 May 2026 to 9 November 2026, for code, tests, documentation and
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5, 5.1
+and 5.2) through Claude Code (Anthropic PBC, San Francisco, California),
+from 20 May 2026 to 18 November 2026, for code, tests, documentation and
 review. Nearly every non-merge commit names the model that contributed
-to it in a `Co-Authored-By` trailer; the root README gives the count. All code was reviewed, tested and validated by
+to it in a `Co-Authored-By` trailer; the root README gives each model's
+dates and the count. All code was reviewed, tested and validated by
 the author to ensure correctness and reproducibility, and was also
 subject to a human code review.
 

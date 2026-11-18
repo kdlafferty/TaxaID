@@ -529,6 +529,12 @@ package's cache; the shared signature and the cross-package
 `TaxaTools::taxaid_cache_report()` are described in the TaxaID README's
 Caching and resources section.
 
+Taxon registry: `restore_suppressed_candidates(registry = )` (default
+`NULL`, deciding by name) compares registry identifiers with a frozen
+`TaxaTools::build_taxon_registry()` registry, so a reference species held
+under a synonym of a candidate's name is that candidate, not a congener to
+restore; the TaxaTools README describes the registry.
+
 ## Detecting Mislabeled References {#detecting-mislabeled-references}
 
 The full screen runs upstream, via TaxaMatch's [Reference Accession
@@ -682,6 +688,14 @@ candidate's density.
 -   Sigma floor: each species' sigma is floored at the global H1 sigma,
     because tight reference pairs (many near-identical accessions)
     understate the variation real queries show.
+-   H1 clamp (`evaluate_likelihoods(h1_clamp = TRUE)`, the default): the
+    H1 score term is evaluated at `min(score, mean)`, so a match better
+    than a species' trained mean is never scored lower than one at the
+    mean. This matters for a species trained on few divergent reference
+    pairs, where the unclamped density could rank a 100% match below a
+    much weaker match to a congener. The gap term, the outlier test and
+    H2/H3 use the raw score; `h1_clamp = FALSE` gives the unclamped
+    density.
 -   Outlier filter (`evaluate_likelihoods(alpha = 0.001)`): a candidate
     whose score is inconsistent with its species' H1 distribution (a
     score-only chi-squared test, df = 1) gets likelihood 0. The gap is
@@ -922,11 +936,12 @@ automatically.
 ## AI use and disclaimers
 
 AI-assisted coding tools were used to develop this package: Anthropic
-Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5 and
-5.1) through Claude Code (Anthropic PBC, San Francisco, California),
-from 20 May 2026 to 9 November 2026, for code, tests, documentation and
+Claude models (Opus 4.6, 5 and 5.5; Sonnet 4.6, 5 and 5.5; Fable 5, 5.1
+and 5.2) through Claude Code (Anthropic PBC, San Francisco, California),
+from 20 May 2026 to 18 November 2026, for code, tests, documentation and
 review. Nearly every non-merge commit names the model that contributed
-to it in a `Co-Authored-By` trailer; the root README gives the count. All code was reviewed, tested and validated by
+to it in a `Co-Authored-By` trailer; the root README gives each model's
+dates and the count. All code was reviewed, tested and validated by
 the author to ensure correctness and reproducibility, and was also
 subject to a human code review.
 
