@@ -119,6 +119,7 @@ edge_by_id <- stats::setNames(graph$edges, vapply(graph$edges, function(e) e$id,
 used_config <- character(0)
 missing_ph  <- character(0)
 body_lines  <- character(0)
+session_reads <- character(0)
 
 for (i in seq_along(CANONICAL_PATH)) {
   eid <- CANONICAL_PATH[i]
@@ -142,6 +143,10 @@ for (i in seq_along(CANONICAL_PATH)) {
     }
     txt <- gsub(ph, repl, txt, fixed = TRUE)
   }
+
+  # every object a step looks up in the session with exists(), cleared at the top of the template (see below)
+  session_reads <- c(session_reads, sub('^exists\\("(.*)"\\)$', "\\1",
+                                        regmatches(txt, gregexpr('exists\\("[A-Za-z.][A-Za-z0-9._]*"\\)', txt))[[1]]))
 
   # The step's output node is bound to the object the snippet ends with (its last line names it). Binding the node to
   # itself bound nothing whenever a snippet names its result otherwise: match_to_taxa ends with taxa_df,
@@ -240,7 +245,13 @@ header <- c(
   "# so pooling unlike processes biases every group toward the largest one.",
   "",
   "sequences <- SEQUENCES",
-  'if (is.null(sequences)) stop("Set SEQUENCES in Section 0 before running.", call. = FALSE)'
+  'if (is.null(sequences)) stop("Set SEQUENCES in Section 0 before running.", call. = FALSE)',
+  if (length(session_reads)) c(
+    "",
+    "# Objects that a later step looks up with exists() are cleared first, so a run uses only what it built itself,",
+    "# never one left in the session by an earlier run (another site's kernel fit, another marker's unresolved set).",
+    sprintf("rm(list = intersect(c(%s), ls()))", paste(sprintf('"%s"', sort(unique(session_reads))), collapse = ", "))
+  )
 )
 
 writeLines(c(header, body_lines, "",

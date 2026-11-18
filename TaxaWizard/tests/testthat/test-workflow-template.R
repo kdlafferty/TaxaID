@@ -366,26 +366,31 @@ test_that("the template refuses a GBIF key that did not resolve exactly, before 
   expect_lt(guard_ln, call_ln)
 })
 
-test_that("every step binds its output node to the object its snippet produces", {
-  # A step's output node (taxa, reference_matrix, consensus, ...) must be bound to the object its snippet ends with.
-  # Binding a node to itself left `taxa` and `reference_matrix` unset when a snippet ended with taxa_df or ref_matrix,
-  # and gave the review step the round-1 `consensus` when post_to_consensus ended with consensus_final.
+# Run the generator into a temp file and return its lines (skips without a repository; fails if it cannot run).
+.gen_template_lines <- function() {
   root <- TaxaWizard:::.pack_find_repo_root()
-  skip_if(is.null(root), "repo root not found")
+  testthat::skip_if(is.null(root), "repo root not found")
   gen <- file.path(root, "TaxaWizard", "inst", "tools", "build_workflow_template.R")
-  skip_if(!file.exists(gen), "generator not found")
-  out <- tempfile("tmpl_bind_", fileext = ".R")
-  on.exit(unlink(out), add = TRUE)
+  testthat::skip_if(!file.exists(gen), "generator not found")
+  out <- tempfile("tmpl_gen_", fileext = ".R")
   old_env <- Sys.getenv(c("TAXAID_ROOT", "TAXAID_TEMPLATE_OUT"), unset = NA)
   Sys.setenv(TAXAID_ROOT = root, TAXAID_TEMPLATE_OUT = out)
   on.exit({
+    unlink(out)
     for (nm in names(old_env)) {
       if (is.na(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, stats::setNames(list(old_env[[nm]]), nm))
     }
   }, add = TRUE)
   res <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), shQuote(gen), stdout = TRUE, stderr = TRUE))
-  if (!file.exists(out)) fail(paste("generator could not run:", paste(utils::tail(res, 3), collapse = " | ")))
-  tl <- readLines(out, warn = FALSE)
+  if (!file.exists(out)) testthat::fail(paste("generator could not run:", paste(utils::tail(res, 3), collapse = " | ")))
+  readLines(out, warn = FALSE)
+}
+
+test_that("every step binds its output node to the object its snippet produces", {
+  # A step's output node (taxa, reference_matrix, consensus, ...) must be bound to the object its snippet ends with.
+  # Binding a node to itself left `taxa` and `reference_matrix` unset when a snippet ended with taxa_df or ref_matrix,
+  # and gave the review step the round-1 `consensus` when post_to_consensus ended with consensus_final.
+  tl <- .gen_template_lines()
   starts <- grep("^# STEP [0-9]+ of [0-9]+ -- ", tl)
   expect_gt(length(starts), 0L)
   ends <- c(starts[-1] - 1L, length(tl))
@@ -396,4 +401,21 @@ test_that("every step binds its output node to the object its snippet produces",
     j <- max(grep(sprintf("^%s <- [A-Za-z.][A-Za-z0-9._]*$", to), code))
     expect_identical(code[j], paste(to, "<-", code[j - 1L]), info = blk[1])
   }
+})
+
+test_that("objects a step looks up with exists() are cleared before step 1, and the prior step passes no registry", {
+  # A step that asks exists("x") must see only an x this run built: the template clears every such name first. The
+  # prior step runs before the registry exists, so it passes none (an earlier run's registry would otherwise be used).
+  tl <- .gen_template_lines()
+  s1 <- grep("^# STEP 1 of ", tl)
+  body <- paste(tl[s1:length(tl)], collapse = "\n")
+  looked_up <- unique(sub('^exists\\("(.*)"\\)$', "\\1", regmatches(body, gregexpr('exists\\("[A-Za-z.][A-Za-z0-9._]*"\\)', body))[[1]]))
+  expect_gt(length(looked_up), 0L)
+  rm_line <- grep("^rm\\(list = intersect\\(c\\(", tl[seq_len(s1 - 1L)], value = TRUE)
+  expect_length(rm_line, 1L)
+  cleared <- eval(parse(text = sub("^rm\\(list = intersect\\((c\\(.*\\)), ls\\(\\)\\)\\)$", "\\1", rm_line[1])))
+  expect_true(all(looked_up %in% cleared), info = paste("not cleared:", paste(setdiff(looked_up, cleared), collapse = ", ")))
+  pr <- grep("^# STEP [0-9]+ of [0-9]+ -- ", tl); k <- grep("edge: dist_to_priors_by_group", tl)
+  blk <- tl[k:(min(pr[pr > k], length(tl) + 1L) - 1L)]
+  expect_false(any(grepl("registry\\s*=", blk)), info = "the prior step passes a registry")
 })

@@ -28,3 +28,8 @@
   those ranks (only "Eukaryota", say) then returns its observation in
   `$unresolved`, which gets the no-call row. A model that records no rank
   system falls back to the match table's columns.
+* The workflow template clears, before its first step, every object a step
+  looks up with `exists()` (the run's taxon registry, the kernel fit, the
+  likelihood step's unresolved set), so a second run in one R session uses
+  only what that run built. The prior step passes no registry: the registry
+  is built after it.
