@@ -564,8 +564,10 @@ this and reads near 1 on such calls, truthfully about the hypothesis
 and silently about the name. A GENERIC ring row carries its own name
 as its scope (\code{consensus_unreferenced_scope == consensus_taxon}),
 because the ring is the scope; a NAMED row's scope is the parent
-clade. Both are typed \code{unreferenced_species}, so \code{hypothesis_type}
-alone cannot separate them. Present when \code{posterior_df} carries the
+clade. A tied-anchor ring row carries its member clades, joined with
+\code{|}, as its scope, and is a ring row in the same way. Both are typed
+\code{unreferenced_species}, so \code{hypothesis_type} alone cannot separate
+them. Present when \code{posterior_df} carries the
 scope columns.}
 \item{\code{consensus_scope_n_named}}{Integer. How many NAMED rows share
 that scope in the same observation. \code{1} means the records offered one

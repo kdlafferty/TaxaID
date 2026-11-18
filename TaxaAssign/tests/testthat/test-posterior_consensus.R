@@ -2795,3 +2795,77 @@ test_that("the consensus internals default to the same values as the export", {
     }
   }
 })
+
+# A tied-anchor ring (TaxaLikely's ring_member_clades) has its member clades as
+# its scope (add_unreferenced_prior_mass() sets unreferenced_scope from
+# ring_member_clades), so its scope never equals its own name. It is still the
+# ring, not a named member. The named rows under it are copies of the ring row
+# and inherit its ring_member_clades, so that column alone does not mark the
+# ring: their scope is one member clade.
+.tied_ring_df <- function(post) {
+  df <- .prov_df(
+    post = post,
+    taxa = c("Compsopogonophyceae", "Smithora naiadum", "Porphyra umbilicalis"),
+    types = c("unreferenced_order", "unreferenced_species", "specific_candidate"),
+    ranks = c("class", "species", "species"),
+    gen = c(NA, "Smithora", "Porphyra"),
+    scopes = c("Bangiales|Erythropeltidales", "Erythropeltidales", NA),
+    scope_ranks = c("order", "order", NA),
+    fam = c(NA, "Erythrotrichiaceae", "Bangiaceae"),
+    ord = c(NA, "Erythropeltidales", "Bangiales")
+  )
+  df$ring_member_clades <- c("Bangiales|Erythropeltidales", "Bangiales|Erythropeltidales", NA)
+  df
+}
+
+test_that("a call on a tied-anchor ring row has no named count", {
+  out <- .prov(.tied_ring_df(post = c(0.9, 0.05, 0.05)))
+  expect_equal(out$consensus_taxon, "Compsopogonophyceae")
+  expect_equal(out$consensus_unreferenced_scope, "Bangiales|Erythropeltidales")
+  expect_true(is.na(out$consensus_scope_n_named))
+})
+
+test_that("a named row under a tied-anchor ring is counted, and the ring row is not", {
+  # The named row inherits the ring's ring_member_clades; it is still named.
+  out <- .prov(.tied_ring_df(post = c(0.03, 0.95, 0.02)))
+  expect_equal(out$consensus_taxon, "Smithora naiadum")
+  expect_equal(out$consensus_unreferenced_scope, "Erythropeltidales")
+  expect_equal(out$consensus_scope_n_named, 1L)
+})
+
+test_that("named rows under one tied-anchor ring are counted per member clade", {
+  df <- .tied_ring_df(post = c(0.02, 0.95, 0.03))
+  df$taxon_name[3] <- "Porphyra purpurea"
+  df$hypothesis_type[3] <- "unreferenced_species"
+  df$unreferenced_scope[3] <- "Bangiales"
+  df$unreferenced_scope_rank[3] <- "order"
+  df$ring_member_clades[3] <- "Bangiales|Erythropeltidales"
+  out <- .prov(df)
+  expect_equal(out$consensus_taxon, "Smithora naiadum")
+  expect_equal(out$consensus_scope_n_named, 1L)
+})
+
+test_that("a tied-anchor ring kept at its anchor's order label has no named count", {
+  # The shape the CalIntertidal 12S run produced: a ring at order rank keeping
+  # its anchor's label, its scope the three orders the tied candidates span.
+  members <- "Acropomatiformes|Perciformes|Uranoscopiformes"
+  df <- data.frame(
+    observation_id = "S1",
+    taxon_name = c("Perciformes", "Sebastes miniatus"),
+    taxon_name_rank = c("order", "species"),
+    hypothesis_type = c("unreferenced_order", "specific_candidate"),
+    posterior_mean = c(0.97, 0.03), posterior_point_est = c(0.97, 0.03),
+    genus = c(NA, "Sebastes"), family = c(NA, "Sebastidae"),
+    order = c("Perciformes", "Perciformes"),
+    class = "Actinopteri", phylum = "Chordata",
+    unreferenced_scope = c(members, NA), unreferenced_scope_rank = c("order", NA),
+    ring_member_clades = c(members, NA),
+    ring_lca_status = c("anchor_fallback", NA),
+    stringsAsFactors = FALSE
+  )
+  out <- .prov(df)
+  expect_equal(out$consensus_taxon, "Perciformes")
+  expect_equal(out$consensus_rank, "order")
+  expect_equal(out$consensus_unreferenced_scope, members)
+  expect_true(is.na(out$consensus_scope_n_named))
+})
