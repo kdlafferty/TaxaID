@@ -394,7 +394,12 @@ or \code{NA}.}
 \code{"single"} (only one hypothesis in the plausible set),
 \code{"lca"} (upranked because hypotheses disagree at finer ranks),
 \code{"threshold"} (rank-capped by \code{rank_thresholds} in
-\code{\link[=score_consensus]{score_consensus()}}), or \code{NA} (unresolvable).}
+\code{\link[=score_consensus]{score_consensus()}}), or \code{NA} (unresolvable).
+\code{"no_usable_likelihood"} is never set here: the workflow template
+adds a no-call row with that reason for an observation that
+\code{TaxaLikely::evaluate_likelihoods()} returned in \verb{$unresolved}, with
+\code{coarsest_reference_lineage} giving the lineage its matched references
+share (e.g. \code{"Eukaryota"}).}
 \item{\code{is_resolved}}{\code{TRUE} when the LCA is at the finest rank in
 \code{rank_system} (i.e. a single unambiguous species-level assignment).}
 \item{\code{consensus_posterior}}{Sum of named posterior probabilities within

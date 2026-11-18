@@ -57,7 +57,14 @@ likelihoods <- TaxaLikely::filter_top_hypotheses(
   lik_result$likelihoods
 )
 message("Evaluated likelihoods for ", length(unique(likelihoods$observation_id)), " samples")
-if (nrow(lik_result$unresolved) > 0L) {
-  message("  ", nrow(lik_result$unresolved), " unresolved rows (no usable likelihoods)")
+# An observation whose matches all name a reference only above the rank system
+# (only "Eukaryota", say), or whose matches the coverage check removed, has no
+# likelihood row; evaluate_likelihoods() returns its match rows in $unresolved.
+# They are kept as lik_unresolved, and the consensus step gives each such
+# observation a no-call row (consensus_reason "no_usable_likelihood").
+lik_unresolved <- lik_result$unresolved
+if (nrow(lik_unresolved) > 0L) {
+  message("  ", length(unique(lik_unresolved$observation_id)), " observation(s) with no usable likelihood ",
+          "(", nrow(lik_unresolved), " match rows); each gets a no-call consensus row")
 }
 likelihoods

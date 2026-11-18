@@ -507,7 +507,12 @@
 #'       `"single"` (only one hypothesis in the plausible set),
 #'       `"lca"` (upranked because hypotheses disagree at finer ranks),
 #'       `"threshold"` (rank-capped by `rank_thresholds` in
-#'       [score_consensus()]), or `NA` (unresolvable).}
+#'       [score_consensus()]), or `NA` (unresolvable).
+#'       `"no_usable_likelihood"` is never set here: the workflow template
+#'       adds a no-call row with that reason for an observation that
+#'       `TaxaLikely::evaluate_likelihoods()` returned in `$unresolved`, with
+#'       `coarsest_reference_lineage` giving the lineage its matched references
+#'       share (e.g. `"Eukaryota"`).}
 #'     \item{`is_resolved`}{`TRUE` when the LCA is at the finest rank in
 #'       `rank_system` (i.e. a single unambiguous species-level assignment).}
 #'     \item{`consensus_posterior`}{Sum of named posterior probabilities within

@@ -17,3 +17,8 @@
   likelihoods and priors, and pass it to `join_priors()` and
   `posterior_consensus()`, so taxa are matched by identifier and outputs carry
   GBIF accepted names.
+* Every observation gets a consensus row. One whose matches all name a
+  reference only above the rank system (only "Eukaryota", say), which
+  `TaxaLikely::evaluate_likelihoods()` returns in `$unresolved`, gets a no-call
+  row with `consensus_reason = "no_usable_likelihood"` and
+  `coarsest_reference_lineage`, the lineage its matched references share.

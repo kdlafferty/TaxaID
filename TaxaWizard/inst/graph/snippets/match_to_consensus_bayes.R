@@ -46,11 +46,15 @@ if (!"taxon_name" %in% names({{match_var}})) {
 
 # 1. Scores -> likelihoods under the trained model, then keep the finest-rank
 #    candidate set per observation
-likelihoods <- TaxaLikely::evaluate_likelihoods(
+lik_result <- TaxaLikely::evaluate_likelihoods(
   match_df     = {{match_var}},
   model_params = {{model_var}},
   rank_system  = detected_ranks
-)$likelihoods
+)
+likelihoods <- lik_result$likelihoods
+# observations with no usable likelihood (see $unresolved): each gets a no-call
+# consensus row at the end of this step
+lik_unresolved <- lik_result$unresolved
 top_likelihoods <- TaxaLikely::filter_top_hypotheses(
   likelihoods,
   rank_system = detected_ranks
@@ -148,6 +152,44 @@ consensus <- TaxaAssign::posterior_consensus(
   taxonomy_cache_dir = {{taxonomy_cache_dir}},
   registry         = taxon_registry
 )
+
+# 5. Every observation gets a consensus row. One that evaluate_likelihoods()
+#    returned in $unresolved (every match names a reference only above the rank
+#    system, such as "Eukaryota", or the coverage check removed them all) has no
+#    likelihood and never reaches posterior_consensus(). It gets a no-call row
+#    here: consensus_reason "no_usable_likelihood", and
+#    coarsest_reference_lineage, the lineage its matched references share (e.g.
+#    "Eukaryota"), which shows how coarsely the references were named for this
+#    marker. coarsest_reference_lineage is NA on every other row.
+consensus$coarsest_reference_lineage <- rep(NA_character_, nrow(consensus))
+if (nrow(lik_unresolved) > 0L) {
+  .nu_lin_cols <- intersect(TaxaTools::standard_ranks, names(lik_unresolved))
+  .nu_sid <- as.character(lik_unresolved$observation_id)
+  .nu_ids <- setdiff(unique(.nu_sid), as.character(consensus$observation_id))
+  .nu_lineage <- vapply(.nu_ids, function(id) {
+    .m <- lik_unresolved[.nu_sid == id, .nu_lin_cols, drop = FALSE]
+    .path <- character(0)
+    for (.r in .nu_lin_cols) {
+      .v <- as.character(.m[[.r]])
+      if (all(is.na(.v) | !nzchar(.v))) next
+      if (anyNA(.v) || length(unique(.v)) != 1L) break
+      .path <- c(.path, .v[1L])
+    }
+    if (length(.path) > 0L) paste(.path, collapse = "|") else NA_character_
+  }, character(1), USE.NAMES = FALSE)
+  .nu_rows <- data.frame(observation_id = lik_unresolved$observation_id[match(.nu_ids, .nu_sid)],
+                         consensus_taxon = rep(NA_character_, length(.nu_ids)),
+                         consensus_rank = rep(NA_character_, length(.nu_ids)),
+                         consensus_reason = rep("no_usable_likelihood", length(.nu_ids)),
+                         is_resolved = rep(FALSE, length(.nu_ids)),
+                         coarsest_reference_lineage = .nu_lineage, stringsAsFactors = FALSE)
+  .nu_attr <- attributes(consensus)
+  .nu_attr <- .nu_attr[setdiff(names(.nu_attr), c("names", "row.names", "class"))]
+  consensus <- dplyr::bind_rows(consensus, .nu_rows)
+  for (.a in names(.nu_attr)) attr(consensus, .a) <- .nu_attr[[.a]]
+  message(length(.nu_ids), " observation(s) with no usable likelihood get a no-call row ",
+          "(consensus_reason \"no_usable_likelihood\")")
+}
 
 message("Bayesian pathway complete. ", sum(consensus$is_resolved), " of ",
         nrow(consensus), " observations resolved")

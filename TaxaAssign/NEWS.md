@@ -75,3 +75,6 @@
   subclass) gets its scope and the unreferenced mass of its local relatives.
   A ring row whose type the ranks in use cannot place keeps the floor prior,
   and a message counts such rows.
+* `posterior_consensus()` documents the `consensus_reason`
+  `"no_usable_likelihood"`, which the workflow template writes on its no-call
+  row for an observation with no usable likelihood.
