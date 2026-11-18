@@ -169,7 +169,7 @@
     # candidates are all left out is then represented by the registry's own taxon of that name, under the rule
     # add_unreferenced_prior_mass() uses for member clades (exactly one id, at the ring's own rank). A member clade
     # that has neither is not guessed: the ring keeps its own id ("lca_registry_none"). A member clade with no
-    # candidate in the observation at all is not read, as before. The rows rekeyed list how many
+    # candidate in the observation at all is not read. The rows rekeyed list how many
     # candidates were left out (n_unplaced_candidates) and which member clades took the registry's own taxon
     # (member_clades_from_registry).
     li <- which(is_lca)

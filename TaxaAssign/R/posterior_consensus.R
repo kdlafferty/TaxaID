@@ -480,7 +480,7 @@
 #'   ids all belong to it (as [join_priors()] with the same registry gives),
 #'   and both read the registry's own tree instead: no name is looked up, a
 #'   hypothesis whose id the registry holds is `"matched"`, and only empty
-#'   lineage cells are filled, as before. `backbone_id` is then not needed.
+#'   lineage cells are filled. `backbone_id` is then not needed.
 #'   `group_priors` and `species_reference` are keyed by the registry too:
 #'   each group's (`rank`, `taxon`) and each reference species is resolved to
 #'   its registry id and renamed to the registry's accepted name, the

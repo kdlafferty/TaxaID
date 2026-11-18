@@ -50,3 +50,21 @@ test_that("species_reference filed under a synonym downranks along the registry'
   expect_identical(cons$consensus_taxon, "Hypsurus caryi")
   expect_true(isTRUE(cons$downranked))
 })
+
+test_that("no roxygen, Rd or code comment in TaxaAssign carries history text 'as before'", {
+  root <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  rf <- list.files(file.path(root, "R"), pattern = "[.]R$", full.names = TRUE)
+  mf <- list.files(file.path(root, "man"), pattern = "[.]Rd$", full.names = TRUE)
+  skip_if_not(length(rf) > 0 && length(mf) > 0, "package sources not available")
+  hits <- character(0)
+  for (f in rf) {
+    l <- readLines(f, warn = FALSE)
+    cm <- grepl("^\\s*#", l) & grepl("as before", l, fixed = TRUE)
+    hits <- c(hits, sprintf("%s:%d", basename(f), which(cm)))
+  }
+  for (f in mf) {
+    l <- readLines(f, warn = FALSE)
+    hits <- c(hits, sprintf("%s:%d", basename(f), which(grepl("as before", l, fixed = TRUE))))
+  }
+  expect_identical(hits, character(0))
+})

@@ -398,7 +398,7 @@ add_unreferenced_prior_mass <- function(joined,
   # when they span clades, and lists those clades at the ring's OWN rank in ring_member_clades. Such a ring's scope is
   # the UNION of its member clades at that rank -- not everything under the common rank. The clades are disjoint at
   # that rank, and members are deduplicated per (row, species) below as for any ring, so nothing is counted twice.
-  # A row whose ring_member_clades is NA is handled exactly as before.
+  # A row whose ring_member_clades is NA stays in `gen`, the ordinary ring path.
   lca_rows <- if ("ring_member_clades" %in% names(out)) {
     which(out$hypothesis_type %in% unreferenced_types & !is.na(out$ring_member_clades) & !is.na(expected_rank))
   } else {
