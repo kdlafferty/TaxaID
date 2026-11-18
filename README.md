@@ -153,7 +153,12 @@ avoid such mistakes.
     not know where the sample was taken, and thus has no shame assigning
     to a species that doesn't plausibly occur at the sampling location,
     season, or habitat. Filtering on a regional list is a coarse way to
-    reduce such errors. Spatially explicit priors from TaxaExpect
+    reduce such errors. Context helps image classifiers too: adding
+    habitat, substrate and month to a fungal-photo classifier raised
+    macro-F1 by about 2.5 to 3 percentage points over a matched
+    image-only model, and multiplying image probabilities by metadata
+    priors (Bayesian late fusion) did nearly as well as learning the
+    metadata jointly (Liu et al. 2026). Spatially explicit priors from TaxaExpect
     down-weight implausible taxa across a continuous gradient, yet allow
     for the discovery of novel or introduced species.
 7.  Defensive upranking (FN). When multiple similar species produce
@@ -1133,6 +1138,11 @@ yet citable. <https://github.com/kdlafferty/TaxaID>
 Leray, M., Victor, B. C., Jeunen, G. J., & Robertson, D. R. (2026).
 Seeing Species Where They Are Not: Why eDNA Needs Better Taxonomic
 Standards. *Global Change Biology*, *32*(10), e71133.
+
+Liu, C., Wang, J. and Wang, Y. (2026). Ecological context supports
+image-based fungal species recognition in citizen-science observations.
+*Frontiers in Ecology and Evolution*, 14, 1973203.
+https://doi.org/10.3389/fevo.2026.1973203
 
 Macher, T.-H., Beermann, A.J. and Leese, F. (2021). TaxonTableTools: a
 comprehensive, platform-independent graphical user interface software to
