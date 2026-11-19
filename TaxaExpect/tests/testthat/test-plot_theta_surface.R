@@ -663,3 +663,69 @@ test_that("site-identity holds when the fit counted unplaceable-habitat records 
     expect_equal(surf$theta[[tx]][i0, j0], est, tolerance = 1e-2)
   }
 })
+
+# ------------------------------------------------------------------------------
+# Interactive render: single-taxon naming and cell tiling
+# ------------------------------------------------------------------------------
+
+.theta_map_calls <- function(m) vapply(m$x$calls, function(cl) cl$method, character(1))
+
+test_that("a single-taxon interactive map names the taxon in the selector, legend and hover labels", {
+  skip_if_not_installed("leaflet")
+  occ <- data.frame(
+    taxon_name = rep(c("Girella nigricans", "B"), each = 4),
+    decimalLatitude = rep(c(34.0, 34.1, 34.2, 34.3), 2),
+    decimalLongitude = rep(c(-120.0, -119.9), 4),
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
+  kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
+  m <- plot_theta_surface(kp, occ, taxon = "Girella nigricans", n_grid = 16L, interactive = TRUE)$plot
+  calls <- .theta_map_calls(m)
+  # the selector: the taxon and the support layer, never a placeholder "1"
+  lc <- m$x$calls[[which(calls == "addLayersControl")[1]]]
+  expect_setequal(unlist(lc$args[[1]]), c("Girella nigricans", "[support] n_eff"))
+  rect <- m$x$calls[[which(calls == "addRectangles")[1]]]
+  expect_identical(rect$args[[6]], "Girella nigricans") # the rectangles' group
+  labs <- unlist(lapply(rect$args, function(a) if (is.list(a)) unlist(a) else NULL))
+  expect_true(any(grepl("^Girella nigricans<br/>theta =", labs)))
+  expect_false(any(grepl("^1<br/>", labs)))
+  leg <- m$x$calls[[which(calls == "addLegend")[1]]]
+  expect_match(leg$args[[1]]$title, "data-group=\"Girella nigricans\"", fixed = TRUE)
+})
+
+test_that("interactive cells tile the lattice with no gap and no overlap when the downsample stride varies", {
+  skip_if_not_installed("leaflet")
+  occ <- data.frame(
+    taxon_name = rep("A", 6),
+    decimalLatitude = c(34.0, 34.1, 34.2, 34.3, 34.4, 34.5),
+    decimalLongitude = c(-120.0, -119.9, -119.8, -120.1, -119.95, -119.85),
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
+  kp <- estimate_kernel_priors(occ, 34.25, -119.95, "Marine", lambda_km = 50)
+  # 100 lattice points drawn as 80 cells: strides of 1 and 2 both occur
+  r <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 100L, interactive = TRUE, support_panel = FALSE)
+  ds <- TaxaExpect:::.theta_surface_downsample(r$surface, 80L)
+  expect_gt(length(unique(diff(ds$i_keep))), 1L) # the fixture does exercise an uneven stride
+  calls <- .theta_map_calls(r$plot)
+  rect <- r$plot$x$calls[[which(calls == "addRectangles")[1]]]
+  lat1 <- rect$args[[1]]; lng1 <- rect$args[[2]]; lat2 <- rect$args[[3]]; lng2 <- rect$args[[4]]
+  for (e in list(list(lo = lat1, hi = lat2), list(lo = lng1, hi = lng2))) {
+    lo <- sort(unique(e$lo)); hi <- sort(unique(e$hi))
+    expect_equal(length(lo), length(hi))
+    # each cell's upper edge is the next cell's lower edge, exactly
+    expect_equal(hi[-length(hi)], lo[-1], tolerance = 1e-12)
+    expect_true(all(hi > lo))
+  }
+  # and the cells reach the lattice's outer points
+  expect_lte(min(lat1), min(r$surface$lat_grid))
+  expect_gte(max(lat2), max(r$surface$lat_grid))
+  expect_lte(min(lng1), min(r$surface$lon_grid))
+  expect_gte(max(lng2), max(r$surface$lon_grid))
+})
+
+test_that("a single-taxon static render titles its panel with the taxon", {
+  occ <- .mk_occ(rep("Girella nigricans", 4), c(34.0, 34.1, 34.2, 34.3), c(-120.0, -119.9, -120.1, -119.95))
+  kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
+  r <- plot_theta_surface(kp, occ, taxon = "Girella nigricans", n_grid = 16L, interactive = FALSE)
+  expect_identical(names(TaxaExpect:::.theta_surface_theta_list(r$surface)), "Girella nigricans")
+})
