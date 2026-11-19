@@ -890,8 +890,7 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
 .theta_surface_plot_static <- function(surf, site_lat, site_lon, n_eff_floor,
                                        palette, bg, rng_use, support_panel, support_field,
                                        mask_polys, ...) {
-  theta <- if (is.list(surf$theta)) surf$theta else stats::setNames(list(surf$theta), "1")
-  taxa_multi <- is.list(surf$theta)
+  theta <- .theta_surface_theta_list(surf)
 
   # Support is per-LOCATION, not per-taxon (n_eff/W are single matrices, theta
   # is a per-taxon list) -- computed once, for the dedicated support panel
@@ -972,7 +971,7 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
     graphics::axis(1)
     graphics::axis(2)
     graphics::box()
-    graphics::title(main = if (taxa_multi) nm else "theta", xlab = "lon", ylab = "lat", ...)
+    graphics::title(main = nm, xlab = "lon", ylab = "lat", ...)
     graphics::mtext(.theta_surface_condition_label(surf$params),
       side = 3,
       line = 0.25, cex = 0.7, col = "grey25"
@@ -1066,13 +1065,22 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
   if (!requireNamespace("leaflet", quietly = TRUE)) {
     stop("plot_theta_surface: package 'leaflet' is required for interactive = TRUE. Install with: install.packages('leaflet')")
   }
-  theta <- if (is.list(surf$theta)) surf$theta else stats::setNames(list(surf$theta), "1")
+  theta <- .theta_surface_theta_list(surf)
   max_dim <- 80L
   ds <- .theta_surface_downsample(surf, max_dim)
-  cell_hw_lat <- (ds$lat_grid[2] - ds$lat_grid[1]) / 2
-  cell_hw_lon <- (ds$lon_grid[2] - ds$lon_grid[1]) / 2
-  lat_v <- rep(ds$lat_grid, times = length(ds$lon_grid))
-  lon_v <- rep(ds$lon_grid, each = length(ds$lat_grid))
+  # Each kept lattice point's rectangle runs between the midpoints to its
+  # neighbours, so adjacent rectangles share an edge exactly. The kept points
+  # are not evenly spaced when the lattice does not divide into max_dim (512
+  # points give strides of 6 and 7), so a half-width taken from one stride
+  # leaves a strip of basemap at every longer stride.
+  lat_e <- .theta_surface_cell_edges(ds$lat_grid, surf$lat_grid)
+  lon_e <- .theta_surface_cell_edges(ds$lon_grid, surf$lon_grid)
+  ii <- rep(seq_along(ds$lat_grid), times = length(ds$lon_grid))
+  jj <- rep(seq_along(ds$lon_grid), each = length(ds$lat_grid))
+  lat1 <- lat_e[ii]
+  lat2 <- lat_e[ii + 1L]
+  lng1 <- lon_e[jj]
+  lng2 <- lon_e[jj + 1L]
 
   # Support is per-LOCATION, not per-taxon -- computed once, for the
   # dedicated support layer only (opacity is always full otherwise; see the
@@ -1119,8 +1127,7 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
     }
     map <- leaflet::addRectangles(
       map,
-      lng1 = lon_v - cell_hw_lon, lat1 = lat_v - cell_hw_lat,
-      lng2 = lon_v + cell_hw_lon, lat2 = lat_v + cell_hw_lat,
+      lng1 = lng1, lat1 = lat1, lng2 = lng2, lat2 = lat2,
       fillColor = pal(th_v), fillOpacity = opac, stroke = FALSE,
       label = labs, group = nm, ...
     )
@@ -1149,8 +1156,7 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
     }
     map <- leaflet::addRectangles(
       map,
-      lng1 = lon_v - cell_hw_lon, lat1 = lat_v - cell_hw_lat,
-      lng2 = lon_v + cell_hw_lon, lat2 = lat_v + cell_hw_lat,
+      lng1 = lng1, lat1 = lat1, lng2 = lng2, lat2 = lat2,
       fillColor = supp_pal(supp_v), fillOpacity = 0.7, stroke = FALSE,
       label = labs, group = supp_nm
     )
@@ -1230,6 +1236,33 @@ as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional
     position = "bottomleft"
   )
   map
+}
+
+#' A surface's theta as a named list, one element per taxon. A single-taxon
+#' surface stores a bare matrix; its name is the taxon the surface was built
+#' for, which is what the layer selector, legend and hover labels show.
+#' @noRd
+.theta_surface_theta_list <- function(surf) {
+  if (is.list(surf$theta)) {
+    return(surf$theta)
+  }
+  nm <- surf$params$taxon
+  if (length(nm) != 1L || is.na(nm) || !nzchar(nm)) nm <- "theta"
+  stats::setNames(list(surf$theta), nm)
+}
+
+#' Rectangle edges for kept lattice points: midpoints between neighbours, and
+#' half the adjacent spacing beyond the first and last point, so the cells
+#' tile with no gap and no overlap whatever the stride. `full` (the
+#' undownsampled lattice) supplies the spacing when only one point is kept.
+#' @noRd
+.theta_surface_cell_edges <- function(g, full) {
+  n <- length(g)
+  if (n == 1L) {
+    h <- if (length(full) > 1L) (full[2] - full[1]) / 2 else 0
+    return(c(g - h, g + h))
+  }
+  c(g[1] - (g[2] - g[1]) / 2, (g[-1] + g[-n]) / 2, g[n] + (g[n] - g[n - 1L]) / 2)
 }
 
 #' Downsampled lattice coordinates (stride subsetting) for leaflet rendering
