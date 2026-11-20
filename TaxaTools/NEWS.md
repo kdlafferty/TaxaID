@@ -91,3 +91,9 @@
   `rank_mismatch_no_context`, listed by `check_taxon_registry()`, since a
   one-word name can match a genus homonym in another kingdom. Supply `context`
   for names above genus.
+* `scientific_to_common(backbone_id = 11)` looks up GBIF common names on a GBIF
+  Backbone key (`checklistKey`), under any rgbif version, including rgbif
+  3.9.0 and later, whose default checklist is the Catalogue of Life Extended
+  Release. A key that is not a Backbone integer, or an rgbif older than 3.8.4,
+  stops the call rather than being reported per taxon as no common name and
+  passed to the LLM.

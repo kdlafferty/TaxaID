@@ -160,7 +160,7 @@ fetch_gbif_occurrences <- function(keys,
   }
 
   # --- Input checks -----------------------------------------------------------
-  keys <- unique(as.integer(keys))
+  keys <- unique(.gbif_backbone_key(keys, "fetch_gbif_occurrences"))
   keys <- keys[!is.na(keys)]
 
   if (length(keys) == 0L) {

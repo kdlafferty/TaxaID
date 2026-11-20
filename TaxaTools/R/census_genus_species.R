@@ -205,7 +205,7 @@ census_genus_species <- function(genus_keys,
 .fetch_children_species <- function(key, status_filter) {
   # GBIF API returns paginated results; default limit is 100, max 1000
 
-  resp <- rgbif::name_usage(key = key, data = "children", limit = 1000)
+  resp <- .gbif_quiet_backbone_notice(rgbif::name_usage(key = key, data = "children", limit = 1000))
 
   if (is.null(resp$data) || nrow(resp$data) == 0L) {
     return(character(0))
@@ -331,7 +331,7 @@ census_genus_species <- function(genus_keys,
 #' @return Data frame with `name` and `key` columns.
 #' @noRd
 .fetch_children_genera <- function(key) {
-  resp <- rgbif::name_usage(key = key, data = "children", limit = 1000)
+  resp <- .gbif_quiet_backbone_notice(rgbif::name_usage(key = key, data = "children", limit = 1000))
 
   if (is.null(resp$data) || nrow(resp$data) == 0L) {
     return(data.frame(

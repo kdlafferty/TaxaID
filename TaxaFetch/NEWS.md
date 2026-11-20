@@ -17,3 +17,13 @@
 * `get_keys_from_context(return_keys = TRUE)` adds GBIF's identifier columns
   from the same backbone record; `cache_dir` keeps a per-row cache keyed on the
   whole request, and a failed request is never cached.
+* GBIF name matching names the GBIF Backbone Taxonomy as its checklist
+  (`checklistKey`), so `get_keys_from_context()` and `lookup_gbif_taxa()`
+  return Backbone keys under any rgbif version, including rgbif 3.9.0 and
+  later, whose default checklist is the Catalogue of Life Extended Release.
+  A key that is not a Backbone integer is an error (class
+  `taxaid_gbif_key_not_backbone`), never an `NA` reported as a match, and the
+  keys passed to `fetch_gbif_occurrences()`, `download_gbif_occurrences()` and
+  `fetch_gbif_occurrence_counts()` are checked the same way. Name matching
+  needs rgbif 3.8.4 or later. The `get_keys_from_context()` cache key carries
+  the checklist, so a row cached by a lookup that did not name it is not read.

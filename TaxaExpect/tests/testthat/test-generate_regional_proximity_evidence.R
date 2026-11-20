@@ -813,3 +813,50 @@ test_that("input validation rejects a malformed tile_cache_dir before any networ
     "tile_cache_dir"
   )
 })
+
+# ------------------------------------------------------------------------------
+# GBIF Backbone keys under rgbif 3.9.0 and later
+# ------------------------------------------------------------------------------
+# rgbif 3.9.0 and later match names against the Catalogue of Life Extended Release and return its
+# alphanumeric keys (e.g. "Q2M4") unless checklistKey names the GBIF Backbone. These mocks answer the
+# way 3.9.0 does: a Catalogue of Life key unless the Backbone checklist is asked for.
+
+.BACKBONE <- "d7dddbf4-2cf0-4f39-9b2a-bb099caae36c"
+.nbc_390 <- function(name_data, rank, ...) {
+  a <- list(...)
+  key <- if (identical(a$checklistKey, .BACKBONE)) 2367386 else "Q2M4"
+  tibble::tibble(verbatim_name = name_data$name, usageKey = key, rank = "SPECIES", species = name_data$name)
+}
+
+test_that("regional proximity resolves names to Backbone keys, so rgbif 3.9.0 still yields integer keys", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(name_backbone_checklist = .nbc_390, .package = "rgbif")
+  out <- TaxaExpect:::.resolve_gbif_taxon_keys_batch("Cyprinella monacha")
+  expect_identical(out$usage_key, 2367386)
+  expect_identical(out$gbif_species, "Cyprinella monacha")
+})
+
+test_that("a non-Backbone key from name matching is an error, not a species silently left unresolved", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(
+    name_backbone_checklist = function(name_data, rank, ...) {
+      tibble::tibble(verbatim_name = name_data$name, usageKey = "Q2M4", rank = "SPECIES", species = name_data$name)
+    },
+    name_backbone = function(...) list(usageKey = "Q2M4", rank = "SPECIES"),
+    .package = "rgbif"
+  )
+  expect_error(TaxaExpect:::.resolve_gbif_taxon_keys_batch("Cyprinella monacha"), class = "taxaid_gbif_key_not_backbone")
+  expect_error(TaxaExpect:::.resolve_gbif_taxon_key("Cyprinella monacha"), class = "taxaid_gbif_key_not_backbone")
+})
+
+test_that("the single-name resolver also asks for the Backbone checklist", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(
+    name_backbone = function(...) {
+      a <- list(...)
+      list(usageKey = if (identical(a$checklistKey, .BACKBONE)) 2367386L else "Q2M4", rank = "SPECIES")
+    },
+    .package = "rgbif"
+  )
+  expect_identical(TaxaExpect:::.resolve_gbif_taxon_key("Cyprinella monacha"), 2367386)
+})

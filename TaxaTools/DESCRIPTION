@@ -22,7 +22,7 @@ Suggests:
     leaflet,
     miniUI,
     rentrez,
-    rgbif,
+    rgbif (>= 3.8.4),
     rmarkdown,
     shiny,
     taxize,

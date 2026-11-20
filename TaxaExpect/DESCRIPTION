@@ -32,7 +32,7 @@ Suggests:
     leaflet,
     rentrez,
     rmarkdown,
-    rgbif,
+    rgbif (>= 3.8.4),
     sf,
     TaxaFetch,
     TaxaFlag,

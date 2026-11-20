@@ -133,3 +133,65 @@ test_that("REVIEW N2: a cached row older than 365 days, or with no written_at, i
   ent$written_at <- NULL; saveRDS(ent, f)
   expect_identical(ask()$matchType, "ERROR")                   # no age: cannot prove fresh
 })
+
+# ------------------------------------------------------------------------------
+# GBIF Backbone keys under rgbif 3.9.0 and later
+# ------------------------------------------------------------------------------
+# rgbif 3.9.0 and later match names against the Catalogue of Life Extended Release and return its
+# alphanumeric keys (e.g. "Q2M4") unless checklistKey names the GBIF Backbone. These mocks answer the
+# way 3.9.0 does: a Catalogue of Life key unless the Backbone checklist is asked for.
+
+.BACKBONE <- "d7dddbf4-2cf0-4f39-9b2a-bb099caae36c"
+.nb_390 <- function(...) {
+  a <- list(...)
+  if (identical(a$checklistKey, .BACKBONE)) {
+    list(usageKey = 2367386L, matchType = "EXACT", rank = "SPECIES", status = "ACCEPTED", synonym = FALSE,
+         canonicalName = "Cyprinella monacha", kingdom = "Animalia", kingdomKey = 1L,
+         species = "Cyprinella monacha", speciesKey = 2367386L)
+  } else {
+    list(usageKey = "Q2M4", matchType = "EXACT", rank = "SPECIES", status = "ACCEPTED", synonym = FALSE,
+         canonicalName = "Cyprinella monacha", kingdom = "Animalia", kingdomKey = "N",
+         species = "Cyprinella monacha", speciesKey = "Q2M4")
+  }
+}
+.nb_col_only <- function(...) list(usageKey = "Q2M4", matchType = "EXACT", rank = "SPECIES", kingdom = "Animalia",
+                                   kingdomKey = "N", species = "Cyprinella monacha", speciesKey = "Q2M4")
+.one <- function() data.frame(kingdom = "Animalia", species = "Cyprinella monacha", stringsAsFactors = FALSE)
+
+test_that("get_keys_from_context asks GBIF for Backbone keys, so rgbif 3.9.0 still returns integer keys", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(name_backbone = .nb_390, .package = "rgbif")
+  out <- suppressMessages(get_keys_from_context(.one(), return_keys = TRUE, cache_dir = NULL))
+  expect_identical(out$usageKey, 2367386L)
+  expect_identical(out$matchType, "EXACT")
+  expect_identical(out$gbif_kingdomKey, 1L)
+  expect_identical(out$gbif_speciesKey, 2367386L)
+})
+
+test_that("a non-Backbone key from name_backbone is an error, never an NA reported as matched, and is not cached", {
+  skip_if_not_installed("rgbif")
+  d <- tempfile()
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE))
+  local_mocked_bindings(name_backbone = .nb_col_only, .package = "rgbif")
+  expect_error(suppressMessages(get_keys_from_context(.one(), cache_dir = d)), class = "taxaid_gbif_key_not_backbone")
+  expect_length(list.files(d), 0L)
+})
+
+test_that("caller-supplied keys that are not Backbone integers are refused before any request", {
+  skip_if_not_installed("rgbif")
+  expect_error(fetch_gbif_occurrences(c("2367386", "Q2M4"), geometry = "POLYGON((0 0,1 0,1 1,0 1,0 0))"),
+               class = "taxaid_gbif_key_not_backbone")
+  expect_error(fetch_gbif_occurrence_counts(c("Q2M4"), site_lat = 34, site_lon = -120),
+               class = "taxaid_gbif_key_not_backbone")
+})
+
+test_that(".gbif_backbone_key keeps integers and NA, and refuses anything else", {
+  k <- TaxaFetch:::.gbif_backbone_key
+  expect_identical(k(c(1L, NA), "t"), c(1L, NA))
+  expect_identical(k(c(2367386, NA), "t"), c(2367386L, NA))
+  expect_identical(k(c("12", "", NA), "t"), c(12L, NA, NA))
+  expect_identical(k(NULL, "t"), integer(0))
+  expect_error(k(c("12", "Q2M4"), "t"), class = "taxaid_gbif_key_not_backbone")
+  expect_error(k("Q2M4", "where"), "where: 1 GBIF taxon key", fixed = TRUE)
+})

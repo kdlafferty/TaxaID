@@ -406,7 +406,7 @@ download_gbif_occurrences <- function(
   }
 
   # --- Input checks -----------------------------------------------------------
-  keys <- unique(as.integer(keys))
+  keys <- unique(.gbif_backbone_key(keys, "download_gbif_occurrences"))
   keys <- keys[!is.na(keys)]
   if (length(keys) == 0L) {
     stop("download_gbif_occurrences: 'keys' is empty after removing NAs.")
