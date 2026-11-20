@@ -19,3 +19,9 @@
   `freeze_taxon_registry()`, as `attach_taxon_ids()` does, through the shared
   check `TaxaTools::registry_ids_for_names()` (error class
   `taxon_registry_invalid`).
+* `generate_regional_proximity_evidence()` resolves names against the GBIF
+  Backbone Taxonomy (`checklistKey`), so its keys are Backbone keys under any
+  rgbif version, including rgbif 3.9.0 and later, whose default checklist is
+  the Catalogue of Life Extended Release. A key that is not a Backbone integer
+  is an error (class `taxaid_gbif_key_not_backbone`), not a species left
+  unresolved. Name matching needs rgbif 3.8.4 or later.

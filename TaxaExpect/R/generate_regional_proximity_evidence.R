@@ -507,8 +507,9 @@ generate_regional_proximity_evidence <- function(
 #' resolve just one name without paying for a whole-batch call.
 #' @noRd
 .resolve_gbif_taxon_key <- function(taxon_name) {
+  .gbif_require_checklist_rgbif("generate_regional_proximity_evidence")
   res <- tryCatch(
-    rgbif::name_backbone(name = taxon_name, rank = "species"),
+    rgbif::name_backbone(name = taxon_name, rank = "species", checklistKey = .GBIF_BACKBONE_CHECKLIST),
     error = function(e) NULL
   )
   if (is.null(res) || !"usageKey" %in% names(res) || length(res$usageKey) == 0L) {
@@ -518,7 +519,7 @@ generate_regional_proximity_evidence <- function(
   if (is.na(resolved_rank) || resolved_rank != "SPECIES") {
     return(NA_real_)
   }
-  as.numeric(res$usageKey[[1]])
+  as.numeric(.gbif_backbone_key(res$usageKey[[1]], "generate_regional_proximity_evidence"))
 }
 
 #' Batch-resolve taxon names to GBIF backbone usageKeys, one name_backbone_checklist() call
@@ -559,6 +560,7 @@ generate_regional_proximity_evidence <- function(
 #'   field is unexpectedly missing for an otherwise-valid species-rank row).
 #' @noRd
 .resolve_gbif_taxon_keys_batch <- function(taxon_names) {
+  .gbif_require_checklist_rgbif("generate_regional_proximity_evidence")
   out <- tibble::tibble(
     taxon_name   = taxon_names,
     usage_key    = NA_real_,
@@ -593,6 +595,7 @@ generate_regional_proximity_evidence <- function(
       rgbif::name_backbone_checklist(
         name_data   = data.frame(name = taxon_names, stringsAsFactors = FALSE),
         rank        = "species",
+        checklistKey = .GBIF_BACKBONE_CHECKLIST,
         bucket_size = att$bucket_size,
         sleep       = att$sleep
       ),
@@ -643,7 +646,7 @@ generate_regional_proximity_evidence <- function(
   ok <- rep(FALSE, length(taxon_names))
   ok[has_idx] <- is_species[idx[has_idx]]
 
-  out$usage_key[ok] <- as.numeric(res$usageKey[idx[ok]])
+  out$usage_key[ok] <- as.numeric(.gbif_backbone_key(res$usageKey[idx[ok]], "generate_regional_proximity_evidence"))
   out$gbif_species[ok] <- resolved_species[idx[ok]]
 
   out

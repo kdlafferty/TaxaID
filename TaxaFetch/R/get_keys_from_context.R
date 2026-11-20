@@ -233,6 +233,8 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
   api_args$name <- target_name
   api_args$rank <- toupper(target_rank)
   api_args$verbose <- FALSE
+  api_args$checklistKey <- .GBIF_BACKBONE_CHECKLIST # Backbone keys, whatever rgbif's default checklist
+  .gbif_require_checklist_rgbif("get_keys_from_context")
 
   # Cache: keyed on the whole request plus return_keys; a hit skips the call
   ckey <- NULL
@@ -262,7 +264,7 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
       if (is.null(usage_key) || length(usage_key) == 0) usage_key <- NA_integer_
 
       result <- data.frame(
-        usageKey = as.integer(usage_key),
+        usageKey = .gbif_backbone_key(usage_key, "get_keys_from_context"),
         matchType = as.character(record$matchType %||% NA_character_),
         gbif_rank = as.character(record[["rank"]] %||% NA_character_),
         stringsAsFactors = FALSE
@@ -286,6 +288,7 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
       result
     },
     error = function(e) {
+      if (inherits(e, "taxaid_gbif_key_not_backbone")) stop(e)
       warning(sprintf(
         "get_keys_from_context: API call failed for '%s' -- %s",
         target_name, conditionMessage(e)
@@ -357,11 +360,11 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
   # Rank jump is too large -- attempt recovery via name_lookup()
   recovered <- tryCatch(
     {
-      lookup <- rgbif::name_lookup(
+      lookup <- .gbif_quiet_backbone_notice(rgbif::name_lookup(
         query = target_name,
         rank  = toupper(target_rank),
         limit = 20L
-      )
+      ))
 
       if (is.null(lookup$data) || nrow(lookup$data) == 0L) {
         return(result)
@@ -431,10 +434,11 @@ get_keys_from_context <- function(hierarchy_df, return_keys = FALSE, cache_dir =
 #' @noRd
 .gkfc_key_columns <- function(record, result) {
   g <- function(f, as) { v <- tryCatch(record[[f]], error = function(e) NULL); if (is.null(v) || !length(v)) as(NA) else as(v[[1L]]) }
-  out <- list(gbif_acceptedUsageKey = g("acceptedUsageKey", as.integer), gbif_status = g("status", as.character),
+  key <- function(v) .gbif_backbone_key(v, "get_keys_from_context")
+  out <- list(gbif_acceptedUsageKey = g("acceptedUsageKey", key), gbif_status = g("status", as.character),
               gbif_synonym = g("synonym", as.logical), gbif_canonicalName = g("canonicalName", as.character))
   for (r in .GKFC_RANKS) {
-    out[[paste0("gbif_", r, "Key")]] <- g(paste0(r, "Key"), as.integer)
+    out[[paste0("gbif_", r, "Key")]] <- g(paste0(r, "Key"), key)
     out[[paste0("gbif_", r)]] <- g(r, as.character)
   }
   # A LOOKUP_RECOVERED key replaced the record's usageKey; the record's other fields describe

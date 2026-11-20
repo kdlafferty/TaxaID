@@ -39,7 +39,7 @@ Suggests:
     data.table,
     knitr,
     rmarkdown,
-    rgbif,
+    rgbif (>= 3.8.4),
     base64enc,
     beepr,
     jsonlite,

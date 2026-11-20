@@ -618,3 +618,58 @@ test_that("an attributed or classed key is not moved by the fix", {
   k_cl <- structure(list(a = "ascii", b = 2L), class = "my_key", extra = "kept")
   expect_identical(.cache_hash(k_cl), rlang::hash(k_cl))
 })
+
+# ------------------------------------------------------------------------------
+# GBIF Backbone keys under rgbif 3.9.0 and later
+# ------------------------------------------------------------------------------
+# rgbif 3.9.0 and later match names against the Catalogue of Life Extended Release and return its
+# alphanumeric keys (e.g. "Q2M4") unless checklistKey names the GBIF Backbone. These mocks answer the
+# way 3.9.0 does: a Catalogue of Life key unless the Backbone checklist is asked for.
+
+.BACKBONE <- "d7dddbf4-2cf0-4f39-9b2a-bb099caae36c"
+
+test_that("GBIF common names are looked up on a Backbone key, so rgbif 3.9.0 still finds them", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(
+    name_backbone = function(...) {
+      a <- list(...)
+      k <- if (identical(a$checklistKey, .BACKBONE)) 2389310L else "Q2M4"
+      list(matchType = "EXACT", usageKey = k, speciesKey = k)
+    },
+    name_usage = function(key, data, ...) {
+      if (!identical(key, 2389310L)) return(list(data = data.frame()))
+      list(data = data.frame(language = c("eng", "eng"), vernacularName = c("Rainbow seaperch", "Rainbow surfperch")))
+    },
+    .package = "rgbif"
+  )
+  out <- TaxaTools:::.gbif_common_names("Hypsurus caryi")
+  expect_identical(out$primary, "Rainbow seaperch")
+  expect_identical(out$alternatives, "Rainbow surfperch")
+})
+
+test_that("a non-Backbone key is an error, not a taxon silently reported as having no common name", {
+  skip_if_not_installed("rgbif")
+  local_mocked_bindings(
+    name_backbone = function(...) list(matchType = "EXACT", usageKey = "Q2M4", speciesKey = "Q2M4"),
+    name_usage = function(...) list(data = data.frame()),
+    .package = "rgbif"
+  )
+  expect_error(TaxaTools:::.gbif_common_names("Hypsurus caryi"), class = "taxaid_gbif_key_not_backbone")
+})
+
+test_that("rgbif's notice that the Backbone is out of date is silenced, and every other warning is kept", {
+  q <- TaxaTools:::.gbif_quiet_backbone_notice
+  expect_no_warning(q({
+    warning("name_usage() works by default with the out-of-date GBIF Backbone Taxonomy. Consider using rcol::col_usage() instead.")
+    1
+  }))
+  expect_warning(q(warning("HTTP 503")), "HTTP 503")
+})
+
+test_that("an rgbif too old to name a checklist is refused in words, not worked around per taxon", {
+  chk <- TaxaTools:::.gbif_require_checklist_rgbif
+  expect_error(chk("scientific_to_common", v = package_version("3.8.3")), class = "taxaid_rgbif_too_old")
+  expect_error(chk("scientific_to_common", v = package_version("3.8.3")), "rgbif 3.8.3 cannot ask GBIF for the Backbone checklist", fixed = TRUE)
+  expect_true(chk("scientific_to_common", v = package_version("3.8.4")))
+  expect_true(chk("scientific_to_common", v = package_version("3.9.0")))
+})

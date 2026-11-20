@@ -106,7 +106,7 @@ fetch_gbif_occurrence_counts <- function(keys,
                                     cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
                                     max_active = 4L,
                                     base_url = "https://api.gbif.org/v1") {
-  keys <- sort(unique(stats::na.omit(as.numeric(keys))))
+  keys <- sort(unique(stats::na.omit(as.numeric(.gbif_backbone_key(keys, "fetch_gbif_occurrence_counts")))))
   if (!length(keys)) stop("fetch_gbif_occurrence_counts: `keys` is empty.")
   for (nm in c("site_lat", "site_lon")) {
     v <- get(nm)

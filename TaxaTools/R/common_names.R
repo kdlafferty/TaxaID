@@ -280,8 +280,9 @@ common_to_scientific <- function(common_names,
       call. = FALSE
     )
   }
+  .gbif_require_checklist_rgbif("scientific_to_common")
   bb <- tryCatch(
-    rgbif::name_backbone(name = name, strict = FALSE),
+    rgbif::name_backbone(name = name, strict = FALSE, checklistKey = .GBIF_BACKBONE_CHECKLIST),
     error = function(e) NULL
   )
   if (is.null(bb) || identical(bb$matchType, "NONE")) {
@@ -296,8 +297,9 @@ common_to_scientific <- function(common_names,
   if (is.null(key) || is.na(key)) {
     return(NULL)
   }
+  key <- .gbif_backbone_key(key, "scientific_to_common")
   vn <- tryCatch(
-    rgbif::name_usage(key = key, data = "vernacularNames"),
+    .gbif_quiet_backbone_notice(rgbif::name_usage(key = key, data = "vernacularNames")),
     error = function(e) NULL
   )
   if (is.null(vn) || is.null(vn$data) || nrow(vn$data) == 0L) {
@@ -747,6 +749,8 @@ scientific_to_common <- function(scientific_names,
     lookup_fn <- if (backbone_id == 11L) .gbif_common_names else .itis_common_names
     for (i in which(!from_cache)) {
       res <- tryCatch(lookup_fn(scientific_names[[i]]), error = function(e) {
+        # a key that is not a Backbone key fails every taxon alike: stop, rather than warn per taxon and pay the LLM
+        if (inherits(e, c("taxaid_gbif_key_not_backbone", "taxaid_rgbif_too_old"))) stop(e)
         warning(
           sprintf(
             "Backbone lookup failed for '%s': %s",
